@@ -31,6 +31,10 @@ export PYTHONPATH="$WORK/python"
 PY="$WORK/.venv/bin/python"
 cd "$WORK"
 SSD=/mnt/localssd/$NAME; mkdir -p "$SSD"; rm -rf "$SSD"/* 2>/dev/null
+# CRITICAL: HiCacheFile reads its storage dir from this env var (or defaults to /tmp/hicache on the
+# 194 GB root fs!). The factory creates HiCacheFile(storage_config) WITHOUT file_path, so the
+# extra_config "file_path" is IGNORED. Must set the env var to put the L3 disk tier on /mnt/localssd.
+export SGLANG_HICACHE_FILE_BACKEND_STORAGE_DIR="$SSD"
 OUT="$WORK/runs/$VERSION"; mkdir -p "$OUT"
 MODEL=Qwen/Qwen3.5-397B-A17B-FP8
 # LooGLE: the cached longdep_qa.jsonl uses the new HF schema (context/question/answer); the bench

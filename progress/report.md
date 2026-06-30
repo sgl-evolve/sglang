@@ -48,13 +48,27 @@ dataset. Reference bar: Strata (2508.18572) + the HiCache blog.
 
 ## Version log (one point per full-eval; W&B = evolution curve)
 
-### v0 — unmodified baseline  *(running)*
+### v0 — unmodified baseline  (W&B version 0, commit 8fe479f18; engine = base 72812db13)
 - **Hypothesis:** establish the honest reference.
-- **Change:** none (pristine fork @ 72812db13, protocol flags exactly as specified).
-- **Result:** _pending — will fill mean/median/p99 TTFT, TPOT, ITL, throughput, hit rate for
-  LooGLE + ShareGPT, and log as W&B version 0._
-- **Lossless check:** baseline defines the reference outputs.
-- **Takeaway:** _pending._
+- **Change:** none to the **engine**. Only environment/harness adaptations needed to run on this
+  node (all in `run_eval.sh`, applied identically to every version — see STATE.md "Environment
+  fixes"): cu12 lib restore (nccl/cudnn/cusparselt); deep_gemm off + flashinfer cu12 norm + cu12.8
+  triton ptxas/fresh cache (cu13 JIT can't run on the 12.8 driver); page_first_direct layout
+  (hybrid Mamba); hicache-size 64/rank = 1 TB total across the 2 host pools; file backend storage
+  dir env -> /mnt/localssd + 2 TB disk cap; `av`; LooGLE schema converter; bench_serving usage fix.
+- **Result (mean TTFT headline, lower better):**
+  - **LooGLE:** mean **47.0 s**, median 10.8 s, p99 130.2 s; TPOT mean 780 ms; out 22.7 tok/s;
+    req 1.49/s; e2e mean 56.7 s; completed 1545/1560; input 43.7M tok.
+  - **ShareGPT:** mean **40.2 s**, p90 44.0 s, median 41.6 s; throughput 1.23 req/s; cache_hit 0.524.
+- **Profile:** LooGLE QUEUE-BOUND (queue ~111 / running ~20), host L2 ~100% full, load_back ~23M tok
+  (dominant), disk L3 active (backup ~5M + prefetch ~0.9M, single serial threads), device-reuse
+  thrashing. ShareGPT light tiering (L2 ~10%, disk ~unused). (loogle `hit_rate` gauge logged 0.0 is
+  an instantaneous-snapshot artifact; cache_metrics show real reuse: device 435K + host 181K cached.)
+- **Lossless check:** baseline defines the reference outputs (lossless fingerprint captured going
+  forward via `lossless_fp.py`).
+- **Takeaway:** mean TTFT is dominated by LooGLE queueing/throughput under long contexts. Disk L3 is
+  on LooGLE's critical path via single serial threads -> v1 parallelizes it (lossless); bigger
+  levers (scheduling/anti-thrash, load_back) follow.
 
 _(Subsequent versions appended here: hypothesis · change (files/mechanism) · result vs baseline ·
 lossless check · takeaway.)_

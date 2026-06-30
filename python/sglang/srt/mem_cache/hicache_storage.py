@@ -5,6 +5,7 @@ import os
 import threading
 import uuid
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, List, Optional, Set
@@ -363,6 +364,24 @@ class HiCacheFile(HiCacheStorage):
             extra_config=storage_config.extra_config,
         )
 
+        # v1: optional bounded thread pool to parallelize the serial per-page L3 file IO
+        # (write_through backup via batch_set, prefetch via batch_get). Default OFF (serial =
+        # baseline); enable via extra_config["file_io_threads"]. Lossless: each page is an
+        # independent read/write to a disjoint file and a disjoint host-pool slice, results are
+        # reassembled in submission order, and LRUFileEvictor is already lock-protected.
+        io_threads = 0
+        try:
+            io_threads = int((storage_config.extra_config or {}).get("file_io_threads", 0) or 0)
+        except (TypeError, ValueError):
+            io_threads = 0
+        self._io_pool = (
+            ThreadPoolExecutor(max_workers=io_threads, thread_name_prefix="hicache_file_io")
+            if io_threads and io_threads > 1
+            else None
+        )
+        if self._io_pool is not None:
+            logger.info(f"HiCacheFile: parallel page IO enabled with {io_threads} threads.")
+
     def _get_suffixed_key(self, key: str) -> str:
         return key + self.config_suffix
 
@@ -404,12 +423,14 @@ class HiCacheFile(HiCacheStorage):
         target_locations: List[torch.Tensor],
         target_sizes: Optional[Any] = None,
     ) -> List[torch.Tensor | None]:
-        return [
-            self.get(key, target_location)
-            for key, target_location in zip(
-                keys, target_locations or [None] * len(keys)
-            )
-        ]
+        locs = target_locations or [None] * len(keys)
+        if self._io_pool is not None and len(keys) > 1:
+            futures = [
+                self._io_pool.submit(self.get, key, loc)
+                for key, loc in zip(keys, locs)
+            ]
+            return [f.result() for f in futures]  # submission order == key order
+        return [self.get(key, loc) for key, loc in zip(keys, locs)]
 
     def set(
         self,
@@ -463,6 +484,12 @@ class HiCacheFile(HiCacheStorage):
         target_locations: Optional[Any] = None,
         target_sizes: Optional[Any] = None,
     ) -> bool:
+        if self._io_pool is not None and len(keys) > 1:
+            futures = [
+                self._io_pool.submit(self.set, key, value)
+                for key, value in zip(keys, values)
+            ]
+            return all(f.result() for f in futures)
         for key, value in zip(keys, values):
             if not self.set(key, value):
                 return False

@@ -10,7 +10,14 @@ dataset. Reference bar: Strata (2508.18572) + the HiCache blog.
 
 ## Fixed protocol (contract — never changed)
 - Model `Qwen/Qwen3.5-397B-A17B-FP8`, TP=8; 3 tiers: GPU HBM (`--mem-fraction-static 0.85`) +
-  1 TB host (`--hicache-size 1024`) + disk on `/mnt/localssd` (`--hicache-storage-backend file`).
+  **1 TB host total** + disk on `/mnt/localssd` (`--hicache-storage-backend file`).
+  - Host budget note: `--hicache-size` is **per TP rank** in this build (`sync_fixed_hicache_size`
+    syncs only across PP, not TP). The protocol's literal `1024` on TP=8 would request 8×1024 GB =
+    **8 TB** — 8× over the stated 1 TB host budget and an instant OOM-kill on this 1.86 TB node
+    (all 8 ranks race past the RAM check, then allocate concurrently → SIGKILL). To honor the
+    **1 TB total** host ceiling I use `--hicache-size 128` (×8 = 1024 GB = 1 TB total). Applied
+    identically to baseline and every version, so deltas are fair and the ceiling is respected
+    (using 1024/rank would *exceed* the budget 8×, which the contract forbids).
 - LooGLE via `bench_serving` (rate λ=10, `--max-concurrency 128`, 200 prompts, multiturn).
 - ShareGPT via `bench_mix.py` (num_clients=60, inter-round think-time 60 s, duration 600 s).
 - Full server reset (stop → free GPU+host KV → wipe disk tier) **between** the two benchmarks.

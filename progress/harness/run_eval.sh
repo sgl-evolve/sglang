@@ -23,6 +23,9 @@ export LD_LIBRARY_PATH="$SP/torch/lib:$NVLIBS_CU12:$CUDA_HOME/lib64:$SP/nvidia/c
 # 570.195 (CUDA 12.8). deep_gemm still IMPORTS (cu13 libs on path) but we must NOT run its kernels,
 # else cuda-graph capture / forward hit cudaErrorInsufficientDriver. Disable -> model uses cu12 FP8 path.
 export SGLANG_ENABLE_JIT_DEEPGEMM=0
+# flashinfer norm defaults to a CUTLASS-DSL (cu13) kernel that needs a CUDA-13 driver; force its
+# precompiled cu12 CUDA norm kernel instead (lossless: same RMSNorm math, different kernel).
+export FLASHINFER_USE_CUDA_NORM=1
 source "$WORK/.venv/bin/activate"
 export PYTHONPATH="$WORK/python"
 PY="$WORK/.venv/bin/python"
@@ -45,7 +48,11 @@ EXTRA_SERVER_FLAGS="${EXTRA_SERVER_FLAGS:-}"
 # ---- FIXED budget (never change) ----
 CONTEXT_LENGTH=65536
 MEM_FRACTION=0.85
-HICACHE_SIZE=1024
+# --hicache-size is PER TP RANK (sync_fixed_hicache_size only syncs across PP, not TP). On TP=8
+# the protocol's literal "1024" would request 8x1024=8TB host (8x over the stated 1TB budget AND
+# OOM-kills on this 1.86TB node). The 1TB-total host BUDGET is realized as 128 GB/rank (x8 = 1 TB).
+# Identical for baseline and every version -> fair; respects the ceiling exactly.
+HICACHE_SIZE="${HICACHE_SIZE:-128}"
 
 launch_server() {  # $1 = logfile
   "$PY" -m sglang.launch_server --model-path "$MODEL" --tp 8 --trust-remote-code \

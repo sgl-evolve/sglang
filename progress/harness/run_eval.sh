@@ -40,7 +40,10 @@ SHAREGPT=/rmeng_data/junyanch-data/datasets/ShareGPT_V3_unfiltered_cleaned_split
 PAGE_SIZE="${PAGE_SIZE:-64}"
 CHUNKED_PREFILL="${CHUNKED_PREFILL:-6144}"
 IO_BACKEND="${IO_BACKEND:-kernel}"
-MEM_LAYOUT="${MEM_LAYOUT:-page_first}"
+# Qwen3.5-397B is a HYBRID (Mamba/linear-attn) MoE; its MambaPoolHost only supports
+# 'page_first_direct' (the protocol's 'page_first' raises ValueError). Forced by the model arch;
+# both attention & mamba host pools support page_first_direct. Same for baseline + all versions.
+MEM_LAYOUT="${MEM_LAYOUT:-page_first_direct}"
 WRITE_POLICY="${WRITE_POLICY:-write_through}"
 STORAGE_BACKEND="${STORAGE_BACKEND:-file}"
 PREFETCH_POLICY="${PREFETCH_POLICY:-wait_complete}"
@@ -48,11 +51,12 @@ EXTRA_SERVER_FLAGS="${EXTRA_SERVER_FLAGS:-}"
 # ---- FIXED budget (never change) ----
 CONTEXT_LENGTH=65536
 MEM_FRACTION=0.85
-# --hicache-size is PER TP RANK (sync_fixed_hicache_size only syncs across PP, not TP). On TP=8
-# the protocol's literal "1024" would request 8x1024=8TB host (8x over the stated 1TB budget AND
-# OOM-kills on this 1.86TB node). The 1TB-total host BUDGET is realized as 128 GB/rank (x8 = 1 TB).
-# Identical for baseline and every version -> fair; respects the ceiling exactly.
-HICACHE_SIZE="${HICACHE_SIZE:-128}"
+# --hicache-size is PER TP RANK and applied to EACH host pool. Qwen3.5 is hybrid, so HiCache
+# allocates TWO host pools (attention KV + Mamba state), each = hicache_size GB/rank. On TP=8 the
+# total host RAM = 2 pools x hicache_size x 8. The protocol's literal "1024" => 16 TB (absurd);
+# even 128 => 2 TB (OOM on 1.86 TB). The 1 TB TOTAL host BUDGET is realized as 64 GB/rank
+# (2 x 64 x 8 = 1024 GB = 1 TB total). Identical for baseline and every version; respects the ceiling.
+HICACHE_SIZE="${HICACHE_SIZE:-64}"
 
 launch_server() {  # $1 = logfile
   "$PY" -m sglang.launch_server --model-path "$MODEL" --tp 8 --trust-remote-code \

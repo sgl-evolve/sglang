@@ -21,10 +21,18 @@ dataset. Reference bar: Strata (2508.18572) + the HiCache blog.
 - Run on the node via the persistent exclusive holder slurm job; `run_eval.sh` sets the env.
 - `LD_LIBRARY_PATH` must list torch + cu12 nvidia libs first and `nvidia/cu13/lib` **last**
   (deep_gemm needs cu13 `.so.13`; its `.so.12/.10` builds must not shadow torch's CUDA-12 libs).
-- One-time venv repair: the locked env installed both `nvidia-nccl-cu12` and `nvidia-nccl-cu13`
-  (2.28.9) to the *same* `nvidia/nccl/lib/libnccl.so.2`; the cu13 build clobbered it → CUDA-13
-  NCCL on a 12.8 driver → `ncclCommInitRank` "driver insufficient". Fixed by force-reinstalling
-  `nvidia-nccl-cu12==2.28.9`. Verified by an 8-GPU NCCL all-reduce.
+- One-time venv repair (the locked env mixed cu12+cu13 nvidia wheels; cu13 builds clobbered cu12
+  at shared paths, and the node driver is 570.195 = CUDA 12.8, which cannot run CUDA-13 kernels):
+  - `nvidia-{nccl,cudnn,cusparselt}-cu13` (each 1:1 path-clobbered the cu12 build) →
+    `cudaErrorInsufficientDriver` in NCCL init / cuda-graph capture. Fixed by force-reinstalling
+    the cu12 builds (`nvidia-nccl-cu12==2.28.9`, `nvidia-cudnn-cu12==9.19.0.56`,
+    `nvidia-cusparselt-cu12`). Verified by an 8-GPU NCCL all-reduce + a torch matmul/cudnn-conv/
+    CUDA-graph-capture/flashinfer stack test on the node.
+  - **deep_gemm** ships only a cu13 build; it imports (cu13 libs kept LAST on `LD_LIBRARY_PATH`)
+    but its kernels need a CUDA-13 driver, so it is disabled at runtime via
+    `SGLANG_ENABLE_JIT_DEEPGEMM=0`. The model therefore uses the cu12 FP8 MoE path
+    (cutlass/flashinfer) instead of deep_gemm. This is applied identically to the baseline and
+    every version, so all comparisons remain fair; it only shifts absolute numbers, not deltas.
 - bench_mix server launch is done by `run_eval.sh` with the **identical** flags + a health gate
   (the stock `bench_mix.sh` races a no-wait client against a 10–25 min model load); the client
   driver (`bench_mix.py`) and config (60 clients / 60 s think-time / 600 s) are unchanged.

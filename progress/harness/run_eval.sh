@@ -19,6 +19,10 @@ export CUDA_HOME=/usr/local/cuda-12.8; export PATH="$CUDA_HOME/bin:$PATH"
 SP="$WORK/.venv/lib/python3.12/site-packages"
 NVLIBS_CU12=$(echo "$SP"/nvidia/*/lib | tr ' ' '\n' | grep -v '/cu13/' | tr '\n' ':')
 export LD_LIBRARY_PATH="$SP/torch/lib:$NVLIBS_CU12:$CUDA_HOME/lib64:$SP/nvidia/cu13/lib:${LD_LIBRARY_PATH:-}"
+# deep_gemm ships only a cu13 build whose kernels require a CUDA-13 driver; this node's driver is
+# 570.195 (CUDA 12.8). deep_gemm still IMPORTS (cu13 libs on path) but we must NOT run its kernels,
+# else cuda-graph capture / forward hit cudaErrorInsufficientDriver. Disable -> model uses cu12 FP8 path.
+export SGLANG_ENABLE_JIT_DEEPGEMM=0
 source "$WORK/.venv/bin/activate"
 export PYTHONPATH="$WORK/python"
 PY="$WORK/.venv/bin/python"

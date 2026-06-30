@@ -31,20 +31,25 @@ def parse_prom(path):
     return out
 
 
+_CM_SUBSTR = ("cache", "prefix", "hierarchical", "hicache", "prefetch",
+              "backup", "backuped", "load_back", "storage", "offload", "kv_transfer")
+
+
 def cache_metrics(prom):
-    """Extract cache-related metrics; compute a hit_rate if token counters present."""
-    cm = {k: v for k, v in prom.items() if ("cache" in k.lower() or "prefix" in k.lower() or "hierarchical" in k.lower())}
+    """Extract cache/HiCache-related metrics (hit rate, L2 fill, prefetch/backup/load-back traffic)."""
+    cm = {}
+    for k, v in prom.items():
+        kl = k.lower()
+        if any(s in kl for s in _CM_SUBSTR):
+            cm[k] = v
     return cm
 
 
 def hit_rate_from(prom):
-    """Best-effort prefix-cache hit rate from token counters."""
-    # sglang exposes counters like sglang:prompt_tokens_total and sglang:cached_tokens_total (names vary by ver)
-    def find(substr):
-        for k, v in prom.items():
-            if substr in k.lower():
-                return v
-        return None
+    """Prefix-cache hit rate: prefer the direct sglang:cache_hit_rate gauge, else token counters."""
+    for k, v in prom.items():
+        if k.startswith("sglang:cache_hit_rate"):
+            return v
     cached = None
     prompt = None
     for k, v in prom.items():

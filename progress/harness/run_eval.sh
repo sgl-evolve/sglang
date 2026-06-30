@@ -35,6 +35,13 @@ SSD=/mnt/localssd/$NAME; mkdir -p "$SSD"; rm -rf "$SSD"/* 2>/dev/null
 # 194 GB root fs!). The factory creates HiCacheFile(storage_config) WITHOUT file_path, so the
 # extra_config "file_path" is IGNORED. Must set the env var to put the L3 disk tier on /mnt/localssd.
 export SGLANG_HICACHE_FILE_BACKEND_STORAGE_DIR="$SSD"
+# Triton JIT: force the cu12.8 ptxas (driver is CUDA 12.8 -> PTX ISA 8.7) and use a FRESH node-local
+# cache. The shared ~/.triton can hold cu12.9/cu13-compiled cubins (PTX ISA 8.8+) that the 12.8
+# driver rejects with "device kernel image is invalid" (hit by the GDN linear-attn l2norm kernel).
+export TRITON_PTXAS_PATH=/usr/local/cuda-12.8/bin/ptxas
+export TRITON_CACHE_DIR=/mnt/localssd/triton_cache_$NAME
+mkdir -p "$TRITON_CACHE_DIR"
+PHASE="${PHASE:-AB}"   # AB = both; A = LooGLE only; B = ShareGPT only (fast iteration)
 OUT="$WORK/runs/$VERSION"; mkdir -p "$OUT"
 MODEL=Qwen/Qwen3.5-397B-A17B-FP8
 # LooGLE: the cached longdep_qa.jsonl uses the new HF schema (context/question/answer); the bench
@@ -117,6 +124,7 @@ echo "localssd_free=${FREEG}G"
 [ "${FREEG:-0}" -lt 2100 ] && echo "WARN: <2.1T free on /mnt/localssd"
 
 # ============================== (A) LooGLE — bench_serving ==============================
+if [[ "$PHASE" == *A* ]]; then
 echo ">>> [A] LooGLE: launching server $(date -u)"
 SRV=$(launch_server "$OUT/server_loogle.log")
 if wait_health "$SRV"; then
@@ -132,8 +140,10 @@ else
 fi
 echo ">>> RESET after LooGLE $(date -u)"
 reset_server "$SRV"
+fi  # phase A
 
 # ============================== (B) ShareGPT — bench_mix.py ==============================
+if [[ "$PHASE" == *B* ]]; then
 echo ">>> [B] ShareGPT: launching server $(date -u)"
 SRV=$(launch_server "$OUT/server_sharegpt.log")
 if wait_health "$SRV"; then
@@ -158,4 +168,5 @@ else
 fi
 echo ">>> FINAL RESET $(date -u)"
 reset_server "$SRV"
+fi  # phase B
 echo "EVAL_DONE version=$VERSION out=$OUT $(date -u)"

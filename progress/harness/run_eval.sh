@@ -33,7 +33,12 @@ cd "$WORK"
 SSD=/mnt/localssd/$NAME; mkdir -p "$SSD"; rm -rf "$SSD"/* 2>/dev/null
 OUT="$WORK/runs/$VERSION"; mkdir -p "$OUT"
 MODEL=Qwen/Qwen3.5-397B-A17B-FP8
-LOOGLE=$(find "$HF_HOME" ~/.cache/huggingface -name longdep_qa.jsonl 2>/dev/null | head -1)
+# LooGLE: the cached longdep_qa.jsonl uses the new HF schema (context/question/answer); the bench
+# loader expects the old schema (input/qa_pairs). Reformat the SAME data (grouped by doc -> multiturn)
+# so the UNMODIFIED loader runs. Benchmark code untouched; data content identical.
+LOOGLE_SRC=$(find "$HF_HOME" ~/.cache/huggingface -name longdep_qa.jsonl 2>/dev/null | head -1)
+LOOGLE="$WORK/runs/loogle_longdep_oldfmt.jsonl"
+[ -f "$LOOGLE" ] || python3 "$WORK/progress/harness/convert_loogle.py" "$LOOGLE_SRC" "$LOOGLE"
 SHAREGPT=/rmeng_data/junyanch-data/datasets/ShareGPT_V3_unfiltered_cleaned_split.json
 
 # ---- mechanism flags (baseline defaults; override via env per version) ----
@@ -48,6 +53,16 @@ WRITE_POLICY="${WRITE_POLICY:-write_through}"
 STORAGE_BACKEND="${STORAGE_BACKEND:-file}"
 PREFETCH_POLICY="${PREFETCH_POLICY:-wait_complete}"
 EXTRA_SERVER_FLAGS="${EXTRA_SERVER_FLAGS:-}"
+# Disk-tier (L3) budget: the file backend defaults to NO cap (MAX_SIZE=None, MIN_FREE_SPACE=0),
+# so write_through fills the shared /mnt/localssd -> ENOSPC -> scheduler crash. Enforce the 2.1 TB
+# disk BUDGET via the LRU evictor (cap) + a filesystem free-space guard (shared disk also holds
+# other users' data). Identical for baseline + all versions.
+DISK_MAX_SIZE="${DISK_MAX_SIZE:-2000G}"   # ~2.0 TiB cap (under the 2.1 TB disk budget)
+DISK_MIN_FREE="${DISK_MIN_FREE:-300G}"    # keep >=300 GB free on the shared filesystem
+FILE_IO_THREADS="${FILE_IO_THREADS:-}"    # v1 lever: parallelize file-L3 page IO (unset=serial baseline)
+STORAGE_CFG="{\"file_path\":\"$SSD\",\"max_size\":\"$DISK_MAX_SIZE\",\"min_free_space\":\"$DISK_MIN_FREE\""
+[ -n "$FILE_IO_THREADS" ] && STORAGE_CFG="$STORAGE_CFG,\"file_io_threads\":$FILE_IO_THREADS"
+STORAGE_CFG="$STORAGE_CFG}"
 # ---- FIXED budget (never change) ----
 CONTEXT_LENGTH=65536
 MEM_FRACTION=0.85
@@ -65,7 +80,7 @@ launch_server() {  # $1 = logfile
     --enable-hierarchical-cache --hicache-size "$HICACHE_SIZE" \
     --hicache-io-backend "$IO_BACKEND" --hicache-mem-layout "$MEM_LAYOUT" --hicache-write-policy "$WRITE_POLICY" \
     --hicache-storage-backend "$STORAGE_BACKEND" --hicache-storage-prefetch-policy "$PREFETCH_POLICY" \
-    --hicache-storage-backend-extra-config "{\"file_path\":\"$SSD\"}" \
+    --hicache-storage-backend-extra-config "$STORAGE_CFG" \
     $EXTRA_SERVER_FLAGS \
     --enable-metrics --enable-cache-report --port "$PORT" > "$1" 2>&1 &
   echo $!

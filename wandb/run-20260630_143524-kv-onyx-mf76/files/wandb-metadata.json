@@ -1,0 +1,32 @@
+{
+  "os": "Linux-6.8.0-1027-gcp-tcpx-x86_64-with-glibc2.35",
+  "python": "CPython 3.12.13",
+  "startedAt": "2026-06-30T14:35:24.516145Z",
+  "args": [
+    "/home/junyanch_google_com/autoresearch/programs/sglang/research-kv-onyx-mf76/runs/v0_baseline/summary.json",
+    "0",
+    "unmodified baseline (engine code @ base commit); env/harness adaptations only"
+  ],
+  "program": "/home/junyanch_google_com/autoresearch/programs/sglang/research-kv-onyx-mf76/progress/harness/log_wandb.py",
+  "codePath": "progress/harness/log_wandb.py",
+  "codePathLocal": "progress/harness/log_wandb.py",
+  "git": {
+    "remote": "https://x-access-token:@github.com/sgl-evolve/sglang.git",
+    "commit": "8fe479f18b6fa9f3c528d6115433dde93a6ee8b6"
+  },
+  "root": "/home/junyanch_google_com/autoresearch/programs/sglang/research-kv-onyx-mf76",
+  "host": "slurm2-c3nodeset-0",
+  "executable": "/home/junyanch_google_com/autoresearch/programs/sglang/research-kv-onyx-mf76/.venv/bin/python3",
+  "cpu_count": 44,
+  "cpu_count_logical": 44,
+  "disk": {
+    "/": {
+      "total": "1040442621952",
+      "used": "414355480576"
+    }
+  },
+  "memory": {
+    "total": "371914428416"
+  },
+  "writerId": "mpo3jzblgkhmebqhfdf84dne1z7g3cmz"
+}

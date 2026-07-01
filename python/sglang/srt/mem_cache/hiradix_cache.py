@@ -1109,7 +1109,6 @@ class HiRadixCache(RadixCache):
         return num_evicted
 
     def evict_host(self, num_tokens: int):
-        target = num_tokens + max(num_tokens, self.page_size * 64)
         leaves = list(self.evictable_host_leaves)
         eviction_heap = [
             (self.eviction_strategy.get_priority(node), node) for node in leaves
@@ -1117,7 +1116,7 @@ class HiRadixCache(RadixCache):
         heapq.heapify(eviction_heap)
 
         num_evicted = 0
-        while num_evicted < target and len(eviction_heap):
+        while num_evicted < num_tokens and len(eviction_heap):
             _priority, x = heapq.heappop(eviction_heap)
             if x == self.root_node:
                 break

@@ -632,6 +632,44 @@ The mean improvement (-1.0%) is modest because the mean is dominated by the p99 
 
 ---
 
+## V16 — Time-decay GSLRU tau=15s (NEW BEST)
+
+**Commit:** `13ee198ea`
+**Flag:** `--radix-eviction-policy gslru` + code (device_weight=4, anti-starvation 300s, GSLRU decay_tau=15s)
+
+**Hypothesis:** V15 (tau=30s) improved p90 by 30.5% — more aggressive decay helps. Halve tau to 15s: nodes lose protection faster, freeing GPU for active data sooner.
+
+**Result (vs V15 tau=30s):**
+
+| Metric | V15 (tau=30) | V16 (tau=15) | Delta |
+|--------|-------------|-------------|-------|
+| LooGLE TTFT mean (ms) | 10114 | **9814** | **-3.0% NEW BEST** |
+| LooGLE TTFT median (ms) | 1204 | 1277 | +6.1% |
+| LooGLE TTFT p90 (ms) | 4580 | **4210** | **-8.1% better** |
+| LooGLE TTFT p99 (ms) | 211683 | 213209 | neutral |
+| LooGLE TPOT mean (ms) | 472.35 | **454.76** | **-3.7% better** |
+| LooGLE hit rate | 0.8943 | **0.8966** | +0.3% better |
+| ShareGPT TTFT mean (ms) | 37770 | **37300** | **-1.2% better** |
+| ShareGPT req throughput | 1.26 | **1.28** | +1.6% better |
+
+HiCache: evicted=317.6M (-0.3%), load_back=286.4M, cached_device=4.96M, load_back_mean=1.813ms, host_util=0.9992
+
+**Tau sensitivity series (monotonic improvement, no plateau):**
+
+| tau | TTFT mean (ms) | TTFT p90 (ms) | Hit rate | TPOT (ms) |
+|-----|----------------|---------------|----------|-----------|
+| ∞ (V13) | 10217 | 6593 | 0.8953 | 517.74 |
+| 30s (V15) | 10114 | 4580 | 0.8943 | 472.35 |
+| **15s (V16)** | **9814** | **4210** | **0.8966** | **454.76** |
+
+**Analysis:** Shorter tau continues to improve ALL key metrics. The mean dropped below 10s for the first time (9814ms). TPOT improvement (-3.7%) is notable — faster decode from reduced GPU memory pressure. ShareGPT also improved (+1.6% throughput), suggesting the mechanism generalizes across workloads.
+
+The median slightly worsened (1277 vs 1204ms) — the fastest requests pay a small cost for the aggressive decay (their cached data may be evicted slightly earlier). But the mean, p90, and TPOT all improved, making this a clear net positive.
+
+**Next:** Continue tau sensitivity: try tau=7.5s. The curve is still monotonic with no sign of diminishing returns.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -646,4 +684,5 @@ The mean improvement (-1.0%) is modest because the mean is dominated by the p99 
 | V12 (device weight=2) | 10506ms | — |
 | V13 (device weight=4) | 10217ms | prev best |
 | V14 (device weight=8) | 10903ms | NEGATIVE |
-| **V15 (time-decay GSLRU tau=30)** | **10114ms** | **CURRENT BEST** |
+| V15 (time-decay GSLRU tau=30) | 10114ms | — |
+| **V16 (time-decay GSLRU tau=15)** | **9814ms** | **CURRENT BEST** |

@@ -584,6 +584,54 @@ Predicted risk materialized: weight=8 effectively deprioritizes host-only reques
 
 ---
 
+## V15 — Time-decay GSLRU eviction (NEW BEST)
+
+**Commit:** `b8a577e5c`
+**Flag:** `--radix-eviction-policy gslru` + code (device_weight=4, anti-starvation 300s, GSLRU decay_tau=30s)
+
+**Hypothesis:** The 90% reload rate (322M evicted, 288M loaded back) indicates we're evicting the wrong data. Standard GSLRU protects nodes with high hit_count forever, even after their document's queries finish. Time-decay exponentially reduces a node's effective eviction priority based on time since last access:
+```
+effective_priority = min(hit_count, 4) * exp(-age / 30)
+```
+After 30s without access, a segment-4 node's priority drops to ~1.5 — making it evictable before fresh segment-2 data. This frees GPU cache for actively-requested data.
+
+Also reverts device weight from 8 (V14) back to 4 (V13 optimum).
+
+**Result (vs V13 — previous best):**
+
+| Metric | V13 (w=4) | V15 (decay) | Delta |
+|--------|-----------|-------------|-------|
+| LooGLE TTFT mean (ms) | 10217 | **10114** | **-1.0% NEW BEST** |
+| LooGLE TTFT median (ms) | 1405 | 1204 | **-14.3% better** |
+| LooGLE TTFT p90 (ms) | 6593 | 4580 | **-30.5% better** |
+| LooGLE TTFT p99 (ms) | 214431 | 211683 | -1.3% better |
+| LooGLE TPOT mean (ms) | 517.74 | 472.35 | **-8.8% better** |
+| LooGLE ITL mean (ms) | 397.08 | 369.55 | **-6.9% better** |
+| LooGLE E2E mean (ms) | 15946 | 15445 | -3.1% better |
+| LooGLE out tok/s | 53.57 | 53.58 | neutral |
+| LooGLE hit rate | 0.8953 | 0.8943 | neutral |
+| ShareGPT TTFT mean (ms) | 37300 | 37770 | +1.3% neutral |
+| ShareGPT req throughput | 1.28 | 1.26 | -1.6% neutral |
+| ShareGPT hit rate | 0.618 | 0.626 | +1.3% better |
+
+HiCache: load_back=286.5M (-1.6%), evicted=318.5M (-1.3%), cached_device_tokens=5.01M (**+25.8%**), load_back_mean=1.82ms, eviction_mean=1.106ms, host_util=0.9985
+
+**Analysis: POSITIVE — orthogonal to device weighting, addresses eviction quality**
+
+The time-decay GSLRU produces improvements across ALL latency percentiles, not just the mean. The key mechanism:
+
+1. **25.8% more GPU-cached tokens** (5.01M vs 3.98M): time-decay evicts stale data faster, keeping more useful data GPU-resident
+2. **p90 -30.5%**: the biggest win — mid-tier requests (previously waiting 6.6s) now find more data in GPU and complete in 4.6s
+3. **TPOT -8.8%**: decode latency also improves, possibly from reduced GPU memory pressure
+4. **Less total eviction** (318.5M vs 322.7M, -1.3%): better data retention means fewer eviction events
+5. **ShareGPT neutral**: time-decay doesn't hurt the diverse-workload benchmark
+
+The mean improvement (-1.0%) is modest because the mean is dominated by the p99 tail (starvation-bound requests at 300s threshold) which time-decay doesn't address. But the median (-14.3%) and p90 (-30.5%) confirm the mechanism works: more requests find their data in GPU.
+
+**Conclusion:** Time-decay GSLRU is the first successful orthogonal improvement beyond sort-key tuning. V15 (10114ms) is the new best. Next: tau sensitivity (15s, 60s) or stack with another eviction improvement.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -596,5 +644,6 @@ Predicted risk materialized: weight=8 effectively deprioritizes host-only reques
 | V10 (DFS_WEIGHT) | 36857ms | NEGATIVE |
 | V11 (LPM+starvation 300s) | 10658ms | — |
 | V12 (device weight=2) | 10506ms | — |
-| **V13 (device weight=4)** | **10217ms** | **CURRENT BEST** |
+| V13 (device weight=4) | 10217ms | prev best |
 | V14 (device weight=8) | 10903ms | NEGATIVE |
+| **V15 (time-decay GSLRU tau=30)** | **10114ms** | **CURRENT BEST** |

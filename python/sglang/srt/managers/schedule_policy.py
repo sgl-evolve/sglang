@@ -295,6 +295,8 @@ class SchedulePolicy:
         return temporary_deprioritized
 
     _LPM_STARVATION_SECS = 300.0
+    _LPM_COLD_STARVATION_SECS = 30.0
+    _LPM_COLD_MATCH_TOKENS = 10000
 
     _LPM_DEVICE_WEIGHT = 4
 
@@ -306,19 +308,26 @@ class SchedulePolicy:
 
         GPU-resident tokens are weighted higher than host-resident tokens to
         prefer requests whose data is already in GPU, reducing eviction churn.
+        Cold requests (low prefix match) get fast-tracked after a shorter wait.
         """
         now = time.perf_counter()
         threshold = SchedulePolicy._LPM_STARVATION_SECS
+        cold_threshold = SchedulePolicy._LPM_COLD_STARVATION_SECS
+        cold_match = SchedulePolicy._LPM_COLD_MATCH_TOKENS
         dw = SchedulePolicy._LPM_DEVICE_WEIGHT
 
         def _key(r):
             if r.rid in temporary_deprioritized:
                 return (2, 0.0)
             entry = r.time_stats.wait_queue_entry_time
-            if entry > 0 and now - entry > threshold:
+            wait_time = now - entry if entry > 0 else 0.0
+            if wait_time > threshold:
                 return (0, entry)
             device_tokens = len(r.prefix_indices) if r.prefix_indices is not None else 0
             host_tokens = getattr(r, "host_hit_length", 0)
+            total_match = device_tokens + host_tokens
+            if total_match < cold_match and wait_time > cold_threshold:
+                return (0, entry)
             return (1, -(device_tokens * dw + host_tokens))
 
         waiting_queue.sort(key=_key)

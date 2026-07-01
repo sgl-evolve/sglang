@@ -412,3 +412,32 @@ ShareGPT hit rate improved to 62.3% (best across all versions) — the 300s thre
 | V0 | 40371ms | 147141ms | 76.8% | Baseline |
 
 The scheduling space is largely explored. V12+ should explore orthogonal improvement axes.
+
+---
+
+## V12 — Device-weighted LPM (GPU-resident preference)
+
+**Commit:** *(pending)*
+**Flag:** `--radix-eviction-policy gslru` + code (device-weighted LPM + anti-starvation 300s)
+
+**Hypothesis:** LPM sorts by `num_matched_prefix_tokens = len(prefix_indices) + host_hit_length`, treating GPU-resident and host-resident tokens equally. But serving a GPU-resident request is free (data already in GPU), while serving a host-resident request forces GPU eviction + host-to-GPU DMA transfer.
+
+When two documents have similar total match (~262K each), one in GPU and one in host, current LPM can arbitrarily schedule the host-resident request first. This triggers a GPU cache flush: evict the GPU-resident document to make room for loading the host-resident one. All subsequent requests for the evicted document must wait for a reload.
+
+Device-weighted LPM applies a weight multiplier (2x) to GPU-resident tokens in the sort key:
+```
+weighted_score = device_tokens * 2 + host_tokens
+```
+
+This ensures GPU-resident requests always go before host-resident requests with the same total match, reducing unnecessary GPU cache flushes. Requests with significantly more host data still win (262K host > 100K GPU × 2 = 200K).
+
+Under LooGLE, V11 data shows:
+- GPU-resident: 4.3M tokens (9.6% of 44.8M prompt)
+- Host-resident: 34.7M tokens (77.5%)
+- 334M tokens evicted, 302M loaded back → 90% reload rate
+
+The 90% reload rate suggests many evictions are "premature" — data evicted from GPU is needed again soon. Device-weighted LPM should reduce this churn by preserving GPU-resident data longer.
+
+**Risk:** Host-only requests (cold documents) get deprioritized slightly more, potentially worsening p99. ShareGPT (diverse prefixes, mostly small GPU matches) should be minimally affected since the weight only matters at tie-breaking scale.
+
+**Result:** *(pending)*

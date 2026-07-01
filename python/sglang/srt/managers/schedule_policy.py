@@ -296,13 +296,20 @@ class SchedulePolicy:
 
     _LPM_STARVATION_SECS = 300.0
 
+    _LPM_DEVICE_WEIGHT = 2
+
     @staticmethod
     def _sort_by_longest_prefix(
         waiting_queue: List[Req], temporary_deprioritized: Set[int]
     ) -> None:
-        """Sorts by longest prefix match with conservative anti-starvation."""
+        """Sorts by device-weighted longest prefix match with anti-starvation.
+
+        GPU-resident tokens are weighted higher than host-resident tokens to
+        prefer requests whose data is already in GPU, reducing eviction churn.
+        """
         now = time.perf_counter()
         threshold = SchedulePolicy._LPM_STARVATION_SECS
+        dw = SchedulePolicy._LPM_DEVICE_WEIGHT
 
         def _key(r):
             if r.rid in temporary_deprioritized:
@@ -310,7 +317,9 @@ class SchedulePolicy:
             entry = r.time_stats.wait_queue_entry_time
             if entry > 0 and now - entry > threshold:
                 return (0, entry)
-            return (1, -r.num_matched_prefix_tokens)
+            device_tokens = len(r.prefix_indices) if r.prefix_indices is not None else 0
+            host_tokens = getattr(r, "host_hit_length", 0)
+            return (1, -(device_tokens * dw + host_tokens))
 
         waiting_queue.sort(key=_key)
 

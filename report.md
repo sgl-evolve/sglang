@@ -165,3 +165,27 @@ This gives finer-grained protection. Under LooGLE's shared-document workload, do
 **Analysis:** GSLRU provides marginal improvement over binary SLRU (+0.2% hit rate, -0.6% TTFT). The finer-grained protection tiers (5 segments instead of 2) help slightly, but the dominant effect is the binary distinction between single-access (probationary) and multi-access (protected) nodes. ShareGPT TTFT regressed slightly (+1.1%) — the extra protection tiers may over-protect stale nodes in ShareGPT's diverse, less-repetitive workload.
 
 **Takeaway:** The major eviction quality gain comes from the SLRU binary split. GSLRU adds diminishing returns. The eviction strategy space is largely explored. Future improvements should be orthogonal to eviction ordering — e.g., reducing eviction VOLUME, improving cache locality, or changing tier transition policies.
+
+---
+
+## V6 — GSLRU + LPM scheduling (cache-aware request ordering)
+
+**Commit:** *(pending — code ready)*
+**Flag:** `--radix-eviction-policy gslru` (via code) + LPM scheduling (via code)
+
+**Hypothesis:** Under FCFS scheduling, requests are processed in arrival order regardless of cache state. A request whose prefix is entirely GPU-resident (fast) may wait behind a request with no cached prefix (slow, requires full prefill). This wastes cache efficiency.
+
+LPM (Longest Prefix Match) scheduling reorders the waiting queue to process requests with the most cached data first. Benefits:
+1. Requests with hot cached prefixes get served first → less prefill → faster completion
+2. Cached data stays hot longer (used before eviction can displace it)
+3. Requests sharing the same document prefix cluster together → better batching
+
+Code changes:
+- `scheduler.py`: Auto-switch from FCFS to LPM when hierarchical cache is enabled
+- `schedule_policy.py`: Raise LPM→FCFS fallback threshold from 128 to 512 under hicache (our working queue is ~100-150)
+
+This stacks on top of GSLRU eviction — better eviction ordering + better request ordering is complementary.
+
+**Risk:** LPM may starve late-arriving requests if early requests keep refreshing cached prefixes. Also, O(n * match_cost) prefix matching for each scheduling round adds CPU overhead.
+
+**Result:** *(pending)*

@@ -221,8 +221,8 @@ class SchedulePolicy:
                 raise ValueError(f"Unknown CacheAgnostic Policy: {policy=}")
 
     def _determine_active_policy(self, waiting_queue: List[Req]) -> Policy:
-        if self.policy == CacheAwarePolicy.LPM and len(waiting_queue) > 128:
-            # Turn off the expensive prefix matching and sorting when the #queue is large.
+        threshold = 512 if self.enable_hierarchical_cache else 128
+        if self.policy == CacheAwarePolicy.LPM and len(waiting_queue) > threshold:
             return CacheAgnosticPolicy.FCFS
         return self.policy
 

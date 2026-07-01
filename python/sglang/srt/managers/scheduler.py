@@ -325,6 +325,12 @@ class Scheduler(
         self.server_args = server_args
         self.nccl_port = port_args.nccl_port
         self.schedule_policy = server_args.schedule_policy
+        if (
+            self.schedule_policy == "fcfs"
+            and server_args.enable_hierarchical_cache
+            and not server_args.disable_radix_cache
+        ):
+            self.schedule_policy = "lpm"
         self.enable_priority_scheduling = server_args.enable_priority_scheduling
         self.abort_on_priority_when_disabled = (
             server_args.abort_on_priority_when_disabled

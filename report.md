@@ -670,6 +670,74 @@ The median slightly worsened (1277 vs 1204ms) — the fastest requests pay a sma
 
 ---
 
+## V17 — Time-decay GSLRU tau=7.5s (NEGATIVE)
+
+**Commit:** `101625417`
+**Flag:** `--radix-eviction-policy gslru` + code (device_weight=4, anti-starvation 300s, GSLRU decay_tau=7.5s)
+
+**Hypothesis:** V16 (tau=15s) improved mean below 10s. Continue halving tau to 7.5s for faster stale-data eviction.
+
+**Result (vs V16 — current best):**
+
+| Metric | V16 (tau=15) | V17 (tau=7.5) | Delta |
+|--------|-------------|--------------|-------|
+| LooGLE TTFT mean (ms) | 9814 | 10211 | **+4.0% NEGATIVE** |
+| LooGLE TTFT p90 (ms) | 4210 | 4128 | -2.0% better |
+| LooGLE TTFT p99 (ms) | 213209 | 215441 | +1.0% worse |
+| LooGLE hit rate | 0.8966 | 0.8936 | -0.3% |
+| LooGLE TPOT mean (ms) | 454.76 | 475.34 | +4.5% worse |
+| ShareGPT TTFT mean (ms) | 37300 | 37730 | +1.2% |
+| ShareGPT req throughput | 1.28 | 1.26 | -1.6% |
+
+**Analysis:** Tau=7.5s evicts active data too aggressively. The decay function `exp(-age/7.5)` drops to 0.37 after only 7.5 seconds — meaning a segment-4 node becomes lower priority than a fresh segment-2 node after just 7.5s. Under LooGLE's workload, requests from the same document arrive every ~5-10s, so tau=7.5 can evict data between consecutive same-document requests.
+
+**Tau sensitivity series (optimum at tau=15s):**
+
+| tau | TTFT mean (ms) | TTFT p90 (ms) | Hit rate | TPOT (ms) |
+|-----|----------------|---------------|----------|-----------|
+| ∞ (V13) | 10217 | 6593 | 0.8953 | 517.74 |
+| 30s (V15) | 10114 | 4580 | 0.8943 | 472.35 |
+| **15s (V16)** | **9814** | **4210** | **0.8966** | **454.76** |
+| 7.5s (V17) | 10211 | 4128 | 0.8936 | 475.34 |
+
+**Conclusion:** The tau sensitivity curve is concave with a clear optimum at tau=15s. Too-aggressive decay (7.5s) evicts data faster than the workload can re-access it. The tau axis is now exhausted. Future improvement requires orthogonal directions.
+
+---
+
+## V18 — Reduced GSLRU tiers (max_segment=2, tau=15)
+
+**Commit:** `82ad2cff3`
+**Flag:** `--radix-eviction-policy gslru` + code (max_segment=2, decay_tau=15, device_weight=4, anti-starvation 300s)
+
+**Hypothesis:** With time-decay active, the 5-tier GSLRU gradation (0-4) may be redundant — recency (via decay) already determines priority. Reducing max_segment from 4 to 2 turns eviction into a 3-tier decayed-LRU (tiers 0, 1, 2+). This tests whether the fine-grained hit_count distinction matters when decay dominates.
+
+Reverts decay_tau from 7.5 (V17, negative) back to 15 (V16 optimum).
+
+**Result (vs V16 — current best):**
+
+| Metric | V16 (seg=4, tau=15) | V18 (seg=2, tau=15) | Delta |
+|--------|-------|-------|-------|
+| LooGLE TTFT mean (ms) | 9814 | 9816 | +0.02% (noise) |
+| LooGLE TTFT median (ms) | 1277 | 1216 | -4.8% better |
+| LooGLE TTFT p90 (ms) | 4210 | **3719** | **-11.7% better** |
+| LooGLE TTFT p99 (ms) | 213209 | 211723 | -0.7% |
+| LooGLE TPOT mean (ms) | 454.76 | 474.04 | +4.2% worse |
+| LooGLE E2E mean (ms) | 15076 | 15119 | +0.3% |
+| LooGLE out tok/s | 53.56 | 53.57 | neutral |
+| LooGLE hit rate | 0.8966 | 0.8958 | neutral |
+| ShareGPT TTFT mean (ms) | 37300 | 37950 | +1.7% |
+| ShareGPT req throughput | 1.28 | 1.26 | -1.6% |
+
+HiCache: evicted=316.8M, load_back=285.3M, cached_device=5.34M (+7.7% vs V16), load_back_mean=1.862ms, host_util=0.9989
+
+**Analysis:** Mean TTFT is essentially identical (9816 vs 9814ms — within measurement noise). The significant finding is p90 improvement (-11.7%, from 4210 to 3719ms). With fewer tiers, the eviction heap has less granularity, which paradoxically helps mid-percentile requests by flattening the priority distribution — nodes transition from evictable to protected faster (at 2 hits instead of requiring 4 for maximum protection).
+
+TPOT regressed slightly (+4.2%), suggesting the flatter eviction priority creates slightly more GPU memory pressure during decode. This is consistent with the larger cached_device_tokens (5.34M vs 4.96M) — more data in GPU means more active tokens competing for attention bandwidth.
+
+**Conclusion:** NEUTRAL overall — mean unchanged, p90 improved, TPOT slightly worse. The GSLRU tier count is not a major lever when time-decay is active. The primary mechanism (segment × decay) works similarly with 3 or 5 tiers.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -686,3 +754,5 @@ The median slightly worsened (1277 vs 1204ms) — the fastest requests pay a sma
 | V14 (device weight=8) | 10903ms | NEGATIVE |
 | V15 (time-decay GSLRU tau=30) | 10114ms | — |
 | **V16 (time-decay GSLRU tau=15)** | **9814ms** | **CURRENT BEST** |
+| V17 (time-decay GSLRU tau=7.5) | 10211ms | NEGATIVE (tau too low) |
+| V18 (max_segment=2, tau=15) | 9816ms | NEUTRAL (mean flat, p90 -11.7%) |

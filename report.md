@@ -863,6 +863,43 @@ The starvation threshold sensitivity is now fully characterized:
 
 ---
 
+## V23 — Cold request fast-track (CATASTROPHIC)
+
+**Commit:** `5983f1ef1` (reverted in `75948e952`)
+**Flag:** `--radix-eviction-policy gslru` + code (tiered anti-starvation: 30s for <10K match, 300s for others)
+
+**Hypothesis:** Analysis of V16 showed cold requests (~10% of total, <10K prefix match tokens) contribute ~55% of mean TTFT because they wait up to 300s in the anti-starvation queue while hot requests monopolize GPU. By fast-tracking only these cold requests at 30s (while keeping 300s for warm/hot requests), we could rescue the mean without disrupting the cache-aware ordering for the 90% of requests that benefit from LPM.
+
+**What changed:**
+- Added `_LPM_COLD_STARVATION_SECS = 30.0` and `_LPM_COLD_MATCH_TOKENS = 10000`
+- Requests with total match < 10000 tokens that have waited > 30s get priority (0, entry) — same as anti-starvation
+- Other requests keep the 300s threshold
+
+**Result (vs V16 — current best) — CATASTROPHIC, server crash:**
+
+| Metric | V16 (300s uniform) | V23 (30s cold) | Delta |
+|--------|-------|-------|-------|
+| LooGLE TTFT mean (ms) | 9814 | **65846** | **+571% CATASTROPHIC** |
+| LooGLE TTFT median (ms) | 1277 | 51022 | **+3894% CATASTROPHIC** |
+| LooGLE TTFT p99 (ms) | 213209 | 181833 | -14.7% better |
+| LooGLE completed | 1560/1560 | **622/1560** | **60% lost** |
+| LooGLE req throughput | 3.47 | 0.67 | -80.7% |
+| ShareGPT | — | **server crashed** | — |
+
+**Root cause:** The 10K token match threshold classified too many requests as "cold" — including LooGLE's host-cached requests during early scheduling rounds when prefix_indices haven't been populated yet. Promoting these at 30s instead of 300s broke LPM's cache-aware ordering entirely, causing a cascade:
+
+1. Early-round requests appear to have <10K match (host data not yet in prefix_indices)
+2. These get fast-tracked at 30s, jumping ahead of GPU-cached requests
+3. Processing these requests triggers GPU eviction of currently-cached data
+4. Previously GPU-cached requests lose their data and become "cold" themselves
+5. Positive feedback loop: more cold requests → more disruption → more cold requests
+6. Server throughput collapsed to 0.67 req/s (80% reduction), only 40% of LooGLE completed
+7. Server process crashed during transition to ShareGPT benchmark — likely OOM or resource exhaustion from cascading eviction
+
+**Key lesson:** ANY reduction of the anti-starvation threshold below 300s for ANY subset of requests destroys LooGLE performance. The 300s threshold with pure device-weighted LPM is sacrosanct. The scheduling order must not be disrupted by time-based promotions at any lower threshold.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -885,3 +922,4 @@ The starvation threshold sensitivity is now fully characterized:
 | V20 (seg=2 + tau=10) | 9774ms | NEGATIVE (mean noise, p90 +15.3%, TPOT +7.1%) |
 | V21 (write_through_selective) | 31294ms | CATASTROPHIC (-67% host backup, -23% hit rate) |
 | V22 (anti-starvation 200s) | 12797ms | NEGATIVE (+30.4%, p90 catastrophic) |
+| V23 (cold fast-track 30s/10K) | 65846ms | CATASTROPHIC (+571%, server crash, 40% completion) |

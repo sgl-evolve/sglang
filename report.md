@@ -102,7 +102,32 @@ SLRU (Segmented LRU) splits the eviction pool into two segments:
 
 This protects shared document prefixes (high hit_count) from being displaced by ephemeral single-conversation tokens. V1 showed SLRU improved hit rate from 76.8% to 82.4% (+7.3%), but the effect was masked by the catastrophic amortized eviction change. This test isolates SLRU on unmodified code.
 
-**Result:** *(eval running — job 17853)*
+**Result (vs V0) — POSITIVE (first improvement):**
+
+| Metric | V0 | V4 | Delta |
+|--------|----|----|-------|
+| LooGLE TTFT mean (ms) | 40371 | 34832 | **-13.7% better** |
+| LooGLE TTFT p99 (ms) | 147141 | 135216 | **-8.1% better** |
+| LooGLE out tok/s | 33.83 | 37.76 | **+11.6% better** |
+| LooGLE hit rate | 0.7676 | 0.8127 | **+5.9% better** |
+| LooGLE req throughput | 2.065 | 2.448 | **+18.6% better** |
+| ShareGPT TTFT mean (ms) | 35660 | 35020 | **-1.8% better** |
+| ShareGPT req throughput | 1.36 | 1.36 | unchanged |
+| ShareGPT hit rate | 0.607 | 0.617 | +1.6% |
+| Disk read tokens | 1.74M | 2.62M | +50.7% more |
+| Host util | 0.9996 | 0.9955 | slightly lower |
+| Load back mean (ms) | 1.727 | 1.604 | -7.1% better |
+
+**Analysis:** SLRU isolates cleanly and delivers strong gains. The +5.9% hit rate improvement translates to -13.7% TTFT on LooGLE because:
+1. Higher hit rate → less prefill compute per request (fewer tokens to recompute)
+2. Less prefill → faster request completion → queue drains faster → less queueing delay
+3. The effect compounds: TTFT drop (-13.7%) far exceeds hit rate gain (+5.9%)
+
+Disk reads increased (+50.7%) — SLRU protects high-hit-count nodes in host, which means low-hit-count nodes get evicted to disk more aggressively. But the net effect is positive because the protected nodes are reused much more often.
+
+ShareGPT shows modest improvement — its shorter, more diverse prompts have less prefix sharing, so SLRU's protected segment has fewer entries.
+
+**Takeaway:** SLRU is a clean, flag-only win. The binary protected/probationary split successfully shields shared prefixes from ephemeral single-use pages. Next: test graduated SLRU (GSLRU) which uses finer-grained protection tiers.
 
 ---
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+import time
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Tuple, Union
 
@@ -66,11 +68,16 @@ class SLRUStrategy(EvictionStrategy):
 
 
 class GSLRUStrategy(EvictionStrategy):
-    """Graduated SLRU: uses capped hit_count as segment instead of binary."""
+    """Graduated SLRU with time-decay: stale high-hit nodes lose protection."""
 
-    def __init__(self, max_segment: int = 4):
+    def __init__(self, max_segment: int = 4, decay_tau: float = 30.0):
         self.max_segment = max_segment
+        self.decay_tau = decay_tau
 
-    def get_priority(self, node: TreeNode) -> Tuple[int, float]:
+    def get_priority(self, node: TreeNode) -> Tuple[float, float]:
         segment = min(node.hit_count, self.max_segment)
-        return (segment, node.last_access_time)
+        if self.decay_tau > 0:
+            age = time.monotonic() - node.last_access_time
+            decay = math.exp(-age / self.decay_tau)
+            return (segment * decay, node.last_access_time)
+        return (float(segment), node.last_access_time)

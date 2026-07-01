@@ -188,4 +188,47 @@ This stacks on top of GSLRU eviction — better eviction ordering + better reque
 
 **Risk:** LPM may starve late-arriving requests if early requests keep refreshing cached prefixes. Also, O(n * match_cost) prefix matching for each scheduling round adds CPU overhead.
 
+**Result (vs V0) — MASSIVE LooGLE improvement, ShareGPT regression:**
+
+| Metric | V0 | V5 (GSLRU) | V6 (GSLRU+LPM) | V6 vs V0 | V6 vs V5 |
+|--------|----|-----------:|----------------:|----------|----------|
+| LooGLE TTFT mean (ms) | 40371 | 34637 | 10951 | **-72.9%** | **-68.4%** |
+| LooGLE TTFT median (ms) | — | 31797 | 1693 | — | **-94.7%** |
+| LooGLE TTFT p99 (ms) | 147141 | 134893 | 225131 | **+53.0% worse** | **+66.9% worse** |
+| LooGLE out tok/s | 33.83 | 38.07 | 53.58 | **+58.4%** | **+40.8%** |
+| LooGLE req throughput | 2.065 | 2.47 | 3.47 | **+68.0%** | **+40.5%** |
+| LooGLE hit rate | 0.7676 | 0.8145 | 0.8919 | **+16.2%** | **+9.5%** |
+| ShareGPT TTFT mean (ms) | 35660 | 35420 | 37790 | **+6.0% worse** | **+6.7% worse** |
+| ShareGPT req throughput | 1.36 | 1.37 | 1.25 | **-8.1% worse** | **-8.8% worse** |
+| ShareGPT hit rate | 0.607 | 0.620 | 0.60 | -1.2% worse | -3.2% worse |
+| Disk read tokens | 1.74M | 3.14M | 1.15M | **-33.9%** | **-63.3%** |
+
+**Analysis:** LPM scheduling is the most impactful change yet. Under LooGLE, it produces a bimodal TTFT distribution:
+- Median 1.7s (94.7% faster than V5): requests with cached document prefixes get served immediately
+- P99 225s (67% worse than V5): requests for NEW documents (no cached prefix) get starved
+
+The mean TTFT dropped 72.9% vs baseline because most LooGLE requests (same-document follow-ups) benefit enormously from cache-aware scheduling. Hit rate jumped from 76.8% to 89.2% because cached prefixes stay hot (used before eviction displaces them). Disk reads dropped 63% — LPM clusters cache-hit requests, reducing tier-down eviction pressure.
+
+However, ShareGPT REGRESSED on all metrics. ShareGPT has diverse, short prefixes with little sharing. LPM adds sorting overhead without meaningful reordering benefit. Throughput dropped 8.1% and TTFT increased 6.0%. LPM is counterproductive for diverse-prefix workloads.
+
+**Takeaway:** LPM is transformative for prefix-sharing workloads (LooGLE) but harmful for diverse workloads (ShareGPT). V7 must add (1) anti-starvation to fix p99, and (2) adaptive fallback to FCFS when prefix matches are short, to preserve ShareGPT performance.
+
+---
+
+## V7 — Adaptive LPM + anti-starvation + partial load-back
+
+**Commit:** `bfd5ebbb4`
+**Flag:** `--radix-eviction-policy gslru` + code (LPM auto-switch + adaptive fallback + anti-starvation)
+
+**Hypothesis:** V6 exposed two LPM weaknesses:
+1. **P99 starvation** (225s): cold-prefix requests wait indefinitely under pure LPM
+2. **ShareGPT regression** (-8.1% throughput): LPM sorting adds overhead for workloads without significant prefix sharing
+
+Three changes:
+1. **Anti-starvation** (`schedule_policy.py:_sort_by_longest_prefix`): requests waiting >30s get boosted to highest priority (FIFO among boosted). Bounds worst-case TTFT.
+2. **Adaptive fallback** (`schedule_policy.py:_determine_active_policy`): if no request has >1024 cached prefix tokens, fall back to FCFS. Detects diverse-prefix workloads at scheduling time.
+3. **Partial load-back** (`hiradix_cache.py:load_back`): when full KV chain doesn't fit in GPU, load a root-side partial chain. Provides proportional prefix benefit instead of all-or-nothing. (Defense-in-depth — doesn't trigger under current load levels.)
+
+**Risk:** Anti-starvation at 30s may reduce LPM's mean TTFT benefit (boosted cold-prefix requests take longer to serve). Adaptive threshold of 1024 tokens might be too conservative (some ShareGPT prefixes above 1024 could trigger unnecessary LPM). Partial load-back is untested path (never triggered in V4-V6).
+
 **Result:** *(pending)*

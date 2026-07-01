@@ -698,9 +698,10 @@ The median slightly worsened (1277 vs 1204ms) — the fastest requests pay a sma
 | ∞ (V13) | 10217 | 6593 | 0.8953 | 517.74 |
 | 30s (V15) | 10114 | 4580 | 0.8943 | 472.35 |
 | **15s (V16)** | **9814** | **4210** | **0.8966** | **454.76** |
+| 10s (V19) | 9854 | 3988 | 0.8966 | 467.57 |
 | 7.5s (V17) | 10211 | 4128 | 0.8936 | 475.34 |
 
-**Conclusion:** The tau sensitivity curve is concave with a clear optimum at tau=15s. Too-aggressive decay (7.5s) evicts data faster than the workload can re-access it. The tau axis is now exhausted. Future improvement requires orthogonal directions.
+**Conclusion:** The tau sensitivity curve is concave with a clear optimum at tau=15s for mean TTFT. Note: p90 continues to improve at tau=10 (3988ms) but the mean and TPOT favor tau=15. The tau axis is now exhausted (5 data points). Future improvement requires orthogonal directions.
 
 ---
 
@@ -738,6 +739,37 @@ TPOT regressed slightly (+4.2%), suggesting the flatter eviction priority create
 
 ---
 
+## V19 — Time-decay tau=10s (NEUTRAL)
+
+**Commit:** `7b10cad67`
+**Flag:** `--radix-eviction-policy gslru` + code (max_segment=4, decay_tau=10, device_weight=4, anti-starvation 300s)
+
+**Hypothesis:** Narrow the tau optimum range between 7.5s (negative) and 15s (best). If 10s beats 15s, the optimum lies in 10-15; if worse, confirmed at 15s.
+
+**Result (vs V16 — current best):**
+
+| Metric | V16 (tau=15) | V19 (tau=10) | Delta |
+|--------|-------------|-------------|-------|
+| LooGLE TTFT mean (ms) | 9814 | 9854 | +0.4% (noise) |
+| LooGLE TTFT median (ms) | 1277 | 1205 | -5.6% better |
+| LooGLE TTFT p90 (ms) | 4210 | 3988 | **-5.3% better** |
+| LooGLE TPOT mean (ms) | 454.76 | 467.57 | +2.8% worse |
+| LooGLE hit rate | 0.8966 | 0.8966 | identical |
+| ShareGPT TTFT mean (ms) | 37300 | 37440 | +0.4% |
+| ShareGPT req throughput | 1.28 | 1.27 | -0.8% |
+
+HiCache: evicted=318.6M, load_back=287.5M, cached_device=4.61M (-7.1% vs V16), load_back_mean=1.829ms, host_util=1.0
+
+**Analysis:** Mean TTFT is within noise of V16 (9854 vs 9814). The p90 improved (-5.3%) but TPOT regressed (+2.8%). With cached_device dropping 7.1% (4.61M vs 4.96M), tau=10 evicts GPU data slightly too fast — same mechanism as V17 but less severe. The tau sensitivity curve is now comprehensively characterized:
+
+- p90 keeps improving with lower tau (V16: 4210 → V19: 3988 → V17: 4128) — the minimum is near tau=10
+- Mean TTFT peaks at tau=15 (9814) — V19 (9854) and V17 (10211) are both worse
+- TPOT peaks at tau=15 (454.76) — lower tau increases decode-time GPU pressure
+
+Since the primary metric is TTFT mean, **tau=15 remains the optimum**. The tau axis is fully exhausted.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -756,3 +788,4 @@ TPOT regressed slightly (+4.2%), suggesting the flatter eviction priority create
 | **V16 (time-decay GSLRU tau=15)** | **9814ms** | **CURRENT BEST** |
 | V17 (time-decay GSLRU tau=7.5) | 10211ms | NEGATIVE (tau too low) |
 | V18 (max_segment=2, tau=15) | 9816ms | NEUTRAL (mean flat, p90 -11.7%) |
+| V19 (tau=10, max_segment=4) | 9854ms | NEUTRAL (mean flat, p90 -5.3%) |

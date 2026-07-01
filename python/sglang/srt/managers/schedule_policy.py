@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 import os
 import random
+import time
 
 from collections import Counter, defaultdict
 from contextlib import contextmanager
@@ -293,16 +294,23 @@ class SchedulePolicy:
                     )
         return temporary_deprioritized
 
+    _LPM_STARVATION_SECS = 300.0
+
     @staticmethod
     def _sort_by_longest_prefix(
         waiting_queue: List[Req], temporary_deprioritized: Set[int]
     ) -> None:
-        """Sorts by longest prefix match (pure LPM, no anti-starvation)."""
+        """Sorts by longest prefix match with conservative anti-starvation."""
+        now = time.perf_counter()
+        threshold = SchedulePolicy._LPM_STARVATION_SECS
 
         def _key(r):
             if r.rid in temporary_deprioritized:
-                return (1, 0)
-            return (0, -r.num_matched_prefix_tokens)
+                return (2, 0.0)
+            entry = r.time_stats.wait_queue_entry_time
+            if entry > 0 and now - entry > threshold:
+                return (0, entry)
+            return (1, -r.num_matched_prefix_tokens)
 
         waiting_queue.sort(key=_key)
 

@@ -352,4 +352,32 @@ Under LooGLE (200 conversations × 8 rounds), DFS_WEIGHT should reduce GPU cache
 
 **Risk:** DFS_WEIGHT ignores `temporary_deprioritized` requests (in-batch prefix caching). For 262K-context workloads, the deprioritization threshold (32 tokens) is negligible. DFS_WEIGHT also doesn't consider which tier prefix data is in (GPU vs host), while LPM counts both equally.
 
+**Result (vs V0) — CLEAR NEGATIVE:**
+
+| Metric | V0 | V6 (incumbent) | V10 (DFS_WEIGHT) | V10 vs V6 |
+|--------|----|-----------:|---:|----------|
+| LooGLE TTFT mean (ms) | 40371 | 10951 | 36857 | **+236% worse** |
+| LooGLE TTFT median (ms) | — | 1693 | 30270 | **+1688% worse** |
+| LooGLE hit rate | 0.7676 | 0.8919 | 0.8388 | -5.9% worse |
+| ShareGPT req throughput | 1.36 | 1.25 | 1.23 | -1.6% worse |
+
+**Root cause:** DFS_WEIGHT sorts by TREE STRUCTURE, not by actual cache state. It processes all requests in the heaviest subtree first, regardless of whether their prefix data is in GPU, host, or evicted. Requests with excellent cache hits in a "lighter" subtree wait behind cold-prefix requests in the "heavier" subtree. The median TTFT jumped from 1.7s (LPM) to 30s — no request gets fast service because scheduling ignores cache state entirely. Concurrency spiked to 110 (vs 61 under LPM), indicating all requests were being processed slowly rather than some fast and some slow.
+
+**Takeaway:** LPM's strength is that it directly optimizes for cache state — the request with the most cached data goes first. DFS_WEIGHT's tree-structural ordering is inferior. Scheduling must be cache-state-aware.
+
+---
+
+## V11 — Conservative anti-starvation (300s threshold)
+
+**Commit:** *(pending)*
+**Flag:** `--radix-eviction-policy gslru` + code (LPM + anti-starvation at 300s)
+
+**Hypothesis:** The Pareto frontier shows:
+- V9 (pure LPM, no starvation): 12186ms mean, 228s p99
+- V8 (120s starvation): 16070ms mean, 86s p99
+
+300s is 2.5x higher than V8's 120s. Under the LooGLE queue (~95 requests, 10-30s typical TTFT), very few requests will exceed 300s of queue wait — only the truly starved cold-prefix requests. Expected: mean close to V9 (~12s), p99 improved from V9 (~150-200s instead of 228s), with minimal scheduling disruption.
+
+**Risk:** 300s may be too conservative to meaningfully improve p99 (only ~1% of requests wait >300s under V6/V9). May be a non-result.
+
 **Result:** *(pending)*

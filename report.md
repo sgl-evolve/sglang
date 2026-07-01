@@ -802,6 +802,34 @@ With fewer tiers (seg=2) AND faster decay (tau=10), nodes transition from evicta
 
 ---
 
+## V21 — Write-through selective (CATASTROPHIC NEGATIVE)
+
+**Commit:** `ac5e715e6`
+**Flag:** `--radix-eviction-policy gslru --hicache-write-policy write_through_selective` + code (seg=4, tau=15, V16 optimum)
+
+**Hypothesis:** With write_through (threshold=1), ALL nodes are backed up to host on first access — including single-use tokens that are never needed again. `write_through_selective` (threshold=2) filters these out, reducing host write bandwidth and host memory pressure.
+
+**Result (vs V16 — current best):**
+
+| Metric | V16 (write_through) | V21 (selective) | Delta |
+|--------|-------|-------|-------|
+| LooGLE TTFT mean (ms) | 9814 | **31294** | **+218.8% CATASTROPHIC** |
+| LooGLE TTFT p90 (ms) | 4210 | **139624** | **+3216% CATASTROPHIC** |
+| LooGLE hit rate | 0.8966 | **0.688** | **-23.2% CATASTROPHIC** |
+| LooGLE out tok/s | 53.56 | 33.82 | -36.9% |
+| LooGLE cached_host | 35.2M | 11.5M | -67.3% |
+| LooGLE load_back | 286.4M | 97.2M | -66.1% |
+| ShareGPT TTFT mean (ms) | 37300 | **21940** | **-41.2% BETTER** |
+| ShareGPT req throughput | 1.28 | **1.79** | **+39.8% BETTER** |
+
+**Root cause:** With threshold=2, document prefix nodes are NOT backed up on first access. Under high GPU churn (200M+ evictions), nodes are frequently evicted from GPU after only 1 access — before the 2nd access that would trigger backup. When evicted without backup, the data is permanently lost. The hit rate collapsed from 89.7% to 68.8% — essentially half the prefix-sharing benefit was destroyed.
+
+ShareGPT counterintuitively improved because its diverse, short prompts generate mostly single-use tokens. Without the overhead of backing up all these ephemeral tokens, the system has more bandwidth for active requests.
+
+**Lesson:** Under high-churn GPU pools (V16: 317M evictions for 40M cached), threshold=1 write-through is ESSENTIAL. The first-access backup is the last line of defense before permanent data loss. This tunable flag is now marked as invariant — never change it.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -822,3 +850,4 @@ With fewer tiers (seg=2) AND faster decay (tau=10), nodes transition from evicta
 | V18 (max_segment=2, tau=15) | 9816ms | NEUTRAL (mean flat, p90 -11.7%) |
 | V19 (tau=10, max_segment=4) | 9854ms | NEUTRAL (mean flat, p90 -5.3%) |
 | V20 (seg=2 + tau=10) | 9774ms | NEGATIVE (mean noise, p90 +15.3%, TPOT +7.1%) |
+| V21 (write_through_selective) | 31294ms | CATASTROPHIC (-67% host backup, -23% hit rate) |

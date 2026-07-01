@@ -270,4 +270,45 @@ Expected: LooGLE TTFT should recover to near-V6 levels (10.9s) since LPM is alwa
 
 **Risk:** ShareGPT may show V6-like regression (-8.1% throughput) since LPM remains active for all queue sizes ≤512. The 120s threshold may still be too low or too high — workload-dependent.
 
-**Result:** *(pending — job 17865 running)*
+**Result (vs V0) — partial recovery, new best p99 and hit rate:**
+
+| Metric | V0 | V6 (GSLRU+LPM) | V7 (Adaptive) | V8 (Calibrated) | V8 vs V6 | V8 vs V7 |
+|--------|----|-----------:|---:|---:|----------|----------|
+| LooGLE TTFT mean (ms) | 40371 | 10951 | 33729 | 16070 | +46.7% worse | **-52.4% better** |
+| LooGLE TTFT p99 (ms) | 147141 | 225131 | 135680 | **85889** | **-61.8% better** | **-36.7% better** |
+| LooGLE out tok/s | 33.83 | 53.58 | 39.71 | 52.26 | -2.5% | **+31.6% better** |
+| LooGLE hit rate | 0.7676 | 0.8919 | 0.8113 | **0.9717** | **+8.9pp better** | **+16.0pp better** |
+| LooGLE req throughput | 2.065 | 3.47 | 2.57 | 3.39 | -2.3% | **+31.9% better** |
+| ShareGPT TTFT mean (ms) | 35660 | 37790 | 35780 | 38090 | +0.8% | +6.5% worse |
+| ShareGPT req throughput | 1.36 | 1.25 | 1.36 | 1.25 | unchanged | -8.1% worse |
+| ShareGPT hit rate | 0.607 | 0.60 | 0.615 | 0.614 | +2.3% | -0.2% |
+
+**Analysis:** Removing the FCFS fallback massively recovered LooGLE:
+- Hit rate 97.17% (NEW BEST) — pure LPM keeps cached prefixes hot and serves cache-hit requests first
+- TTFT p99 85889ms (NEW BEST) — 120s anti-starvation catches outliers V6's pure LPM couldn't
+- TTFT mean 16070ms — 52% better than V7, but still 47% worse than V6's 10951ms
+
+The remaining gap to V6 is caused by the 120s anti-starvation. V6 had NO anti-starvation — pure LPM sorting by prefix match length only. V8's anti-starvation at 120s boosts requests that have waited >120s ahead of LPM order, which rescues p99 outliers but disrupts mean ordering. With a queue of ~95 requests at steady-state and each taking 10-30s, a meaningful fraction of requests exceed the 120s threshold and get priority-boosted, hurting the average.
+
+The trade-off: V8 trades 47% mean regression for 62% p99 improvement vs V6. This is a reasonable trade-off for production systems that care about tail latency, but the mean is the primary optimization target.
+
+ShareGPT regressed back to V6 levels (1.25 req/s), as predicted. Without the FCFS fallback, ShareGPT requests (low prefix matches) get LPM-sorted, which adds overhead without benefit.
+
+**Takeaway:** The FCFS fallback was the primary V7 culprit (confirmed). Anti-starvation helps p99 but hurts mean. V9 should remove anti-starvation entirely to match V6's pure LPM — with 97% hit rate (vs V6's 89%), the mean should be even better than V6.
+
+---
+
+## V9 — Pure LPM (no anti-starvation)
+
+**Commit:** *(pending)*
+**Flag:** `--radix-eviction-policy gslru` + code (pure LPM, no FCFS fallback, no anti-starvation)
+
+**Hypothesis:** V8 showed that removing the FCFS fallback restores 97.17% hit rate (NEW BEST) but the 120s anti-starvation still hurts mean TTFT by 47% vs V6. V6 had pure LPM with no time-based priority boosting and achieved 10951ms mean TTFT.
+
+V9 removes anti-starvation entirely from `_sort_by_longest_prefix` — requests are sorted purely by `-num_matched_prefix_tokens`. This matches V6's scheduling behavior exactly, but on top of V8's codebase (no FCFS fallback, partial load-back still present).
+
+With V8's 97.17% hit rate (vs V6's 89.2%), V9 could potentially BEAT V6's mean TTFT: more cache hits means more requests finish quickly, which drains the queue faster, reducing wait times for all requests.
+
+**Risk:** P99 may regress to V6 levels (~225s) since there's no anti-starvation safety net. Requests with zero prefix match can starve indefinitely under pure LPM. However, with 97% hit rate, fewer requests are truly "cold" (un-cached), so the worst case may be better than V6 despite no anti-starvation.
+
+**Result:** *(pending)*

@@ -529,4 +529,72 @@ Notable: V13 REDUCES total eviction (322.7M) compared to V12 (326.7M), reversing
 
 ShareGPT IMPROVED slightly (hit rate 60.0%→61.8%), refuting the hypothesis that aggressive GPU preference would harm diverse workloads.
 
-**Takeaway:** The device weight sensitivity analysis shows no sign of diminishing returns. V14 should try weight=8 to continue probing this axis.
+**Takeaway:** The device weight sensitivity analysis shows no sign of diminishing returns. V14 tests weight=8 to continue probing this axis.
+
+---
+
+## V14 — Device weight=8 (high GPU preference)
+
+**Commit:** `bbfffc9d3`
+**Flag:** `--radix-eviction-policy gslru` + code (device_weight=8, anti-starvation 300s)
+
+**Hypothesis:** The weight series (1→2→4) shows monotonic improvement in all metrics. Weight=8 doubles the GPU preference again:
+```
+weighted_score = device_tokens * 8 + host_tokens
+```
+
+At weight=8, a request with even 32K GPU-resident tokens (32K × 8 = 256K) would sort above a request with 250K host-resident tokens (250K × 1 = 250K). This means almost ANY amount of GPU-resident data trumps host-only data.
+
+Under LooGLE: GPU pool ~686K tokens, typical request ~262K. At any time, 2-3 requests' data might be in GPU. With weight=8, the scheduler will STRONGLY prefer these 2-3 requests over all others, creating a very "sticky" GPU cache pattern.
+
+**Risk:** With weight=8, host-only requests are effectively deprioritized to anti-starvation priority (wait until 300s threshold). If many requests are host-only simultaneously, a burst of anti-starvation promotions at 300s could cause a scheduling cliff. However, V13 showed no sign of this effect at weight=4.
+
+**Result (vs V13 — current best):**
+
+| Metric | V13 (w=4) | V14 (w=8) | Delta |
+|--------|-----------|-----------|-------|
+| LooGLE TTFT mean (ms) | 10217 | 10903 | **+6.7% WORSE** |
+| LooGLE TTFT median (ms) | 1405 | 1668 | +18.7% worse |
+| LooGLE TTFT p90 (ms) | 6593 | 10158 | **+54.1% worse** |
+| LooGLE TTFT p99 (ms) | 214431 | 210969 | -1.6% better |
+| LooGLE out tok/s | 53.57 | 53.54 | neutral |
+| LooGLE hit rate | 0.8953 | 0.8874 | -0.9% worse |
+| ShareGPT TTFT mean (ms) | 37300 | 37510 | +0.6% neutral |
+| ShareGPT req throughput | 1.28 | 1.27 | neutral |
+| ShareGPT hit rate | 0.618 | 0.611 | neutral |
+
+HiCache: disk_read_tokens=1.59M (+16% vs V13), load_back=288.1M (-1%), evicted=322.6M (same), load_back_mean=1.733ms, host_util=0.9954
+
+**Analysis: NEGATIVE — weight sensitivity curve has peaked at weight=4**
+
+V14 breaks the monotonic improvement seen in the weight=1→2→4 series:
+
+| Weight | TTFT mean (ms) | TTFT p90 (ms) | Disk read (M) | Device tokens (M) |
+|--------|----------------|---------------|---------------|--------------------|
+| 1 (V11) | 10658 | 20760 | 67.8 | — |
+| 2 (V12) | 10506 | 6842 | 15.3 | 4.32 |
+| 4 (V13) | **10217** | **6593** | **13.2** | 3.98 |
+| 8 (V14) | 10903 | 10158 | 15.9 | 4.66 |
+
+The curve is clearly concave with an optimum at weight=4. The over-concentration paradox: V14 retained MORE device tokens (4.66M vs 3.98M, +17%) yet performed WORSE because the top requests monopolize GPU while mid-tier requests wait much longer — confirmed by the p90 spike from 6593ms to 10158ms (+54%).
+
+Predicted risk materialized: weight=8 effectively deprioritizes host-only requests to anti-starvation-only scheduling (300s wait), creating a bimodal latency distribution — fast for GPU-resident requests, slow for everything else.
+
+**Conclusion:** Device weight=4 (V13) is the Pareto optimum for this axis. Further improvement requires an orthogonal direction — scheduling refinements on the eviction/load-back side rather than sort-key tuning.
+
+---
+
+## Current standings
+
+| Version | LooGLE TTFT mean | Status |
+|---------|-----------------|--------|
+| V0 (baseline) | 40371ms | — |
+| V6 (GSLRU+LPM) | 10951ms | incumbent |
+| V7 (adaptive FCFS) | 33729ms | NEGATIVE |
+| V8 (anti-starvation 120s) | 16070ms | best p99/hit |
+| V9 (pure LPM) | 12186ms | V6 repro |
+| V10 (DFS_WEIGHT) | 36857ms | NEGATIVE |
+| V11 (LPM+starvation 300s) | 10658ms | — |
+| V12 (device weight=2) | 10506ms | — |
+| **V13 (device weight=4)** | **10217ms** | **CURRENT BEST** |
+| V14 (device weight=8) | 10903ms | NEGATIVE |

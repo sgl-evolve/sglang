@@ -86,3 +86,42 @@ Evicted ~340M tokens, loaded back ~262M, backed up ~78M.
 The hit rate dropped from 76.8% to 73.8%, confirming fewer tokens are served from cache. The write-yield (V2) may also contribute by delaying backup completion, causing some nodes to be evicted before their write finishes.
 
 **Takeaway:** Write-through threshold=1 is critical — backing up all first-access nodes immediately ensures no data is lost on GPU eviction. PCIe contention between loads and writes is NOT the bottleneck at this scale; data preservation is. Reverting both V2 and V3.
+
+---
+
+## V4 — SLRU eviction policy (flag-only, no code changes)
+
+**Commit:** `a8730ad7b` (all V1-V3 code changes reverted — effectively baseline code)  
+**Flag:** `--radix-eviction-policy slru`
+
+**Hypothesis:** LRU evicts pages purely by recency, treating all pages equally. Under high churn (340M evictions in baseline), frequently-accessed shared prefixes can be evicted just because a burst of new single-use pages pushes them out.
+
+SLRU (Segmented LRU) splits the eviction pool into two segments:
+- **Probationary** (hit_count < 2): newly inserted pages; evicted first
+- **Protected** (hit_count >= 2): pages with proven reuse; evicted last within segment, then by LRU
+
+This protects shared document prefixes (high hit_count) from being displaced by ephemeral single-conversation tokens. V1 showed SLRU improved hit rate from 76.8% to 82.4% (+7.3%), but the effect was masked by the catastrophic amortized eviction change. This test isolates SLRU on unmodified code.
+
+**Result:** *(eval running — job 17853)*
+
+---
+
+## V5 — Graduated SLRU (GSLRU) eviction
+
+**Commit:** *(pending — code ready)*  
+**Flag:** `--radix-eviction-policy gslru`
+
+**Hypothesis:** Binary SLRU uses only two segments: probationary (hit_count < 2) and protected (hit_count >= 2). All nodes with hit_count >= 2 are treated identically — a node accessed twice has the same eviction priority as a shared system prompt accessed 50 times.
+
+GSLRU uses `min(hit_count, 4)` as the segment index, creating 5 eviction tiers:
+- Tier 0: hit_count=0 (brand new, never accessed)
+- Tier 1: hit_count=1 (accessed once — ephemeral)
+- Tier 2: hit_count=2 (moderate reuse)
+- Tier 3: hit_count=3 (frequent reuse)
+- Tier 4+: hit_count>=4 (hot shared prefixes — maximum protection, capped)
+
+This gives finer-grained protection. Under LooGLE's shared-document workload, document prefixes touched by many questions accumulate high hit_count. Binary SLRU protects them from single-use pages but can still evict them for any node with hit_count=2. GSLRU ensures highly-shared prefixes survive longer.
+
+**Risk:** More segments mean the protected tiers hold more data, potentially reducing the probationary pool size. If the working set is dominated by high-hit-count nodes, eviction may have fewer candidates. However, at 99.96% host utilization, the churn is so high that finer eviction ordering should help, not hurt.
+
+**Result:** *(pending — will eval after V4)*

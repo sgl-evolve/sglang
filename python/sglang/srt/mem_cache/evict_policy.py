@@ -63,3 +63,14 @@ class SLRUStrategy(EvictionStrategy):
 
         is_protected = 1 if node.hit_count >= self.protected_threshold else 0
         return (is_protected, node.last_access_time)
+
+
+class GSLRUStrategy(EvictionStrategy):
+    """Graduated SLRU: uses capped hit_count as segment instead of binary."""
+
+    def __init__(self, max_segment: int = 4):
+        self.max_segment = max_segment
+
+    def get_priority(self, node: TreeNode) -> Tuple[int, float]:
+        segment = min(node.hit_count, self.max_segment)
+        return (segment, node.last_access_time)

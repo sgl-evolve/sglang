@@ -149,4 +149,19 @@ This gives finer-grained protection. Under LooGLE's shared-document workload, do
 
 **Risk:** More segments mean the protected tiers hold more data, potentially reducing the probationary pool size. If the working set is dominated by high-hit-count nodes, eviction may have fewer candidates. However, at 99.96% host utilization, the churn is so high that finer eviction ordering should help, not hurt.
 
-**Result:** *(pending — will eval after V4)*
+**Result (vs V0) — MARGINAL POSITIVE (incumbent: V4 SLRU):**
+
+| Metric | V0 | V4 (SLRU) | V5 (GSLRU) | V5 vs V4 |
+|--------|----|-----------|-----------:|----------|
+| LooGLE TTFT mean (ms) | 40371 | 34832 | 34637 | -0.6% |
+| LooGLE TTFT p99 (ms) | 147141 | 135216 | 134893 | -0.2% |
+| LooGLE out tok/s | 33.83 | 37.76 | 38.07 | +0.8% |
+| LooGLE hit rate | 0.7676 | 0.8127 | 0.8145 | +0.2% |
+| ShareGPT TTFT (ms) | 35660 | 35020 | 35420 | +1.1% |
+| ShareGPT throughput | 1.36 | 1.36 | 1.37 | +0.7% |
+| ShareGPT hit rate | 0.607 | 0.617 | 0.620 | +0.5% |
+| Disk read tokens | 1.74M | 2.62M | 3.14M | +19.8% |
+
+**Analysis:** GSLRU provides marginal improvement over binary SLRU (+0.2% hit rate, -0.6% TTFT). The finer-grained protection tiers (5 segments instead of 2) help slightly, but the dominant effect is the binary distinction between single-access (probationary) and multi-access (protected) nodes. ShareGPT TTFT regressed slightly (+1.1%) — the extra protection tiers may over-protect stale nodes in ShareGPT's diverse, less-repetitive workload.
+
+**Takeaway:** The major eviction quality gain comes from the SLRU binary split. GSLRU adds diminishing returns. The eviction strategy space is largely explored. Future improvements should be orthogonal to eviction ordering — e.g., reducing eviction VOLUME, improving cache locality, or changing tier transition policies.

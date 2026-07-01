@@ -470,4 +470,29 @@ Total eviction volume actually INCREASED by 3.6% (326.7M vs 315.3M), which seems
 
 ShareGPT is essentially neutral — the device weight has minimal effect on ShareGPT's diverse, short-prefix workload where few requests have significant GPU-resident data.
 
-**Takeaway:** Device-weighted LPM is a clean win on top of anti-starvation 300s. The weight=2 is a good starting point. V13 could explore higher weights (3 or 4) to see if more aggressive GPU-preference helps further, or explore an orthogonal axis.
+**Takeaway:** Device-weighted LPM is a clean win on top of anti-starvation 300s. The weight=2 is a good starting point. V13 tests weight=4 to see if more aggressive GPU-preference helps further.
+
+---
+
+## V13 — Aggressive device-weighted LPM (weight=4)
+
+**Commit:** *(pending)*
+**Flag:** `--radix-eviction-policy gslru` + code (device_weight=4, anti-starvation 300s)
+
+**Hypothesis:** V12 showed device_weight=2 improved mean TTFT by 1.4% and p90 by 67% vs V11. The mechanism is clear: GPU-resident requests are scheduled first, reducing unnecessary GPU cache flushes.
+
+With weight=4, GPU tokens count 4x in the LPM sort key:
+```
+weighted_score = device_tokens * 4 + host_tokens
+```
+
+This makes the GPU-preference much stronger. Under V12's regime:
+- A request with 100K GPU + 100K host scores 300K (weight=2) → 500K (weight=4)
+- A request with 0 GPU + 250K host scores 250K (weight=2) → 250K (weight=4)
+- Gap widens from 50K to 250K — much stronger discrimination
+
+Under LooGLE, most requests have either GPU-resident data (recently accessed document) or host-resident data (older document). Weight=4 ensures that ANY request with GPU data goes before ALL host-only requests, unless the host request has significantly more total data.
+
+**Risk:** Too-aggressive GPU preference may create a two-class system: GPU-resident requests get excellent service while host-only requests starve until anti-starvation kicks in at 300s. This could WORSEN mean TTFT if a significant fraction of requests are host-only and wait close to 300s.
+
+**Result:** *(pending)*

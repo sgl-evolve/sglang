@@ -296,7 +296,7 @@ class SchedulePolicy:
 
     _LPM_STARVATION_SECS = 300.0
 
-    _LPM_DEVICE_WEIGHT = 2
+    _LPM_DEVICE_WEIGHT = 4
 
     @staticmethod
     def _sort_by_longest_prefix(

@@ -225,14 +225,6 @@ class SchedulePolicy:
         threshold = 512 if self.enable_hierarchical_cache else 128
         if self.policy == CacheAwarePolicy.LPM and len(waiting_queue) > threshold:
             return CacheAgnosticPolicy.FCFS
-        if (
-            self.policy == CacheAwarePolicy.LPM
-            and self.enable_hierarchical_cache
-            and waiting_queue
-        ):
-            max_match = max(r.num_matched_prefix_tokens for r in waiting_queue)
-            if max_match < 1024:
-                return CacheAgnosticPolicy.FCFS
         return self.policy
 
     def _validate_and_adjust_policy(
@@ -301,7 +293,7 @@ class SchedulePolicy:
                     )
         return temporary_deprioritized
 
-    _LPM_STARVATION_SECS = 30.0
+    _LPM_STARVATION_SECS = 120.0
 
     @staticmethod
     def _sort_by_longest_prefix(

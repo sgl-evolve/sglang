@@ -902,8 +902,11 @@ class HiRadixCache(RadixCache):
         node.hit_count += 1
 
         if not node.backuped:
-            if node.hit_count >= self.write_through_threshold:
-                # write to host if the node is not backuped
+            threshold = self.write_through_threshold
+            host_pool = self.cache_controller.mem_pool_host
+            if host_pool.available_size() < host_pool.size * 0.05:
+                threshold = max(threshold, 2)
+            if node.hit_count >= threshold:
                 self.write_backup(node)
 
     def writing_check(self, write_back=False):

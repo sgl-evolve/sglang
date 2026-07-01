@@ -26,43 +26,44 @@ Evicted ~340M tokens, loaded back ~262M, backed up ~78M.
 
 ---
 
-## V1 — SLRU eviction + amortized host eviction
+## V1 — SLRU eviction + amortized host eviction (NEGATIVE)
 
 **Commit:** `5fdbbad48`  
 **Flag:** `--radix-eviction-policy slru`
 
-**Hypothesis:** LRU eviction thrashes shared prefixes under high reuse. SLRU (segmented LRU with protected_threshold=2) shields frequently-accessed nodes from eviction. Additionally, the per-call overhead of host eviction is high because it rebuilds the heap each time; amortized eviction (evict more than the minimum per call) reduces total calls.
+**Hypothesis:** LRU eviction thrashes shared prefixes under high reuse. SLRU shields frequently-accessed nodes. Amortized eviction (evict more than minimum per call) reduces heap rebuild overhead.
 
 **What changed:**
-- `hiradix_cache.py:evict_host()` — changed from `while num_evicted < num_tokens` to `target = num_tokens + max(num_tokens, page_size * 64)`, evicting extra tokens per call to amortize heap rebuild cost.
-- `--radix-eviction-policy slru` flag — uses SLRUStrategy (probation + protected segments) instead of LRU.
+- `hiradix_cache.py:evict_host()` — target = `num_tokens + max(num_tokens, page_size * 64)` (evict 65x more than needed)
+- `--radix-eviction-policy slru` — SLRUStrategy instead of LRU
 
-**Result:** *(eval running — job 17844)*
+**Result (vs V0):**
+
+| Metric | V0 | V1 | Delta |
+|--------|----|----|-------|
+| LooGLE TTFT mean (ms) | 40371 | 46528 | **+15.3% worse** |
+| LooGLE TTFT p99 (ms) | 147141 | 161809 | +10.0% worse |
+| LooGLE out tok/s | 33.83 | 31.12 | -8.0% worse |
+| LooGLE hit rate | 0.7676 | 0.8235 | +7.3% better |
+| ShareGPT TTFT mean (ms) | 35660 | 32950 | -7.6% better |
+| ShareGPT req throughput | 1.36 | 1.35 | -0.7% |
+| ShareGPT hit rate | 0.607 | 0.616 | +1.5% better |
+| Disk read tokens | 1.74M | 4.56M | **+162% worse** |
+| Load back mean (ms) | 1.727 | 1.631 | -5.6% better |
+
+**Root cause:** Amortized eviction (65x over-eviction) pushed 2.8x more data from host to disk. Despite hit rate improving (SLRU protected shared prefixes), disk reads dominated — each disk read is orders of magnitude slower than host memory. LooGLE suffered because its working set relies heavily on host-tier KV; flushing that to disk destroyed the fast-path.
+
+**Takeaway:** Host memory is precious — evict only what's needed. SLRU improved hit rates but was overwhelmed by the amortized eviction damage. Reverted the amortized eviction.
 
 ---
 
-## V2 — Write-stream yields PCIe to load-stream
+## V2 — Write-stream yields PCIe to load-stream + adaptive write threshold
 
-**Commit:** `1f4b0b85a`  
-**Stacked on:** V1
+**Commit:** `bd5b84e1c` (V1 amortized eviction reverted; V2 write-yield + V3 adaptive threshold retained)  
+**Flags:** default LRU (no SLRU)
 
-**Hypothesis:** Write-through DMA (GPU→host, `write_stream`) and load-back DMA (host→GPU, `load_stream`) share the physical PCIe bus. When both run concurrently, each gets ~half the bandwidth, doubling per-layer load-back latency. Since load-back is on the TTFT-critical path, writes should yield.
+**Hypothesis:** Two changes, both reducing unnecessary host-tier pressure:
+1. **Write-yield** (`cache_controller.py:start_writing()`): Write-through DMA and load-back DMA share PCIe. When both run concurrently, loads (TTFT-critical) get only half bandwidth. Adding a CUDA sync event makes writes wait for pending loads, giving loads full PCIe bandwidth.
+2. **Adaptive threshold** (`hiradix_cache.py:_inc_hit_count()`): When host is >95% full, raise write_through_threshold to 2 so only pages with proven reuse get backed up — reduces host churn from single-access pages.
 
-**What changed:**
-- `cache_controller.py:start_writing()` — before issuing write DMA, records a CUDA sync event on `load_stream` and makes `write_stream` wait on it. Write DMA only starts after all pending loads complete. Zero overhead when no loads are active (event fires immediately).
-
-**Result:** *(pending — will eval after V1)*
-
----
-
-## V3 — Adaptive write threshold under host memory pressure
-
-**Commit:** `1bab5fb52`  
-**Stacked on:** V1 + V2
-
-**Hypothesis:** With write_through (threshold=1), every new page is backed up on first access. When host is >95% utilized, every backup triggers a host eviction — pure churn for pages that won't be reused (unique conversation tokens). Raising the threshold to 2 under pressure means only pages with proven reuse (2+ accesses) get backed up, preserving host memory for high-value shared prefixes.
-
-**What changed:**
-- `hiradix_cache.py:_inc_hit_count()` — when host pool has <5% free slots, effective write_through_threshold is raised to max(original, 2). Single-access pages skip backup; multi-access pages still get backed up.
-
-**Result:** *(pending — will eval as part of combined V1+V2+V3)*
+**Result:** *(eval running — job 17846)*

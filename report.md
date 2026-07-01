@@ -920,6 +920,45 @@ The crash occurred during GEMM kernel compilation, which should be independent o
 
 ---
 
+## V25 — page_size=32 (NEGATIVE)
+
+**Commit:** `7c1c61198` (no code changes, flag-only)
+**Flag:** `--radix-eviction-policy gslru --page-size 32` + code (V16 optimum: seg=4, tau=15, device_weight=4, anti-starvation 300s)
+
+**Hypothesis:** Finer matching granularity — 32 tokens per page instead of 64. For LooGLE's 28.7K avg prompts, matching within ±32 tokens instead of ±64. Trade-off: 2x more tree nodes (21456 vs 10728 pages).
+
+**Result (vs V16 — current best):**
+
+| Metric | V16 (ps=64) | V25 (ps=32) | Delta |
+|--------|-------------|-------------|-------|
+| LooGLE TTFT mean (ms) | 9814 | 11890 | **+21.2% NEGATIVE** |
+| LooGLE TTFT median (ms) | 1277 | 1466 | +14.8% worse |
+| LooGLE TTFT p90 (ms) | 4210 | 4364 | +3.7% worse |
+| LooGLE TTFT p99 (ms) | 213209 | 250138 | **+17.3% worse** |
+| LooGLE TPOT mean (ms) | 454.76 | 543.82 | **+19.6% worse** |
+| LooGLE hit rate | 0.8966 | 0.8959 | neutral |
+| ShareGPT TTFT mean (ms) | 37300 | 71290 | **+91.1% CATASTROPHIC** |
+| ShareGPT req throughput | 1.28 | 0.73 | **-43.0% CATASTROPHIC** |
+| ShareGPT total requests | 1153 | 656 | **-43.1% fewer** |
+
+HiCache: evicted=311.9M (-1.8%), load_back=280.6M (-2.0%), cached_device=5.55M (+11.9%), eviction_mean=1.137ms, load_back_mean=1.86ms
+
+**Analysis:** The doubled tree node count (21456 vs 10728 pages) overwhelmed any matching precision benefit. TPOT regressed +19.6% — the primary damage mechanism is tree operation overhead per scheduling round (heap building, tree traversal, node management). ShareGPT suffered catastrophically (-43% throughput) because its diverse, short-prefix workload creates proportionally more tree nodes with smaller page sizes.
+
+Interestingly, cached_device_tokens INCREASED (+11.9%, 5.55M vs 4.96M) — smaller pages pack more efficiently into GPU memory. But this packing advantage is overwhelmed by the per-node overhead.
+
+**page_size sensitivity (axis fully exhausted):**
+
+| page_size | TTFT mean (ms) | TPOT (ms) | ShareGPT throughput |
+|-----------|----------------|-----------|---------------------|
+| 32 (V25) | 11890 (+21.2%) | 543.82 | 0.73 (CATASTROPHIC) |
+| **64 (V16)** | **9814** | **454.76** | **1.28** |
+| 128 (V24) | SERVER CRASH | — | — |
+
+**Conclusion:** page_size=64 is the clear optimum. Smaller pages add tree overhead; larger pages crash. This axis is fully exhausted.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -944,3 +983,4 @@ The crash occurred during GEMM kernel compilation, which should be independent o
 | V22 (anti-starvation 200s) | 12797ms | NEGATIVE (+30.4%, p90 catastrophic) |
 | V23 (cold fast-track 30s/10K) | 65846ms | CATASTROPHIC (+571%, server crash, 40% completion) |
 | V24 (page_size=128) | — | SERVER CRASH (SIGBUS during DeepGEMM warmup) |
+| V25 (page_size=32) | 11890ms | NEGATIVE (+21.2%, TPOT +19.6%, ShareGPT -43%) |

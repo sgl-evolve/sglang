@@ -770,6 +770,38 @@ Since the primary metric is TTFT mean, **tau=15 remains the optimum**. The tau a
 
 ---
 
+## V20 — Stacked seg=2 + tau=10 (NEGATIVE interaction)
+
+**Commit:** `72ca9c9a5`
+**Flag:** `--radix-eviction-policy gslru` + code (max_segment=2, decay_tau=10, device_weight=4, anti-starvation 300s)
+
+**Hypothesis:** V18 (seg=2, tau=15) improved p90 by -11.7% and V19 (seg=4, tau=10) improved p90 by -5.3%, both independently vs V16. Stack both changes to test if p90 gains compound.
+
+**Result (vs V16 — current best):**
+
+| Metric | V16 (seg=4, tau=15) | V20 (seg=2, tau=10) | Delta |
+|--------|-------|-------|-------|
+| LooGLE TTFT mean (ms) | 9814 | 9774 | -0.4% (noise) |
+| LooGLE TTFT p90 (ms) | 4210 | 4854 | **+15.3% WORSE** |
+| LooGLE TPOT mean (ms) | 454.76 | 486.99 | **+7.1% worse** |
+| LooGLE hit rate | 0.8966 | 0.8959 | neutral |
+| ShareGPT TTFT mean (ms) | 37300 | 37420 | neutral |
+
+**Analysis:** Classic negative interaction effect. The two p90 improvements that work independently become counterproductive when combined:
+
+| Config | p90 (ms) | vs V16 |
+|--------|----------|--------|
+| V16 (seg=4, tau=15) | 4210 | baseline |
+| V18 (seg=2, tau=15) | 3719 | -11.7% |
+| V19 (seg=4, tau=10) | 3988 | -5.3% |
+| **V20 (seg=2, tau=10)** | **4854** | **+15.3%** |
+
+With fewer tiers (seg=2) AND faster decay (tau=10), nodes transition from evictable to protected too quickly (at 2 hits) but then lose protection too rapidly (10s decay). This creates unstable oscillation — nodes rapidly gain and lose priority, increasing GPU churn. The TPOT regression (+7.1%) confirms increased GPU pressure.
+
+**Conclusion:** Parameter tuning within the GSLRU+time-decay framework has reached diminishing returns. V16 (seg=4, tau=15) remains the optimum. Future improvement requires a fundamentally different approach — either a new scheduling mechanism, a structural change to the eviction/load-back pipeline, or a tunable flag change.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -789,3 +821,4 @@ Since the primary metric is TTFT mean, **tau=15 remains the optimum**. The tau a
 | V17 (time-decay GSLRU tau=7.5) | 10211ms | NEGATIVE (tau too low) |
 | V18 (max_segment=2, tau=15) | 9816ms | NEUTRAL (mean flat, p90 -11.7%) |
 | V19 (tau=10, max_segment=4) | 9854ms | NEUTRAL (mean flat, p90 -5.3%) |
+| V20 (seg=2 + tau=10) | 9774ms | NEGATIVE (mean noise, p90 +15.3%, TPOT +7.1%) |

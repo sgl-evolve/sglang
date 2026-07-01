@@ -1159,12 +1159,10 @@ class HiRadixCache(RadixCache):
         result = self.inc_lock_ref(ancester_node)
         delta = result.delta
 
-        # load it all or not at all
         host_indices = torch.cat([n.host_value for n in nodes_to_load])
         if len(host_indices) < self.load_back_threshold or (
             len(host_indices) > mem_quota + delta if mem_quota is not None else False
         ):
-            # skip loading back if the total size is too small or exceeding the memory quota
             self.dec_lock_ref(ancester_node)
             return None
 
@@ -1180,9 +1178,39 @@ class HiRadixCache(RadixCache):
                 node_id=last_hit_node.id,
                 **self._get_extra_pools(),
             )
+
+        if device_indices is None:
+            full_chain_tokens = len(host_indices)
+            avail = self.cache_controller.mem_pool_device_allocator.available_size()
+            if avail >= self.load_back_threshold:
+                partial_nodes = []
+                partial_tokens = 0
+                for n in nodes_to_load:
+                    if partial_tokens + len(n.host_value) > avail:
+                        break
+                    partial_nodes.append(n)
+                    partial_tokens += len(n.host_value)
+
+                if partial_tokens >= self.load_back_threshold and partial_nodes:
+                    partial_host = torch.cat([n.host_value for n in partial_nodes])
+                    device_indices = self.cache_controller.load(
+                        host_indices=partial_host,
+                        node_id=partial_nodes[-1].id,
+                        **self._get_extra_pools(),
+                    )
+                    if device_indices is not None:
+                        nodes_to_load = partial_nodes
+                        host_indices = partial_host
+                        last_hit_node = partial_nodes[-1]
+                        logger.debug(
+                            "load_back: partial %d/%d tokens for node %d",
+                            partial_tokens,
+                            full_chain_tokens,
+                            last_hit_node.id,
+                        )
+
         self.dec_lock_ref(ancester_node)
         if device_indices is None:
-            # no sufficient GPU memory to load back KV caches
             logger.warning(
                 "load_back: FAILED to load %d tokens for node %d "
                 "even after eviction (evictable_size=%d)",
@@ -1220,10 +1248,15 @@ class HiRadixCache(RadixCache):
         if last_node.evicted:
             loading_values = self.load_back(last_node, mem_quota)
             if loading_values is not None:
+                actual_last = last_node
+                while actual_last.evicted:
+                    actual_last = actual_last.parent
                 logger.debug(
-                    f"loading back {len(loading_values)} tokens for node {last_node.id}"
+                    "loading back %d tokens, deepest node %d",
+                    len(loading_values),
+                    actual_last.id,
                 )
-                return loading_values, last_node
+                return loading_values, actual_last
 
             while last_node.evicted:
                 last_node = last_node.parent

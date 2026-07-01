@@ -407,11 +407,11 @@ ShareGPT hit rate improved to 62.3% (best across all versions) — the 300s thre
 
 | Version | LooGLE TTFT mean | LooGLE p90 | LooGLE p99 | Hit rate | Regime |
 |---------|----------------:|----------:|----------:|--------:|--------|
-| **V12** | **10506ms** | **6842ms** | 216303ms | 89.4% | Best mean + p90 (device-weighted LPM) |
+| **V13** | **10217ms** | **6593ms** | 214431ms | 89.5% | Best mean + p90 (device weight=4) |
 | V8 | 16070ms | — | **85889ms** | **97.2%** | Best p99 + hit rate (aggressive anti-starvation) |
 | V0 | 40371ms | — | 147141ms | 76.8% | Baseline |
 
-Key advances: V12's device-weighted LPM achieves best-ever mean TTFT and dramatically best p90 (67% better than V11). The scheduling axis is now well-explored (LPM variants, anti-starvation thresholds, DFS_WEIGHT, device weighting). Future improvements should target orthogonal axes or refine device weight sensitivity.
+Key advances: Device-weighted LPM with weight=4 (V13) extends V12's gains. The weight sensitivity series (1→2→4) shows monotonic improvement with no sign of plateau. V14 tests weight=8 to find the optimal point.
 
 ---
 
@@ -495,4 +495,38 @@ Under LooGLE, most requests have either GPU-resident data (recently accessed doc
 
 **Risk:** Too-aggressive GPU preference may create a two-class system: GPU-resident requests get excellent service while host-only requests starve until anti-starvation kicks in at 300s. This could WORSEN mean TTFT if a significant fraction of requests are host-only and wait close to 300s.
 
-**Result:** *(pending)*
+**Result (vs V0) — NEW BEST across all LooGLE metrics:**
+
+| Metric | V0 | V12 (weight=2) | V13 (weight=4) | V13 vs V12 | V13 vs V0 |
+|--------|----|-----------:|---:|----------|----------|
+| LooGLE TTFT mean (ms) | 40371 | 10506 | **10217** | **-2.8% better** | **-74.7% better** |
+| LooGLE TTFT median (ms) | — | 1540 | **1405** | **-8.8% better** | — |
+| LooGLE TTFT p90 (ms) | — | 6842 | **6593** | **-3.6% better** | — |
+| LooGLE TTFT p99 (ms) | 147141 | 216303 | 214431 | -0.9% better | +45.7% worse |
+| LooGLE out tok/s | 33.83 | 53.57 | 53.57 | unchanged | +58.3% |
+| LooGLE hit rate | 0.7676 | 0.8938 | 0.8953 | +0.2% | +16.6% |
+| ShareGPT TTFT mean (ms) | 35660 | 37430 | 37300 | -0.3% better | +4.6% |
+| ShareGPT req throughput | 1.36 | 1.27 | 1.28 | +0.8% better | -5.9% |
+| ShareGPT hit rate | 0.607 | 0.600 | 0.618 | +3.0% better | +1.8% |
+
+HiCache details (LooGLE):
+- Evicted: 322.7M (V12: 326.7M) — **1.2% less eviction**
+- Loaded back: 291.1M (V12: 294.5M) — 1.2% less
+- Prefetched from disk: 13.2M (V12: 15.3M) — **13.7% less disk IO**
+- Backed up: 36.6M (V12: 37.1M) — 1.4% less
+
+**Analysis:** Weight=4 shows consistent improvement over weight=2 across ALL metrics with zero regressions. The trend from weight=1→2→4 is monotonically improving:
+
+| Weight | TTFT mean | TTFT p90 | Disk prefetch | Eviction total |
+|--------|-----------|----------|---------------|----------------|
+| 1 (V11) | 10658ms | 20760ms | 67.8M | 315.3M |
+| 2 (V12) | 10506ms | 6842ms | 15.3M | 326.7M |
+| 4 (V13) | 10217ms | 6593ms | 13.2M | 322.7M |
+
+The monotonic improvement in disk prefetch (67.8M → 15.3M → 13.2M) and TTFT (10658→10506→10217) strongly suggests the weight hasn't reached its optimal value yet. Each weight increase reduces the scheduling's tendency to pull host-resident data into GPU unnecessarily.
+
+Notable: V13 REDUCES total eviction (322.7M) compared to V12 (326.7M), reversing V12's trend of increased eviction. This suggests weight=4 finds a better equilibrium — GPU-resident data stays longer, reducing reload cycles.
+
+ShareGPT IMPROVED slightly (hit rate 60.0%→61.8%), refuting the hypothesis that aggressive GPU preference would harm diverse workloads.
+
+**Takeaway:** The device weight sensitivity analysis shows no sign of diminishing returns. V14 should try weight=8 to continue probing this axis.

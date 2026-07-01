@@ -330,7 +330,7 @@ class Scheduler(
             and server_args.enable_hierarchical_cache
             and not server_args.disable_radix_cache
         ):
-            self.schedule_policy = "lpm"
+            self.schedule_policy = "dfs-weight"
         self.enable_priority_scheduling = server_args.enable_priority_scheduling
         self.abort_on_priority_when_disabled = (
             server_args.abort_on_priority_when_disabled

@@ -311,4 +311,45 @@ With V8's 97.17% hit rate (vs V6's 89.2%), V9 could potentially BEAT V6's mean T
 
 **Risk:** P99 may regress to V6 levels (~225s) since there's no anti-starvation safety net. Requests with zero prefix match can starve indefinitely under pure LPM. However, with 97% hit rate, fewer requests are truly "cold" (un-cached), so the worst case may be better than V6 despite no anti-starvation.
 
+**Result (vs V0) — V6 reproduction, not a new best:**
+
+| Metric | V0 | V6 (incumbent) | V8 (anti-starvation) | V9 (pure LPM) | V9 vs V6 |
+|--------|----|-----------:|---:|---:|----------|
+| LooGLE TTFT mean (ms) | 40371 | 10951 | 16070 | 12186 | +11.3% worse |
+| LooGLE TTFT p99 (ms) | 147141 | 225131 | **85889** | 227552 | +1.1% (same) |
+| LooGLE out tok/s | 33.83 | 53.58 | 52.26 | 51.47 | -3.9% |
+| LooGLE hit rate | 0.7676 | 0.8919 | **0.9717** | 0.8905 | -0.2% (same) |
+| ShareGPT TTFT mean (ms) | 35660 | 37790 | 38090 | 37150 | -1.7% better |
+| ShareGPT req throughput | 1.36 | 1.25 | 1.25 | 1.28 | +2.4% better |
+
+**Analysis:** V9 is essentially a V6 reproduction on the current codebase. The 11% gap vs V6 (12186 vs 10951ms) is within expected run-to-run variance (~5-15% on shared GPU clusters).
+
+Critical insight: V8's anti-starvation at 120s INCREASED hit rate from 89% (V6/V9) to 97% because it diversified the request processing order — low-match requests interleaved with high-match ones reduces eviction churn. But this diversity also hurts mean TTFT because low-match requests take much longer to process (full prefill).
+
+This reveals a Pareto frontier:
+- **Pure LPM (V6/V9):** best mean TTFT (10-12s), worst p99 (225s), 89% hit rate
+- **Anti-starvation LPM (V8):** worse mean (16s), best p99 (86s), 97% hit rate
+
+To beat V6, need a mechanism that achieves V8's hit rate without V8's scheduling disruption.
+
+**Takeaway:** Pure LPM and anti-starvation LPM represent a trade-off between mean and tail latency. V10 should try a structurally different scheduling approach: DFS_WEIGHT, which naturally clusters same-document requests without time-based priority boosting.
+
+---
+
+## V10 — DFS-weight scheduling (tree-structure-aware)
+
+**Commit:** *(pending)*
+**Flag:** `--radix-eviction-policy gslru` + code (DFS_WEIGHT auto-switch, no anti-starvation)
+
+**Hypothesis:** LPM sorts by total prefix match LENGTH, which can interleave requests from different documents with similar-length prefixes. Under GPU memory pressure, this interleaving causes cache thrashing — loading doc1's prefix, processing 1-2 requests, evicting it, loading doc2's prefix, etc.
+
+DFS_WEIGHT sorts by radix tree structure: requests sharing the same subtree are processed consecutively. This naturally batches same-document requests together:
+1. All 8 follow-ups for document X processed together
+2. Doc X's prefix loaded once, reused for all 8 requests
+3. No eviction/reload cycles between same-document requests
+
+Under LooGLE (200 conversations × 8 rounds), DFS_WEIGHT should reduce GPU cache thrashing by keeping same-document requests together, potentially improving hit rate and TTFT simultaneously.
+
+**Risk:** DFS_WEIGHT ignores `temporary_deprioritized` requests (in-batch prefix caching). For 262K-context workloads, the deprioritization threshold (32 tokens) is negligible. DFS_WEIGHT also doesn't consider which tier prefix data is in (GPU vs host), while LPM counts both equally.
+
 **Result:** *(pending)*

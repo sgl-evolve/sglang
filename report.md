@@ -830,6 +830,39 @@ ShareGPT counterintuitively improved because its diverse, short prompts generate
 
 ---
 
+## V22 — Anti-starvation at 200s (NEGATIVE)
+
+**Commit:** `79be0e227`
+**Flag:** `--radix-eviction-policy gslru` + code (seg=4, tau=15, device_weight=4, anti-starvation 200s)
+
+**Hypothesis:** V11 found the 300s anti-starvation threshold to be the sweet spot. 200s might catch more starved requests without disrupting LPM ordering, improving both mean and tail latency.
+
+**Result (vs V16 — current best):**
+
+| Metric | V16 (300s) | V22 (200s) | Delta |
+|--------|-------|-------|-------|
+| LooGLE TTFT mean (ms) | 9814 | 12797 | **+30.4% NEGATIVE** |
+| LooGLE TTFT p90 (ms) | 4210 | 38380 | **+812% CATASTROPHIC** |
+| LooGLE TTFT p99 (ms) | 213209 | 204329 | -4.2% better |
+| LooGLE hit rate | 0.8966 | 0.8957 | neutral |
+| LooGLE TPOT mean (ms) | 454.76 | 465.26 | +2.3% worse |
+| ShareGPT TTFT mean (ms) | 37300 | 37560 | +0.7% neutral |
+| ShareGPT req throughput | 1.28 | 1.27 | neutral |
+
+HiCache: evicted=308.3M, load_back=276.8M, cached_device=5.74M (+15.7% vs V16), load_back_mean=1.808ms, host_util=0.9995
+
+**Analysis:** 200s anti-starvation is too aggressive. The p90 regressed catastrophically from 4210ms to 38380ms (+812%) because too many requests exceed the 200s threshold and get priority-boosted, disrupting LPM ordering. This is the same mechanism that made V8 (120s) worse than V6 — the anti-starvation interventions break the cache-aware scheduling. The p99 improved slightly (-4.2%) because more starved requests are caught, but the mean and mid-percentile damage far outweighs this.
+
+The starvation threshold sensitivity is now fully characterized:
+- 120s (V8): mean 16070ms, p99 85889ms — too aggressive
+- 200s (V22): mean 12797ms, p90 38380ms — still too aggressive
+- 300s (V11/V16): mean 9814-10658ms, p90 4210ms — sweet spot
+- ∞ (V9): mean 12186ms, p99 228s — no safety net
+
+**Conclusion:** 300s anti-starvation is confirmed as the optimum across all data points. Reverted to 300s. The scheduling axis (LPM sorting, anti-starvation threshold, DFS_WEIGHT) is now exhaustively explored.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -851,3 +884,4 @@ ShareGPT counterintuitively improved because its diverse, short prompts generate
 | V19 (tau=10, max_segment=4) | 9854ms | NEUTRAL (mean flat, p90 -5.3%) |
 | V20 (seg=2 + tau=10) | 9774ms | NEGATIVE (mean noise, p90 +15.3%, TPOT +7.1%) |
 | V21 (write_through_selective) | 31294ms | CATASTROPHIC (-67% host backup, -23% hit rate) |
+| V22 (anti-starvation 200s) | 12797ms | NEGATIVE (+30.4%, p90 catastrophic) |

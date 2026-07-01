@@ -70,7 +70,7 @@ class SLRUStrategy(EvictionStrategy):
 class GSLRUStrategy(EvictionStrategy):
     """Graduated SLRU with time-decay: stale high-hit nodes lose protection."""
 
-    def __init__(self, max_segment: int = 4, decay_tau: float = 7.5):
+    def __init__(self, max_segment: int = 2, decay_tau: float = 15.0):
         self.max_segment = max_segment
         self.decay_tau = decay_tau
 

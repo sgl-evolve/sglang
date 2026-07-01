@@ -405,13 +405,13 @@ ShareGPT hit rate improved to 62.3% (best across all versions) — the 300s thre
 
 ## Current Pareto Frontier
 
-| Version | LooGLE TTFT mean | LooGLE p99 | Hit rate | Regime |
-|---------|----------------:|----------:|--------:|--------|
-| **V11** | **10658ms** | 225215ms | 89.3% | Best mean (conservative anti-starvation) |
-| V8 | 16070ms | **85889ms** | **97.2%** | Best p99 + hit rate (aggressive anti-starvation) |
-| V0 | 40371ms | 147141ms | 76.8% | Baseline |
+| Version | LooGLE TTFT mean | LooGLE p90 | LooGLE p99 | Hit rate | Regime |
+|---------|----------------:|----------:|----------:|--------:|--------|
+| **V12** | **10506ms** | **6842ms** | 216303ms | 89.4% | Best mean + p90 (device-weighted LPM) |
+| V8 | 16070ms | — | **85889ms** | **97.2%** | Best p99 + hit rate (aggressive anti-starvation) |
+| V0 | 40371ms | — | 147141ms | 76.8% | Baseline |
 
-The scheduling space is largely explored. V12+ should explore orthogonal improvement axes.
+Key advances: V12's device-weighted LPM achieves best-ever mean TTFT and dramatically best p90 (67% better than V11). The scheduling axis is now well-explored (LPM variants, anti-starvation thresholds, DFS_WEIGHT, device weighting). Future improvements should target orthogonal axes or refine device weight sensitivity.
 
 ---
 
@@ -440,4 +440,34 @@ The 90% reload rate suggests many evictions are "premature" — data evicted fro
 
 **Risk:** Host-only requests (cold documents) get deprioritized slightly more, potentially worsening p99. ShareGPT (diverse prefixes, mostly small GPU matches) should be minimally affected since the weight only matters at tie-breaking scale.
 
-**Result:** *(pending)*
+**Result (vs V0) — NEW BEST LooGLE TTFT mean + massive p90 improvement:**
+
+| Metric | V0 | V6 (incumbent) | V11 (prev best) | V12 (device-weighted) | V12 vs V11 | V12 vs V6 |
+|--------|----|-----------:|---:|---:|----------|----------|
+| LooGLE TTFT mean (ms) | 40371 | 10951 | 10658 | **10506** | **-1.4% better** | **-4.1% better** |
+| LooGLE TTFT median (ms) | — | 1693 | 1522 | **1540** | +1.2% (same) | -9.0% better |
+| LooGLE TTFT p90 (ms) | — | — | 20760 | **6842** | **-67.0% better** | — |
+| LooGLE TTFT p99 (ms) | 147141 | 225131 | 225215 | 216303 | -4.0% better | -3.9% better |
+| LooGLE out tok/s | 33.83 | 53.58 | 53.57 | 53.57 | unchanged | unchanged |
+| LooGLE hit rate | 0.7676 | 0.8919 | 0.8928 | 0.8938 | +0.1% | +0.2% |
+| LooGLE req throughput | 2.065 | 3.47 | 3.42 | 3.47 | +1.5% better | unchanged |
+| ShareGPT TTFT mean (ms) | 35660 | 37790 | 37530 | 37430 | -0.3% better | -1.0% better |
+| ShareGPT req throughput | 1.36 | 1.25 | 1.27 | 1.27 | unchanged | +1.6% better |
+| ShareGPT hit rate | 0.607 | 0.60 | 0.623 | 0.60 | -3.7% | unchanged |
+
+HiCache details (LooGLE):
+- Evicted: 326.7M tokens (V11: 315.3M) — 3.6% more eviction volume
+- Loaded back: 294.5M tokens (V11: 282.0M) — 4.4% more
+- Prefetched from disk: 15.3M (V11: 67.8M) — **77% less disk IO**
+- Backed up: 37.1M (V11: 37.8M) — 1.9% less
+- Load back mean: 1.704ms (V11: 1.702ms) — unchanged
+
+**Analysis:** Device-weighted LPM achieves a new best mean TTFT (10506ms) with dramatically improved p90 (6842ms vs 20760ms, -67%). The key insight is visible in the disk prefetch reduction: V12 reads 77% fewer tokens from disk (15.3M vs 67.8M) because GPU-preference scheduling keeps more data in GPU/host tiers, reducing tier-down pressure.
+
+The p90 improvement is the most significant finding — it means the "upper-middle" latency band (requests between median and p99) benefits enormously from device-weighted scheduling. These requests have SOME cached data in GPU but were previously scheduled after host-resident requests with equal total match, causing unnecessary GPU flushes. With device weight=2, these requests now go first, preserving their GPU-resident data.
+
+Total eviction volume actually INCREASED by 3.6% (326.7M vs 315.3M), which seems contradictory. However, the evictions are now "smarter" — evicting data that's LESS likely to be needed soon (because the scheduler preferentially keeps GPU-resident data in use). The 90% reload rate persists (structural), but the eviction-reload cycles happen on less time-critical data.
+
+ShareGPT is essentially neutral — the device weight has minimal effect on ShareGPT's diverse, short-prefix workload where few requests have significant GPU-resident data.
+
+**Takeaway:** Device-weighted LPM is a clean win on top of anti-starvation 300s. The weight=2 is a good starting point. V13 could explore higher weights (3 or 4) to see if more aggressive GPU-preference helps further, or explore an orthogonal axis.

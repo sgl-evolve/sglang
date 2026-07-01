@@ -900,6 +900,26 @@ The starvation threshold sensitivity is now fully characterized:
 
 ---
 
+## V24 — page_size=128 (SERVER CRASH)
+
+**Commit:** `7c1c61198` (no code changes, flag-only)
+**Flag:** `--radix-eviction-policy gslru --page-size 128` + code (V16 optimum: seg=4, tau=15, device_weight=4, anti-starvation 300s)
+
+**Hypothesis:** V16 uses default page_size=64. Larger pages (128 tokens per page) reduce tree node count by 50%, which means:
+1. Less heap-building overhead in evict() — fewer nodes to sort
+2. More efficient DMA transfers — larger contiguous blocks
+3. Trade-off: coarser matching granularity (~0.4% of 28.7K avg prompt vs 0.2% at page_size=64)
+
+**Result — SERVER CRASH:**
+
+Server scheduler Rank 1 died with SIGBUS (exit code -7) during DeepGEMM warmup at ~6% progress. Multiple scheduler processes crashed simultaneously with Bus errors. No benchmarks executed.
+
+The crash occurred during GEMM kernel compilation, which should be independent of page_size. However, page_size=128 changes the KV cache memory layout (same total capacity 686592 tokens, but 5364 pages instead of 10728), which may have caused alignment issues with the `direct` IO backend or triggered a latent bug in shared memory allocation.
+
+**Conclusion:** page_size=128 is incompatible with this model/hardware configuration. The page_size axis is constrained to ≤64.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -923,3 +943,4 @@ The starvation threshold sensitivity is now fully characterized:
 | V21 (write_through_selective) | 31294ms | CATASTROPHIC (-67% host backup, -23% hit rate) |
 | V22 (anti-starvation 200s) | 12797ms | NEGATIVE (+30.4%, p90 catastrophic) |
 | V23 (cold fast-track 30s/10K) | 65846ms | CATASTROPHIC (+571%, server crash, 40% completion) |
+| V24 (page_size=128) | — | SERVER CRASH (SIGBUS during DeepGEMM warmup) |

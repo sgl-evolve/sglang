@@ -692,9 +692,14 @@ class HiCacheController:
         start_event = device_module.Event()
         finish_event = device_module.Event()
 
+        _load_sync = device_module.Event()
+        with device_module.stream(self.load_stream):
+            _load_sync.record()
+
         start_event.record()
         with device_module.stream(self.write_stream):
             start_event.wait(self.write_stream)
+            _load_sync.wait(self.write_stream)
             self.mem_pool_host.backup_from_device_all_layer(
                 self.mem_pool_device, host_indices, device_indices, self.io_backend
             )

@@ -231,4 +231,43 @@ Three changes:
 
 **Risk:** Anti-starvation at 30s may reduce LPM's mean TTFT benefit (boosted cold-prefix requests take longer to serve). Adaptive threshold of 1024 tokens might be too conservative (some ShareGPT prefixes above 1024 could trigger unnecessary LPM). Partial load-back is untested path (never triggered in V4-V6).
 
-**Result:** *(pending)*
+**Result (vs V0) — LooGLE REGRESSED, ShareGPT RECOVERED:**
+
+| Metric | V0 | V6 (GSLRU+LPM) | V7 (Adaptive LPM) | V7 vs V0 | V7 vs V6 |
+|--------|----|-----------:|---:|----------|----------|
+| LooGLE TTFT mean (ms) | 40371 | 10951 | 33729 | -16.5% | **+208% worse** |
+| LooGLE TTFT p99 (ms) | 147141 | 225131 | 135680 | -7.8% | **-39.7% better** |
+| LooGLE out tok/s | 33.83 | 53.58 | 39.71 | +17.4% | -25.9% worse |
+| LooGLE hit rate | 0.7676 | 0.8919 | 0.8113 | +5.7% | **-9.0% worse** |
+| ShareGPT TTFT mean (ms) | 35660 | 37790 | 35780 | +0.3% | **-5.3% better** |
+| ShareGPT req throughput | 1.36 | 1.25 | 1.36 | **unchanged** | **+8.8% better** |
+| ShareGPT hit rate | 0.607 | 0.60 | 0.615 | +1.3% | +2.5% better |
+
+**Root cause analysis:** The adaptive FCFS fallback (`max_match < 1024`) was catastrophic for LooGLE. The check used stale prefix match values from the previous scheduling round and fired too aggressively — converting LPM to FCFS even when prefix sharing was high. This destroyed the cache hit rate (89.2% → 81.1%, -9.0pp), directly causing the TTFT mean regression.
+
+Additionally, the 30s anti-starvation threshold was far too low for 262K-context workloads. With GPU pool capacity of only ~686K tokens (~2-3 concurrent 262K requests), normal TTFT for any request is already 10-30s even with full cache hits. Queue depth of 100+ meant most requests exceeded the 30s threshold, effectively converting LPM to FCFS for the entire queue.
+
+The p99 improvement (-39.7%) confirms anti-starvation works in principle — it just needs a much higher threshold. The ShareGPT recovery (+8.8% throughput) confirms the FCFS fallback helped diverse workloads, but at an unacceptable cost to LooGLE.
+
+**Takeaway:** Anti-starvation at 30s is too aggressive. The FCFS fallback based on prefix match length is wrong for workloads where prefix matching takes multiple rounds to build up. V8 must: (1) Remove the adaptive FCFS fallback entirely, and (2) raise anti-starvation to 120s — targeting only truly starved requests.
+
+---
+
+## V8 — Calibrated anti-starvation (120s threshold, no FCFS fallback)
+
+**Commit:** `9e26d3e81`
+**Flag:** `--radix-eviction-policy gslru` + code (LPM auto-switch + anti-starvation at 120s)
+
+**Hypothesis:** V7 showed two independent signals:
+1. The FCFS fallback regressed LooGLE dramatically — remove it
+2. Anti-starvation at 30s was too low — raise to 120s so only truly starved requests get boosted
+
+Changes:
+- Removed the `max_match < 1024` FCFS fallback entirely (8 lines deleted)
+- Raised `_LPM_STARVATION_SECS` from 30.0 to 120.0
+
+Expected: LooGLE TTFT should recover to near-V6 levels (10.9s) since LPM is always active for prefix-sharing workloads. The 120s anti-starvation should still improve p99 (from V6's 225s) but without the mean TTFT regression. ShareGPT may re-regress to V6 levels (~1.25 req/s) since the FCFS fallback that helped it is removed, but the existing queue-size threshold (>512 → FCFS) provides a fallback for truly large queues.
+
+**Risk:** ShareGPT may show V6-like regression (-8.1% throughput) since LPM remains active for all queue sizes ≤512. The 120s threshold may still be too low or too high — workload-dependent.
+
+**Result:** *(pending — job 17865 running)*

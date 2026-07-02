@@ -1097,6 +1097,28 @@ The mechanism is elegant: only fully-reused prefixes (segment=4) get slower deca
 
 ---
 
+## V30 — Top-only decay tau=25 (NEGATIVE)
+
+**Commit:** `714783ce0`
+**Flag:** `--radix-eviction-policy gslru --page-size 64` + code (top-only: tau=25 for segment=max, tau=15 for others)
+
+**Hypothesis:** If tau=20 (V29) improved everything, maybe tau=25 would improve TTFT further. Testing stronger top-segment boost.
+
+**Result (vs V29 — current best):**
+
+| Metric | V29 (tau=20) | V30 (tau=25) | Delta |
+|--------|-------|-------|-------|
+| LooGLE TTFT mean (ms) | 9642 | 9748 | **+1.1% worse** |
+| LooGLE TTFT p90 (ms) | 3874 | 4370 | **+12.8% worse** |
+| LooGLE TPOT mean (ms) | 443.04 | 466.21 | **+5.2% worse** |
+| LooGLE e2e mean (ms) | 14753 | 14976 | +1.5% worse |
+
+**Analysis:** tau=25 overshoots — too much GPU hoarding at max segment causes contention. V29's tau=20 (4/3 × decay_tau) is confirmed as the sweet spot for the top-only approach.
+
+**Conclusion:** NEGATIVE. The top-segment tau has been optimized: tau=20 is the optimum between tau=15 (V16, no boost) and tau=25 (V30, too aggressive).
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1125,4 +1147,5 @@ The mechanism is elegant: only fully-reused prefixes (segment=4) get slower deca
 | V26 (two-tier decay) | 9730ms | MARGINAL POSITIVE (-0.9%, within noise) |
 | V27 (smooth gradient decay) | 9688ms | MARGINAL POSITIVE (-1.3%, TPOT +4.5%) |
 | V28 (narrow gradient 1.5x) | 9651ms | MARGINAL POSITIVE (-1.7%, best tradeoff) |
-| **V29 (top-only decay tau=20)** | **9642ms** | **POSITIVE (-1.8%, p90 -8.0%, TPOT -2.6%)** |
+| **V29 (top-only decay tau=20)** | **9642ms** | **CURRENT BEST (-1.8%, p90 -8.0%, TPOT -2.6%)** |
+| V30 (top-only decay tau=25) | 9748ms | NEGATIVE (tau too high, +1.1%, p90 +12.8%) |

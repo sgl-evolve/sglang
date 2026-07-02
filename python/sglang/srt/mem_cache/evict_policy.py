@@ -68,13 +68,13 @@ class SLRUStrategy(EvictionStrategy):
 
 
 class GSLRUStrategy(EvictionStrategy):
-    """Graduated SLRU with top-segment decay boost: tau=25 for max segment,
-    tau=decay_tau for all others. Stronger boost than V29's tau=20."""
+    """Graduated SLRU with top-segment decay boost: tau=20 for max segment,
+    tau=decay_tau for all others. V29 optimum."""
 
     def __init__(self, max_segment: int = 4, decay_tau: float = 15.0):
         self.max_segment = max_segment
         self.decay_tau = decay_tau
-        self.decay_tau_top = decay_tau * 5.0 / 3.0
+        self.decay_tau_top = decay_tau * 4.0 / 3.0
 
     def get_priority(self, node: TreeNode) -> Tuple[float, float]:
         segment = min(node.hit_count, self.max_segment)

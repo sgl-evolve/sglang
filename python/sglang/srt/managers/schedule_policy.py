@@ -266,6 +266,9 @@ class SchedulePolicy:
                 bmn = r.best_match_node
                 if bmn is not None and bmn is not root:
                     bmn.hit_count += 1
+                    parent = bmn.parent
+                    if parent is not None and parent is not root:
+                        parent.hit_count += 1
                     r._match_promoted = True
 
             # NOTE(sang): This logic is for in-batch prefix caching;

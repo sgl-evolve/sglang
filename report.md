@@ -1235,6 +1235,31 @@ HiCache: evicted=315.7M (-0.9%), load_back=284.0M (-1.2%), cached_device=5.34M (
 
 ---
 
+## V34 — Host weight=2 in LPM (NEGATIVE)
+
+**Commit:** `92a5f9af3`
+**Flag:** `--radix-eviction-policy gslru --page-size 64` + code (device_weight=5, host_weight=2)
+
+**Hypothesis:** Host matches in LPM have always been weighted at 1x (implicit). Load_back is only 1.8ms so host-matched tokens are nearly as valuable as device-matched for scheduling. Increasing host_weight to 2 (ratio 5:2 instead of 5:1) should better reflect host match value and improve scheduling decisions.
+
+**Result (vs V31 — current best):**
+
+| Metric | V31 (host_weight=1) | V34 (host_weight=2) | Delta |
+|--------|-----------|-----------|-------|
+| LooGLE TTFT mean (ms) | 9535 | 9926 | **+4.10% NEGATIVE** |
+| LooGLE TTFT median (ms) | 1270 | 1187 | -6.53% improved |
+| LooGLE TTFT p90 (ms) | 3810 | 4358 | **+14.38% worse** |
+| LooGLE TPOT mean (ms) | 441.70 | 471.80 | **+6.81% worse** |
+| LooGLE device_hit_frac | 0.125 | 0.132 | +5.6% more GPU hits |
+| LooGLE hit rate | 0.8966 | 0.8948 | -0.2% |
+| ShareGPT TTFT mean (ms) | 38310 | 38470 | +0.4% neutral |
+
+**Analysis:** Increasing host_weight improved median TTFT (-6.5%) and device_hit_frac (+5.6% more GPU cache hits), confirming that prioritizing host-match requests does load prefixes into GPU earlier for subsequent requests. However, the trade-off is negative: mean TTFT worsened (+4.1%), p90 degraded (+14.4%), and TPOT increased (+6.8%). The extra load_back traffic from processing host-match requests sooner adds overhead during decode, hurting throughput.
+
+**Conclusion:** NEGATIVE. Increasing host_weight causes overweighting of host-matched requests, which generates more load_back traffic and hurts tail latency. The current 5:1 device:host ratio is optimal — host matches should remain significantly discounted relative to device matches in scheduling priority.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1268,3 +1293,4 @@ HiCache: evicted=315.7M (-0.9%), load_back=284.0M (-1.2%), cached_device=5.34M (
 | **V31 (device weight=5)** | **9535ms** | **CURRENT BEST (-1.11%, median -5.43%, TPOT neutral)** |
 | V32 (device weight=6) | 9943ms | NEGATIVE (+4.28%, p90 +17.6%, TPOT +7.1%) |
 | V33 (top-segment tau=22.5) | 9739ms | NEGATIVE (+2.14%, TPOT +9.53%) |
+| V34 (host_weight=2) | 9926ms | NEGATIVE (+4.10%, p90 +14.4%, TPOT +6.8%) |

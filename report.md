@@ -1494,6 +1494,33 @@ HiCache: evicted=318.0M (+0.2%), load_back=286.5M (-0.3%), cached_device=5.16M (
 
 ---
 
+## V42 — Leaf-only timestamp update in _match_prefix_helper (NEGATIVE)
+
+**Commit:** `985521496`  
+**Hypothesis:** Instead of skipping walks entirely (V40/V41), keep full tree walks but only update `last_access_time` on the deepest matched node (not all intermediate nodes). Intermediate nodes can't be evicted while they have children, so their timestamps should only matter when they become orphaned leaves — at which point stale timestamps would correctly accelerate cleanup. This preserves accurate sort keys while reducing CPU overhead (~448 monotonic() calls saved per walk).
+
+**Change:** In `_match_prefix_helper`, removed timestamp updates on root and traversed children, added single update on the final matched node.
+
+| Metric | V35 (best) | V42 | Delta |
+|--------|-----------|-----|-------|
+| LooGLE TTFT mean (ms) | 9434 | 9553 | **+1.26% worse** |
+| LooGLE TTFT median (ms) | 1210 | 1248 | +3.12% worse |
+| LooGLE TTFT p90 (ms) | 3573 | 4153 | +16.2% worse |
+| LooGLE TPOT (ms) | 448.45 | 468.69 | **+4.51% worse** |
+| LooGLE device_hit_frac | 0.1199 | 0.1374 | **+14.6% worse** |
+| LooGLE load_back_tokens | 286.5M | 288.8M | +0.8% |
+| LooGLE evict_tokens | 319.8M | 320.8M | +0.3% |
+| ShareGPT req_throughput | 1.24 | 1.25 | +0.81% (neutral) |
+| ShareGPT total_requests | 1112 | 1122 | +0.90% (neutral) |
+
+**Analysis:** The device_hit_frac inflation (+14.6%) is the WORST of V40-V42, worse than V40 (+9.51%) and V41 (+3.25%). Without intermediate timestamp refreshes, the eviction ordering shifts dramatically: when children ARE evicted and intermediates become leaves, they have very old timestamps and are evicted immediately, creating rapid cascade cleanup of entire prefix chains. This faster cleanup frees GPU memory, which is immediately consumed by load_backs, resulting in MORE data resident on GPU and higher memory pressure during decode.
+
+**Key insight:** Intermediate node timestamps are NOT just "side effects" — they serve as eviction MOMENTUM that preserves prefix chain coherence. Fresh intermediate timestamps prevent premature cascade eviction of entire prefix paths, maintaining the optimal device_hit_frac of ~12%. The timestamp refresh on every tree walk is a critical, load-bearing behavior that cannot be reduced without causing device_hit_frac inflation → TPOT regression.
+
+**Conclusion:** NEGATIVE. Intermediate timestamp updates are load-bearing for eviction chain coherence. The ~12% device_hit_frac achieved by V35 is the optimal operating point — any perturbation in either direction (more or less GPU residence) hurts TPOT. The tree walk overhead is a necessary cost. Reverted.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1535,3 +1562,4 @@ HiCache: evicted=318.0M (+0.2%), load_back=286.5M (-0.3%), cached_device=5.16M (
 | V39 (Gaussian decay) | 9567ms | NEGATIVE (+1.41%, TPOT +4.96%, decay shape suboptimal) |
 | V40 (skip promoted walks) | 9623ms | NEGATIVE (+2.01%, median -2.76%, stale device data) |
 | V41 (skip device0 walks) | 9764ms | NEGATIVE (+3.50%, TPOT +5.95%, median -2.89%) |
+| V42 (leaf-only timestamp) | 9553ms | NEGATIVE (+1.26%, TPOT +4.51%, device_hit_frac +14.6%) |

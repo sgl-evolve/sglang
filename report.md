@@ -2014,3 +2014,23 @@ Next axis: explore **max_segment** (GSLRU bucket count) or **decay function shap
 | V49     | write_back | 9190           | -77.2%      | -2.6%  |
 | V50     | wb + tau=20 | 8960           | -77.8%      | -5.0%  |
 | **V51** | **wb + tau=25** | **8787**   | **-78.2%**  | **-6.9%** |
+
+---
+
+### V53 — decay_tau_top ratio 4/3→2.0 (NEGATIVE: +2.63% vs V51)
+
+**Commit:** `f247a194a` (code change: evict_policy.py decay_tau_top = tau * 2.0, tau=25)
+**Flags:** `--radix-eviction-policy gslru --hicache-write-policy write_back`
+
+**Hypothesis:** Top-segment nodes (hit_count >= 4) represent heavily-accessed documents mid-conversation. Increasing their tau from 33.3s to 50s should reduce mid-conversation eviction.
+
+**Result:** NEGATIVE. TTFT mean = 9018ms (+2.63% vs V51's 8787ms).
+
+| tau_top ratio | tau_top (s) | TTFT mean | median | p90 | p99 | TPOT |
+|---------------|-------------|-----------|--------|------|------|------|
+| 4/3 (V51) | 33.3 | **8787** | 1129 | 3999 | **192709** | 444 |
+| 2.0 (V53) | 50.0 | 9018 | 1147 | **3714** | 197560 | **415** |
+
+**Analysis:** Mixed signals — higher tau_top HELPS p90 (-7.1%) and TPOT (-6.6%) but HURTS mean (+2.63%) and p99 (+2.5%). The extra top-segment protection reduces mid-conversation evictions (better p90/TPOT) but stale top-tier entries crowd out fresh entries needed by new conversations (worse p99/mean). tau_top ratio of 4/3 is already well-tuned.
+
+**ShareGPT:** 1.70 req/s, 1529 total. Hit rate 57.5% (lower than V51's 60.4%).

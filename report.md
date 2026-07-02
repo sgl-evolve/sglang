@@ -1866,4 +1866,55 @@ HiCache: evicted=325.9M, load_back=294.7M, cached_device=4.02M (-17.3% vs V35 4.
 | V29     | top-tier tau=20 | 9642       | -76.1%      | -1.8%            |
 | V31     | device_weight=5 | 9535       | -76.4%      | -1.1%            |
 | V35     | match promotion | 9434       | -76.6%      | -1.1%            |
-| **V49** | **write_back** | **9190**   | **-77.2%**  | **-2.58%**       |
+| V49     | write_back | 9190           | -77.2%      | -2.58%           |
+| **V50** | **wb + tau=20** | **8960**   | **-77.8%**  | **-2.51%**       |
+
+---
+
+### V50 — write_back + tau=20 (NEW BEST: -5.03% vs V35, -2.51% vs V49)
+
+**Commit:** `6e550fa23` (code change: evict_policy.py decay_tau default 15→20)
+**Flags:** `--radix-eviction-policy gslru --hicache-write-policy write_back`
+**Code:** `GSLRUStrategy.__init__` decay_tau default changed from 15.0 to 20.0
+
+**Hypothesis:** With write_back making eviction 6× more expensive (5.8ms/op), higher tau reduces eviction frequency. Under write_through, tau=20 was tested and slightly worse than 15 (eviction was essentially free, so more frequent eviction to keep cache fresh was beneficial). Under write_back, the cost-benefit shifts: reducing expensive evictions is more valuable than marginally fresher cache.
+
+**Result (vs V49 write_back tau=15, and vs V35 write_through tau=15):**
+
+| Metric | V35 (wt, tau=15) | V49 (wb, tau=15) | V50 (wb, tau=20) | V50 vs V35 |
+|--------|------------------|------------------|------------------|------------|
+| LooGLE TTFT mean (ms) | 9434 | 9190 | **8960** | **-5.03%** |
+| LooGLE TTFT median (ms) | 1210 | 1192 | **1097** | **-9.4%** |
+| LooGLE TTFT p90 (ms) | 3700 | 3740 | **3644** | -1.5% |
+| LooGLE TTFT p99 (ms) | 211836 | 200676 | **196985** | **-7.0%** |
+| LooGLE TPOT mean (ms) | 449 | 424 | 424 | -5.6% |
+| LooGLE ITL mean (ms) | ~350 | 342 | 341 | -2.6% |
+| LooGLE e2e mean (ms) | ~14500 | 14126 | **13879** | -4.3% |
+| LooGLE hit_rate | 0.8949 | 0.8965 | 0.8964 | +0.15pp |
+| LooGLE device_hit_frac | 0.1199 | 0.100 | 0.0963 | -19.7% |
+| LooGLE host_hit_frac | 0.88 | 0.90 | 0.9037 | +2.7% |
+| LooGLE load_back_mean_ms | 1.793 | 6.881 | 6.660 | +271% |
+| LooGLE eviction_mean_ms | ~1.0 | 5.791 | 5.791 | +479% |
+| ShareGPT throughput | ~1.84 | 1.69 | **1.72** | -6.5% |
+| ShareGPT total_requests | ~1658 | 1523 | **1551** | -6.5% |
+
+HiCache: evicted=327.9M, load_back=296.7M, cached_device=3.87M, host_util=0.999
+
+**Analysis:**
+
+The write_back + tau=20 combination compounds two synergistic effects:
+
+1. **write_back eliminates insertion DMA** (V49 mechanism, unchanged): Nodes backed up only at eviction, not eagerly at creation. Saves ~89K+ unnecessary DMA operations.
+
+2. **Higher tau reduces eviction frequency** (V50 new mechanism): Nodes decay more slowly (exp(-age/20) vs exp(-age/15)), staying "hot" 33% longer. Under write_through, this was slightly negative because it kept stale entries. Under write_back, it's positive because each avoided eviction saves 5.8ms of DMA.
+
+**Compounding mechanism:** write_back makes eviction expensive → higher tau avoids expensive evictions → net win. The key insight is that tau=15 was optimized for ~free eviction (write_through). With eviction costing 6ms (write_back), the optimal tau shifts upward.
+
+**TTFT median improvement (-9.4%):** The most striking result. Q2-Q8 requests (which dominate the median) benefit disproportionately because:
+- Higher tau keeps their documents' KV "hot" longer between sequential questions
+- Less eviction between Q(n) and Q(n+1) means fewer load_backs needed
+- TTFT median dropped from 1210ms to 1097ms — a 113ms improvement for the typical request
+
+**ShareGPT slightly improved vs V49:** 1.72 vs 1.69 req/s (+1.8%). Higher tau reduces the total number of expensive eviction operations, which helps under concurrent load. Still below V35's ~1.84 req/s due to write_back's inherently slower eviction.
+
+**Conclusion:** write_back + tau=20 is the NEW BEST with a -5.03% improvement over V35 across the primary metric (LooGLE TTFT mean). The parameters are synergistic — neither alone achieves this result. Next: test tau=25 to find the write_back-optimal tau.

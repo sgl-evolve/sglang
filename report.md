@@ -2034,3 +2034,74 @@ Next axis: explore **max_segment** (GSLRU bucket count) or **decay function shap
 **Analysis:** Mixed signals — higher tau_top HELPS p90 (-7.1%) and TPOT (-6.6%) but HURTS mean (+2.63%) and p99 (+2.5%). The extra top-segment protection reduces mid-conversation evictions (better p90/TPOT) but stale top-tier entries crowd out fresh entries needed by new conversations (worse p99/mean). tau_top ratio of 4/3 is already well-tuned.
 
 **ShareGPT:** 1.70 req/s, 1529 total. Hit rate 57.5% (lower than V51's 60.4%).
+
+---
+
+### V54 — max_segment 4→3, coarser GSLRU (NEGATIVE mean: +1.97%, but best TPOT)
+
+**Commit:** `33dc24b72` (code change: evict_policy.py max_segment 4→3, tau_top reverted to tau*4/3)
+**Flags:** `--radix-eviction-policy gslru --hicache-write-policy write_back`
+
+**Hypothesis:** Fewer GSLRU segments (4 buckets instead of 5) means documents reach top-tier protection one question earlier (after Q4 match vs Q5). Earlier top-tier protection could reduce mid-conversation eviction.
+
+**Result:** NEGATIVE for mean. TTFT mean = 8960ms (+1.97% vs V51's 8787ms).
+
+**max_segment sweep (tau=25, write_back, LooGLE):**
+
+| max_seg | buckets | TTFT mean | median | p90 | p99 | TPOT |
+|---------|---------|-----------|--------|------|------|------|
+| 3 (V54) | 4 | 8960 | 1132 | 3883 | 196943 | **413** |
+| 4 (V51) | 5 | **8787** | 1129 | 3999 | **192709** | 444 |
+| 5 (V55) | 6 | 8890 | **1093** | **3422** | 194971 | **405** |
+
+**Analysis — V55 (max_segment=5) is remarkable:** Mean is only +1.17% vs V51, but it dominates on ALL other metrics: best-ever p90 (-14.4%), TPOT (-8.8%), and median (-3.2%). Device hit fraction at 10.84% is also the highest. The finer granularity (6 buckets) lets the policy make more precise eviction decisions, keeping the most-hit documents in GPU longer.
+
+The trade-off: more segments means it's harder to reach the top tier (5 hits vs 4). Q1-Q4 requests don't get top-tier tau_top protection, slightly hurting the tail (p99 +1.2%). But Q5-Q8 benefit from better discrimination.
+
+**max_segment=5 + tau tuning (V55, V56):**
+
+| Config | mean | median | p90 | p99 | TPOT |
+|--------|------|--------|------|------|------|
+| seg=5, tau=25 (V55) | **8890** | **1093** | **3422** | **194971** | **405** |
+| seg=5, tau=28 (V56) | 8979 | 1143 | 3774 | 195114 | 414 |
+
+V56 (tau=28) made everything worse — same pattern as the seg=4 tau sweep (overshoot). Testing seg=5 + tau=22 next (V57) to find the right tau for the wider segment range.
+
+---
+
+### V57 — max_segment=5 + tau=22 (NEGATIVE: +0.44% vs V51, but closest yet)
+
+**Commit:** `facc691d6` (code change: evict_policy.py decay_tau 25→22, max_segment=5)
+**Flags:** `--radix-eviction-policy gslru --hicache-write-policy write_back`
+
+**Hypothesis:** With wider segment range (6 buckets), lower tau should help because priority space is larger — faster decay more aggressively reclaims stale entries, closing the mean gap to V51 while seg=5's granularity benefits other metrics.
+
+**Result:** NEGATIVE for mean but closest ever. TTFT mean = 8826ms (+0.44% vs V51's 8787ms). Just 39ms short of a new best.
+
+**seg=5 tau sweep (complete so far):**
+
+| Config | mean | median | p90 | p99 | TPOT | device_hit |
+|--------|------|--------|------|------|------|------------|
+| seg=5, tau=22 (V57) | **8826** | 1167 | 3779 | **194887** | 416 | **10.96%** |
+| seg=5, tau=25 (V55) | 8890 | **1093** | **3422** | 194971 | **405** | 10.84% |
+| seg=5, tau=28 (V56) | 8979 | 1143 | 3774 | 195114 | 414 | 10.49% |
+
+**Analysis:** The seg=5 tau curve is monotonically decreasing in mean from tau=28→22. Lower tau with more segments helps mean by aggressively culling stale entries. But lower tau hurts median (1167 vs 1093) and TPOT (416 vs 405) — faster decay causes more churn for recently-accessed nodes that are still in their first few hits.
+
+Interesting metric pattern: device_hit_frac increases monotonically with lower tau (10.49% → 10.84% → 10.96%), confirming that faster decay keeps the right nodes in GPU. But the throughput penalty from increased churn offsets some of the mean improvement.
+
+Testing seg=5 + tau=20 next (V58) to see if the mean continues to decrease or if it inflects like the seg=4 sweep did at tau=20.
+
+**ShareGPT:** 1.69 req/s, 1520 total, hit rate 60.4%.
+
+**Updated leaderboard (by TTFT mean):**
+
+| Version | Change | LooGLE TTFT (ms) | vs Baseline | vs V35 |
+|---------|--------|-------------------|-------------|--------|
+| V0      | baseline | 40371           | —           | —      |
+| V35     | match promotion | 9434       | -76.6%      | —      |
+| V49     | write_back | 9190           | -77.2%      | -2.6%  |
+| V50     | wb + tau=20 | 8960           | -77.8%      | -5.0%  |
+| **V51** | **wb + tau=25** | **8787**   | **-78.2%**  | **-6.9%** |
+
+**Key insight:** max_segment=5 gives the best typical-request experience (median/p90/TPOT) while max_segment=4 gives the best mean. If mean remains the primary metric, V51 stands. But V55 is the superior configuration for most practical use cases.

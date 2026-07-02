@@ -190,6 +190,8 @@ class HiRadixCache(RadixCache):
 
         self.evictable_host_leaves = set()
 
+        self._tree_generation = 0
+
         super().__init__(params=params)
 
     def _all_reduce_attn_groups(self, tensor: torch.Tensor, op):
@@ -1092,6 +1094,7 @@ class HiRadixCache(RadixCache):
         self._update_host_leaf_status(node)
         # update leaf status for the parent because the node is evicted
         self._update_leaf_status(node.parent)
+        self._tree_generation += 1
         return num_evicted
 
     def _evict_regular(self, node: TreeNode):
@@ -1102,6 +1105,7 @@ class HiRadixCache(RadixCache):
         self.cache_controller.mem_pool_device_allocator.free(node.value)
         num_evicted = len(node.value)
         self._delete_leaf(node)
+        self._tree_generation += 1
         return num_evicted
 
     def evict_host(self, num_tokens: int):
@@ -1134,6 +1138,7 @@ class HiRadixCache(RadixCache):
             if x in self.evictable_host_leaves:
                 self.evictable_host_leaves.remove(x)
             self._update_host_leaf_status(x.parent)
+            self._tree_generation += 1
 
             if len(x.parent.children) == 0 and x.parent.evicted:
                 new_priority = self.eviction_strategy.get_priority(x.parent)
@@ -1230,6 +1235,7 @@ class HiRadixCache(RadixCache):
             self._record_store_event(node, medium=StorageMedium.GPU)
         self.evictable_size_ += len(device_indices)
         self.inc_lock_ref(last_hit_node)
+        self._tree_generation += 1
 
         if self.metrics_collector is not None:
             self.metrics_collector.observe_load_back_duration(
@@ -1615,13 +1621,14 @@ class HiRadixCache(RadixCache):
         return matched_length
 
     def _match_prefix_helper(self, node: TreeNode, key: RadixKey):
-        node.last_access_time = time.monotonic()
+        now = time.monotonic()
+        node.last_access_time = now
         child_key = key.child_key(self.page_size)
         value = []
 
         while len(key) > 0 and child_key in node.children.keys():
             child = node.children[child_key]
-            child.last_access_time = time.monotonic()
+            child.last_access_time = now
             prefix_len = child.key.match(key, page_size=self.page_size)
             if prefix_len < len(child.key):
                 new_node = self._split_node(child.key, child, prefix_len)
@@ -1708,6 +1715,7 @@ class HiRadixCache(RadixCache):
                     self._update_host_leaf_status(node)
                     # update parent status as a new leaf is added into device
                     self._update_leaf_status(node.parent)
+                    self._tree_generation += 1
                 else:
                     self._inc_hit_count(node, chunked)
                     total_prefix_length += prefix_len
@@ -1723,6 +1731,7 @@ class HiRadixCache(RadixCache):
                     self._update_host_leaf_status(new_node)
                     # update parent status as a new leaf is added into device
                     self._update_leaf_status(new_node.parent)
+                    self._tree_generation += 1
                 else:
                     self._inc_hit_count(new_node, chunked)
                     total_prefix_length += prefix_len
@@ -1750,6 +1759,7 @@ class HiRadixCache(RadixCache):
 
             # Emit BlockStored so the router indexes this block.
             self._record_store_event(new_node)
+            self._tree_generation += 1
 
             if self.cache_controller.write_policy != "write_back":
                 self._inc_hit_count(new_node, chunked)

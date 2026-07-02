@@ -166,6 +166,9 @@ class SchedulePolicy:
         self.schedule_low_priority_values_first = schedule_low_priority_values_first
         self.priority_sign = 1 if schedule_low_priority_values_first else -1
 
+        self._last_tree_gen = -1
+        self._prev_deprioritized: Set[int] = set()
+
         # It is used to find the matching prefix for in-batch prefix caching.
         self.waiting_queue_radix_tree = RadixCache.create_simulated()
 
@@ -253,6 +256,24 @@ class SchedulePolicy:
         Computes and caches the matching prefixes for requests in the waiting queue,
             and handles in-batch prefix caching logic.
         """
+        tree_gen = getattr(self.tree_cache, '_tree_generation', -1)
+
+        if (
+            tree_gen >= 0
+            and tree_gen == self._last_tree_gen
+            and not any(
+                getattr(r, '_prefix_gen', -1) != self._last_tree_gen
+                for r in waiting_queue
+            )
+        ):
+            now = time.monotonic()
+            for r in waiting_queue:
+                node = getattr(r, 'best_match_node', None)
+                while node is not None:
+                    node.last_access_time = now
+                    node = node.parent
+            return self._prev_deprioritized
+
         temporary_deprioritized: Set[int] = set()
         self.waiting_queue_radix_tree.reset()
 
@@ -292,6 +313,12 @@ class SchedulePolicy:
                             value=torch.empty(len(prefix_ids), dtype=torch.bool),
                         )
                     )
+
+        self._last_tree_gen = tree_gen
+        self._prev_deprioritized = temporary_deprioritized
+        for r in waiting_queue:
+            r._prefix_gen = tree_gen
+
         return temporary_deprioritized
 
     _LPM_STARVATION_SECS = 300.0

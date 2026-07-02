@@ -1918,3 +1918,48 @@ The write_back + tau=20 combination compounds two synergistic effects:
 **ShareGPT slightly improved vs V49:** 1.72 vs 1.69 req/s (+1.8%). Higher tau reduces the total number of expensive eviction operations, which helps under concurrent load. Still below V35's ~1.84 req/s due to write_back's inherently slower eviction.
 
 **Conclusion:** write_back + tau=20 is the NEW BEST with a -5.03% improvement over V35 across the primary metric (LooGLE TTFT mean). The parameters are synergistic — neither alone achieves this result. Next: test tau=25 to find the write_back-optimal tau.
+
+---
+
+### V51 — write_back + tau=25 (NEW BEST mean, but mixed signals)
+
+**Commit:** `48226673b` (code change: evict_policy.py decay_tau 20→25)
+**Flags:** `--radix-eviction-policy gslru --hicache-write-policy write_back`
+
+**Hypothesis:** Continuing tau sweep under write_back. V50 (tau=20) improved 2.5% over V49 (tau=15). Testing if the trend continues with tau=25.
+
+**Tau sweep under write_back (LooGLE):**
+
+| tau | TTFT mean | TTFT median | TTFT p90 | TTFT p99 | TPOT |
+|-----|-----------|-------------|----------|----------|------|
+| 15 (V49) | 9190 | 1192 | 3740 | 200676 | 424 |
+| 20 (V50) | 8960 | **1097** | **3644** | 196985 | **424** |
+| 25 (V51) | **8787** | 1129 | 3999 | **192709** | 444 |
+
+**Analysis:** tau=25 achieves a new best TTFT MEAN (-1.93% vs V50, -6.86% vs V35) but the improvement is concentrated in the TAIL while the MID-RANGE degrades:
+
+- **Mean improves:** 8787ms (-1.93% vs V50). Q1 TTFTs are shorter because slower decay keeps more KV in host for longer, reducing the eviction pressure on Q1 prefill.
+- **Median degrades:** 1129ms (+2.9% vs V50's 1097ms). Q2-Q8 performance slightly worse because tau=25 is too slow to evict cold nodes, reducing the effective GPU cache for recent documents.
+- **P90 significantly degrades:** 3999ms (+9.7% vs V50's 3644ms). The 90th percentile request is substantially slower.
+- **P99 improves:** 192709ms (-2.2% vs V50). The slowest requests (Q1s for the longest documents) benefit from reduced eviction.
+- **TPOT degrades:** 444ms (+4.7% vs V50's 424ms). Token generation is slower, likely because higher tau means more eviction contention during decode.
+- **Storage hits appeared:** 0.08% of tokens now hit STORAGE (disk). With higher tau, host cache entries persist longer, forcing some to spill to disk.
+
+**Key insight:** The write_back tau optimum depends on which metric matters:
+- For MEAN TTFT: tau=25 is better (mean keeps improving)
+- For MEDIAN/P90 (typical request experience): tau=20 is the sweet spot
+- For TPOT (generation speed): tau=20 is clearly better
+
+The mean improves because tail improvements (Q1, absolute ~173ms savings) outweigh mid-range degradation (Q2-Q8, absolute ~32ms worsening). Since Q1 is 12.8% of requests with ~65s TTFT, its improvements dominate the mean.
+
+**ShareGPT:** Essentially unchanged vs V50 (1.70 vs 1.72 req/s, -1.2%).
+
+**Updated leaderboard (by TTFT mean):**
+
+| Version | Change | LooGLE TTFT (ms) | vs Baseline | vs V35 |
+|---------|--------|-------------------|-------------|--------|
+| V0      | baseline | 40371           | —           | —      |
+| V35     | match promotion | 9434       | -76.6%      | —      |
+| V49     | write_back | 9190           | -77.2%      | -2.6%  |
+| V50     | wb + tau=20 | 8960           | -77.8%      | -5.0%  |
+| **V51** | **wb + tau=25** | **8787**   | **-78.2%**  | **-6.9%** |

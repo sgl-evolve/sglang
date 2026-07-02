@@ -1205,6 +1205,36 @@ HiCache: evicted=315.7M (-0.9%), load_back=284.0M (-1.2%), cached_device=5.34M (
 
 ---
 
+## V33 — Top-segment tau=22.5 (NEGATIVE)
+
+**Commit:** `771dbde0a`
+**Flag:** `--radix-eviction-policy gslru --page-size 64` + code (device_weight=5, tau_top=22.5 via ratio 3/2)
+
+**Hypothesis:** V29 (tau_top=20) was positive, V30 (tau_top=25) was negative. Test the midpoint (22.5) to determine if there's headroom between 20 and 25.
+
+**Result (vs V31 — current best):**
+
+| Metric | V31 (tau_top=20) | V33 (tau_top=22.5) | Delta |
+|--------|-----------|-----------|-------|
+| LooGLE TTFT mean (ms) | 9535 | 9739 | **+2.14% NEGATIVE** |
+| LooGLE TTFT p90 (ms) | 3810 | 4109 | **+7.83% worse** |
+| LooGLE TPOT mean (ms) | 441.70 | 483.79 | **+9.53% worse** |
+| LooGLE hit rate | 0.8966 | 0.8928 | -0.4% |
+| ShareGPT TTFT mean (ms) | 38310 | 38540 | +0.6% neutral |
+
+**Analysis:** tau_top=22.5 causes the same over-hoarding pattern as V30 (tau=25), just less severe. Max-segment nodes hold GPU memory slightly too long, increasing TPOT (+9.5%) and mean TTFT (+2.1%). The top-segment tau sensitivity is now fully characterized:
+
+| tau_top | TTFT mean (ms) | TPOT (ms) | vs V31 |
+|---------|----------------|-----------|--------|
+| 15 (V16, no boost) | 9814 | 454.76 | +2.9% worse |
+| **20 (V29/V31)** | **9535** | **441.70** | **optimum** |
+| 22.5 (V33) | 9739 | 483.79 | +2.14% worse |
+| 25 (V30) | 9748 | 466.21 | +2.23% worse |
+
+**Conclusion:** NEGATIVE. tau_top=20 is confirmed as the sharp optimum. Any increase above 20 worsens both TTFT and TPOT. The top-segment decay axis is fully exhausted.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1237,3 +1267,4 @@ HiCache: evicted=315.7M (-0.9%), load_back=284.0M (-1.2%), cached_device=5.34M (
 | V30 (top-only decay tau=25) | 9748ms | NEGATIVE (tau too high, +1.1%, p90 +12.8%) |
 | **V31 (device weight=5)** | **9535ms** | **CURRENT BEST (-1.11%, median -5.43%, TPOT neutral)** |
 | V32 (device weight=6) | 9943ms | NEGATIVE (+4.28%, p90 +17.6%, TPOT +7.1%) |
+| V33 (top-segment tau=22.5) | 9739ms | NEGATIVE (+2.14%, TPOT +9.53%) |

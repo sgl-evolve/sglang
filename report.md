@@ -1023,6 +1023,45 @@ The TPOT regression makes this a MIXED result: TTFT improves but per-token gener
 
 ---
 
+## V28 — Narrow gradient decay (MARGINAL POSITIVE, best TTFT+TPOT tradeoff)
+
+**Commit:** `4b91d8fa6`
+**Flag:** `--radix-eviction-policy gslru --page-size 64` + code (narrow gradient: tau = decay_tau × (1 + 0.5 × segment/max_segment))
+
+**Hypothesis:** V27's 2x tau range (15→30) improved TTFT but regressed TPOT +4.5%. The wide range caused excessive GPU memory hoarding by high-segment nodes, increasing compute contention during token generation. A narrower 1.5x range (15→22.5) should preserve the TTFT benefit while reducing TPOT regression.
+
+**Result (vs V16 — previous best, and vs V27 — wide gradient):**
+
+| Metric | V16 | V27 (2x) | V28 (1.5x) | V28 vs V16 |
+|--------|-----|----------|------------|------------|
+| LooGLE TTFT mean (ms) | 9814 | 9688 | **9651** | **-1.7%** |
+| LooGLE TTFT median (ms) | 1277 | 1267 | 1265 | -1.0% |
+| LooGLE TTFT p90 (ms) | 4210 | 4117 | **4134** | **-1.8%** |
+| LooGLE TTFT p99 (ms) | 213209 | 205711 | **204443** | **-4.1%** |
+| LooGLE TPOT mean (ms) | 454.76 | 475.25 | **461.35** | **+1.4%** (vs V27 +4.5%) |
+| LooGLE ITL mean (ms) | 364.71 | 364.42 | 357.24 | -2.0% |
+| LooGLE e2e mean (ms) | 14933 | 14945 | **14805** | **-0.9%** |
+| LooGLE hit rate | 0.8966 | 0.8945 | 0.8959 | -0.1% |
+| ShareGPT TTFT mean (ms) | 37300 | 38630 | 38500 | +3.2% worse |
+| ShareGPT req throughput | 1.28 | 1.25 | 1.24 | -3.1% worse |
+
+HiCache: evicted=317.2M, load_back=285.8M, cached_device=5.56M (+11.4% vs V16), evict_mean=1.108ms, load_back_mean=1.864ms, hit_device_frac=0.1385 (+11.5% vs V16)
+
+**Analysis:** The narrower 1.5x tau range successfully achieves the best overall tradeoff:
+- TTFT improved across all percentiles (mean -1.7%, p99 -4.1% = 8.8s faster)
+- TPOT regression reduced to +1.4% (vs V27's +4.5%) — hypothesis confirmed
+- e2e latency improved -0.9%
+- device_hit_frac increased to 13.85% (vs V16's 12.42%) — more GPU-resident cache hits
+- cached_device_tokens increased to 5.56M (vs V16's 4.99M) — better GPU cache utilization
+
+The mechanism works as designed: high-segment nodes (frequently accessed document prefixes) get slightly longer tau (up to 22.5s at segment=4 vs uniform 15s), keeping them GPU-resident longer between Q2-Q8 accesses. The narrower range (1.5x vs 2x) avoids excessive hoarding that caused V27's TPOT regression.
+
+ShareGPT regression (-3.1% throughput) is consistent across V26-V28 — the segment-scaled tau benefit is specific to LooGLE's multi-question-per-document pattern and doesn't help ShareGPT's diverse single-request workload.
+
+**Conclusion:** MARGINAL POSITIVE — best overall tradeoff found. The improvement magnitude (~163ms mean TTFT, 8.8s at p99) is at the edge of significance for mean but the p99 improvement and the TPOT improvement over V27 are more convincing. This is likely the optimal point in the gradient-decay parameter space.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1050,3 +1089,4 @@ The TPOT regression makes this a MIXED result: TTFT improves but per-token gener
 | V25 (page_size=32) | 11890ms | NEGATIVE (+21.2%, TPOT +19.6%, ShareGPT -43%) |
 | V26 (two-tier decay) | 9730ms | MARGINAL POSITIVE (-0.9%, within noise) |
 | V27 (smooth gradient decay) | 9688ms | MARGINAL POSITIVE (-1.3%, TPOT +4.5%) |
+| V28 (narrow gradient 1.5x) | 9651ms | MARGINAL POSITIVE (-1.7%, best tradeoff) |

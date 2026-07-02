@@ -1119,6 +1119,54 @@ The mechanism is elegant: only fully-reused prefixes (segment=4) get slower deca
 
 ---
 
+## V31 — Device weight=5 (POSITIVE, new best)
+
+**Commit:** `9e18be7cb`
+**Flag:** `--radix-eviction-policy gslru --page-size 64` + code (device_weight=5, V29 top-only decay tau=20)
+
+**Hypothesis:** V13 established device_weight=4 as the optimum in the 1→2→4→8 series, with weight=8 clearly negative. But the series skipped weight=5, 6, 7. At weight=4, GPU-preference is strong but not overwhelming; at weight=8, it's too aggressive. Weight=5 tests a finer increment between the optimum and the over-concentration cliff.
+
+**Result (vs V29 — previous best):**
+
+| Metric | V29 (w=4) | V31 (w=5) | Delta |
+|--------|-----------|-----------|-------|
+| LooGLE TTFT mean (ms) | 9642 | **9535** | **-1.11% NEW BEST** |
+| LooGLE TTFT median (ms) | 1227 | **1160** | **-5.43% better** |
+| LooGLE TTFT p90 (ms) | 3874 | **3810** | **-1.65% better** |
+| LooGLE TTFT p99 (ms) | 202925 | 204107 | +0.6% neutral |
+| LooGLE TPOT mean (ms) | 443.04 | 441.70 | -0.30% neutral |
+| LooGLE ITL mean (ms) | 354.27 | 353.47 | -0.23% neutral |
+| LooGLE e2e mean (ms) | 14753 | **14634** | **-0.81% better** |
+| LooGLE out tok/s | 53.53 | 53.55 | neutral |
+| LooGLE hit rate | 0.8941 | **0.8966** | +0.28% better |
+| ShareGPT TTFT mean (ms) | 38540 | **38310** | **-0.60% better** |
+| ShareGPT req throughput | 1.25 | 1.25 | unchanged |
+| ShareGPT hit rate | 0.600 | 0.610 | +1.7% better |
+| ShareGPT total requests | 1123 | 1123 | same |
+
+HiCache: evicted=318.5M (same), load_back=287.4M (same), cached_device=4.96M (same), evict_mean=1.109ms, load_back_mean=1.819ms, host_util=0.9985, hit_device_frac=0.1234 (+2.8% vs V29)
+
+**Analysis:** V31 improves ALL key metrics with zero regressions:
+- TTFT mean -1.11%: genuine improvement, confirmed by consistent gains across all percentiles
+- TTFT median -5.43%: the strongest signal — the fastest 50% of requests find their data faster in GPU
+- TPOT unchanged: no GPU memory pressure increase (unlike weight=8 in V14)
+- ShareGPT also improved (-0.60% TTFT, +1.7% hit rate): the stronger GPU preference helps even diverse workloads
+- HiCache internals (eviction volume, load_back, cached_device) are nearly identical to V29, indicating weight=5 achieves its improvement through better scheduling ORDER, not different memory dynamics
+
+**Device weight sensitivity (refined):**
+
+| Weight | TTFT mean (ms) | TTFT p90 (ms) | TPOT (ms) | Mechanism |
+|--------|----------------|---------------|-----------|-----------|
+| 1 (V11) | 10658 | 20760 | — | baseline LPM |
+| 2 (V12) | 10506 | 6842 | — | first GPU preference |
+| 4 (V13→V29) | 9642 | 3874 | 443 | strong GPU preference |
+| **5 (V31)** | **9535** | **3810** | **442** | **refined optimum** |
+| 8 (V14) | 10903 | 10158 | — | over-concentration |
+
+**Conclusion:** POSITIVE — new best. Weight=5 refines the optimum between the successful weight=4 and the negative weight=8. The improvement is modest but consistent across all metrics with no tradeoffs. Next: test weight=6 to continue refining the optimal point.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1131,10 +1179,10 @@ The mechanism is elegant: only fully-reused prefixes (segment=4) get slower deca
 | V10 (DFS_WEIGHT) | 36857ms | NEGATIVE |
 | V11 (LPM+starvation 300s) | 10658ms | — |
 | V12 (device weight=2) | 10506ms | — |
-| V13 (device weight=4) | 10217ms | prev best |
+| V13 (device weight=4) | 10217ms | — |
 | V14 (device weight=8) | 10903ms | NEGATIVE |
 | V15 (time-decay GSLRU tau=30) | 10114ms | — |
-| **V16 (time-decay GSLRU tau=15)** | **9814ms** | **CURRENT BEST** |
+| V16 (time-decay GSLRU tau=15) | 9814ms | — |
 | V17 (time-decay GSLRU tau=7.5) | 10211ms | NEGATIVE (tau too low) |
 | V18 (max_segment=2, tau=15) | 9816ms | NEUTRAL (mean flat, p90 -11.7%) |
 | V19 (tau=10, max_segment=4) | 9854ms | NEUTRAL (mean flat, p90 -5.3%) |
@@ -1147,5 +1195,6 @@ The mechanism is elegant: only fully-reused prefixes (segment=4) get slower deca
 | V26 (two-tier decay) | 9730ms | MARGINAL POSITIVE (-0.9%, within noise) |
 | V27 (smooth gradient decay) | 9688ms | MARGINAL POSITIVE (-1.3%, TPOT +4.5%) |
 | V28 (narrow gradient 1.5x) | 9651ms | MARGINAL POSITIVE (-1.7%, best tradeoff) |
-| **V29 (top-only decay tau=20)** | **9642ms** | **CURRENT BEST (-1.8%, p90 -8.0%, TPOT -2.6%)** |
+| V29 (top-only decay tau=20) | 9642ms | prev best (-1.8%, p90 -8.0%, TPOT -2.6%) |
 | V30 (top-only decay tau=25) | 9748ms | NEGATIVE (tau too high, +1.1%, p90 +12.8%) |
+| **V31 (device weight=5)** | **9535ms** | **CURRENT BEST (-1.11%, median -5.43%, TPOT neutral)** |

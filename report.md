@@ -2196,4 +2196,37 @@ Testing device_weight=9 next (V61) to continue the sweep.
 | V49     | write_back | 9190           | -77.2%      | -2.6%  |
 | V50     | wb + tau=20 | 8960           | -77.8%      | -5.0%  |
 | V51     | wb + tau=25 | 8787           | -78.2%      | -6.9%  |
-| **V60** | **wb + devwt=7** | **8701**   | **-78.4%**  | **-7.8%** |
+| V60     | wb + devwt=7 | 8701           | -78.4%      | -7.8%  |
+| **V61** | **wb + devwt=9** | **8623**   | **-78.6%**  | **-8.6%** |
+
+---
+
+### V61 — device_weight=9 (ANOTHER NEW BEST: -1.87% vs V51)
+
+**Commit:** `61a9c7a96` (code change: schedule_policy.py _LPM_DEVICE_WEIGHT 7→9)
+**Flags:** `--radix-eviction-policy gslru --hicache-write-policy write_back`
+
+**Hypothesis:** V60 (wt=7) showed the device_weight curve is still descending. Higher weight should continue improving mean by more aggressively prioritizing GPU-cached requests.
+
+**Result:** **NEW BEST.** TTFT mean = 8623ms (-1.87% vs V51, -0.91% vs V60, -78.6% from baseline).
+
+**device_weight sweep (seg=4, tau=25, write_back):**
+
+| wt | mean | median | p90 | p99 | TPOT | e2e_mean | load_back_mean |
+|----|------|--------|------|------|------|----------|----------------|
+| 5 (V51) | 8787 | 1129 | 3999 | 192709 | 444 | 13786 | — |
+| 7 (V60) | 8701 | **1092** | **3701** | 190242 | **403** | 13444 | 6.757 |
+| **9 (V61)** | **8623** | 1128 | 3925 | **189151** | 414 | **13377** | **6.526** |
+
+**Analysis:** Mean continues to improve with higher device_weight. The mechanism: stronger GPU-cache scheduling preference means:
+1. Requests with GPU-cached tokens get served first → fewer evictions before their turn
+2. Requests WITHOUT GPU cache get delayed → but their entries accumulate in host during the wait, reducing cold misses
+3. Net effect: lower mean and p99, at the cost of slightly higher median/p90
+
+V61's load_back_mean_ms is notably lower (6.526 vs 6.757), suggesting more efficient load-back operations due to better scheduling alignment.
+
+**Trade-off with V60:** V61 wins on mean/p99/e2e but V60 wins on median/p90/TPOT. Higher device_weight helps the tail at the cost of typical-case latency.
+
+Testing device_weight=11 next (V62) to find the inflection point.
+
+**ShareGPT:** 1.72 req/s, 1549 total, hit rate 60.0%.

@@ -71,7 +71,7 @@ class GSLRUStrategy(EvictionStrategy):
     """Graduated SLRU with top-segment decay boost: tau=20 for max segment,
     tau=decay_tau for all others. V31 optimum (device_weight=5, tau_top=20)."""
 
-    def __init__(self, max_segment: int = 4, decay_tau: float = 25.0):
+    def __init__(self, max_segment: int = 4, decay_tau: float = 30.0):
         self.max_segment = max_segment
         self.decay_tau = decay_tau
         self.decay_tau_top = decay_tau * 4.0 / 3.0

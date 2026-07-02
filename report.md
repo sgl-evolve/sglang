@@ -1287,6 +1287,47 @@ HiCache: evicted=315.7M (-0.9%), load_back=284.0M (-1.2%), cached_device=5.34M (
 
 ---
 
+## V36 — Double match promotion (hit_count += 2) (NEGATIVE)
+
+**Commit:** `0f49f6906`
+**Flag:** `--radix-eviction-policy gslru --page-size 64` + code (device_weight=5, match promotion +=2)
+
+**Hypothesis:** V35's match-time promotion (+=1) was the new best. More aggressive promotion (+=2) might yield further improvement by pushing document prefixes to segment 4 even faster — reaching tau=20 boost after just Q2 instead of Q3.
+
+**Result (vs V35 — current best):**
+
+| Metric | V35 (+=1) | V36 (+=2) | Delta |
+|--------|-----------|-----------|-------|
+| LooGLE TTFT mean (ms) | 9434 | 9680 | **+2.60% NEGATIVE** |
+| LooGLE TTFT median (ms) | 1190 | 1231 | +3.52% worse |
+| LooGLE TTFT p90 (ms) | 3964 | 3628 | -8.48% improved |
+| LooGLE TTFT p99 (ms) | 199280 | 202139 | +1.4% worse |
+| LooGLE TPOT mean (ms) | 448.55 | 456.85 | +1.85% worse |
+| LooGLE ITL mean (ms) | 349.80 | 359.15 | +2.67% worse |
+| LooGLE e2e mean (ms) | 14481 | 14861 | +2.63% worse |
+| LooGLE hit rate | 0.8966 | 0.8933 | -0.37% worse |
+| LooGLE device_hit_frac | 0.1199 | 0.1342 | +11.9% more GPU hits |
+| ShareGPT TTFT mean (ms) | 38600 | 38900 | +0.8% neutral |
+| ShareGPT req throughput | 1.24 | 1.23 | neutral |
+
+HiCache: evicted=317.8M (same), load_back=285.5M (same), cached_device=5.37M (+11.5% vs V35), evict_mean=1.113ms, load_back_mean=1.85ms, host_util=0.9987
+
+**Analysis:** Double promotion (+=2) shows the familiar over-promotion pattern. The device_hit_frac increased significantly (+11.9%, 0.1199→0.1342) confirming that faster segment promotion causes longer GPU residence. However, this GPU hoarding worsens mean TTFT (+2.60%), TPOT (+1.85%), and ITL (+2.67%).
+
+The p90 improved (-8.48%) — the same pattern as gradient decay experiments (V27-V28): more aggressive protection helps tail latency at the cost of the average case. The mean is dominated by increased queue wait time from GPU monopolization.
+
+**Match promotion sensitivity:**
+
+| Increment | TTFT mean (ms) | TTFT p90 (ms) | device_hit_frac | TPOT (ms) |
+|-----------|----------------|---------------|-----------------|-----------|
+| 0 (V31) | 9535 | 3810 | 0.1234 | 441.70 |
+| **1 (V35)** | **9434** | **3964** | **0.1199** | **448.55** |
+| 2 (V36) | 9680 | 3628 | 0.1342 | 456.85 |
+
+**Conclusion:** NEGATIVE. +=1 is the optimum for match-time promotion. +=2 over-promotes, causing GPU hoarding that worsens mean TTFT despite improving p90. Reverted to +=1.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1322,3 +1363,4 @@ HiCache: evicted=315.7M (-0.9%), load_back=284.0M (-1.2%), cached_device=5.34M (
 | V33 (top-segment tau=22.5) | 9739ms | NEGATIVE (+2.14%, TPOT +9.53%) |
 | V34 (host_weight=2) | 9926ms | NEGATIVE (+4.10%, p90 +14.4%, TPOT +6.8%) |
 | **V35 (match promotion)** | **9434ms** | **CURRENT BEST (-1.06%, median -6.33%, e2e -2.94%)** |
+| V36 (match promo +=2) | 9680ms | NEGATIVE (+2.60%, p90 -8.48%, over-promotion) |

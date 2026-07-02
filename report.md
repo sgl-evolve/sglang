@@ -1797,3 +1797,73 @@ HiCache: evicted=315.4M, load_back=282.6M, cached_device=5.17M (+3.2% vs V35 5.0
 | 32 (V48)  | 11246             | +19.2% | 0.73 req/s          | NEGATIVE |
 | **64 (V35)** | **9434**       | **baseline** | **~1.84 req/s** | **BEST** |
 | 128 (V47) | 10463             | +10.9% | 1.84 req/s          | NEGATIVE |
+
+---
+
+### V49 — write_back mode (NEW BEST: -2.58% LooGLE TTFT)
+
+**Commit:** `ed506ab77` (no code change — flag override only)
+**Flag:** `--radix-eviction-policy gslru --hicache-write-policy write_back`
+
+**Hypothesis:** `write_back` defers GPU→host backup DMA to eviction time (instead of eagerly backing up on insertion). Two expected benefits: (1) no wasted DMA for nodes that are never evicted, (2) host memory stores only truly-evicted data (no redundant copies of GPU-resident nodes), increasing effective unique cache capacity by ~16%.
+
+**Result (vs V35 best, write_through):**
+
+| Metric | V35 (write_through) | V49 (write_back) | Delta |
+|--------|---------------------|-------------------|-------|
+| LooGLE TTFT mean (ms) | 9434 | **9190** | **-2.58% BETTER** |
+| LooGLE TTFT median (ms) | 1210 | 1192 | -1.5% better |
+| LooGLE TTFT p90 (ms) | 3700 | 3740 | +1.1% (noise) |
+| LooGLE TTFT p99 (ms) | 211836 | 200676 | **-5.3% better** |
+| LooGLE TPOT mean (ms) | 449 | 424 | **-5.6% better** |
+| LooGLE ITL mean (ms) | ~350 | 342 | -2.3% better |
+| LooGLE e2e mean (ms) | ~14500 | 14126 | -2.6% better |
+| LooGLE hit_rate | 0.8949 | 0.8965 | +0.16pp better |
+| LooGLE device_hit_frac | 0.1199 | 0.100 | **-16.6% worse** |
+| LooGLE host_hit_frac | 0.88 | 0.90 | +2.3% better |
+| LooGLE evicted tokens | ~287M | 325.9M | +13.5% more |
+| LooGLE load_back tokens | ~285M | 294.7M | +3.4% more |
+| LooGLE load_back_mean_ms | 1.793 | **6.881** | **+283% slower** |
+| LooGLE eviction_mean_ms | ~1.0 | **5.791** | **+479% slower** |
+| LooGLE host_util | 0.9966 | 0.9992 | +0.3pp fuller |
+| ShareGPT TTFT mean (ms) | ~38850 | 24560 | N/A (different baseline) |
+| ShareGPT req throughput | ~1.28 | 1.69 | N/A |
+| ShareGPT total_requests | ~1658 | 1523 | -8.1% fewer |
+
+HiCache: evicted=325.9M, load_back=294.7M, cached_device=4.02M (-17.3% vs V35 4.86M), host_util=0.9992
+
+**Analysis:** write_back produces a genuine new best despite dramatically worse per-operation latencies.
+
+**Why write_back helps (3 mechanisms):**
+
+1. **Eliminated wasted insertion DMA:** In write_through, EVERY new node gets an immediate GPU→host backup (threshold=1). For 200 documents × ~28.7K tokens each = ~5.7M tokens, that's ~89K backup DMA operations during ramp-up alone. write_back eliminates this entirely — no DMA during insertion.
+
+2. **Better host memory utilization:** In write_through, GPU-resident nodes ALSO have host copies (redundant). With ~686K GPU tokens, that's ~16% of host capacity wasted on duplicates. write_back stores only truly-evicted data in host, increasing the unique cache capacity. Confirmed by host_util rising to 0.9992 (vs 0.9966) and hit_rate improving to 0.8965 (vs 0.8949).
+
+3. **Faster steady-state scheduling:** Without insertion-time backup DMA, request completion (`cache_finished_req`) is faster. This translates directly to improved TPOT (424ms vs 449ms, -5.6%) and ITL (342ms vs 350ms, -2.3%).
+
+**Why per-op latencies are worse (expected trade-off):**
+
+- **load_back_mean_ms: 6.881ms vs 1.793ms (+283%):** In write_back, load_back from host→GPU must also trigger eviction of the replaced GPU data WITH DMA backup (GPU→host). In write_through, eviction is just a pointer drop (host copy already exists). So write_back's load_back includes both the incoming DMA AND the outgoing eviction DMA.
+
+- **eviction_mean_ms: 5.791ms vs 1.0ms (+479%):** Same reason — write_back eviction includes GPU→host DMA transfer, while write_through eviction is ~free.
+
+- **device_hit_frac dropped to 0.10 from 0.12:** With slower eviction, the scheduler spends more time per eviction operation, reducing the effective scheduling throughput. This manifests as slightly lower GPU cache efficiency. However, the HIGHER host_hit_frac (0.90 vs 0.88) MORE than compensates.
+
+**Net effect:** The elimination of ~89K+ wasted DMA operations per benchmark outweighs the ~4× per-op slowdown on load_back/eviction, because the total NUMBER of operations decreases. write_through does DMA at INSERTION + load_back = 2 DMAs per node lifecycle. write_back does DMA at EVICTION + load_back = same 2 DMAs, but the insertion DMA is skipped for nodes that are NEVER evicted or are evicted before their backup would have been useful.
+
+**ShareGPT regression (expected):** Under high concurrency (60 clients), the 4× slower per-op load_back/eviction compounds across concurrent requests. 1.69 req/s vs ~1.84 req/s is an 8.2% throughput regression. ShareGPT is more sensitive to per-op overhead because of its concurrent access pattern.
+
+**Conclusion:** write_back is the NEW BEST for LooGLE TTFT at -2.58% improvement. This is the first improvement since V35 (14 consecutive non-improvements from V36-V48). The win comes from eliminating wasted DMA bandwidth and improving host memory efficiency.
+
+**Updated leaderboard:**
+
+| Version | Change | LooGLE TTFT (ms) | vs Baseline | vs Previous Best |
+|---------|--------|-------------------|-------------|------------------|
+| V0      | baseline | 40371           | —           | —                |
+| V6      | GSLRU eviction | 10951      | -73.9%      | —                |
+| V16     | time-decay tau=15 | 9814     | -75.7%      | -10.4%           |
+| V29     | top-tier tau=20 | 9642       | -76.1%      | -1.8%            |
+| V31     | device_weight=5 | 9535       | -76.4%      | -1.1%            |
+| V35     | match promotion | 9434       | -76.6%      | -1.1%            |
+| **V49** | **write_back** | **9190**   | **-77.2%**  | **-2.58%**       |

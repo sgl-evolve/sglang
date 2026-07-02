@@ -2105,3 +2105,31 @@ Testing seg=5 + tau=20 next (V58) to see if the mean continues to decrease or if
 | **V51** | **wb + tau=25** | **8787**   | **-78.2%**  | **-6.9%** |
 
 **Key insight:** max_segment=5 gives the best typical-request experience (median/p90/TPOT) while max_segment=4 gives the best mean. If mean remains the primary metric, V51 stands. But V55 is the superior configuration for most practical use cases.
+
+---
+
+### V58 — max_segment=5 + tau=20 (NEGATIVE: +0.59% vs V51, inflection confirmed)
+
+**Commit:** `192224f98` (code change: evict_policy.py decay_tau 22→20, max_segment=5)
+**Flags:** `--radix-eviction-policy gslru --hicache-write-policy write_back`
+
+**Hypothesis:** If seg=5 tau curve continues descending, tau=20 could close the 39ms gap to V51. Tests whether the inflection point is above or below tau=22.
+
+**Result:** NEGATIVE. TTFT mean = 8839ms (+0.59% vs V51's 8787ms). Slightly worse than V57's 8826ms — inflection confirmed around tau=22.
+
+**Complete seg=5 tau sweep:**
+
+| Config | mean | median | p90 | p99 | TPOT | device_hit |
+|--------|------|--------|------|------|------|------------|
+| seg=5, tau=20 (V58) | 8839 | 1159 | 3729 | **194567** | 410 | 10.10% |
+| seg=5, tau=22 (V57) | **8826** | 1167 | 3779 | 194887 | 416 | **10.96%** |
+| seg=5, tau=25 (V55) | 8890 | **1093** | **3422** | 194971 | **405** | 10.84% |
+| seg=5, tau=28 (V56) | 8979 | 1143 | 3774 | 195114 | 414 | 10.49% |
+
+**Analysis:** The mean curve for seg=5 has its minimum at tau≈22 (8826ms). Below that, mean starts climbing back — same convex shape as seg=4. The device_hit_frac dropped from 10.96% at tau=22 to 10.10% at tau=20, suggesting that at tau=20 the decay is too aggressive: it churns nodes out of GPU before they can accumulate cache-warmth.
+
+**Conclusion:** seg=5's best mean (8826ms at tau=22) is structurally 39ms behind seg=4's best (8787ms at tau=25). The extra segment means documents need one more hit to reach top-tier protection, and with λ=3.5 average questions/doc, that extra hit requirement costs just enough to prevent matching seg=4.
+
+Moving to fine-grained sweep around seg=4 tau=25 optimum (V59: seg=4, tau=23) to check if there's a better point between the coarse 15→20→25→30 sweep.
+
+**ShareGPT:** 1.71 req/s, 1543 total, hit rate 60.4%.

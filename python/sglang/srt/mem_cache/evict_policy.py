@@ -68,19 +68,18 @@ class SLRUStrategy(EvictionStrategy):
 
 
 class GSLRUStrategy(EvictionStrategy):
-    """Graduated SLRU with two-tier time-decay: slow decay for heavily shared
-    data (segment >= 3), fast decay for low-reuse data (segment < 3)."""
+    """Graduated SLRU with smooth gradient time-decay: tau scales linearly
+    with segment from decay_tau (segment=0) to 2*decay_tau (segment=max)."""
 
     def __init__(self, max_segment: int = 4, decay_tau: float = 15.0):
         self.max_segment = max_segment
         self.decay_tau = decay_tau
-        self.decay_tau_high = decay_tau * 2
 
     def get_priority(self, node: TreeNode) -> Tuple[float, float]:
         segment = min(node.hit_count, self.max_segment)
         if self.decay_tau > 0:
             age = time.monotonic() - node.last_access_time
-            tau = self.decay_tau_high if segment >= 3 else self.decay_tau
+            tau = self.decay_tau * (1.0 + segment / self.max_segment)
             decay = math.exp(-age / tau)
             return (segment * decay, node.last_access_time)
         return (float(segment), node.last_access_time)

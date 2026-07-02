@@ -1407,6 +1407,37 @@ HiCache: evicted=318.0M (+0.2%), load_back=286.5M (-0.3%), cached_device=5.16M (
 
 ---
 
+## V39 — Gaussian time-decay (NEGATIVE)
+
+**Commit:** `e48ace060`  
+**Flag:** `--radix-eviction-policy gslru`
+
+**Hypothesis:** Replace exponential decay `exp(-age/tau)` with Gaussian `exp(-(age/tau)^2)`. Gaussian has slower initial decay (better protection during 2-5s inter-question gaps) and faster late decay (quicker eviction of stale data from completed documents). Same tau values (15/20).
+
+**What changed:**
+- `evict_policy.py:GSLRUStrategy.get_priority()` — `decay = math.exp(-r * r)` where `r = age / tau`, instead of `math.exp(-age / tau)`
+
+**Result (vs V35 best):**
+
+| Metric | V35 | V39 | Delta |
+|--------|-----|-----|-------|
+| LooGLE TTFT mean (ms) | 9434 | 9567 | **+1.41% worse** |
+| LooGLE TTFT median (ms) | 1210 | 1205 | -0.43% (noise) |
+| LooGLE TTFT p90 (ms) | 3700 | 3914 | +5.8% worse |
+| LooGLE TPOT mean (ms) | 449 | 471 | **+4.96% worse** |
+| LooGLE E2E mean (ms) | 14389 | 14760 | +2.58% worse |
+| LooGLE device_hit_frac | 0.1199 | 0.1209 | +0.83% (unchanged) |
+| LooGLE load_back_tokens | 286.5M | 286.4M | unchanged |
+| LooGLE evict_tokens | 318.0M | 317.9M | unchanged |
+| ShareGPT TTFT mean (ms) | ~38850 | 38970 | +0.31% (noise) |
+| ShareGPT hit_rate | 0.608 | 0.593 | -2.5% worse |
+
+**Analysis:** Eviction volume is IDENTICAL to V35 (same load_back and evict tokens). device_hit_frac unchanged. The Gaussian shape changes eviction ORDER without changing total work, but the different ordering hurts decode performance (TPOT +4.96%). The Gaussian's slower initial decay keeps recently-accessed data at higher priority, changing WHICH nodes survive eviction rounds. This confirms that the exponential decay's priority ordering is better calibrated for this workload.
+
+**Conclusion:** NEGATIVE. The decay function shape axis is now fully exhausted: exponential (V15-V19), two-tier (V26), smooth gradient (V27), narrow gradient (V28), and now Gaussian (V39) — all inferior to or at best neutral with the standard exponential at tau=15/20. Reverted to exponential decay.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1445,3 +1476,4 @@ HiCache: evicted=318.0M (+0.2%), load_back=286.5M (-0.3%), cached_device=5.16M (
 | V36 (match promo +=2) | 9680ms | NEGATIVE (+2.60%, p90 -8.48%, over-promotion) |
 | V37 (parent promotion) | 9626ms | NEGATIVE (+2.03%, TPOT +3.20%, over-promotion) |
 | V38 (dynamic starvation) | 9416ms | NEUTRAL/NEGATIVE (-0.19% noise, TPOT +1.65%) |
+| V39 (Gaussian decay) | 9567ms | NEGATIVE (+1.41%, TPOT +4.96%, decay shape suboptimal) |

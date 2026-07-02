@@ -1365,6 +1365,48 @@ HiCache: evicted=317.6M (-0.3%), load_back=286.5M (-0.3%), cached_device=4.91M (
 
 ---
 
+## V38 — Dynamic anti-starvation threshold (NEUTRAL/NEGATIVE)
+
+**Commit:** `51ead76fb`
+**Flag:** `--radix-eviction-policy gslru --page-size 64` + code (device_weight=5, match promotion, dynamic starvation: base=300s + 3s per request above 50)
+
+**Hypothesis:** The fixed 300s anti-starvation threshold treats all queue depths equally. Under heavier load (queue depth ~95), the threshold could scale up to reduce the number of anti-starvation interventions, preserving LPM ordering. Formula: `threshold = 300 + max(0, queue_depth - 50) * 3.0`. At typical queue=95, threshold ~435s.
+
+**Result (vs V35 — current best):**
+
+| Metric | V35 (fixed 300s) | V38 (dynamic) | Delta |
+|--------|-----------|-----------|-------|
+| LooGLE TTFT mean (ms) | 9434 | 9416 | -0.19% (noise) |
+| LooGLE TTFT median (ms) | 1190 | 1221 | +2.6% worse |
+| LooGLE TTFT p90 (ms) | 3964 | 3712 | **-6.35% improved** |
+| LooGLE TTFT p99 (ms) | 199280 | 198981 | -0.15% (noise) |
+| LooGLE TPOT mean (ms) | 448.55 | 455.96 | +1.65% worse |
+| LooGLE ITL mean (ms) | 349.80 | 349.03 | -0.22% neutral |
+| LooGLE e2e mean (ms) | 14481 | 14452 | -0.20% neutral |
+| LooGLE hit rate | 0.8966 | 0.8957 | -0.10% neutral |
+| LooGLE device_hit_frac | 0.1199 | 0.1285 | +7.2% more GPU hits |
+| ShareGPT TTFT mean (ms) | 38600 | 39120 | +1.35% worse |
+| ShareGPT req throughput | 1.24 | 1.24 | same |
+| ShareGPT total requests | 1118 | 1112 | -0.54% |
+
+HiCache: evicted=318.0M (+0.2%), load_back=286.5M (-0.3%), cached_device=5.16M (+7.0% vs V35), evict_mean=1.119ms, load_back_mean=1.854ms, host_util=0.9988, disk_read=100672 tokens
+
+**Analysis:** The mean TTFT is within noise of V35 (-0.19%, 18ms). The p90 improved (-6.35%, 252ms faster) from fewer anti-starvation interventions at higher queue depths, but TPOT regressed (+1.65%) and device_hit_frac increased (+7.2%) — the same GPU hoarding pattern seen in V36/V37. The higher effective threshold (~435s at queue=95) keeps requests in LPM order longer, concentrating GPU usage on top-match requests at the expense of decode throughput. ShareGPT regressed (+1.35%) because the queue-scaled threshold sometimes exceeds useful ranges for shorter-context workloads.
+
+**Anti-starvation sensitivity (complete):**
+
+| Threshold | TTFT mean (ms) | TTFT p90 (ms) | TPOT (ms) | Note |
+|-----------|----------------|---------------|-----------|------|
+| 120s (V8) | 16070 | — | — | too aggressive |
+| 200s (V22) | 12797 | 38380 | 465 | too aggressive |
+| **300s (V11/V35)** | **9434** | **3964** | **449** | **optimum** |
+| ~435s dynamic (V38) | 9416 | 3712 | 456 | TPOT tradeoff, noise on mean |
+| ∞ (V9) | 12186 | — | — | no safety net |
+
+**Conclusion:** NEUTRAL/NEGATIVE. The dynamic threshold is not a meaningful improvement over fixed 300s. The mean is within noise, TPOT regressed, and ShareGPT worsened. The anti-starvation axis is now fully exhausted across all formulations (fixed thresholds 120s→200s→300s→∞, dynamic scaling). Reverted to fixed 300s.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1402,3 +1444,4 @@ HiCache: evicted=317.6M (-0.3%), load_back=286.5M (-0.3%), cached_device=4.91M (
 | **V35 (match promotion)** | **9434ms** | **CURRENT BEST (-1.06%, median -6.33%, e2e -2.94%)** |
 | V36 (match promo +=2) | 9680ms | NEGATIVE (+2.60%, p90 -8.48%, over-promotion) |
 | V37 (parent promotion) | 9626ms | NEGATIVE (+2.03%, TPOT +3.20%, over-promotion) |
+| V38 (dynamic starvation) | 9416ms | NEUTRAL/NEGATIVE (-0.19% noise, TPOT +1.65%) |

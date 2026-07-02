@@ -252,29 +252,29 @@ class SchedulePolicy:
         """
         Computes and caches the matching prefixes for requests in the waiting queue,
             and handles in-batch prefix caching logic.
-
-        V40: skip redundant tree walks for already-promoted requests. Their sort
-        data (prefix_indices, host_hit_length) from previous rounds is still valid
-        since the tree barely changes between scheduling rounds. Fresh data is
-        obtained in init_next_round_input when the request is actually scheduled.
         """
         temporary_deprioritized: Set[int] = set()
         self.waiting_queue_radix_tree.reset()
 
         root = self.tree_cache.root_node
         for r in waiting_queue:
-            if getattr(r, "_match_promoted", False):
-                continue
-
             prefix_ids = r.origin_input_ids + r.output_ids
             extra_key = r.extra_key
             match_result = match_prefix_for_req(self.tree_cache, r, prefix_ids)
 
-            bmn = r.best_match_node
-            if bmn is not None and bmn is not root:
-                bmn.hit_count += 1
-                r._match_promoted = True
+            if not getattr(r, "_match_promoted", False):
+                bmn = r.best_match_node
+                if bmn is not None and bmn is not root:
+                    bmn.hit_count += 1
+                    r._match_promoted = True
 
+            # NOTE(sang): This logic is for in-batch prefix caching;
+            # If there are more than 1 request that have small matching prefix from
+            # existing cache, but all those requests share the same prefix, we prefer
+            # to schedule only one of them so that we can increase the cache hit rate.
+            # We prefer to set IN_BATCH_PREFIX_CACHING_CHECK_THRESHOLD > 0 because too small
+            # threshold means we cannot use in-batch prefix caching for short prefixes.
+            # It is kind of common when the engine is long running (e.g., imagine the prefix "the").
             if len(r.prefix_indices) <= IN_BATCH_PREFIX_CACHING_CHECK_THRESHOLD:
                 match_result = self.waiting_queue_radix_tree.match_prefix(
                     MatchPrefixParams(
@@ -292,6 +292,7 @@ class SchedulePolicy:
                 ):
                     temporary_deprioritized.add(r.rid)
                 else:
+                    # Insert with a dummy key
                     self.waiting_queue_radix_tree.insert(
                         InsertParams(
                             key=RadixKey(token_ids=prefix_ids, extra_key=extra_key),

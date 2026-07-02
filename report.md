@@ -2133,3 +2133,67 @@ Testing seg=5 + tau=20 next (V58) to see if the mean continues to decrease or if
 Moving to fine-grained sweep around seg=4 tau=25 optimum (V59: seg=4, tau=23) to check if there's a better point between the coarse 15→20→25→30 sweep.
 
 **ShareGPT:** 1.71 req/s, 1543 total, hit rate 60.4%.
+
+---
+
+### V59 — seg=4 tau=23, fine-grained sweep (NEGATIVE: +1.30% vs V51)
+
+**Commit:** `c9a2f51d6` (code change: evict_policy.py decay_tau 25→23, max_segment 5→4)
+**Flags:** `--radix-eviction-policy gslru --hicache-write-policy write_back`
+
+**Hypothesis:** Fine-grained sweep near V51's optimum. The coarse seg=4 tau sweep (15→20→25→30) might miss a better point between 20 and 25.
+
+**Result:** NEGATIVE. TTFT mean = 8901ms (+1.30% vs V51's 8787ms).
+
+**Complete seg=4 tau sweep:**
+
+| tau | mean | median | p90 | p99 | TPOT | device_hit |
+|-----|------|--------|------|------|------|------------|
+| 15 | 9190 | 1192 | 3740 | 200676 | 424 | — |
+| 20 | 8960 | 1097 | 3644 | 196985 | 424 | — |
+| 23 | 8901 | 1163 | 3613 | 196700 | 425 | 9.18% |
+| **25** | **8787** | 1129 | 3999 | **192709** | 444 | 10.73% |
+| 30 | 9110 | 1141 | 3623 | 198251 | 429 | — |
+
+**Analysis:** The mean curve is monotonically decreasing from tau=15→25, then jumps at tau=30. Tau=25 is confirmed as the seg=4 optimum. Interestingly, tau=23 has LOWER device_hit_frac (9.18% vs 10.73%), suggesting that faster decay causes too much GPU churn at this segment count.
+
+**ShareGPT:** 1.71 req/s, 1538 total, hit rate 59.2%.
+
+---
+
+### V60 — device_weight=7, retuned for write_back (NEW BEST: -0.98% vs V51)
+
+**Commit:** `20172392a` (code change: schedule_policy.py _LPM_DEVICE_WEIGHT 5→7, evict_policy.py back to V51 params seg=4 tau=25)
+**Flags:** `--radix-eviction-policy gslru --hicache-write-policy write_back`
+
+**Hypothesis:** device_weight=5 was tuned under write_through (V31). Under write_back, hit_count dynamics are different (only incremented via match promotion, not on backup). Higher device_weight should give stronger scheduling preference for GPU-cached requests, potentially improving latency by reducing unnecessary load-backs.
+
+**Result:** **NEW BEST.** TTFT mean = 8701ms (-0.98% vs V51's 8787ms, -78.4% from baseline).
+
+**V60 dominates V51 on ALL metrics:**
+
+| Metric | V51 (wt=5) | V60 (wt=7) | Change |
+|--------|------------|------------|--------|
+| mean | 8787 | **8701** | -86ms (-0.98%) |
+| median | 1129 | **1092** | -37ms (-3.3%) |
+| p90 | 3999 | **3701** | -298ms (-7.5%) |
+| p99 | 192709 | **190242** | -2467ms (-1.3%) |
+| TPOT | 444 | **403** | -41ms (-9.2%) |
+| e2e_mean | 13786 | **13444** | -342ms (-2.5%) |
+
+**device_hit_frac:** 10.14% (vs V51's 10.73% — slightly lower, but better scheduling alignment compensates). The higher device_weight doesn't increase GPU cache retention directly — it just prioritizes requests that CAN benefit from GPU cache, reducing wasted load-backs for requests that would get evicted anyway.
+
+**ShareGPT:** 1.73 req/s (best ever), 1553 total, hit rate 60.5%.
+
+Testing device_weight=9 next (V61) to continue the sweep.
+
+**Updated leaderboard (by TTFT mean):**
+
+| Version | Change | LooGLE TTFT (ms) | vs Baseline | vs V35 |
+|---------|--------|-------------------|-------------|--------|
+| V0      | baseline | 40371           | —           | —      |
+| V35     | match promotion | 9434       | -76.6%      | —      |
+| V49     | write_back | 9190           | -77.2%      | -2.6%  |
+| V50     | wb + tau=20 | 8960           | -77.8%      | -5.0%  |
+| V51     | wb + tau=25 | 8787           | -78.2%      | -6.9%  |
+| **V60** | **wb + devwt=7** | **8701**   | **-78.4%**  | **-7.8%** |

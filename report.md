@@ -1678,3 +1678,69 @@ HiCache: evicted=317.6M, load_back=286.1M, cached_device=5.13M, evict_mean=1.125
 | V43 (demand-aware eviction) | 9678ms | NEGATIVE (+2.59%, TPOT +5.03%, device_hit_frac +2.75%) |
 | V44 (host eviction 2x tau) | 9775ms | NEGATIVE (+3.61%, TPOT +3.11%, host→GPU coupling) |
 | V45 (sched hot-path CPU opt) | 9389ms | NEUTRAL (-0.47% noise, TPOT +0.98%, CPU not bottleneck) |
+| V46 (anti-starvation 60s) | FAILED | SERVER HANG at 62% progress, deadlock with 100% GPU |
+
+---
+
+## V46 — Anti-starvation threshold reduction (FAILED — server hang)
+
+**Commit:** `e8a015d32`  
+**Hypothesis:** Reduce LPM anti-starvation threshold from 300s to 60s. Q1 requests waiting >60s get priority-boosted over Q2-Q8, shortening their wait and creating a cascade where Q2-Q8 arrive sooner while prefix is still GPU-warm.
+
+**Change:** Single line: `_LPM_STARVATION_SECS = 300.0 → 60.0` in `schedule_policy.py`
+
+**Result: CATASTROPHIC FAILURE**
+
+The server hung at 62% progress (963/1560 LooGLE requests completed). After completing 966 requests, the server became completely unresponsive:
+- 18 running requests, 98 queued — frozen for 30+ minutes
+- GPUs at 100% utilization with zero HTTP completions
+- Test request to the server timed out
+- Job cancelled after confirming deadlock
+
+**Root cause analysis:** With the 60s threshold, ALL Q1 requests (which have been waiting >60s by the time the system reaches steady state) get simultaneously priority-boosted to tier 0. This overwhelms the scheduler: instead of interleaving Q1 (new document, ~28.7K tokens) with Q2-Q8 (cache-hit, ~28.7K tokens but with warm prefix), the system schedules only Q1 requests. With 18 large Q1 prefills running simultaneously (18 × ~28.7K = ~517K tokens), the GPU KV cache is saturated. The constant eviction pressure from new Q1 arrivals, combined with no Q2-Q8 requests completing (their cache gets evicted before they can run), creates a livelock where the system does compute but never completes any request.
+
+**Key insight:** The 300s threshold was NOT "inactive" as hypothesized. It serves as a critical safety valve — it allows the scheduler to naturally interleave Q1/Q2-Q8 via LPM ordering. Setting it to 60s effectively removes this interleaving and creates a Q1-only scheduling pattern that saturates resources. The anti-starvation mechanism is tightly coupled to the scheduling equilibrium.
+
+**Learning:** Anti-starvation threshold < Q1 mean TTFT (~65s) causes pathological scheduling. Any threshold that triggers for the MAJORITY of Q1 requests simultaneously will cause this failure mode. Safe threshold must be > P90 of Q1 TTFT (~130s), or the boost mechanism needs a concurrency cap.
+
+**Code:** Reverted to 300.0 after failure.
+
+## V47 — Page size 128 (NEGATIVE)
+
+**Commit:** `279c1a69f` (no code change — flag override only)
+**Flag:** `--radix-eviction-policy gslru --page-size 128`
+
+**Hypothesis:** Larger pages (128 vs default 64) reduce per-page overhead in the radix tree: fewer nodes, smaller eviction heaps, less hash computation. Trade-off: coarser granularity means less flexible eviction and potential memory waste from partially-used pages.
+
+**Result (vs V35 best, page_size=64):**
+
+| Metric | V35 (page=64) | V47 (page=128) | Delta |
+|--------|---------------|-----------------|-------|
+| LooGLE TTFT mean (ms) | 9434 | 10463 | **+10.9% worse** |
+| LooGLE TTFT median (ms) | 1210 | 1230 | +1.7% |
+| LooGLE TTFT p90 (ms) | 3700 | 4080 | +10.3% worse |
+| LooGLE TTFT p99 (ms) | 211836 | 212141 | +0.1% (noise) |
+| LooGLE TPOT mean (ms) | 449 | 452 | +0.7% (noise) |
+| LooGLE hit_rate | 0.8949 | 0.8912 | -0.4% worse |
+| LooGLE device_hit_frac | 0.1199 | 0.1164 | -2.9% worse |
+| LooGLE evicted tokens | ~287M | 315.6M | **+10.0% more** |
+| LooGLE load_back tokens | ~285M | 282.9M | -0.7% (noise) |
+| LooGLE load_back_mean_ms | 1.793 | 1.642 | **-8.4% faster** |
+| LooGLE eviction_mean_ms | ~1.0 | 0.964 | -3.6% faster |
+| ShareGPT TTFT mean (ms) | ~38850 | 21520 | N/A (different baseline) |
+| ShareGPT req throughput | ~1.28 | 1.84 | N/A |
+
+HiCache: evicted=315.6M, load_back=282.9M, cached_device=4.65M (-7.7% vs V35 5.01M), host_util=0.9966
+
+**Analysis:** Larger pages increase eviction volume by 10% (315.6M vs ~287M). Each eviction removes a 128-token chunk, which is too coarse — it evicts "useful" tokens alongside "cold" ones in the same page. The result is a lower device_hit_frac (0.1164 vs 0.1199) and lower hit_rate (0.8912 vs 0.8949). Despite faster per-operation load_back (1.642ms vs 1.793ms — fewer, larger DMA transfers), the increased eviction volume overwhelms this benefit.
+
+The positive: load_back_mean_ms dropped 8.4%, confirming that larger pages amortize DMA overhead better. But this saving is irrelevant when more data is being churned.
+
+**Conclusion:** Page size 128 is clearly worse than 64 for this workload. Coarser pages → more wasteful eviction → lower cache efficiency → higher TTFT. Next: test page_size=32 to complete the sweep (finer pages → less waste per eviction, but more overhead per page).
+
+**Page size sensitivity (partial):**
+
+| page_size | TTFT mean (ms) | hit_rate | device_hit_frac | evicted (M) |
+|-----------|----------------|----------|-----------------|-------------|
+| 64 (V35)  | 9434           | 0.8949   | 0.1199          | ~287        |
+| 128 (V47) | 10463          | 0.8912   | 0.1164          | 315.6       |

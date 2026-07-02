@@ -1559,6 +1559,43 @@ HiCache: evicted=318.0M, load_back=285.8M, cached_device=4.93M, evict_mean=1.11m
 
 ---
 
+## V44 — Conservative host eviction (2x tau for host tier) (NEGATIVE)
+
+**Commit:** `e6a3b12b2`  
+**Flag:** `--radix-eviction-policy gslru`
+
+**Hypothesis:** Host eviction uses the same GSLRU (tau=15/20) as GPU eviction, but data evicted from host is effectively LOST (storage hit rate ~0%). A separate host eviction strategy with 2x decay tau (30/40) should keep frequently-reused document prefixes in host longer across the ~57s inter-question gap. This should be orthogonal to GPU tier behavior — device_hit_frac should be unaffected.
+
+**What changed:**
+- `hiradix_cache.py:__init__()` — created separate `host_eviction_strategy` (GSLRUStrategy with tau=30, tau_top=40)
+- `hiradix_cache.py:evict_host()` — used `host_eviction_strategy` for priority computation instead of shared `eviction_strategy`
+
+**Result (vs V35 best):**
+
+| Metric | V35 | V44 | Delta |
+|--------|-----|-----|-------|
+| LooGLE TTFT mean (ms) | 9434 | 9775 | **+3.61% worse** |
+| LooGLE TTFT median (ms) | 1190 | 1212 | +1.85% worse |
+| LooGLE TTFT p90 (ms) | 3964 | 4046 | +2.07% worse |
+| LooGLE TTFT p99 (ms) | 199280 | 204284 | +2.51% worse |
+| LooGLE TPOT mean (ms) | 448.55 | 462.50 | **+3.11% worse** |
+| LooGLE ITL mean (ms) | 349.80 | 360.59 | +3.08% worse |
+| LooGLE e2e mean (ms) | 14481 | 14977 | +3.43% worse |
+| LooGLE hit rate | 0.8966 | 0.8950 | -0.18% worse |
+| LooGLE device_hit_frac | 0.1199 | 0.1218 | +1.58% inflated |
+| ShareGPT TTFT mean (ms) | 38600 | 39150 | +1.42% worse |
+| ShareGPT req throughput | 1.24 | 1.24 | same |
+
+HiCache: evicted=319.2M, load_back=287.4M, cached_device=4.88M, evict_mean=1.106ms, load_back_mean=1.838ms, host_util=0.9992
+
+**Analysis:** The orthogonality hypothesis was WRONG. Changing host eviction ordering changes WHICH data survives in host. When load_back occurs, different data is loaded from host to GPU → different GPU cache composition → device_hit_frac inflation (+1.58%) → TPOT regression (+3.11%). The causal chain is: host eviction order → host data composition → load_back data → GPU data composition → device_hit_frac → TPOT.
+
+This establishes a deeper meta-insight: **there is no truly orthogonal axis in the cache hierarchy**. Every tier's eviction ordering propagates through load_back to affect the GPU tier. The V35 equilibrium is not just a GPU-tier optimum — it's a SYSTEM-WIDE equilibrium where GPU, host, and scheduling are mutually reinforcing.
+
+**Conclusion:** NEGATIVE. Reverted. The host eviction is coupled to GPU behavior via load_back. Any change to any tier's eviction ordering will propagate to device_hit_frac. V36-V44 (9 consecutive experiments) now confirm: the system is at a global equilibrium, not just a local GPU-tier optimum.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1602,3 +1639,4 @@ HiCache: evicted=318.0M, load_back=285.8M, cached_device=4.93M, evict_mean=1.11m
 | V41 (skip device0 walks) | 9764ms | NEGATIVE (+3.50%, TPOT +5.95%, median -2.89%) |
 | V42 (leaf-only timestamp) | 9553ms | NEGATIVE (+1.26%, TPOT +4.51%, device_hit_frac +14.6%) |
 | V43 (demand-aware eviction) | 9678ms | NEGATIVE (+2.59%, TPOT +5.03%, device_hit_frac +2.75%) |
+| V44 (host eviction 2x tau) | 9775ms | NEGATIVE (+3.61%, TPOT +3.11%, host→GPU coupling) |

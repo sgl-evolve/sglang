@@ -192,6 +192,16 @@ class HiRadixCache(RadixCache):
 
         super().__init__(params=params)
 
+        from sglang.srt.mem_cache.evict_policy import GSLRUStrategy
+
+        if isinstance(self.eviction_strategy, GSLRUStrategy):
+            self.host_eviction_strategy = GSLRUStrategy(
+                max_segment=self.eviction_strategy.max_segment,
+                decay_tau=self.eviction_strategy.decay_tau * 2.0,
+            )
+        else:
+            self.host_eviction_strategy = self.eviction_strategy
+
     def _all_reduce_attn_groups(self, tensor: torch.Tensor, op):
         reduced = False
         for group in (self.attn_cp_group, self.attn_tp_group):
@@ -1105,9 +1115,10 @@ class HiRadixCache(RadixCache):
         return num_evicted
 
     def evict_host(self, num_tokens: int):
+        host_strategy = getattr(self, "host_eviction_strategy", self.eviction_strategy)
         leaves = list(self.evictable_host_leaves)
         eviction_heap = [
-            (self.eviction_strategy.get_priority(node), node) for node in leaves
+            (host_strategy.get_priority(node), node) for node in leaves
         ]
         heapq.heapify(eviction_heap)
 
@@ -1136,7 +1147,7 @@ class HiRadixCache(RadixCache):
             self._update_host_leaf_status(x.parent)
 
             if len(x.parent.children) == 0 and x.parent.evicted:
-                new_priority = self.eviction_strategy.get_priority(x.parent)
+                new_priority = host_strategy.get_priority(x.parent)
                 heapq.heappush(eviction_heap, (new_priority, x.parent))
 
     def load_back(

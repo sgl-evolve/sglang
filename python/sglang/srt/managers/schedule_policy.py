@@ -258,15 +258,6 @@ class SchedulePolicy:
 
         root = self.tree_cache.root_node
         for r in waiting_queue:
-            # V41: skip tree walk for promoted requests with no device data.
-            # Their host_hit_length (the dominant sort component) is stable,
-            # and device_tokens=0 cannot become stale-positive (only stale-negative,
-            # which is a minor under-rank, not the harmful over-rank from V40).
-            if getattr(r, "_match_promoted", False):
-                device_tokens = len(r.prefix_indices) if r.prefix_indices is not None else 0
-                if device_tokens == 0:
-                    continue
-
             prefix_ids = r.origin_input_ids + r.output_ids
             extra_key = r.extra_key
             match_result = match_prefix_for_req(self.tree_cache, r, prefix_ids)

@@ -256,10 +256,17 @@ class SchedulePolicy:
         temporary_deprioritized: Set[int] = set()
         self.waiting_queue_radix_tree.reset()
 
+        root = self.tree_cache.root_node
         for r in waiting_queue:
             prefix_ids = r.origin_input_ids + r.output_ids
             extra_key = r.extra_key
             match_result = match_prefix_for_req(self.tree_cache, r, prefix_ids)
+
+            if not getattr(r, "_match_promoted", False):
+                bmn = r.best_match_node
+                if bmn is not None and bmn is not root:
+                    bmn.hit_count += 1
+                    r._match_promoted = True
 
             # NOTE(sang): This logic is for in-batch prefix caching;
             # If there are more than 1 request that have small matching prefix from

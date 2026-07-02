@@ -1328,6 +1328,43 @@ The p90 improved (-8.48%) — the same pattern as gradient decay experiments (V2
 
 ---
 
+## V37 — Parent node match promotion (NEGATIVE)
+
+**Commit:** `00738fe72`
+**Flag:** `--radix-eviction-policy gslru --page-size 64` + code (device_weight=5, leaf + parent promotion)
+
+**Hypothesis:** V35 promotes only `best_match_node.hit_count`. In the radix tree, document prefixes are chains of ~449 nodes. When the deepest node (leaf) is evicted, its parent becomes the new evictable leaf. Promoting the parent too should delay the cascade of bottom-up eviction through the prefix chain.
+
+**Result (vs V35 — current best):**
+
+| Metric | V35 (leaf only) | V37 (leaf + parent) | Delta |
+|--------|-----------|-----------|-------|
+| LooGLE TTFT mean (ms) | 9434 | 9626 | **+2.03% NEGATIVE** |
+| LooGLE TTFT median (ms) | 1190 | 1223 | +2.80% worse |
+| LooGLE TTFT p90 (ms) | 3964 | 4219 | +6.45% worse |
+| LooGLE TPOT mean (ms) | 448.55 | 462.90 | **+3.20% worse** |
+| LooGLE ITL mean (ms) | 349.80 | 358.09 | +2.37% worse |
+| LooGLE hit rate | 0.8966 | 0.8967 | neutral |
+| LooGLE device_hit_frac | 0.1199 | 0.1221 | +1.83% more GPU hits |
+| ShareGPT TTFT mean (ms) | 38600 | 38850 | +0.65% neutral |
+
+HiCache: evicted=317.6M (-0.3%), load_back=286.5M (-0.3%), cached_device=4.91M (+1.85%), evict_mean=1.117ms, load_back_mean=1.846ms
+
+**Analysis:** Same over-promotion pattern as V36. Promoting two nodes (leaf + parent) increases GPU-cached tokens (+1.85%) and device_hit_frac (+1.83%), but the extra GPU memory pressure worsens TPOT (+3.20%) and mean TTFT (+2.03%). The TPOT regression is the clearest signal: more GPU-resident data → more memory pressure during decode → slower token generation.
+
+**Match promotion sensitivity (complete):**
+
+| Variant | Nodes promoted | TTFT mean (ms) | TPOT (ms) | device_hit_frac |
+|---------|---------------|----------------|-----------|-----------------|
+| V31 (none) | 0 | 9535 | 441.70 | 0.1234 |
+| **V35 (leaf +1)** | **1** | **9434** | **448.55** | **0.1199** |
+| V36 (leaf +2) | 1 (×2) | 9680 | 456.85 | 0.1342 |
+| V37 (leaf+parent) | 2 | 9626 | 462.90 | 0.1221 |
+
+**Conclusion:** NEGATIVE. V35 (single leaf +1) is the optimum. The match promotion axis is fully exhausted. Any increase in promotion — whether higher increment (V36) or more nodes (V37) — causes GPU hoarding that worsens TPOT and mean TTFT.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1364,3 +1401,4 @@ The p90 improved (-8.48%) — the same pattern as gradient decay experiments (V2
 | V34 (host_weight=2) | 9926ms | NEGATIVE (+4.10%, p90 +14.4%, TPOT +6.8%) |
 | **V35 (match promotion)** | **9434ms** | **CURRENT BEST (-1.06%, median -6.33%, e2e -2.94%)** |
 | V36 (match promo +=2) | 9680ms | NEGATIVE (+2.60%, p90 -8.48%, over-promotion) |
+| V37 (parent promotion) | 9626ms | NEGATIVE (+2.03%, TPOT +3.20%, over-promotion) |

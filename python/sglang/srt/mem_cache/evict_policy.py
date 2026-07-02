@@ -68,8 +68,8 @@ class SLRUStrategy(EvictionStrategy):
 
 
 class GSLRUStrategy(EvictionStrategy):
-    """Graduated SLRU with smooth gradient time-decay: tau scales linearly
-    with segment from decay_tau (segment=0) to 2*decay_tau (segment=max)."""
+    """Graduated SLRU with narrow gradient time-decay: tau scales linearly
+    with segment from decay_tau to 1.5*decay_tau (narrower than V27's 2x)."""
 
     def __init__(self, max_segment: int = 4, decay_tau: float = 15.0):
         self.max_segment = max_segment
@@ -79,7 +79,7 @@ class GSLRUStrategy(EvictionStrategy):
         segment = min(node.hit_count, self.max_segment)
         if self.decay_tau > 0:
             age = time.monotonic() - node.last_access_time
-            tau = self.decay_tau * (1.0 + segment / self.max_segment)
+            tau = self.decay_tau * (1.0 + 0.5 * segment / self.max_segment)
             decay = math.exp(-age / tau)
             return (segment * decay, node.last_access_time)
         return (float(segment), node.last_access_time)

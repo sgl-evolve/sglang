@@ -265,7 +265,7 @@ class SchedulePolicy:
             if not getattr(r, "_match_promoted", False):
                 bmn = r.best_match_node
                 if bmn is not None and bmn is not root:
-                    bmn.hit_count += 1
+                    bmn.hit_count += 2
                     r._match_promoted = True
 
             # NOTE(sang): This logic is for in-batch prefix caching;

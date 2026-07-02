@@ -1468,6 +1468,32 @@ HiCache: evicted=318.0M (+0.2%), load_back=286.5M (-0.3%), cached_device=5.16M (
 
 ---
 
+## V41 — Skip tree walks for promoted requests with device_tokens==0 (NEGATIVE)
+
+**Commit:** `5df8fe9f2`  
+**Hypothesis:** V40 showed scheduling overhead reduction genuinely helps (median -2.76%, ShareGPT +4.84%), but stale device token data in `prefix_indices` caused device_hit_frac inflation (+9.51%). V41 filters more carefully: only skip tree walks for promoted requests that have `device_tokens == 0`. These cannot become stale-positive (the harmful V40 case) — only stale-negative (minor under-rank). This should preserve the scheduling speedup for ~88% of Q2+ requests while avoiding the device_hit_frac inflation.
+
+**Change:** In `_compute_prefix_matches`, added early `continue` for promoted requests with `len(r.prefix_indices) == 0`, skipping `match_prefix_for_req` and `last_access_time` refresh for those requests.
+
+| Metric | V35 (best) | V41 | Delta |
+|--------|-----------|-----|-------|
+| LooGLE TTFT mean (ms) | 9434 | 9764 | **+3.50% worse** |
+| LooGLE TTFT median (ms) | 1210 | 1175 | **-2.89% better** |
+| LooGLE TTFT p90 (ms) | 3573 | 4339 | +21.4% worse |
+| LooGLE TPOT (ms) | 448.45 | 475.16 | **+5.95% worse** |
+| LooGLE e2e (ms) | 14577 | 15027 | +3.09% worse |
+| LooGLE device_hit_frac | 0.1199 | 0.1238 | +3.25% (less than V40) |
+| LooGLE load_back_tokens | 286.5M | 287.1M | +0.24% (noise) |
+| ShareGPT TTFT mean (ms) | ~38850 | 38520 | -0.85% (neutral) |
+| ShareGPT req_throughput | 1.24 | 1.26 | +1.61% |
+| ShareGPT total_requests | 1112 | 1136 | +2.16% |
+
+**Analysis:** The device_tokens==0 filter successfully reduced device_hit_frac inflation from +9.51% (V40) to +3.25%, confirming the stale-device-data hypothesis. However, performance still regressed: TPOT +5.95% is worse than V40 (+5.12%). The problem is NOT stale device data — it's the missing `last_access_time` refresh. When tree walks are skipped, nodes that matched these requests don't get their `last_access_time` updated, changing eviction ordering. This is a fundamental constraint: `_match_prefix_helper` updates `last_access_time` on EVERY node it walks, and that side-effect is load-bearing for eviction quality.
+
+**Conclusion:** NEGATIVE. The scheduling overhead reduction concept is validated (median -2.89%) but cannot be implemented via walk-skipping because `last_access_time` refresh is a critical side-effect of tree walks. Any future scheduling optimization must preserve this refresh. Reverted.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1508,3 +1534,4 @@ HiCache: evicted=318.0M (+0.2%), load_back=286.5M (-0.3%), cached_device=5.16M (
 | V38 (dynamic starvation) | 9416ms | NEUTRAL/NEGATIVE (-0.19% noise, TPOT +1.65%) |
 | V39 (Gaussian decay) | 9567ms | NEGATIVE (+1.41%, TPOT +4.96%, decay shape suboptimal) |
 | V40 (skip promoted walks) | 9623ms | NEGATIVE (+2.01%, median -2.76%, stale device data) |
+| V41 (skip device0 walks) | 9764ms | NEGATIVE (+3.50%, TPOT +5.95%, median -2.89%) |

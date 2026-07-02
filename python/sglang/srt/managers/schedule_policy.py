@@ -301,7 +301,8 @@ class SchedulePolicy:
                     )
         return temporary_deprioritized
 
-    _LPM_STARVATION_SECS = 300.0
+    _LPM_STARVATION_BASE = 300.0
+    _LPM_STARVATION_SCALE = 3.0
 
     _LPM_DEVICE_WEIGHT = 5
 
@@ -313,9 +314,12 @@ class SchedulePolicy:
 
         GPU-resident tokens are weighted higher than host-resident tokens to
         prefer requests whose data is already in GPU, reducing eviction churn.
+        Anti-starvation threshold scales with queue depth to preserve LPM
+        ordering quality under heavy load.
         """
         now = time.perf_counter()
-        threshold = SchedulePolicy._LPM_STARVATION_SECS
+        qd = len(waiting_queue)
+        threshold = SchedulePolicy._LPM_STARVATION_BASE + max(0, qd - 50) * SchedulePolicy._LPM_STARVATION_SCALE
         dw = SchedulePolicy._LPM_DEVICE_WEIGHT
 
         def _key(r):

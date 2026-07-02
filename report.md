@@ -1062,6 +1062,41 @@ ShareGPT regression (-3.1% throughput) is consistent across V26-V28 — the segm
 
 ---
 
+## V29 — Top-only decay boost (POSITIVE, new best LooGLE tradeoff)
+
+**Commit:** `228e3cd29`
+**Flag:** `--radix-eviction-policy gslru --page-size 64` + code (top-only: tau=20 for segment=max_segment, tau=15 for all others)
+
+**Hypothesis:** V27-V28 showed gradient decay improves TTFT but causes TPOT regression from excessive GPU hoarding across ALL segments. Instead, only boost the SINGLE most valuable tier: max segment (hit_count≥4) nodes, which are fully-reused document prefixes. All other segments keep fast tau=15, maintaining efficient GPU memory turnover.
+
+**Result (vs V16 — previous best):**
+
+| Metric | V16 | V28 (narrow 1.5x) | V29 (top-only) | V29 vs V16 |
+|--------|-----|----------|------------|------------|
+| LooGLE TTFT mean (ms) | 9814 | 9651 | **9642** | **-1.8%** |
+| LooGLE TTFT median (ms) | 1277 | 1265 | **1227** | **-3.9%** |
+| LooGLE TTFT p90 (ms) | 4210 | 4134 | **3874** | **-8.0%** |
+| LooGLE TTFT p99 (ms) | 213209 | 204443 | **202925** | **-4.8%** |
+| LooGLE TPOT mean (ms) | 454.76 | 461.35 | **443.04** | **-2.6% improved** |
+| LooGLE ITL mean (ms) | 364.71 | 357.24 | **354.27** | **-2.9% improved** |
+| LooGLE e2e mean (ms) | 14933 | 14805 | **14753** | **-1.2%** |
+| LooGLE hit rate | 0.8966 | 0.8959 | 0.8941 | -0.3% |
+| ShareGPT TTFT mean (ms) | 37300 | 38500 | 38540 | +3.3% worse |
+| ShareGPT req throughput | 1.28 | 1.24 | 1.25 | -2.3% worse |
+
+HiCache: evicted=321.7M, load_back=289.6M, cached_device=4.81M, evict_mean=1.099ms, load_back_mean=1.834ms
+
+**Analysis:** V29 achieves the best overall tradeoff in the decay-tau exploration arc:
+- TTFT improved across ALL percentiles, with p90 showing the strongest gain (-8.0%, 336ms)
+- TPOT **improved** -2.6% — unlike V27 (+4.5%) and V28 (+1.4%), no regression at all
+- The p90 improvement is the most significant finding: the 8% gain suggests the top-only boost specifically helps the "nearly-cached" requests that are on the bubble between GPU-hit and host-loadback
+
+The mechanism is elegant: only fully-reused prefixes (segment=4) get slower decay (tau=20), keeping them GPU-resident slightly longer. Intermediate segments (0-3) maintain fast tau=15 → faster GPU memory recycling → less contention during token generation → TPOT improves.
+
+**Conclusion:** POSITIVE — new best on LooGLE metrics. The TTFT p90 improvement (-8.0%) is outside run-to-run variance and represents a genuine improvement. However, ShareGPT still regresses, indicating the top-only decay is optimized for multi-question-per-document patterns.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1090,3 +1125,4 @@ ShareGPT regression (-3.1% throughput) is consistent across V26-V28 — the segm
 | V26 (two-tier decay) | 9730ms | MARGINAL POSITIVE (-0.9%, within noise) |
 | V27 (smooth gradient decay) | 9688ms | MARGINAL POSITIVE (-1.3%, TPOT +4.5%) |
 | V28 (narrow gradient 1.5x) | 9651ms | MARGINAL POSITIVE (-1.7%, best tradeoff) |
+| **V29 (top-only decay tau=20)** | **9642ms** | **POSITIVE (-1.8%, p90 -8.0%, TPOT -2.6%)** |

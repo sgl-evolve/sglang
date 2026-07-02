@@ -68,13 +68,8 @@ class SLRUStrategy(EvictionStrategy):
 
 
 class GSLRUStrategy(EvictionStrategy):
-    """Graduated SLRU with Gaussian time-decay (V39).
-
-    Decay = exp(-(age/tau)^2) instead of exp(-age/tau).
-    Slower initial decay protects recently-accessed data during short
-    inter-question gaps; faster late decay evicts stale data more
-    aggressively. Top-segment tau boost preserved (tau=20 for max
-    segment, tau=15 for others)."""
+    """Graduated SLRU with top-segment decay boost: tau=20 for max segment,
+    tau=decay_tau for all others. V31 optimum (device_weight=5, tau_top=20)."""
 
     def __init__(self, max_segment: int = 4, decay_tau: float = 15.0):
         self.max_segment = max_segment
@@ -86,7 +81,6 @@ class GSLRUStrategy(EvictionStrategy):
         if self.decay_tau > 0:
             age = time.monotonic() - node.last_access_time
             tau = self.decay_tau_top if segment == self.max_segment else self.decay_tau
-            r = age / tau
-            decay = math.exp(-r * r)
+            decay = math.exp(-age / tau)
             return (segment * decay, node.last_access_time)
         return (float(segment), node.last_access_time)

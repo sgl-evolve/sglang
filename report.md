@@ -1963,3 +1963,54 @@ The mean improves because tail improvements (Q1, absolute ~173ms savings) outwei
 | V49     | write_back | 9190           | -77.2%      | -2.6%  |
 | V50     | wb + tau=20 | 8960           | -77.8%      | -5.0%  |
 | **V51** | **wb + tau=25** | **8787**   | **-78.2%**  | **-6.9%** |
+
+---
+
+### V52 — write_back + tau=30 (NEGATIVE: +3.68% vs V51)
+
+**Commit:** `da06d2daf` (code change: evict_policy.py decay_tau 25→30)
+**Flags:** `--radix-eviction-policy gslru --hicache-write-policy write_back`
+
+**Hypothesis:** Completing the tau sweep under write_back. V51 (tau=25) achieved best mean but degraded median/p90. Testing tau=30 to find where mean also regresses.
+
+**Complete tau sweep under write_back (LooGLE):**
+
+| tau | TTFT mean | TTFT median | TTFT p90 | TTFT p99 | TPOT |
+|-----|-----------|-------------|----------|----------|------|
+| 15 (V49) | 9190 | 1192 | 3740 | 200676 | 424 |
+| 20 (V50) | 8960 | **1097** | 3644 | 196985 | **424** |
+| 25 (V51) | **8787** | 1129 | 3999 | **192709** | 444 |
+| 30 (V52) | 9110 | 1141 | **3623** | 198251 | 429 |
+
+**Result:** NEGATIVE. TTFT mean = 9110ms (+3.68% vs V51's 8787ms). Mean is now WORSE than V50 (tau=20).
+
+**Analysis:** The tau sweep is complete. The mean curve is clearly convex with an optimum at tau=25:
+- tau 15→20: mean improves 2.5% (both mean and median improve together)
+- tau 20→25: mean improves 1.9% (but median/p90/TPOT degrade — improvement is tail-only)
+- tau 25→30: mean REGRESSES 3.7% (overshot — too much stale retention hurts even the tail)
+
+Interesting non-monotonicity in p90: best at tau=30 (3623ms), worst at tau=25 (3999ms). This suggests two competing effects — at tau=25, the host cache fills with stale entries causing p90 to spike, but at tau=30 the even slower decay paradoxically helps p90 by smoothing out eviction storms.
+
+**Eviction/load-back volume at tau=30:**
+- Evict: 329M tokens (vs 328M@tau25, 328M@tau20) — essentially constant
+- Load-back: 298M tokens (vs 297M@tau25, 297M@tau20) — essentially constant
+- The ~90% reload rate persists across all tau values
+
+**Conclusion:** Tau sweep complete under write_back. The sweep confirms:
+- **Best TTFT mean: tau=25** (V51, 8787ms, CURRENT BEST)
+- **Best median/TPOT: tau=20** (V50, 1097ms/424ms)
+- The mean optimum at tau=25 is -6.86% vs V35
+
+Next axis: explore **max_segment** (GSLRU bucket count) or **decay function shape** under write_back + tau=25.
+
+**ShareGPT:** Flat vs V51 (1.70 req/s, 1534 total).
+
+**Updated leaderboard (by TTFT mean):**
+
+| Version | Change | LooGLE TTFT (ms) | vs Baseline | vs V35 |
+|---------|--------|-------------------|-------------|--------|
+| V0      | baseline | 40371           | —           | —      |
+| V35     | match promotion | 9434       | -76.6%      | —      |
+| V49     | write_back | 9190           | -77.2%      | -2.6%  |
+| V50     | wb + tau=20 | 8960           | -77.8%      | -5.0%  |
+| **V51** | **wb + tau=25** | **8787**   | **-78.2%**  | **-6.9%** |

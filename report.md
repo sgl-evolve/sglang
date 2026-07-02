@@ -959,6 +959,39 @@ Interestingly, cached_device_tokens INCREASED (+11.9%, 5.55M vs 4.96M) — small
 
 ---
 
+## V26 — Two-tier decay (MARGINAL POSITIVE)
+
+**Commit:** `e0416209b`
+**Flag:** `--radix-eviction-policy gslru --page-size 64` + code (V16 optimum + two-tier decay: tau=30 for segment≥3, tau=15 for segment<3)
+
+**Hypothesis:** V16 uses uniform tau=15 for all segments. But document prefixes (segment≥3, hit_count≥3 from multiple questions) and ephemeral tokens (segment<3) have different reuse patterns. Two-tier decay uses tau=30 for heavily shared data (segment≥3) and tau=15 for low-reuse data (segment<3). This keeps important prefixes GPU-resident longer between same-document questions while still quickly evicting ephemeral data.
+
+**Result (vs V16 — current best):**
+
+| Metric | V16 (uniform tau=15) | V26 (two-tier) | Delta |
+|--------|-------|-------|-------|
+| LooGLE TTFT mean (ms) | 9814 | **9730** | **-0.9%** |
+| LooGLE TTFT median (ms) | 1277 | **1222** | **-4.3% better** |
+| LooGLE TTFT p90 (ms) | 4210 | **4175** | **-0.8% better** |
+| LooGLE TTFT p99 (ms) | 213209 | **208025** | **-2.4% better** |
+| LooGLE TPOT mean (ms) | 454.76 | 455.62 | neutral |
+| LooGLE ITL mean (ms) | 364.71 | **356.67** | **-2.2% better** |
+| LooGLE hit rate | 0.8966 | 0.8966 | identical |
+| ShareGPT TTFT mean (ms) | 37300 | 38290 | +2.7% worse |
+| ShareGPT req throughput | 1.28 | 1.25 | -2.3% worse |
+
+HiCache: evicted=317.8M (same), load_back=286.7M (same), cached_device=4.99M (same), evict_mean=1.113ms, load_back_mean=1.846ms
+
+**Analysis:** All LooGLE metrics improved or stayed neutral. The improvement is consistent across all percentiles (mean, median, p90, p99), suggesting a genuine mechanism at work — not random variance. However, the mean improvement (-0.9%, 84ms) is within typical run-to-run variance (~5-15%), so this cannot be confidently declared a new best without repeated trials.
+
+The underlying HiCache metrics (eviction volume, load_back volume, cached_device_tokens) are virtually identical to V16, indicating the two-tier decay achieves its improvement through better ORDERING of evictions rather than different eviction VOLUME. Shared prefixes survive slightly longer in GPU → fewer scheduling disruptions from premature eviction → smoother queue dynamics.
+
+ShareGPT regressed slightly (-2.3% throughput) because the slower decay for segment≥3 nodes holds onto LooGLE's shared prefixes during the ShareGPT phase transition, slightly reducing available GPU cache for ShareGPT's diverse workload.
+
+**Conclusion:** MARGINAL POSITIVE — directionally correct but within noise. The two-tier decay mechanism is valid but the magnitude is small. Future experiments could try gradient decay (tau proportional to segment) or different threshold boundaries.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -984,3 +1017,4 @@ Interestingly, cached_device_tokens INCREASED (+11.9%, 5.55M vs 4.96M) — small
 | V23 (cold fast-track 30s/10K) | 65846ms | CATASTROPHIC (+571%, server crash, 40% completion) |
 | V24 (page_size=128) | — | SERVER CRASH (SIGBUS during DeepGEMM warmup) |
 | V25 (page_size=32) | 11890ms | NEGATIVE (+21.2%, TPOT +19.6%, ShareGPT -43%) |
+| V26 (two-tier decay) | 9730ms | MARGINAL POSITIVE (-0.9%, within noise) |

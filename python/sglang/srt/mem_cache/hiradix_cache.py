@@ -1615,13 +1615,11 @@ class HiRadixCache(RadixCache):
         return matched_length
 
     def _match_prefix_helper(self, node: TreeNode, key: RadixKey):
-        node.last_access_time = time.monotonic()
         child_key = key.child_key(self.page_size)
         value = []
 
         while len(key) > 0 and child_key in node.children.keys():
             child = node.children[child_key]
-            child.last_access_time = time.monotonic()
             prefix_len = child.key.match(key, page_size=self.page_size)
             if prefix_len < len(child.key):
                 new_node = self._split_node(child.key, child, prefix_len)
@@ -1638,6 +1636,7 @@ class HiRadixCache(RadixCache):
                 if len(key):
                     child_key = key.child_key(self.page_size)
 
+        node.last_access_time = time.monotonic()
         return value, node
 
     def _split_node(self, key: RadixKey, child: TreeNode, split_len: int):

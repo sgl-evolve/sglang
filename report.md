@@ -1167,6 +1167,44 @@ HiCache: evicted=318.5M (same), load_back=287.4M (same), cached_device=4.96M (sa
 
 ---
 
+## V32 — Device weight=6 (NEGATIVE)
+
+**Commit:** `f2f357c49`
+**Flag:** `--radix-eviction-policy gslru --page-size 64` + code (device_weight=6, V29 top-only decay tau=20)
+
+**Hypothesis:** V31 (weight=5) improved over V29 (weight=4). Test weight=6 to continue refining the optimum between weight=5 (positive) and weight=8 (negative).
+
+**Result (vs V31 — current best):**
+
+| Metric | V31 (w=5) | V32 (w=6) | Delta |
+|--------|-----------|-----------|-------|
+| LooGLE TTFT mean (ms) | 9535 | 9943 | **+4.28% NEGATIVE** |
+| LooGLE TTFT median (ms) | 1160 | 1246 | +7.4% worse |
+| LooGLE TTFT p90 (ms) | 3810 | 4479 | **+17.6% worse** |
+| LooGLE TPOT mean (ms) | 441.70 | 472.92 | **+7.1% worse** |
+| LooGLE hit rate | 0.8966 | 0.8952 | -0.2% |
+| ShareGPT TTFT mean (ms) | 38310 | 38510 | +0.5% neutral |
+| ShareGPT req throughput | 1.25 | 1.25 | same |
+
+HiCache: evicted=315.7M (-0.9%), load_back=284.0M (-1.2%), cached_device=5.34M (+7.7% vs V31), evict_mean=1.111ms, load_back_mean=1.844ms, hit_device_frac=0.1333 (+8.0% vs V31)
+
+**Analysis:** Weight=6 shows the same over-concentration pattern as weight=8 (V14), just less severe. More device tokens are cached (+7.7%) but GPU memory pressure worsens TPOT (+7.1%) and the scheduling over-concentrates on GPU-resident requests, causing mid-tier request starving (p90 +17.6%).
+
+**Device weight sensitivity (complete):**
+
+| Weight | TTFT mean (ms) | TTFT p90 (ms) | TPOT (ms) | cached_device (M) |
+|--------|----------------|---------------|-----------|-------------------|
+| 1 (V11) | 10658 | 20760 | — | — |
+| 2 (V12) | 10506 | 6842 | — | 4.32 |
+| 4 (V13→V29) | 9642 | 3874 | 443 | 4.81 |
+| **5 (V31)** | **9535** | **3810** | **442** | **4.96** |
+| 6 (V32) | 9943 | 4479 | 473 | 5.34 |
+| 8 (V14) | 10903 | 10158 | — | 4.66 |
+
+**Conclusion:** NEGATIVE. The device weight axis is now fully characterized with 6 data points. The optimum is at weight=5 (V31). Reverted to weight=5.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1198,3 +1236,4 @@ HiCache: evicted=318.5M (same), load_back=287.4M (same), cached_device=4.96M (sa
 | V29 (top-only decay tau=20) | 9642ms | prev best (-1.8%, p90 -8.0%, TPOT -2.6%) |
 | V30 (top-only decay tau=25) | 9748ms | NEGATIVE (tau too high, +1.1%, p90 +12.8%) |
 | **V31 (device weight=5)** | **9535ms** | **CURRENT BEST (-1.11%, median -5.43%, TPOT neutral)** |
+| V32 (device weight=6) | 9943ms | NEGATIVE (+4.28%, p90 +17.6%, TPOT +7.1%) |

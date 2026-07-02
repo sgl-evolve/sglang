@@ -76,11 +76,12 @@ class GSLRUStrategy(EvictionStrategy):
         self.decay_tau = decay_tau
         self.decay_tau_top = decay_tau * 4.0 / 3.0
 
-    def get_priority(self, node: TreeNode) -> Tuple[float, float]:
+    def get_priority(self, node: TreeNode) -> Tuple[float, int, float]:
         segment = min(node.hit_count, self.max_segment)
+        demand = getattr(node, "_demand_count", 0)
         if self.decay_tau > 0:
             age = time.monotonic() - node.last_access_time
             tau = self.decay_tau_top if segment == self.max_segment else self.decay_tau
             decay = math.exp(-age / tau)
-            return (segment * decay, node.last_access_time)
-        return (float(segment), node.last_access_time)
+            return (segment * decay, demand, node.last_access_time)
+        return (float(segment), demand, node.last_access_time)

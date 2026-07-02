@@ -1438,6 +1438,36 @@ HiCache: evicted=318.0M (+0.2%), load_back=286.5M (-0.3%), cached_device=5.16M (
 
 ---
 
+## V40 — Skip promoted tree walks (NEGATIVE)
+
+**Commit:** `bfa88aa01`  
+**Flag:** `--radix-eviction-policy gslru`
+
+**Hypothesis:** In `_compute_prefix_matches`, skip `match_prefix_for_req` tree walks for already-promoted requests. Their sort data from previous rounds is sufficient since the tree barely changes between scheduling rounds. Saves ~97% of per-round tree walk overhead, freeing CPU cycles for scheduling.
+
+**What changed:**
+- `schedule_policy.py:_compute_prefix_matches()` — skip tree walk for `_match_promoted = True` requests. Fresh data obtained in `init_next_round_input` when actually scheduled.
+
+**Result (vs V35 best):**
+
+| Metric | V35 | V40 | Delta |
+|--------|-----|-----|-------|
+| LooGLE TTFT mean (ms) | 9434 | 9623 | **+2.01% worse** |
+| LooGLE TTFT median (ms) | 1210 | 1177 | **-2.76% better** |
+| LooGLE TTFT p90 (ms) | 3700 | 3739 | +1.07% (noise) |
+| LooGLE TPOT mean (ms) | 449 | 472 | **+5.12% worse** |
+| LooGLE device_hit_frac | 0.1199 | 0.1313 | **+9.51% inflated** |
+| LooGLE load_back_tokens | 286.5M | 287.3M | +0.28% (noise) |
+| ShareGPT TTFT mean (ms) | ~38850 | 37520 | **-3.43% better** |
+| ShareGPT req_throughput | 1.24 | 1.30 | **+4.84% better** |
+| ShareGPT total_requests | 1112 | 1176 | **+5.76% better** |
+
+**Analysis:** Mixed signal. **Median TTFT improved** (-2.76%), confirming that individual Q2+ requests schedule faster with reduced overhead. **ShareGPT significantly improved** (+4.84% throughput, +5.76% completions). But stale `prefix_indices` from skipped walks caused device_hit_frac to inflate (+9.51%): the sort key retained stale GPU token counts, making requests appear device-resident when their data was already evicted. This over-scheduling of "phantom GPU data" increased GPU memory pressure → TPOT +5.12% → mean TTFT +2.01%.
+
+**Conclusion:** NEGATIVE for LooGLE. The scheduling overhead reduction genuinely helps (proven by median and ShareGPT improvements), but the stale device token data in the LPM sort key causes harmful eviction cascades under LooGLE's heavy reuse pattern. A variant using host-only sort keys for promoted requests might preserve the benefits while avoiding the staleness issue. Reverted to full tree walks.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1477,3 +1507,4 @@ HiCache: evicted=318.0M (+0.2%), load_back=286.5M (-0.3%), cached_device=5.16M (
 | V37 (parent promotion) | 9626ms | NEGATIVE (+2.03%, TPOT +3.20%, over-promotion) |
 | V38 (dynamic starvation) | 9416ms | NEUTRAL/NEGATIVE (-0.19% noise, TPOT +1.65%) |
 | V39 (Gaussian decay) | 9567ms | NEGATIVE (+1.41%, TPOT +4.96%, decay shape suboptimal) |
+| V40 (skip promoted walks) | 9623ms | NEGATIVE (+2.01%, median -2.76%, stale device data) |

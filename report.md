@@ -1260,6 +1260,33 @@ HiCache: evicted=315.7M (-0.9%), load_back=284.0M (-1.2%), cached_device=5.34M (
 
 ---
 
+## V35 — Match-time hit_count promotion (NEW BEST)
+
+**Commit:** `24394b4d5`
+**Flag:** `--radix-eviction-policy gslru --page-size 64` + code (device_weight=5, match promotion)
+
+**Hypothesis:** Currently `hit_count` only increments during token INSERTION (`_inc_hit_count` in `_insert_helper`). But `_match_prefix_helper` during scheduling is a genuine access signal. Incrementing `best_match_node.hit_count` once per request on first match accelerates GSLRU segment promotion — shared document prefixes reach segment 4 (tau=20 boost) one question cycle earlier.
+
+**Result (vs V31 — previous best):**
+
+| Metric | V31 (no match promo) | V35 (match promo) | Delta |
+|--------|-----------|-----------|-------|
+| LooGLE TTFT mean (ms) | 9535 | 9434 | **-1.06% NEW BEST** |
+| LooGLE TTFT median (ms) | 1270 | 1190 | **-6.33% improved** |
+| LooGLE TTFT p90 (ms) | 3810 | 3964 | +4.04% slightly worse |
+| LooGLE TTFT p99 (ms) | 203752 | 199280 | -2.20% improved |
+| LooGLE TPOT mean (ms) | 441.70 | 448.55 | +1.55% slightly worse |
+| LooGLE ITL mean (ms) | 359.51 | 349.80 | -2.70% improved |
+| LooGLE e2e mean (ms) | 14919 | 14481 | -2.94% improved |
+| LooGLE hit rate | 0.8966 | 0.8966 | identical |
+| ShareGPT TTFT mean (ms) | 38310 | 38600 | +0.8% neutral |
+
+**Analysis:** Match promotion accelerates prefix segment promotion by one step. Under LooGLE (8 questions/document), the document prefix reaches segment 4 after Q3's match instead of Q4's insert. The earlier tau=20 boost better protects prefixes during the Q3-Q4 gap (40-60s). This yields -1.06% mean TTFT and -6.33% median TTFT improvement. The p90 and TPOT show slight regression (+4.04%, +1.55%) — the faster promotion causes slightly longer GPU residence of some prefixes, adding marginal eviction pressure. But overall: mean, median, p99, ITL, and e2e all improved.
+
+**Conclusion:** **NEW BEST.** Match-time hit_count promotion is a structural improvement that accelerates GSLRU segment promotion without parameter tuning. Total improvement from V0 baseline: -76.6% (40371ms → 9434ms).
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1290,7 +1317,8 @@ HiCache: evicted=315.7M (-0.9%), load_back=284.0M (-1.2%), cached_device=5.34M (
 | V28 (narrow gradient 1.5x) | 9651ms | MARGINAL POSITIVE (-1.7%, best tradeoff) |
 | V29 (top-only decay tau=20) | 9642ms | prev best (-1.8%, p90 -8.0%, TPOT -2.6%) |
 | V30 (top-only decay tau=25) | 9748ms | NEGATIVE (tau too high, +1.1%, p90 +12.8%) |
-| **V31 (device weight=5)** | **9535ms** | **CURRENT BEST (-1.11%, median -5.43%, TPOT neutral)** |
+| V31 (device weight=5) | 9535ms | prev best (-1.11%, median -5.43%, TPOT neutral) |
 | V32 (device weight=6) | 9943ms | NEGATIVE (+4.28%, p90 +17.6%, TPOT +7.1%) |
 | V33 (top-segment tau=22.5) | 9739ms | NEGATIVE (+2.14%, TPOT +9.53%) |
 | V34 (host_weight=2) | 9926ms | NEGATIVE (+4.10%, p90 +14.4%, TPOT +6.8%) |
+| **V35 (match promotion)** | **9434ms** | **CURRENT BEST (-1.06%, median -6.33%, e2e -2.94%)** |

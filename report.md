@@ -1521,6 +1521,44 @@ HiCache: evicted=318.0M (+0.2%), load_back=286.5M (-0.3%), cached_device=5.16M (
 
 ---
 
+## V43 — Demand-aware eviction tiebreaker (NEGATIVE)
+
+**Commit:** `610fb6c36`  
+**Flag:** `--radix-eviction-policy gslru`
+
+**Hypothesis:** Nodes matched by multiple waiting requests (high "demand") should be harder to evict. Track per-scheduling-round `_demand_count` on each node's `best_match_node`, and use it as a tiebreaker in GSLRU's `get_priority()` tuple: `(segment * decay, demand, last_access_time)`. This should protect high-demand nodes from eviction even when their time-decay priority drops.
+
+**What changed:**
+- `schedule_policy.py:_compute_prefix_matches()` — added `_demand_gen` / `_demand_count` tracking per scheduling round on `best_match_node`
+- `evict_policy.py:GSLRUStrategy.get_priority()` — added `demand = getattr(node, "_demand_count", 0)` as middle element of priority tuple
+
+**Result (vs V35 best):**
+
+| Metric | V35 | V43 | Delta |
+|--------|-----|-----|-------|
+| LooGLE TTFT mean (ms) | 9434 | 9678 | **+2.59% worse** |
+| LooGLE TTFT median (ms) | 1190 | 1226 | +3.03% worse |
+| LooGLE TTFT p90 (ms) | 3964 | 4437 | +11.9% worse |
+| LooGLE TTFT p99 (ms) | 199280 | 201521 | +1.12% worse |
+| LooGLE TPOT mean (ms) | 448.55 | 471.10 | **+5.03% worse** |
+| LooGLE ITL mean (ms) | 349.80 | 362.56 | +3.65% worse |
+| LooGLE e2e mean (ms) | 14481 | 14909 | +2.96% worse |
+| LooGLE hit rate | 0.8966 | 0.8937 | -0.32% worse |
+| LooGLE device_hit_frac | 0.1199 | 0.1232 | +2.75% inflated |
+| ShareGPT TTFT mean (ms) | 38600 | 38660 | +0.16% neutral |
+| ShareGPT req throughput | 1.24 | 1.24 | same |
+| ShareGPT hit rate | 0.608 | 0.612 | +0.66% neutral |
+
+HiCache: evicted=318.0M, load_back=285.8M, cached_device=4.93M, evict_mean=1.11ms, load_back_mean=1.816ms, host_util=0.9999
+
+**Analysis:** Same mechanism as V36-V42. The demand tiebreaker preferentially keeps high-demand nodes on GPU longer, causing device_hit_frac inflation (+2.75%) → TPOT regression (+5.03%) → mean TTFT regression (+2.59%). Despite being orthogonal to eviction ORDERING (demand is a scheduling signal, not an access-time signal), the effect flows through the same bottleneck: any change that increases GPU residence time beyond the V35 operating point hurts decode performance.
+
+**Meta-insight confirmed:** V36-V43 represent 8 consecutive experiments across 5 distinct axes (promotion increment, promotion scope, starvation dynamics, decay shape, walk optimization, timestamp policy, demand tiebreaker) that all fail via device_hit_frac inflation → TPOT regression. The ~12% device_hit_frac at V35 is confirmed as a structural equilibrium — not a tunable operating point.
+
+**Conclusion:** NEGATIVE. Reverted. The demand-aware eviction concept is directionally wrong: the eviction priority should NOT consider demand signals, because demand-driven retention causes GPU hoarding that hurts decode throughput.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1563,3 +1601,4 @@ HiCache: evicted=318.0M (+0.2%), load_back=286.5M (-0.3%), cached_device=5.16M (
 | V40 (skip promoted walks) | 9623ms | NEGATIVE (+2.01%, median -2.76%, stale device data) |
 | V41 (skip device0 walks) | 9764ms | NEGATIVE (+3.50%, TPOT +5.95%, median -2.89%) |
 | V42 (leaf-only timestamp) | 9553ms | NEGATIVE (+1.26%, TPOT +4.51%, device_hit_frac +14.6%) |
+| V43 (demand-aware eviction) | 9678ms | NEGATIVE (+2.59%, TPOT +5.03%, device_hit_frac +2.75%) |

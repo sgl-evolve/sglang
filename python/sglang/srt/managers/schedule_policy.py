@@ -256,8 +256,6 @@ class SchedulePolicy:
         temporary_deprioritized: Set[int] = set()
         self.waiting_queue_radix_tree.reset()
 
-        self._demand_gen = getattr(self, "_demand_gen", 0) + 1
-
         root = self.tree_cache.root_node
         for r in waiting_queue:
             prefix_ids = r.origin_input_ids + r.output_ids
@@ -269,13 +267,6 @@ class SchedulePolicy:
                 if bmn is not None and bmn is not root:
                     bmn.hit_count += 1
                     r._match_promoted = True
-
-            bmn = r.best_match_node
-            if bmn is not None and bmn is not root:
-                if getattr(bmn, "_demand_gen", 0) != self._demand_gen:
-                    bmn._demand_count = 0
-                    bmn._demand_gen = self._demand_gen
-                bmn._demand_count += 1
 
             if len(r.prefix_indices) <= IN_BATCH_PREFIX_CACHING_CHECK_THRESHOLD:
                 match_result = self.waiting_queue_radix_tree.match_prefix(

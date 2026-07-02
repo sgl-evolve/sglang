@@ -1596,6 +1596,43 @@ This establishes a deeper meta-insight: **there is no truly orthogonal axis in t
 
 ---
 
+## V45 — Scheduling hot-path CPU optimizations (NEUTRAL)
+
+**Commit:** `93f2172a1`  
+**Flag:** `--radix-eviction-policy gslru`
+
+**Hypothesis:** Given that V36-V44 confirmed all eviction/scheduling perturbations fail due to a global equilibrium, try a structurally different approach: pure CPU optimization of the scheduling hot path. Three changes: (1) tree generation counter to skip redundant `_compute_prefix_matches` walks when tree hasn't changed, (2) fast-path timestamp update by walking up from `best_match_node` instead of full tree walks, (3) batched `time.monotonic()` to one call per walk instead of per-node. These are semantics-preserving optimizations that reduce Python overhead in the scheduling round.
+
+**What changed:**
+- `hiradix_cache.py` — added `_tree_generation` counter incremented on evict/load_back/insert; batched `time.monotonic()` to one call per walk in `_match_prefix_helper`
+- `schedule_policy.py` — added generation-aware skip in `_compute_prefix_matches`: when tree generation unchanged and all requests already computed, update timestamps via walk-up from `best_match_node` instead of full tree walks
+
+**Result (vs V35 best):**
+
+| Metric | V35 | V45 | Delta |
+|--------|-----|-----|-------|
+| LooGLE TTFT mean (ms) | 9434 | 9389 | -0.47% (within noise) |
+| LooGLE TTFT median (ms) | 1190 | 1204 | +1.18% neutral |
+| LooGLE TTFT p90 (ms) | 3964 | 3925 | -0.98% neutral |
+| LooGLE TTFT p99 (ms) | 199280 | 198983 | -0.15% neutral |
+| LooGLE TPOT mean (ms) | 448.55 | 452.94 | +0.98% slight regression |
+| LooGLE ITL mean (ms) | 349.80 | 350.56 | +0.22% neutral |
+| LooGLE e2e mean (ms) | 14481 | 14447 | -0.24% neutral |
+| LooGLE hit rate | 0.8966 | 0.8957 | -0.10% neutral |
+| LooGLE device_hit_frac | 0.1199 | 0.1279 | +6.67% inflated |
+| ShareGPT TTFT mean (ms) | 38600 | 39090 | +1.27% neutral |
+| ShareGPT req throughput | 1.24 | 1.23 | -0.81% neutral |
+
+HiCache: evicted=317.6M, load_back=286.1M, cached_device=5.13M, evict_mean=1.125ms, load_back_mean=1.856ms, host_util=0.9985
+
+**Analysis:** The CPU optimizations produced no measurable TTFT improvement (-0.47% is within eval variance of ~1-2%). The slight TPOT regression (+0.98%) and device_hit_frac increase (+6.67%) suggest the timestamp distribution change from the fast-path walk-up (updating only the ancestor chain instead of all walked nodes) subtly alters eviction ordering. The system is GPU-bound, not CPU-bound — scheduling overhead is not a bottleneck.
+
+**Key insight:** This was the first experiment targeting a fundamentally different axis (CPU overhead vs cache policy). The null result confirms: the ~12% device_hit_frac equilibrium is driven by GPU compute capacity and working set size, not by scheduling inefficiency. Improving the scheduling speed doesn't change what gets cached or when.
+
+**Conclusion:** NEUTRAL. Reverted. CPU scheduling optimization is the wrong lever — the system's throughput is bottlenecked by GPU compute and memory, not by CPU scheduling overhead. V36-V45 (10 consecutive experiments) all fail to beat V35, covering eviction ordering (V36-V44) and scheduling overhead (V45).
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1640,3 +1677,4 @@ This establishes a deeper meta-insight: **there is no truly orthogonal axis in t
 | V42 (leaf-only timestamp) | 9553ms | NEGATIVE (+1.26%, TPOT +4.51%, device_hit_frac +14.6%) |
 | V43 (demand-aware eviction) | 9678ms | NEGATIVE (+2.59%, TPOT +5.03%, device_hit_frac +2.75%) |
 | V44 (host eviction 2x tau) | 9775ms | NEGATIVE (+3.61%, TPOT +3.11%, host→GPU coupling) |
+| V45 (sched hot-path CPU opt) | 9389ms | NEUTRAL (-0.47% noise, TPOT +0.98%, CPU not bottleneck) |

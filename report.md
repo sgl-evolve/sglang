@@ -992,6 +992,37 @@ ShareGPT regressed slightly (-2.3% throughput) because the slower decay for segm
 
 ---
 
+## V27 — Smooth gradient decay (MARGINAL POSITIVE)
+
+**Commit:** `ebd2ca1a5`
+**Flag:** `--radix-eviction-policy gslru --page-size 64` + code (smooth gradient: tau = decay_tau × (1 + segment/max_segment))
+
+**Hypothesis:** V26's binary two-tier (tau=15 for segment<3, tau=30 for segment≥3) was directionally positive but crude. A smooth gradient scales tau continuously with segment: segment=0 gets tau=15, segment=1 gets 18.75, segment=2 gets 22.5, segment=3 gets 26.25, segment=4 gets 30. This better reflects the continuous relationship between reuse probability and hit count.
+
+**Result (vs V16 — current best):**
+
+| Metric | V16 (uniform tau=15) | V27 (smooth gradient) | Delta |
+|--------|-------|-------|-------|
+| LooGLE TTFT mean (ms) | 9814 | **9688** | **-1.3%** |
+| LooGLE TTFT median (ms) | 1277 | 1267 | -0.8% |
+| LooGLE TTFT p90 (ms) | 4210 | **4117** | **-2.2%** |
+| LooGLE TTFT p99 (ms) | 213209 | **205711** | **-3.5%** |
+| LooGLE TPOT mean (ms) | 454.76 | 475.25 | +4.5% worse |
+| LooGLE ITL mean (ms) | 364.71 | 364.42 | neutral |
+| LooGLE hit rate | 0.8966 | 0.8945 | -0.2% |
+| ShareGPT TTFT mean (ms) | 37300 | 38630 | +3.6% worse |
+| ShareGPT req throughput | 1.28 | 1.25 | -2.3% worse |
+
+HiCache: evicted=318.2M, load_back=286.3M, cached_device=5.09M, evict_mean=1.108ms, load_back_mean=1.851ms
+
+**Analysis:** LooGLE TTFT improved across all percentiles, especially p99 (-3.5%, 7.5s faster). The smooth gradient does slightly better than V26's binary approach. However, TPOT regressed +4.5% — the longer tau for intermediate segments keeps more data in GPU, causing slightly more compute contention per token. ShareGPT regressed similarly to V26 (-2.3% throughput).
+
+The TPOT regression makes this a MIXED result: TTFT improves but per-token generation slows. In practice, for long-context serving, TTFT dominates user-perceived latency (users wait longer for the first token than between subsequent tokens), so the TTFT improvement is more valuable than the TPOT regression.
+
+**Conclusion:** MARGINAL POSITIVE — consistently better TTFT than V16 across all percentiles but with a TPOT tradeoff. The improvement magnitude (~126ms mean, 7.5s at p99) is at the edge of run-to-run variance for mean but the p99 improvement is more convincing.
+
+---
+
 ## Current standings
 
 | Version | LooGLE TTFT mean | Status |
@@ -1018,3 +1049,4 @@ ShareGPT regressed slightly (-2.3% throughput) because the slower decay for segm
 | V24 (page_size=128) | — | SERVER CRASH (SIGBUS during DeepGEMM warmup) |
 | V25 (page_size=32) | 11890ms | NEGATIVE (+21.2%, TPOT +19.6%, ShareGPT -43%) |
 | V26 (two-tier decay) | 9730ms | MARGINAL POSITIVE (-0.9%, within noise) |
+| V27 (smooth gradient decay) | 9688ms | MARGINAL POSITIVE (-1.3%, TPOT +4.5%) |

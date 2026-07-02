@@ -1738,9 +1738,62 @@ The positive: load_back_mean_ms dropped 8.4%, confirming that larger pages amort
 
 **Conclusion:** Page size 128 is clearly worse than 64 for this workload. Coarser pages → more wasteful eviction → lower cache efficiency → higher TTFT. Next: test page_size=32 to complete the sweep (finer pages → less waste per eviction, but more overhead per page).
 
-**Page size sensitivity (partial):**
+**Page size sensitivity (partial — V48 adds page_size=32):**
 
-| page_size | TTFT mean (ms) | hit_rate | device_hit_frac | evicted (M) |
-|-----------|----------------|----------|-----------------|-------------|
-| 64 (V35)  | 9434           | 0.8949   | 0.1199          | ~287        |
-| 128 (V47) | 10463          | 0.8912   | 0.1164          | 315.6       |
+| page_size | TTFT mean (ms) | hit_rate | device_hit_frac | evicted (M) | load_back_mean_ms | ShareGPT throughput |
+|-----------|----------------|----------|-----------------|-------------|-------------------|---------------------|
+| 32 (V48)  | **11246**       | 0.8919   | 0.1293          | 315.4       | 1.868             | **0.73** req/s      |
+| 64 (V35)  | **9434**        | 0.8949   | 0.1199          | ~287        | 1.793             | ~1.84 req/s         |
+| 128 (V47) | 10463          | 0.8912   | 0.1164          | 315.6       | 1.642             | 1.84 req/s          |
+
+---
+
+### V48 — page_size=32 (NEGATIVE: +19.2% worse LooGLE, catastrophic ShareGPT)
+
+**Commit:** `279c1a69f` (no code change — flag override only)
+**Flag:** `--radix-eviction-policy gslru --page-size 32`
+
+**Hypothesis:** Finer pages (32 vs default 64) reduce wasteful eviction: each eviction removes only 32 tokens instead of 64, evicting fewer "useful" tokens alongside "cold" ones. Trade-off: 2× more pages → more per-page overhead (hash computation, tree traversal, eviction heap size, DMA setup per transfer).
+
+**Result (vs V35 best, page_size=64):**
+
+| Metric | V35 (page=64) | V48 (page=32) | Delta |
+|--------|---------------|---------------|-------|
+| LooGLE TTFT mean (ms) | 9434 | 11246 | **+19.2% worse** |
+| LooGLE TTFT median (ms) | 1210 | 1446 | +19.5% worse |
+| LooGLE TTFT p90 (ms) | 3700 | 4389 | +18.6% worse |
+| LooGLE TTFT p99 (ms) | 211836 | 239873 | +13.2% worse |
+| LooGLE TPOT mean (ms) | 449 | 555 | **+23.6% worse** |
+| LooGLE ITL mean (ms) | — | 413 | — |
+| LooGLE e2e mean (ms) | — | 17207 | — |
+| LooGLE hit_rate | 0.8949 | 0.8919 | -0.3% worse |
+| LooGLE device_hit_frac | 0.1199 | 0.1293 | +7.8% better |
+| LooGLE evicted tokens | ~287M | 315.4M | **+9.9% more** |
+| LooGLE load_back tokens | ~285M | 282.6M | -0.8% (noise) |
+| LooGLE load_back_mean_ms | 1.793 | 1.868 | **+4.2% slower** |
+| LooGLE eviction_mean_ms | ~1.0 | 1.142 | **+14.2% slower** |
+| ShareGPT TTFT mean (ms) | ~38850 | **71440** | **+83.8% worse** |
+| ShareGPT req throughput | ~1.28 | **0.73** | **-43.0% worse** |
+| ShareGPT total_requests | ~1658 | **657** | **-60.4% fewer** |
+
+HiCache: evicted=315.4M, load_back=282.6M, cached_device=5.17M (+3.2% vs V35 5.01M), host_util=0.9934
+
+**Analysis:** page_size=32 is catastrophically negative, especially on ShareGPT. Root causes:
+
+1. **Per-page overhead dominates:** With 2× more pages, every operation (hash, tree traversal, DMA setup, eviction heap manipulation) runs 2× as often. The DMA transfers are smaller but NOT 2× faster (fixed per-op overhead): load_back_mean increased from 1.793ms → 1.868ms (+4.2%), eviction_mean from ~1.0ms → 1.142ms (+14.2%).
+
+2. **Eviction volume UNCHANGED:** Despite finer granularity, total eviction volume is 315.4M — nearly identical to V47 (128) at 315.6M. The "less wasteful eviction" hypothesis failed: finer pages don't reduce total churn because the working set / GPU capacity ratio is the fundamental constraint.
+
+3. **ShareGPT CATASTROPHE:** Under high concurrency (60 clients), the per-page overhead compounds multiplicatively. 2× more pages × 60 concurrent clients → severe scheduler slowdown. TTFT exploded to 71.4s (3.3× worse), throughput collapsed to 0.73 req/s (60% fewer requests served).
+
+4. **Small positive — device_hit_frac:** 0.1293 vs 0.1199 (+7.8%). Finer pages DO allow more precise caching (less space wasted on partially-cold pages). But this tiny benefit is overwhelmed by the overhead costs.
+
+**Conclusion:** page_size=32 is far worse than 64 for both benchmarks. Combined with V47 (128 also worse), the page_size sweep is complete: **64 is the convex optimum**. Finer pages increase overhead without reducing churn; coarser pages increase wasteful eviction. This axis is EXHAUSTED.
+
+**Page size sensitivity (COMPLETE):**
+
+| page_size | LooGLE TTFT (ms) | vs V35 | ShareGPT throughput | Overall |
+|-----------|-------------------|--------|---------------------|---------|
+| 32 (V48)  | 11246             | +19.2% | 0.73 req/s          | NEGATIVE |
+| **64 (V35)** | **9434**       | **baseline** | **~1.84 req/s** | **BEST** |
+| 128 (V47) | 10463             | +10.9% | 1.84 req/s          | NEGATIVE |

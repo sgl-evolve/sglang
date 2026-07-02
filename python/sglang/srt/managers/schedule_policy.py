@@ -321,7 +321,7 @@ class SchedulePolicy:
 
         return temporary_deprioritized
 
-    _LPM_STARVATION_SECS = 60.0
+    _LPM_STARVATION_SECS = 300.0
 
     _LPM_DEVICE_WEIGHT = 5
 

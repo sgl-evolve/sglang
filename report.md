@@ -242,3 +242,18 @@ never read [skip-writes, MECHANISM — unblocks host eviction]. Remaining cost: 
   right policy. **Eviction-policy tuning does NOT help — LRU is well-suited.** Confirms the ~38%
   recompute is capacity-bound (working set 19M ≫ device+host 10.2M), not an eviction-policy problem.
   Reverted to LRU. Best remains v6.
+
+## Honesty caveat — run-to-run variance
+The two provided baselines (v0_official 87615 vs v0_tuned 108824) are IDENTICAL config yet differ ~24%,
+so single-run TTFT has high variance. Implications for my curve:
+- **Big wins are unambiguous** (far beyond noise): best_effort/timeout vs baseline (−97%, ~25-44×);
+  skip-writes vs best_effort (−46% TTFT, +30% throughput).
+- **Incremental config/mechanism gains are small-and-directional** (lpm ~−4%, skip-prefetch ~−4%,
+  each within the ~24% baseline spread). Evidence they are real-not-noise: the curve is **monotonic**
+  across 5 versions and a secondary signal (max queue-depth) falls consistently (v3=37 → v5=32 → v6=27),
+  with a mechanistic explanation for each. But I do not over-claim their magnitude.
+- Negatives are clear: slru −42% (worse), mixed_chunk crash (void).
+
+### v8 — + `write_through_selective` (device→host backup only for hot nodes)  [config]
+- Stack: best_effort + skip-writes + skip-prefetch + lpm + write_through_selective. Compare vs v6.
+- **Result:** [running].

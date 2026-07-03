@@ -87,4 +87,15 @@ warm, so subsequent evals are fast.
 
 ## Versions
 - **v1-basefix** (config): baseline eval.sh config + `--enforce-disable-flashinfer-allreduce-fusion`.
-  Purpose: anchor my comparable reference (validate vs golden 87.6 s) + capture batch dynamics. [running]
+  Purpose: anchor my comparable reference (validate vs golden 87.6 s) + capture batch dynamics. [running on ondem-3]
+
+### Batch-dynamics diagnosis (from v1-basefix server.log, live) — the real bottleneck
+- **Prefill:decode batches ≈ 1165:16** → overwhelmingly **prefill-bound**; decode starved (⇒ low out_tok/s).
+- **Device KV pool only ~34% used** (`full token usage 0.33-0.42`), yet the baseline serves **43% of hits
+  from host + 25% from disk**. So HiCache keeps device "lean" (device=active KV, host=cached prefixes)
+  and **66% of device capacity sits idle** while reused prefixes pay H→D load-back (and disk reads).
+- ~120 running req (near max-concurrency 128), small queue (7-11). Not memory-capacity-bound.
+- Most prefill batches are all-new 6144-token chunks; cache-hit batches load big #cached-token bursts.
+- **Leading mechanism (data-grounded, lossless): retain hot cached prefixes on the under-used device
+  tier** (use the free 66%) → convert host/disk hits into device hits → fewer H→D load-backs & disk
+  reads → faster prefill → lower TTFT. Candidate #2: prefill/decode scheduling balance.

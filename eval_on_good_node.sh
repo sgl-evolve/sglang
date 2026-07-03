@@ -10,7 +10,8 @@ SGL_HOME="${SGL_HOME:-$ROOT/programs/sgl}"
 EVAL="$SGL_HOME/researcher/.claude/skills/evaluation-sop/scripts/eval.sh"
 RT="${SGL_RUNTIME:-$SGL_HOME/manager/.runtime}"
 NAME="$1"; VER="$2"; shift 2
-held(){ for f in "$RT/held"/*; do basename "$f"; done; }
+SKIP_NODES="${SKIP_NODES:-}"   # space-separated node names to avoid (e.g. OOM/bad nodes)
+held(){ for f in "$RT/held"/*; do n=$(basename "$f"); case " $SKIP_NODES " in *" $n "*) continue;; esac; echo "$n"; done; }
 while :; do
   for node in $(held); do
     jid=$(cat "$RT/held/$node" 2>/dev/null) || continue

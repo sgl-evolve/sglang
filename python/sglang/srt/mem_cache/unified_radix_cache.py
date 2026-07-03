@@ -375,10 +375,11 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # Hard cap on how long any single request will block the scheduler waiting
         # for its SSD prefetch under the `adaptive` policy. Bounds worst-case decode
         # starvation from a huge prefix read while still letting fast (small/hot)
-        # prefetches land and be counted as host hits. Kept small (2 s): best_effort
-        # (0-wait) already wins big under this overload, so added wait must be minimal
-        # -- we only want to reclaim the *cheap/near-done* prefetches, not idle the batch.
-        self.adaptive_prefetch_max_wait = 2.0
+        # prefetches land and be counted as host hits. v4 used 2.0s (reclaimed host hits
+        # 0.37->0.62, +40% throughput, tied best_effort's headline TTFT). v5 halves it to
+        # 1.0s to trim the ~62ms wait-penalty vs best_effort while keeping most of the
+        # reclaim -> aiming for a headline win *and* the balance win.
+        self.adaptive_prefetch_max_wait = 1.0
         self.hicache_storage_pass_prefix_keys = False
 
         self.reset()

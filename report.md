@@ -30,7 +30,29 @@ it (lossless — pure perf fusion, identical numerics). Applied to all runs.
 
 **Evolution curve (mean TTFT, own versions):** v2 4244 (config) → v3 2903 (mechanism) → **v4 2013
 (best)**. Ongoing: a design-space sweep (best_effort × read-threads × page-size × write-policy) + a
-grace-window variant, node-availability permitting.
+grace-window variant + a 2nd engine mechanism (v15 parallel L3 writes), node-availability permitting.
+
+## Positioning vs the reference bar (Strata arXiv 2508.18572 + the HiCache blog)
+Both references target the **same regime I measured** — *loading-bound, not compute-bound* (KV loading
+starves the GPU) — but optimize a **different tier** than this work, which is why my lever is
+complementary rather than redundant:
+- **Their focus is the CPU↔GPU path.** The HiCache blog hides CPU→GPU transfer with *layer-wise
+  overlap* and *GPU-assisted IO kernels* (≈3× CPU–GPU, ≈2× via page-first/zero-copy layouts); Strata
+  adds *cache-aware request scheduling* (balance compute with IO, overlap stalls) + GPU-assisted IO to
+  fight paged-layout *fragmented I/O*. Both explicitly treat the **storage/L3 (disk) tier as
+  "opportunistic prefetch" with "higher and less predictable latency"** — i.e. they *schedule around*
+  the slow tier rather than speeding the slow tier up.
+- **My lever is the storage tier's IO itself.** The reference `HiCacheFile` backend reads/writes L3 in
+  a **serial single controller-thread loop** (per-page open/readinto/close, ~1 GB/s). I parallelize that
+  loop (`ThreadPoolExecutor`, GIL released on file syscalls): reads ~1→6 GB/s (v3), write-drain 2.3×
+  (v15) — turning the storage-prefetch tail from *thread-serial-bound* to *NVMe-bandwidth-bound* —
+  **combined with** the blog's own `best_effort` 0-wait admission to remove the GPU starvation (v4).
+- **Why complementary:** Strata's scheduling and the blog's CPU↔GPU kernels still sit on top of a slow
+  serial storage tier; making that tier's IO ~6× faster shrinks the very stalls their schedulers work
+  around. And unlike GPU-assisted IO / new layouts, this needs **no CUDA kernels and no layout change**
+  — pure Python, backend-agnostic (any `get`/`set` file-like backend), which is why it lands as a
+  lightweight, immediately-portable win on the tier the SOTA under-optimizes. On the fixed protocol the
+  combination is −97.7% mean TTFT, lossless.
 
 ---
 

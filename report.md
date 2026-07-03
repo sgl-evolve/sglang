@@ -196,3 +196,12 @@ TTFT<2035. Stage-1 (all_reduce) untouched.
 - **Leading mechanism (data-grounded, lossless): retain hot cached prefixes on the under-used device
   tier** (use the free 66%) → convert host/disk hits into device hits → fewer H→D load-backs & disk
   reads → faster prefill → lower TTFT. Candidate #2: prefill/decode scheduling balance.
+
+## v7-be-pario2 (MECHANISM) — negative
+Level-2 (4 concurrent IO aux threads) = 2886 ms (+41.8% vs v6), hit 0.62→0.49. Diluted the shared
+16-way IO pool across ops → each op's background prefetch slower → fewer hits captured. Confirms the
+prefetch throughput is DISK-BW-capped (~4.9 GB/s): single-op 16-way IO (v6) already saturates it.
+Reverted to v6 config (1 aux thread). **v6 (best_effort + 16-way concurrent per-page IO) = 2035 ms is
+the best; near the concurrent-IO ceiling (BW + queue-wait-lead-time capped).**
+Key reconciliation: under best_effort, hit_storage=0 yet concurrent-IO raises HOST hits (0.38→0.62) —
+it speeds the background disk→host prefetch so more lands in host before best_effort cancels-on-due.

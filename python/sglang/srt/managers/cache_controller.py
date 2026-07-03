@@ -396,6 +396,8 @@ class HiCacheController:
             threads.append(self.backup_thread)
         if hasattr(self, "prefetch_io_aux_thread"):
             threads.append(self.prefetch_io_aux_thread)
+        if hasattr(self, "prefetch_io_aux_threads"):
+            threads.extend(self.prefetch_io_aux_threads)
 
         for t in threads:
             try:
@@ -1026,10 +1028,20 @@ class HiCacheController:
         Manage prefetching operations from storage backend to host memory.
         """
         self.prefetch_buffer = Queue()
-        self.prefetch_io_aux_thread = threading.Thread(
-            target=self.prefetch_io_aux_func, daemon=True
-        )
-        self.prefetch_io_aux_thread.start()
+        # kv-heron-eb9 Level-2 mechanism: multiple IO aux workers process prefetch operations
+        # CONCURRENTLY. Operations are independent once buffered (no collectives in this stage);
+        # prefetch_buffer is a thread-safe Queue, mem_pool_host alloc/free is synchronized, and
+        # operation.increment is locked -> race-free. Under best_effort this lets more background
+        # prefetch finish before a request is due (op-level concurrency, on top of per-page IO)
+        # -> higher hit rate, lower TTFT. Lossless (same bytes). Serial stage-1 (hit-query +
+        # all_reduce, ordering-locked) is untouched; only stage-2 (IO) is parallelized.
+        _n_aux = 4
+        self.prefetch_io_aux_threads = [
+            threading.Thread(target=self.prefetch_io_aux_func, daemon=True)
+            for _ in range(_n_aux)
+        ]
+        for _t in self.prefetch_io_aux_threads:
+            _t.start()
         while (not self.storage_stop_event.is_set()) or not self.prefetch_queue.empty():
             try:
                 operation = self.prefetch_queue.get(block=True, timeout=1)

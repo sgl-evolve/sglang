@@ -7,7 +7,23 @@ read time under bursts (bandwidth ~6.6 GB/s, already ~saturated by 8 ranks) and 
 on those reads (wait_complete) while the GPU may idle. Decide v3 from v2's iostat + GPU-util +
 per-tier metrics.
 
-## C1 — Congestion-aware adaptive prefetch (wait ↔ recompute)  [NOVEL, top pick]
+## POST-v2 DATA (from v2 server.log) — reframes everything
+- #running-req p50=125/p90=128 (==max-concurrency) ⇒ batch SATURATED ⇒ **GPU-compute-bound**, NOT
+  scheduler-bound ⇒ C5 (evict_host) and other scheduler-thread fixes WON'T raise throughput.
+- prefill:decode batches = 9406:454 ⇒ GPU work is **prefill-dominated** (long-ctx mix + chunked
+  prefill), and prefill is inflated by the hit-rate drop (0.58 ⇒ ~42% recompute).
+- GPU KV token-usage p50=0.26 / max=0.69 ⇒ **GPU KV pool ~72% EMPTY** while host is full (0.999).
+  HiCache offloads cached prefixes to the (full) host, leaving the fast GPU tier underused.
+
+### C6 — GPU KV retention (use the empty 72% of GPU) [NOVEL, top pick for v4]
+Keep more hot radix prefixes resident in the GPU KV pool (which sits ~72% empty) instead of
+offloading everything to the saturated host tier ⇒ more device hits ⇒ fewer misses ⇒ less prefill
+recompute ⇒ higher throughput ⇒ shorter queue ⇒ lower TTFT. This is the confirmed lever (GPU-bound on
+prefill + GPU underutilized). Need to find WHY GPU is underfilled (HiCache GPU->host eviction/write
+policy) and retain hot prefixes on-device up to capacity. Lossless (retention only changes tier, not
+values). Gate on control data (does the slow baseline also underfill GPU, or is this the fast regime?).
+
+## C1 — Congestion-aware adaptive prefetch (wait ↔ recompute)  [SHELVED: tail is queue-bound, not disk]
 `hi_mamba_radix_cache.py:can_terminate_prefetch` (L1659). Today: static wait_complete/timeout/
 best_effort. Idea: terminate a prefetch early (admit with loaded prefix, recompute the tail on GPU)
 when the disk is congested, but wait when it's idle — best of both. Signals in

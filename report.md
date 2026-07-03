@@ -337,3 +337,23 @@ tok/s (~3.5×), req/s ~3.2-3.35 (near the offered 3.5)** — losslessly.
 - **Losslessness** is by construction: a recomputed KV block is numerically identical to a loaded one,
   and skipping never-read writes/prefetch changes no computed value (outputs differ only by the same
   batching-order fp nondeterminism present in the baseline). All kept runs completed 7037/7037.
+
+## mixed_chunk crash — root-caused (bug report for maintainers), not fixed (integrity)
+Deep investigation of the v4 crash (`pool memory leak [full] ... +192 tokens = 3 pages`, page_size 64):
+`enable_mixed_chunk` calls `running_batch.prepare_for_decode()` (allocates a KV slot per decode req)
+BEFORE `mix_with_running`, but decode reqs in a MIXED batch are skipped by
+`batch_result_processor.py:241` (`req in batch.decoding_reqs`) → their per-step KV accounting isn't
+reconciled → ~3 pages/occurrence over-count the full-attn pool until the invariant trips
+(`scheduler.py:3000` prepare_for_decode → `schedule_batch.py:2641` alloc_for_decode; skip at
+`batch_result_processor.py:241`). This is a real sglang bug on the hybrid-GDN + mixed_chunk path.
+**Decision: NOT fixing it.** The invariant is protecting correctness (192 tokens marked *available* may
+still hold live KV); a fix rewrites core mixed-batch allocation and could corrupt decode KV (lossy) with
+no clean way to verify losslessness (batching-order nondeterminism), for an uncertain reward (system is
+already near offered load). Integrity (lossless-above-all) outweighs the speculative gain. mixed_chunk
+stays reverted; the prefill/decode-overlap lever is left as future work pending an upstream fix.
+
+## FINAL STATE
+Best (reproducible): **best_effort + skip-L3-writes(mech) + skip-L3-prefetch-issue(mech) + lpm** →
+mean TTFT ~1.1–1.2 s (~90–100× below tuned bar), p99 ~7–9 s, out ~410–430 tok/s (~3.5×), req/s ~3.2–3.35.
+All lossless. W&B run `kv-heron-e29` has the full curve (v0→v10) + artifacts. Config space fully mapped;
+at the lossless ceiling for this fixed protocol/budget.

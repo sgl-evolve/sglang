@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
@@ -363,6 +364,53 @@ class HiCacheFile(HiCacheStorage):
             extra_config=storage_config.extra_config,
         )
 
+        # --- kv-lynx-4d2: parallel disk IO ---------------------------------
+        # The stock file backend reads/writes one page at a time with blocking
+        # open()+readinto() on a single prefetch IO thread, so a request's disk
+        # prefetch is fully serialized and the NVMe md array runs at queue-depth
+        # 1 -- most of its bandwidth is idle and every large prefix read stalls
+        # TTFT. Each page read lands in its own scratch buffer (see
+        # get_dummy_flat_data_page) and each write uses a unique tmp file, and
+        # the LRU evictor is lock-guarded, so page-level IO is embarrassingly
+        # parallel and bit-for-bit identical. We fan the per-page IO across a
+        # bounded thread pool (blocking file IO releases the GIL, so these run
+        # truly concurrently) to raise queue depth. Lossless: same bytes, same
+        # host destinations. Tunable via extra_config "hicache_io_workers".
+        try:
+            io_workers = int((storage_config.extra_config or {}).get(
+                "hicache_io_workers", 8
+            ))
+        except (TypeError, ValueError):
+            io_workers = 8
+        self.io_workers = max(1, io_workers)
+        self._io_pool = (
+            ThreadPoolExecutor(
+                max_workers=self.io_workers,
+                thread_name_prefix=f"hicache-io-r{tp_rank}",
+            )
+            if self.io_workers > 1
+            else None
+        )
+        if tp_rank == 0:
+            logger.info(
+                f"HiCacheFile parallel IO enabled: {self.io_workers} workers/rank"
+            )
+
+    def _map_pages(self, fn, n: int) -> list:
+        """Run fn(i) for i in range(n) across the IO pool, results in order.
+
+        Falls back to a serial loop for tiny batches or when pooling is off.
+        """
+        if n <= 0:
+            return []
+        if self._io_pool is None or n == 1:
+            return [fn(i) for i in range(n)]
+        results: list = [None] * n
+        futs = {self._io_pool.submit(fn, i): i for i in range(n)}
+        for fut in as_completed(futs):
+            results[futs[fut]] = fut.result()
+        return results
+
     def _get_suffixed_key(self, key: str) -> str:
         return key + self.config_suffix
 
@@ -404,12 +452,8 @@ class HiCacheFile(HiCacheStorage):
         target_locations: List[torch.Tensor],
         target_sizes: Optional[Any] = None,
     ) -> List[torch.Tensor | None]:
-        return [
-            self.get(key, target_location)
-            for key, target_location in zip(
-                keys, target_locations or [None] * len(keys)
-            )
-        ]
+        tl = target_locations or [None] * len(keys)
+        return self._map_pages(lambda i: self.get(keys[i], tl[i]), len(keys))
 
     def set(
         self,
@@ -463,10 +507,9 @@ class HiCacheFile(HiCacheStorage):
         target_locations: Optional[Any] = None,
         target_sizes: Optional[Any] = None,
     ) -> bool:
-        for key, value in zip(keys, values):
-            if not self.set(key, value):
-                return False
-        return True
+        vals = values
+        res = self._map_pages(lambda i: self.set(keys[i], vals[i]), len(keys))
+        return all(res)
 
     def exists(self, key: str) -> bool:
         key = self._get_suffixed_key(key)
@@ -562,6 +605,11 @@ class HiCacheFile(HiCacheStorage):
 
     def _batch_io_v2(self, transfers: List[PoolTransfer], op_fn):
         results: dict[str, List[bool]] = {}
+        # Flatten every (pool, page) into one work list so pages across all
+        # transfers fan out over the shared IO pool together (page reads/writes
+        # are independent -> lossless when parallelized).
+        slots: List[tuple] = []  # (transfer_name, key_index)
+        work: List[tuple] = []  # (transfer_name, key, host_pool, page_offset)
         for transfer in transfers:
             host_pool = self.registered_pools[transfer.name]
             keys = transfer.keys or []
@@ -580,10 +628,18 @@ class HiCacheFile(HiCacheStorage):
                 results[transfer.name] = [False] * len(keys)
                 continue
 
-            results[transfer.name] = [
-                op_fn(transfer.name, key, host_pool, host_indices[i * page_size].item())
-                for i, key in enumerate(keys)
-            ]
+            results[transfer.name] = [False] * len(keys)
+            for i, key in enumerate(keys):
+                slots.append((transfer.name, i))
+                work.append(
+                    (transfer.name, key, host_pool, host_indices[i * page_size].item())
+                )
+
+        out = self._map_pages(
+            lambda j: op_fn(work[j][0], work[j][1], work[j][2], work[j][3]), len(work)
+        )
+        for (name, i), r in zip(slots, out):
+            results[name][i] = r
         return results
 
     def batch_get_v2(

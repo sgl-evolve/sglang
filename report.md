@@ -74,6 +74,11 @@ concurrently; order preserved).
 
 **Screens (free, no model load).**
 - Correctness: content + order preserved vs serial, incl. shuffled-key test → lossless at read layer. ✅
+  Now **test-proven** by a runnable CPU-only proof `test_parallel_read_lossless.py` (no GPU): 200 hits
+  **byte-identical** (parallel `pool.map` == serial == original) across dtypes {f16,bf16,u8,i32} and
+  sizes 1..4096, 5 interleaved missing keys **None-aligned** (order preserved through misses), and
+  distinct per-result target buffers (no cross-write). `.venv/bin/python test_parallel_read_lossless.py`
+  → `PASS`. This substantiates the "lossless" claim underpinning the whole curve at the read layer. ✅
 - IO microbench on real `/mnt/localssd` (page cache dropped so reads hit NVMe): serial 1025 MB/s →
   **6126 MB/s @ 16 threads (~6×)**; 8≈5.8×, 32≈5.6×, 64≈4.9× (over-parallelizes). Default 16. ✅
 

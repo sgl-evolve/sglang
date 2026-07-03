@@ -377,8 +377,10 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # starvation from a huge prefix read while still letting fast (small/hot)
         # prefetches land and be counted as host hits. Cap sweep: 0s(=best_effort)=3237ms,
         # 2.0s(v4)=3299ms, 1.0s(v5)=2719ms (new best). v6 probes 0.5s to bracket the optimum
-        # between 0 and 1s (does even less wait beat 1s, or is ~1s the sweet spot?).
-        self.adaptive_prefetch_max_wait = 0.5
+        # between 0 and 1s. v5 (1.0s) remains the best cap; keep it as the base for further
+        # experiments (write policy, eviction, etc.). (v6 cap=0.5 run was lost to shared-cache
+        # infra failures; not re-run since it's marginal vs the mechanism levers.)
+        self.adaptive_prefetch_max_wait = 1.0
         self.hicache_storage_pass_prefix_keys = False
 
         self.reset()

@@ -27,14 +27,17 @@ while :; do
     exec 200>"$RT/locks/$node.lock"
     if flock -n 200; then
       any_free=1
-      # disk gate + free-RAM gate under the lock. The RAM gate avoids the OOM
-      # race where a node's flock frees before the previous eval's 768 GB pinned
-      # host pool finishes releasing (new server then SIGKILLs during init).
-      read free_kb mem_g < <(srun --jobid="$jid" --overlap -N1 -w "$node" bash -c \
-        "echo \$(df --output=avail /mnt/localssd | tail -1) \$(free -g | awk '/^Mem:/{print \$7}')" 2>/dev/null)
-      free_kb=${free_kb:-0}; mem_g=${mem_g:-0}
-      if [[ "$free_kb" -ge 1932735283 && "$mem_g" -ge 1300 ]]; then   # 1.8 TiB disk, 1.3 TB RAM
-        echo "[run_eval] node $node OK (${mem_g}G RAM, $((free_kb/1024/1024))G disk) -> running $VER"
+      # disk + free-RAM + GPU-idle gate under the lock. CRUCIAL: some researchers
+      # run evals on these held nodes WITHOUT the pool flock (e.g. pinned-eval),
+      # so a flock-free node can still have a neighbor's 8-GPU server on it. The
+      # GPU-idle check (max GPU mem < 10 GB) ensures the node is TRULY idle before
+      # we launch, else our server collides -> OOM/NCCL-hang/SIGKILL. The RAM gate
+      # also avoids the teardown race on a freshly-freed node.
+      read free_kb mem_g gpu_max < <(srun --jobid="$jid" --overlap -N1 -w "$node" bash -c \
+        "echo \$(df --output=avail /mnt/localssd | tail -1) \$(free -g | awk '/^Mem:/{print \$7}') \$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | sort -rn | head -1)" 2>/dev/null)
+      free_kb=${free_kb:-0}; mem_g=${mem_g:-0}; gpu_max=${gpu_max:-999999}
+      if [[ "$free_kb" -ge 1932735283 && "$mem_g" -ge 1300 && "$gpu_max" -lt 10000 ]]; then
+        echo "[run_eval] node $node OK (${mem_g}G RAM, $((free_kb/1024/1024))G disk, gpu ${gpu_max}MiB) -> running $VER"
         srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" "$VER" "$@"
         rc=$?
         flock -u 200; exec 200>&-
@@ -44,7 +47,7 @@ while :; do
         [ "$attempts" -ge "$MAX_ATTEMPTS" ] && { echo "[run_eval] giving up after $attempts attempts"; exit "$rc"; }
         sleep 30   # let a crashed node's memory settle before re-checking it
       else
-        echo "[run_eval] node $node not ready (${mem_g}G RAM, $((free_kb/1024/1024))G disk) -> skip"
+        echo "[run_eval] node $node not ready (${mem_g}G RAM, $((free_kb/1024/1024))G disk, gpu ${gpu_max}MiB busy) -> skip"
         flock -u 200; exec 200>&-
       fi
     else

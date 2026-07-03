@@ -124,7 +124,32 @@ almost certainly runs a smaller batch (requests stuck in prefetch).
   tens–hundreds of s), and the timeout knobs live in the FROZEN `--hicache-...-extra-config`
   so I can't sharpen it via config. Low priority; run if a node is idle.
 
-## STATUS (live)
+## STATUS (live) — session checkpoint
+
+**Bottom line:** `best_effort` (config) is a validated **new best: 27× lower mean TTFT** (reported +
+emailed). The novel `adaptive` mechanism is implemented, committed (`7468090d4`), and unit-tested,
+but its formal eval is currently **blocked by a cold-cache/contention init-hang** (details below).
+
+**adaptive eval blocker (4 attempts, all failed to LOAD — never a mechanism-logic failure):**
+- Deterministic hang at model init right after "GDN kernel dispatcher" (before DeepGEMM warmup),
+  across **3 different nodes**. Diagnosed as a true hang, **not** slow compile (triton cache frozen
+  at 1 entry, no ptxas/compiler process, GPU 0%, schedulers busy-waiting ~11% CPU).
+- Ruled out: my code (never runs at init), the `adaptive` flag (no init validation on the unified
+  path), and node-specificity (3 nodes).
+- **Key correlation:** best_effort succeeded with a **WARM** `$WORK/.cache` when the pool was
+  quieter (06:38); every adaptive attempt had a **cold/cleared** cache under a **heavily contended**
+  pool (many concurrent researcher server-loads). Leading hypothesis: a cold load must (re)compile
+  GDN/DeepGEMM/CUDA-graph kernels and write them to the shared filesystem, and that compile/warmup
+  **stalls under FS/fabric contention** — so it looks like a hang. My clearing of `$WORK/.cache`
+  (done to fix an earlier concurrent-cache-race corruption) removed the warm cache that made
+  best_effort fast, exposing this.
+- **RECOVERY PATH (for the next window / quieter pool):** (1) run ONE load when the pool is quiet so
+  the cold compile succeeds and **re-warms `$WORK/.cache`**; thereafter adaptive loads fast. (2) If
+  it still stalls, `py-spy dump` rank 0 during the hang (debug-distributed-hang skill) to pinpoint
+  the stuck compile/collective. (3) Do NOT clear `$WORK/.cache` again; never run two drift-3e7 evals
+  concurrently (shared cache). Nothing is left holding a node.
+
+
 
 - **best_effort (config): DONE — new best, 27× lower mean TTFT.** Reported + emailed.
 - **v4-adaptive-prefetch (mechanism, cap=2s, commit `7468090d4`): queued, running solo.**

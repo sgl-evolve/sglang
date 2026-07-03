@@ -5,6 +5,7 @@ import os
 import threading
 import uuid
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, List, Optional, Set
@@ -363,6 +364,22 @@ class HiCacheFile(HiCacheStorage):
             extra_config=storage_config.extra_config,
         )
 
+        # L3 disk reads are otherwise serialized through a single controller IO
+        # thread (one open/readinto/close per 64-token page), which dominates the
+        # storage-prefetch tail. File-read syscalls release the GIL, so a small
+        # thread pool reads the pages of a batch_get concurrently. Order of the
+        # returned list is preserved (executor.map is ordered), so downstream
+        # prefix-contiguity / termination logic is unchanged -> lossless.
+        self._read_threads = max(1, int(envs.SGLANG_HICACHE_FILE_READ_THREADS.get()))
+        self._read_pool = (
+            ThreadPoolExecutor(
+                max_workers=self._read_threads,
+                thread_name_prefix="hicache-file-read",
+            )
+            if self._read_threads > 1
+            else None
+        )
+
     def _get_suffixed_key(self, key: str) -> str:
         return key + self.config_suffix
 
@@ -404,12 +421,14 @@ class HiCacheFile(HiCacheStorage):
         target_locations: List[torch.Tensor],
         target_sizes: Optional[Any] = None,
     ) -> List[torch.Tensor | None]:
-        return [
-            self.get(key, target_location)
-            for key, target_location in zip(
-                keys, target_locations or [None] * len(keys)
-            )
-        ]
+        locs = target_locations or [None] * len(keys)
+        # Serial fallback (pool disabled or trivial batch): original behavior.
+        if self._read_pool is None or len(keys) <= 1:
+            return [self.get(key, loc) for key, loc in zip(keys, locs)]
+        # Read pages concurrently; each get() targets its own distinct buffer and
+        # the evictor is internally locked, so this is race-free. map() preserves
+        # input order so results[i] still corresponds to keys[i].
+        return list(self._read_pool.map(self.get, keys, locs))
 
     def set(
         self,

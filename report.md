@@ -132,9 +132,11 @@ almost certainly runs a smaller batch (requests stuck in prefetch).
 - **v7-selective-wt** (config): **NEGATIVE — 6190 ms** (2.3× worse than v5). `write_through_selective`
   starves the host tier (backup only after 2 hits → hit_host_frac 0.49→0.018), killing adaptive's
   host-hit reclaim. **Learning: write_through (backup-all) is essential for the adaptive win.**
-- **v8-adaptive-uncap3** (mechanism, cap 3s): running. v5's cap==base clipped the deadline to a flat
-  1 s; v8 unclips it so the size/pressure-responsive term engages (wait longer to reclaim host hits
-  in low-backlog windows). Testing whether the full adaptive form beats the flat-1s v5.
+- **v8-adaptive-uncap3** (mechanism, cap 3s): **NEW BEST — 2580 ms (34× vs official, −5% vs v5)**;
+  hit_rate 0.597→0.633, throughput 2.63→2.68, TPOT 489→457, e2e 43.1s→41.4s. Unclipping the deadline
+  (v5's cap==base flattened it to 1 s) lets the size/pressure term engage → more host-hit reclaim in
+  low-backlog windows. The full adaptive form beats the flat-1 s v5.
+- **v9-adaptive-cap6** (mechanism, cap 6s): running — climb the cap further (1s→2719, 3s→2580).
 - Infra: robust workflow = isolated flashinfer cache (`FLASHINFER_WORKSPACE_BASE=$WORK`) +
   `--dist-timeout 5400`. The shared `~/.cache/flashinfer` was corrupted by cross-researcher concurrent
   compiles (hangs + a SIGBUS in CUDA-graph capture); isolation fixed it (loads in ~147 s).

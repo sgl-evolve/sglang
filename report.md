@@ -96,8 +96,13 @@ warm, so subsequent evals are fast.
   capture (~24 s vs ~15 min cold).
 
 ## Versions
-- **v1-basefix** (config): baseline eval.sh config + `--enforce-disable-flashinfer-allreduce-fusion`.
-  Purpose: anchor my comparable reference (validate vs golden 87.6 s) + capture batch dynamics. [running on ondem-3]
+- **v1-basefix** (config, commit 66901da45): baseline eval.sh config + `--enforce-disable-flashinfer-allreduce-fusion`.
+  **RESULT: ttft_mean = 84502 ms** (golden official 87615, tuned 108824) → my anchor is essentially
+  IDENTICAL to golden official (within noise, ~4% better). out_tok/s 146.3 (=146.9), hit 0.820 (=0.816),
+  tier device/host/storage 0.307/0.437/0.255 (≈ golden). **CONCLUSION: `--enforce-disable-flashinfer-
+  allreduce-fusion` is comparability-neutral** (fusion was already off; only skips a failing init) → my
+  runs are directly comparable to golden. **My working anchor = 84.5 s.** ttft_median 1794, p90 235527,
+  p99 255007. Lossless (config change; same compute path). [DONE, logged to W&B]
 
 ### Batch-dynamics diagnosis (from v1-basefix server.log, live) — the real bottleneck
 - **Prefill:decode batches ≈ 1165:16** → overwhelmingly **prefill-bound**; decode starved (⇒ low out_tok/s).

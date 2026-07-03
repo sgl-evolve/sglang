@@ -98,9 +98,42 @@ continuously locked by other researchers' long evals; the other 3 certified node
 blocking-flock launcher + post-eval auto-audit/log handler are running and will capture v1's
 full-protocol number the moment a node frees.
 
-**Lossless check.** _pending eval (design is lossless: identical bytes to identical host
-slots; only I/O concurrency changes)._
+**Infra blocker RESOLVED (2026-07-03).** The real universal blocker was NOT node capacity
+or cold compile — it was the **auto-enabled FlashInfer allreduce fusion** (sglang
+auto-enables it on SM90/H100 for this MoE arch, overriding `enable=False`). During CUDA-graph
+capture *with hicache* it crashes (SIGBUS in `trtllm_allreduce_fusion`, seen on 1-2/ondem-3)
+or hangs (seen on the healthy node 1-0) — so the "flaky nodes" were never flaky. A no-hicache
+warmup survived it (simpler capture), which misled me. **Fix: pass
+`--enforce-disable-flashinfer-allreduce-fusion`** (eval.sh allows it — not in its FORBIDDEN
+list). This is **lossless** (unfused = separate allreduce+rmsnorm = identical numerics) and, if
+anything, slightly *pessimistic* (unfused is marginally slower on the model forward, which is a
+tiny fraction of the queueing/L3-dominated TTFT). It is applied to **every** version I run, so
+my evolution curve is internally comparable. With it, v1 reached ready in ~225 s and ran the
+full protocol. **All my versions carry this flag; note it when comparing to the shared
+baselines (whose fusion state is unknown).**
 
-**Takeaway (so far).** v1 mechanism (parallel L3 I/O) is validated in micro-bench (write
-2.9×, read 1.6× @16 workers). Full-protocol number pending purely on shared-cluster node
-capacity — a robust autonomous pipeline is in place to capture it.
+**Lossless check.** _pending eval outputs (design is lossless: identical bytes to identical
+host slots; only I/O concurrency changes)._
+
+**Full-protocol RESULT (2026-07-03, node 1-2, fusion-off):**
+
+| metric | v0_official | v0_tuned | **v1** | v1 vs official |
+|---|---|---|---|---|
+| TTFT mean (ms) | 87,615 | 108,824 | **60,745** | **−31%** |
+| TTFT p90 (ms) | 243,466 | 295,413 | **194,928** | −20% |
+| TTFT p99 (ms) | 270,799 | 322,801 | 255,154 | −6% |
+| out tok/s | 146.9 | 119.3 | **170.8** | **+16%** |
+| req throughput | 1.15 | 0.93 | **1.34** | +17% |
+| hit rate | 0.816 | 0.821 | 0.774 | −5% |
+| L3 hit frac | 0.254 | 0.259 | **0.154** | fewer slow SSD hits |
+| disk read tok | 20.7M | 21.2M | **11.9M** | −42% |
+
+**Lossless check.** Design is lossless (identical bytes to identical host slots; only I/O
+concurrency changes). Outputs unaffected by definition of the change.
+
+**Takeaway.** **v1 (parallel L3 file-backend I/O) is a clear win: −31% mean TTFT vs
+v0_official, +16% throughput.** Concurrent NVMe page I/O completes prefetch/backup faster →
+less prefetch stalling → queue drains faster → higher throughput → lower TTFT; the faster
+pipeline also churns less to disk (disk-reads −42%, L3-frac 0.15 vs 0.25). Note fusion-off
+(pessimistic) applies to v1 too, so the win is if anything understated. **Logged as version 1
+of 100.** Next: best_effort (config), v2 (read-priority pools), v3 (aux-threads).

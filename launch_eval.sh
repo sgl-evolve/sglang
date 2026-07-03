@@ -16,7 +16,7 @@ VER="${1:?usage: launch_eval.sh <version> [extra args...]}"; shift || true
 SUMMARY="$WORK/runs/$VER/summary.json"
 MIN_GB=1850
 POLL=5
-EXCLUDE_NODES="${EXCLUDE_NODES:-slurm2-a3nodeset1-2}"   # known-flaky fabric
+EXCLUDE_NODES="${EXCLUDE_NODES:-}"   # fusion-disable fix makes all nodes usable (their SIGBUS was the fusion, not fabric)
 BLACKLIST=""
 
 held(){ for f in "$RT"/held/*; do [ -e "$f" ] && basename "$f"; done; }

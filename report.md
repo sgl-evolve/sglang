@@ -130,7 +130,22 @@ almost certainly runs a smaller batch (requests stuck in prefetch).
 emailed). The novel `adaptive` mechanism is implemented, committed (`7468090d4`), and unit-tested,
 but its formal eval is currently **blocked by a cold-cache/contention init-hang** (details below).
 
-**adaptive eval blocker (4 attempts, all failed to LOAD — never a mechanism-logic failure):**
+**TRUE ROOT CAUSE of the adaptive load failures (diagnosed via /proc + server.log, not my mechanism):**
+The load has a **cold-start deadlock**: rank 0 spends **>600 s cold-compiling DeepGEMM/CUDA kernels**
+(`nvcc`→`cicc`→`ptxas` seen running), while the other ranks block in **FlashInfer's trtllm
+allreduce-fusion NCCL communicator setup**, which fetches `ncclUniqueId` from rank 0 via the c10d
+TCPStore with the **default 600 s timeout**. Rank 0 misses that window → `store->get('0') got error:
+wait timeout after 600000ms` → distributed init **wedges** (ranks fall into sleep/poll; cache never
+finishes warming). This is NOT NFS/disk (a LOCAL-cache rewarm hit the same wall) and NOT my code
+(never runs at init). **best_effort worked only because it had a WARM cache → rank 0 skips compile →
+reaches the barrier fast.** My earlier "hangs" were slow cold compiles I killed at ~12 min — right in
+the 600 s-timeout aftermath.
+**FIX:** warm `$WORK/.cache` once via a helper `launch_server` with a long `--dist-timeout` (5400 s) so
+rank 0's cold compile finishes before any barrier times out; thereafter eval.sh loads are fast (warm
+cache) and need no timeout change (contract untouched). Job 18154 is doing this. (I must never clear
+`$WORK/.cache` again, and never run two of my own evals concurrently.)
+
+**adaptive eval blocker (earlier framing — 4 attempts, all failed to LOAD — never a mechanism-logic failure):**
 - Deterministic hang at model init right after "GDN kernel dispatcher" (before DeepGEMM warmup),
   across **3 different nodes**. Diagnosed as a true hang, **not** slow compile (triton cache frozen
   at 1 entry, no ptxas/compiler process, GPU 0%, schedulers busy-waiting ~11% CPU).

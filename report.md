@@ -71,5 +71,20 @@ I treat **official (87.6 s)** as the honest bar.
    stream disk KV in the background) — best_effort's batch-fill without its recompute cost (Strata-style).
 3. If (1) is neutral: pivot to **throughput/memory** mechanisms (fit more running KV / reduce per-step overhead).
 
+## Environment blocker (RESOLVED) — flashinfer allreduce-fusion workspace deadlock
+On a **fresh workspace / cold cache**, every server launch deadlocked during warmup: rank 0 stalls
+right after "GDN kernel dispatcher" (all threads `hrtimer_nanosleep`, 0% GPU, VmLck=16KB — a
+wait-for-collective, not I/O), while other TP ranks reach the FlashInfer allreduce-fusion **trtllm
+workspace** NCCL setup and time out after 600 s ("Disabling flashinfer allreduce fusion permanently"),
+never recovering. Reproduced on 3 nodes (0-2, 1-2, 1-1) and independent of `--disable-cuda-graph` /
+`--disable-custom-all-reduce`. venv matches the lockfile exactly.
+**Fix:** launch with **`--enforce-disable-flashinfer-allreduce-fusion`** → server reaches "ready" in
+~5 min post-load. Since `enable_flashinfer_allreduce_fusion` is already `False` (default), this only
+skips a *failing* init and does **not** change the compute path → comparable to a healthy golden run
+(to be validated by v1-basefix ≈ golden 87.6 s). **I pass this flag on every eval.** Also confirmed:
+first-run kernel compile is slow (~15-30 min) but the per-workspace `$WORK/.cache` (on shared NFS) now
+warm, so subsequent evals are fast.
+
 ## Versions
-(none logged yet beyond the two references; v1-besteffort eval queued on the shared pool)
+- **v1-basefix** (config): baseline eval.sh config + `--enforce-disable-flashinfer-allreduce-fusion`.
+  Purpose: anchor my comparable reference (validate vs golden 87.6 s) + capture batch dynamics. [running]

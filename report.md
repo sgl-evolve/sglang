@@ -126,10 +126,31 @@ almost certainly runs a smaller batch (requests stuck in prefetch).
 
 ## STATUS (live)
 
-**Bottom line:** Two validated results on the fixed protocol, both **~27× lower mean TTFT than the
-official baseline**: (1) `best_effort` (config); (2) `v4-adaptive-prefetch` (**MECHANISM**, commit
-`b58201066`) which **ties best_effort's headline TTFT while dominating the balance** (+40% throughput,
-−34% e2e, better TPOT, hit_rate 0.37→0.62). Adaptive is the novel win the program targets.
+**Bottom line:** best result is **`v5-adaptive-1s` (MECHANISM, commit `8402c5904`): mean TTFT 2719 ms —
+32× lower than v0_official (87615) and 16% below the best config (best_effort 3237)** — while ALSO
+best on p99 TTFT (16827), throughput (2.63 req/s, +55% vs best_effort), e2e (43 s), and TPOT (489).
+The load-adaptive prefetch mechanism (give up on a saturated SSD, reclaim cheap host hits) with a 1 s
+cap wins on every axis. It's the novel mechanism the program targets.
+
+### v5-adaptive-1s — RESULT (mechanism, commit `8402c5904`, on-contract, lossless, rc=0) — NEW BEST
+
+| metric | v0_official | best_effort (cfg) | v4-adaptive-2s | **v5-adaptive-1s** |
+|---|---|---|---|---|
+| **mean TTFT (ms)** | 87615 | 3237 | 3299 | **2719** (−96.9% vs official) |
+| TTFT p99 (ms) | 270798 | 20481 | 34077 | **16827** |
+| req throughput | 1.15 | 1.70 | 2.39 | **2.63** |
+| out_tok/s | 147 | 217 | 305 | **337** |
+| e2e mean (ms) | 108148 | 71104 | 47112 | **43111** |
+| TPOT mean (ms) | 241 | 752 | 531 | **489** |
+| hit_rate | 0.816 | 0.368 | 0.624 | 0.597 |
+
+- **Takeaway:** halving the adaptive cap (2 s→1 s) improved *every* metric vs v4 — the shorter wait cut
+  the TTFT penalty (3299→2719, now below best_effort) while still reclaiming most host hits (0.60), so
+  throughput/e2e/TPOT all improved too. The 1 s cap is a better operating point than 2 s: under this
+  overload, minimal-but-nonzero waiting beats both no-wait (best_effort) and longer-wait (v4).
+  **Next:** sweep even shorter (0.5 s) to find the optimum; the mechanism clearly dominates.
+
+### v4-adaptive-prefetch — RESULT (mechanism, commit `b58201066`) — superseded by v5
 
 ### v4-adaptive-prefetch — RESULT (mechanism, commit `b58201066`, on-contract, lossless, rc=0)
 

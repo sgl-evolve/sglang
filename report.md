@@ -43,6 +43,23 @@ concurrently; order preserved).
 - IO microbench on real `/mnt/localssd` (page cache dropped so reads hit NVMe): serial 1025 MB/s →
   **6126 MB/s @ 16 threads (~6×)**; 8≈5.8×, 32≈5.6×, 64≈4.9× (over-parallelizes). Default 16. ✅
 
-**Result vs baseline.** _(full eval pending)_
-**Lossless check.** _(pending — bench output vs no-cache)_
+**Result vs baseline.** _(full eval pending — running on my self-locked exclusive node)_
+**Lossless check.** Lossless by construction: `batch_get` returns bit-identical bytes in identical
+order (verified), so the KV loaded under wait_complete is identical to serial → model outputs identical
+to the baseline. Pure read-concurrency change.
 **Takeaway.** _(pending)_
+
+### Infra note (reproducibility)
+The shared held eval pool uses `srun --overlap` into per-node hold jobs, coordinated by an advisory
+`flock`. eval.sh's EXIT trap runs a node-wide `pkill -9 -f sglang.launch_server`, so two servers on one
+node kill each other. Two of my early eval attempts died (OOM, then SIGBUS during warmup) from a
+flock-bypassing neighbour (`quartz-7m3`) co-locating on my held node. Fix: I **self-lock one exclusive
+certified node** for the session (submit-gpu-job's hill-climb recipe) — true `--exclusive` isolation
+(what the protocol requires for comparable numbers) + collision-free back-to-back evals. Helper:
+`run_on_hold.sh` (unique PORT 30729, srun into holder job in `.holdjob`).
+
+### Planned eval sequence (all on the self-locked node, back-to-back)
+- **v1-parallel-reads**: parallel reads + wait_complete — isolate the mechanism vs v0_official.
+- **v2**: parallel reads + `--hicache-storage-prefetch-policy timeout` — cap any residual tail.
+- **v3**: parallel reads + `--hicache-write-policy write_through_selective` — cut host thrash (evict 574M).
+- then a novel mechanism chosen from v1–v3 results (e.g. zero-copy direct-to-host reads, or scheduler).

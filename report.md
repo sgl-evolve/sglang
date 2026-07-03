@@ -124,6 +124,21 @@ almost certainly runs a smaller batch (requests stuck in prefetch).
   tens–hundreds of s), and the timeout knobs live in the FROZEN `--hicache-...-extra-config`
   so I can't sharpen it via config. Low priority; run if a node is idle.
 
+## STATUS (live) — version log (own formal versions; budget 100)
+
+- **v2cfg-besteffort** (config): 3237 ms — 27× vs official.
+- **v4-adaptive-prefetch** (mechanism, cap 2s): 3299 ms.
+- **v5-adaptive-1s** (mechanism, cap 1s): **2719 ms — BEST (32× vs official)**.
+- **v7-selective-wt** (config): **NEGATIVE — 6190 ms** (2.3× worse than v5). `write_through_selective`
+  starves the host tier (backup only after 2 hits → hit_host_frac 0.49→0.018), killing adaptive's
+  host-hit reclaim. **Learning: write_through (backup-all) is essential for the adaptive win.**
+- **v8-adaptive-uncap3** (mechanism, cap 3s): running. v5's cap==base clipped the deadline to a flat
+  1 s; v8 unclips it so the size/pressure-responsive term engages (wait longer to reclaim host hits
+  in low-backlog windows). Testing whether the full adaptive form beats the flat-1s v5.
+- Infra: robust workflow = isolated flashinfer cache (`FLASHINFER_WORKSPACE_BASE=$WORK`) +
+  `--dist-timeout 5400`. The shared `~/.cache/flashinfer` was corrupted by cross-researcher concurrent
+  compiles (hangs + a SIGBUS in CUDA-graph capture); isolation fixed it (loads in ~147 s).
+
 ## STATUS (live)
 
 **Bottom line:** best result is **`v5-adaptive-1s` (MECHANISM, commit `8402c5904`): mean TTFT 2719 ms —

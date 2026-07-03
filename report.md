@@ -219,3 +219,17 @@ v5 **1255** ms mean TTFT. The system now serves req/s 3.15 vs offered 3.5 (near 
 Big wins: (1) don't block on the slow L3 disk tier [best_effort, config]; (2) don't WRITE a tier you
 never read [skip-writes, MECHANISM — unblocks host eviction]. Remaining cost: ~38% prefill recompute
 (disk skipped; capacity-bound) competing with decode. mixed_chunk (the natural overlap fix) crashes here.
+
+### v6 — + skip storage prefetch-ISSUE under best_effort  [MECHANISM]  ** NEW BEST **
+- **Change:** `UnifiedRadixCache.prefetch_from_storage` returns immediately when best_effort (commit
+  bb0800d5f). Read-side mirror of v3's write-side skip. Full stack: best_effort + skip-writes +
+  skip-prefetch-issue + lpm.
+- **Result vs v5 (isolates this mechanism):** TTFT mean 1205 (v5 1255, -4%), median 649 (-6.5%),
+  p99 8702 (v5 10207, **-15% tail**), out 412.3 t/s (+2.3%), req/s 3.22 (+2.2%), hit 0.624. Valid
+  (7037/7037, lossless). Max queue 27 (v5 32, v3 37). vs tuned bar: **~90x lower TTFT, ~37x lower p99,
+  ~3.5x throughput** (req/s 3.22 vs offered 3.5).
+- **Why lossless / why it works:** under best_effort the prefetch is cancelled next step (storage-hit
+  frac = 0.0), so issuing it loads ~0 tokens but pins a host node + allocs host pages + may evict_host
+  per request — churn contending with the full host tier. Skipping it (miss=recompute, unchanged
+  outputs) removes that churn. Together with skip-writes: "fully bypass the provably-dead L3 tier under
+  best_effort." Logged [mechanism]. Emailed.

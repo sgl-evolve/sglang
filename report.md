@@ -158,6 +158,30 @@ its full-attn KV). Genuine next levers (all lossless, none easy):
 - (Fusion is an env artifact: this venv's FlashInfer allreduce-fusion NCCL init hangs; all my runs are
   fusion-off, so version-to-version comparisons are consistent.)
 
+### v3-mamba-ratio13 — `config` (on the scandir-fixed engine) — **NEW BEST**
+Change: `--mamba-full-memory-ratio 1.3` (default 0.9) → shifts GPU cache memory from the ~72%-empty
+full-attn KV pool to the binding Mamba-state pool. max_mamba_cache_size **1350→1611** (+19% cached
+sequences). Fusion-off (env). Clean **7037/7037**, no fallback. Lossless (memory rebalance, same KV).
+| metric | v2-scandirfix | **v3-mamba-ratio13** | Δ vs v2 | vs v0_official |
+|---|---|---|---|---|
+| **mean TTFT** | 2425 ms | **1802 ms** | −26% | **48.6× lower** |
+| TTFT p99 | 30636 ms | 12916 ms | −58% | 21× lower |
+| TTFT median | 1427 ms | 1209 ms | −15% | ~flat |
+| out tok/s | 336.7 | 382.5 | +14% | 2.6× |
+| req thruput | 2.63 | 2.99 | +14% | 2.6× |
+| TPOT mean | 450 ms | 392 ms | −13% | — |
+| hit_rate | 0.577 | 0.541 | −0.036 | — |
+| **GPU KV usage** (p50/max) | 0.26/0.69 | **0.33/0.83** | +on-device | — |
+| device hit frac | 0.500 | 0.516 | +on-device | — |
+
+**Validates the Mamba-KV-imbalance diagnosis**: giving the Mamba-state pool more of the (empty) GPU
+budget lets more sequences stay device-resident → more device hits → less prefill recompute → higher
+throughput → shorter queue → lower TTFT. (Overall hit_rate dips slightly because the KV pool shrank,
+but the *device* share rose and device hits are fastest — net a clear win.) GPU KV peak is now 0.83,
+so headroom to push the ratio further is limited (peak → 1.0 risks preemption); v4 candidates: nudge
+ratio to ~1.4, `--enable-int8-mamba-checkpoint` (2× cached-prefix capacity, but LOSSY → needs a
+quality gate), or the deeper decouple (keep full-attn KV on-device when a leaf's Mamba state evicts).
+
 ## Operational notes (env / infra — not research variables)
 - **Pool coordination:** the manager's held pool is shared and some researchers run evals on it
   *without* the per-node flock (e.g. pinned launchers), so a flock-free node can still host a

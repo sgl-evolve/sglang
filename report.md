@@ -40,30 +40,50 @@ spent by SSD prefetch, and keep hot prefixes off the SSD tier. Two attack surfac
 
 ---
 
-## v1 — SLRU host eviction (mechanism) — RUNNING
+## v1 — SLRU host eviction (mechanism) — RETRACTED (dead code, never logged)
 
-- **Hypothesis:** host-tier eviction is destructive (a fully-evicted node is removed from the
-  tree; its prefix must be re-fetched from SSD next time). Default host eviction is pure LRU.
-  Using **SLRU** (segmented LRU: nodes with `hit_count ≥ 2` are "protected" and evicted only
-  after all probationary nodes) should preserve frequently-reused multi-turn prefixes in host
-  RAM, cutting SSD reads → shorter prefetch stalls → lower TTFT tail.
-- **Change (`mem_cache/hiradix_cache.py`):** added `self.host_eviction_strategy =
-  SLRUStrategy(protected_threshold=2)`; `evict_host()` now scores leaves (and parent re-pushes)
-  with it instead of the device LRU strategy. Device (GPU) eviction unchanged.
-- **Bug found & fixed pre-eval:** the parent re-push in `evict_host` still used the device
-  (LRU→float) strategy while the initial heap used SLRU→tuple; mixing float and tuple
-  priorities in one heap raises `TypeError` under host pressure (host_util ≈ 1.0 here → would
-  crash). Fixed to use `host_eviction_strategy` in both places. Commit `7605b7e52`.
-- **Result:** _pending._
-- **Lossless:** eviction-policy-only; does not change computed outputs.
+- **Hypothesis:** host-tier eviction is destructive; replacing pure-LRU host eviction with
+  SLRU (protect `hit_count ≥ 2` prefixes) should keep hot multi-turn prefixes in host RAM,
+  cutting SSD reads → lower TTFT tail.
+- **What killed it:** I edited `mem_cache/hiradix_cache.py` (`HiRadixCache`). But this model
+  (Qwen3.5-122B-A10B) is **hybrid-SSM/GDN**, and `mem_cache/registry.py:101-104` routes
+  `enable_hierarchical_cache + is_hybrid_ssm` to **`UnifiedRadixCache`** (confirmed in the
+  running server: "Allocating … hierarchical Mamba cache", `radix_eviction_policy='lru'`,
+  `schedule_policy='fcfs'`). So my edit was **dead code**. I killed the in-flight eval before
+  it wasted the node (it would have just reproduced baseline). No curve point.
+- **Also found (would have crashed if it HAD been live):** the `evict_host` parent re-push
+  mixed a float LRU priority into an SLRU tuple heap → `TypeError` under host pressure. Fixed
+  in `7605b7e52`, but moot since the file is unused for this model.
+- **Lesson:** verify the actually-instantiated class from the running server before coding.
 
 ## v2cfg-besteffort — best_effort prefetch policy (config) — RUNNING
 
-- **Hypothesis / purpose:** bottleneck probe. If switching `--hicache-storage-prefetch-policy`
-  from `wait_complete` to `best_effort` (schedule immediately, recompute the not-yet-loaded
-  tail instead of waiting on SSD) sharply cuts mean TTFT, that confirms SSD-prefetch blocking
-  is the dominant tail and points v3 at an adaptive/dedup prefetch mechanism.
-- **Change:** config only (extra eval flag); runs on the v1 code (host-eviction effect is
-  separable from the prefetch-policy effect).
-- **Result:** _pending._
+- **Hypothesis / purpose:** bottleneck probe. `--hicache-storage-prefetch-policy best_effort`
+  never blocks scheduling on SSD (schedule immediately, recompute the un-loaded tail). If it
+  sharply cuts mean TTFT, SSD-prefetch blocking is confirmed as the dominant tail.
+- **Change:** config only (valid — the flag reaches `UnifiedRadixCache.prefetch_stop_policy`).
+- **Result:** _pending (~1 h)._  **Lossless:** recompute yields identical tokens.
+
+## v3cfg-timeout — timeout prefetch policy (config) — DEFERRED (no free node)
+
+- Third point on the prefetch-policy spectrum. Default timeout deadline is
+  `1.0 + pages×0.25 s`, so it's a *muted* probe for the tail (huge-prefix reads still wait
+  tens–hundreds of s), and the timeout knobs live in the FROZEN `--hicache-...-extra-config`
+  so I can't sharpen it via config. Low priority; run if a node is idle.
+
+## v4-adaptive-prefetch — load-adaptive prefetch stop policy (MECHANISM) — READY (commit `8e15590dc`)
+
+- **Hypothesis:** the win is to keep `wait_complete`'s full-prefetch benefit when the SSD tier
+  has headroom, but *give up early and recompute* (like best_effort) exactly when the SSD
+  backlog is saturating — so a saturated SSD can't starve the decode batch and blow up the tail.
+- **Change (`mem_cache/unified_radix_cache.py`, `server_args.py`):** new
+  `--hicache-storage-prefetch-policy adaptive`. In `can_terminate_prefetch`, deadline =
+  `base + pages×per_page × (1 − pressure)`, `pressure = prefetch_tokens_occupied /
+  prefetch_capacity_limit ∈ [0,1]`. pressure→0 ⇒ the timeout-policy deadline (wait for the
+  whole prefetch); pressure→1 ⇒ flat `base` (~1 s) regardless of prefix size ⇒ give up, admit,
+  recompute. Self-regulates via negative feedback around the capacity limit.
+- **Why robust:** under light load it *is* the wait/timeout behavior (safe); it only deviates
+  under saturation. Unit-tested the deadline math offline.
+- **Plan:** launch the moment a certified node frees; compare vs `v0_official` (wait_complete)
+  and `v2cfg-besteffort` (the no-wait ceiling). Tag `mechanism`.
 - **Lossless:** recompute yields identical tokens.

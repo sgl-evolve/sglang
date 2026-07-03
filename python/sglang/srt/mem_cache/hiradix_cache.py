@@ -127,6 +127,17 @@ class HiRadixCache(RadixCache):
         self.is_prefetch_timeout = self._prefetch_timeout_check_linear_func
         self.prefetch_stop_policy = server_args.hicache_storage_prefetch_policy
 
+        # Co-design of the write path with the read path: under `best_effort` the
+        # scheduler never blocks on an L3(storage) prefetch and cancels it
+        # immediately, so storage hits are ~0 (the disk tier is never READ). In
+        # that regime the host->storage write-backups are pure waste — they burn
+        # disk write bandwidth + CPU (hashing/serialization of every page) and,
+        # critically, hold host_ref (protect_host) on each backed-up node until
+        # the write acks, which blocks host eviction while the host tier is full.
+        # Skipping them is lossless (the entries are never read back; missing L3
+        # just means recompute, exactly what best_effort already does).
+        self.skip_storage_backup = self.prefetch_stop_policy == "best_effort"
+
         self.load_cache_event = threading.Event()
         if isinstance(self.kv_cache, DSATokenToKVPool):
             attach_hybrid_dsa_pool_to_hiradix_cache(
@@ -829,7 +840,7 @@ class HiRadixCache(RadixCache):
                 node.write_through_pending_id = None
             # DMA confirmed -- block is now on host.
             self._record_store_event(node, medium=StorageMedium.CPU)
-        if self.enable_storage:
+        if self.enable_storage and not self.skip_storage_backup:
             self.write_backup_storage(lock_node, backup_len)
         if release_lock:
             self.dec_lock_ref(lock_node)

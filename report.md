@@ -37,7 +37,32 @@ I treat **official (87.6 s)** as the honest bar.
   device 31%, host 43%, disk 25%. Per-run movement: evict 574 M, load-back 444 M, prefetch 166 M,
   offload 145 M (summed over 8 ranks).
 
+## Prior art (Strata arXiv 2508.18572 + HiCache blog) — what's already done vs headroom
+- HiCache's **layer-wise transfer/compute overlap is a `kernel`-backend feature** (GPU-assisted IO).
+  This model is forced onto `direct` (MambaPoolHost only supports page_first_direct), so we may miss
+  the fastest transfer path. Protocol explicitly flags "make kernel/page_first work for Mamba" as a
+  legit direction.
+- **Strata's central finding: serving is LOADING-BOUND, not compute-bound.** On LooGLE with SGLang CPU
+  offloading, **"74% of prefill time is blocked on KV transfers"** (host→device load-back). Even with
+  optimized IO (~75% PCIe) up to 24% of prefill stays stalled on load. Our workload *includes LooGLE*
+  and uses HiCache offloading → we are likely H→D-loading-bound.
+- Strata ablations: **IO efficiency = the biggest lever (+76–95% throughput)**; scheduling +1.8×.
+  - GPU-assisted IO: one CUDA kernel, 1000s of threads, 128B granularity, free layout transforms,
+    ~50 GB/s CPU→GPU confined to ≤2 SM blocks (<5% prefill / 10% decode degradation).
+  - Cache-aware scheduling: (a) **defer** on delay-hit via transient HiRadix nodes; (b) **balanced
+    batches** — skip requests whose load/compute ratio > ~100, backfill later; (c) **bundle hits** —
+    batch a compute-heavy with a load-heavy request so PCIe-load overlaps HBM-compute; (d) **bubble
+    filling** — run a DECODE batch during a long context load (decode saturates HBM BW, load saturates
+    PCIe → overlap with little contention).
+- Two distinct load paths (don't conflate): **disk→host prefetch** (governed by prefetch policy;
+  what v1-besteffort tests) vs **host→device load-back** (layer-wise-overlapped on load_stream; where
+  the 74% stall lives). The dominant stall is likely H→D load-back, which best_effort does NOT touch.
+
 ## Leading hypotheses (to test)
+0. **Loading-bound on H→D load-back** (Strata's 74%): prefill waits on host→device transfer of long
+   reused prefixes (load ≫ compute per layer, so layer-wise overlap can't hide it). If confirmed by
+   batch dynamics (prefill batches with huge #cached-token, small #new-token, GPU idle during load),
+   the mechanism targets H→D: faster transfer, or Strata-style stall-hiding/bundling, or device retention.
 1. **Prefetch-wait starves the running batch.** Under the baseline `wait_complete`, `get_new_prefill_batch`
    skips (`continue`) any request whose storage prefetch isn't fully done; with ≤128 concurrent, if a
    chunk are prefetch-pending, the running batch shrinks → lower throughput → higher TTFT.

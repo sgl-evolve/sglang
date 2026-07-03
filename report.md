@@ -129,7 +129,24 @@ bytes/order, verified; timeout recompute = exact KV). storage_frac stays 0 (disk
 host before they're "hit", so hits are attributed to host) — the disk tier is now a fast *feeder* of the
 host tier rather than a blocking wait.
 
-## Next (v4+): push the frontier
+## v4 — parallel reads + best_effort  [config, NEW BEST]  (commit 991317b1f)
+**Change vs v3:** `--hicache-storage-prefetch-policy best_effort` (0-wait admit) instead of `timeout`.
+Both use parallel reads (16). Clean isolation of the prefetch-policy.
+| metric | v3 timeout | **v4 best_effort** | Δ |
+|---|---|---|---|
+| **mean TTFT** | 2903 | **2013.5** (−97.7% vs base) | **−30.7%** |
+| median TTFT | 1844 | 1309 | −29% |
+| p99 TTFT | 17654 | 15953 | −9.6% |
+| tpot mean | 493 | 407.6 | −17.4% |
+| out tok/s | 339.6 | 333.6 | −1.8% |
+| hit_rate | 0.587 | **0.608** | +3.4% |
+**Why best_effort wins (counterintuitive):** 0-wait admission means a request never blocks on its own
+prefetch; on this *multiturn* workload the shared prefix from prior turns is already in the host tier
+(populated by the fast background parallel prefetch), so hit_rate actually *rises* while wait latency
+→0. Less waiting also thins the concurrent batch → lower decode contention → tpot −17%. Lossless
+(recompute of any truly-missing tail = exact KV). **New optimal base policy: best_effort + parallel reads.**
+
+## Next (v5+): push the frontier (best_effort base)
 tpot is still +104% vs baseline (hit 0.59 ⇒ ~41% recompute). Levers: **v4 = parallel + best_effort**
 (0-wait admit; multiturn shared prefixes already in host from prior turns → keep hits at min TTFT);
 timeout-duration sweep (hit_rate↔TTFT tradeoff, now that reads are fast); read-thread-count tuning.

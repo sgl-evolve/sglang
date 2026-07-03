@@ -50,6 +50,7 @@ from sglang.srt.mem_cache.memory_pool_host import (
     MLATokenToKVPoolHost,
     get_mha_host_pool_cls,
 )
+from sglang.srt.mem_cache.evict_policy import SLRUStrategy
 from sglang.srt.mem_cache.radix_cache import (
     RadixCache,
     RadixKey,
@@ -189,6 +190,8 @@ class HiRadixCache(RadixCache):
         atexit.register(self.shutdown)
 
         self.evictable_host_leaves = set()
+
+        self.host_eviction_strategy = SLRUStrategy(protected_threshold=2)
 
         super().__init__(params=params)
 
@@ -1108,7 +1111,7 @@ class HiRadixCache(RadixCache):
     def evict_host(self, num_tokens: int):
         leaves = list(self.evictable_host_leaves)
         eviction_heap = [
-            (self.eviction_strategy.get_priority(node), node) for node in leaves
+            (self.host_eviction_strategy.get_priority(node), node) for node in leaves
         ]
         heapq.heapify(eviction_heap)
 

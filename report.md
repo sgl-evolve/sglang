@@ -357,3 +357,17 @@ Best (reproducible): **best_effort + skip-L3-writes(mech) + skip-L3-prefetch-iss
 mean TTFT ~1.1–1.2 s (~90–100× below tuned bar), p99 ~7–9 s, out ~410–430 tok/s (~3.5×), req/s ~3.2–3.35.
 All lossless. W&B run `kv-heron-e29` has the full curve (v0→v10) + artifacts. Config space fully mapped;
 at the lossless ceiling for this fixed protocol/budget.
+
+### v12 — page_size=32 (finer prefix matching)  [config]  ** NEUTRAL **
+- Result: TTFT mean 1131 (best band 1089-1205, mean 1156), hit 0.629 (best ~0.621 — marginally higher
+  from finer matching but within noise). NEUTRAL. Valid (7037/7037, no fallback; page_size=32 took
+  effect — the disk O_DIRECT-alignment constraint is moot since the disk tier is unused under best_effort).
+  Confirms the ~38% recompute is capacity-bound (working set ≫ cache), not prefix-boundary-bound.
+
+## Config exploration COMPLETE
+Mapped every non-frozen policy/knob: prefetch (best_effort=win), write (write_through=best;
+selective worse; write_back = Mamba-incompatible), eviction (lru=best; slru worse), schedule (lpm=small
+win), num_continuous_decode_steps (neutral), max_prefill_tokens (neutral), page_size (neutral).
+Running batch already saturates offered concurrency (128), so admission knobs can't help; throughput is
+compute-bound + recompute is capacity-bound. The two novel MECHANISMS (skip-writes, skip-prefetch) +
+best_effort are the wins. At the lossless ceiling for this fixed protocol.

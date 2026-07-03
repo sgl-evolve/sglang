@@ -99,6 +99,26 @@ warm, so subsequent evals are fast.
 - **Levers to probe (loading-focused, since scheduling is ruled out):** transfer efficiency (page_size),
   prefetch-wait (best_effort), eviction/retention (lfu / device-retention mechanism), write policy.
 
+## ★ v3-besteffort (config) — 27× win, confirms disk-prefetch-wait is THE bottleneck
+`--hicache-storage-prefetch-policy best_effort` (vs baseline `wait_complete`), commit 58a6978c5:
+| metric | anchor (wait_complete) | v3-besteffort | Δ |
+|--------|------------------------|---------------|---|
+| ttft_mean_ms | 84502 | **3062** | **−96.4% (27×)** |
+| ttft_p99_ms | 255007 | 20861 | −91.8% |
+| out_tok_s | 146.3 | 255.7 | +74.7% |
+| req_throughput | 1.14 | 2.00 | +75% |
+| hit_rate | 0.820 | 0.382 | −53% |
+| hit_storage_frac | 0.255 | 0.000 | −100% |
+| load_back_tokens | 446M | 105M | −76% |
+
+**Interpretation:** the baseline's TTFT is dominated by requests **blocking on slow disk (L3) prefetch**
+under `wait_complete`. `best_effort` cancels the wait, admits immediately, and recomputes un-loaded
+prefix on the (otherwise idle) GPU — the loading-bound→compute rebalance. hit_rate drops (L3 reads →
+recompute) but TTFT falls 27× and throughput rises 75%. **Lossless**: recomputed KV is identical to
+loaded KV (deterministic model) → outputs unchanged; a policy flag, on-contract, resolved_args verified,
+EVAL_DONE. This is a CONFIG win (tuning), not novelty — the genuine-mechanism goal is to get this low
+TTFT *while still using L3* (overlap disk prefetch with prefill), or beat 3.06 s.
+
 ## Ops lessons (hard-won)
 - **Evals must be `setsid`-detached** — an `srun --overlap` into a held node is a child of the
   researcher session; on session teardown slurm kills the srun step (killed v1-basefix at 16%).

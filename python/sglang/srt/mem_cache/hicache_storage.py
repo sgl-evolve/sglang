@@ -5,6 +5,7 @@ import os
 import threading
 import uuid
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, List, Optional, Set
@@ -363,6 +364,23 @@ class HiCacheFile(HiCacheStorage):
             extra_config=storage_config.extra_config,
         )
 
+        # Concurrent per-page I/O. A single serial stream of blocking reads/writes
+        # keeps NVMe queue depth at ~1 and leaves the device mostly idle; issuing
+        # the independent per-page transfers of a batch across a thread pool
+        # exploits the SSD's internal parallelism. Every page is a distinct file
+        # and the evictor is internally locked, so this is lossless. <=1 workers
+        # preserves the legacy serial path.
+        io_workers = envs.SGLANG_HICACHE_FILE_BACKEND_IO_WORKERS.get()
+        self._io_workers = max(1, int(io_workers)) if io_workers else 1
+        self._io_pool: Optional[ThreadPoolExecutor] = (
+            ThreadPoolExecutor(
+                max_workers=self._io_workers,
+                thread_name_prefix="hicache-file-io",
+            )
+            if self._io_workers > 1
+            else None
+        )
+
     def _get_suffixed_key(self, key: str) -> str:
         return key + self.config_suffix
 
@@ -404,12 +422,12 @@ class HiCacheFile(HiCacheStorage):
         target_locations: List[torch.Tensor],
         target_sizes: Optional[Any] = None,
     ) -> List[torch.Tensor | None]:
-        return [
-            self.get(key, target_location)
-            for key, target_location in zip(
-                keys, target_locations or [None] * len(keys)
-            )
-        ]
+        locs = target_locations or [None] * len(keys)
+        if self._io_pool is None or len(keys) <= 1:
+            return [self.get(key, loc) for key, loc in zip(keys, locs)]
+        # Each page is an independent file read into its own buffer; issue them
+        # concurrently to raise NVMe queue depth. map() preserves input order.
+        return list(self._io_pool.map(self.get, keys, locs))
 
     def set(
         self,
@@ -463,10 +481,15 @@ class HiCacheFile(HiCacheStorage):
         target_locations: Optional[Any] = None,
         target_sizes: Optional[Any] = None,
     ) -> bool:
-        for key, value in zip(keys, values):
-            if not self.set(key, value):
-                return False
-        return True
+        if self._io_pool is None or len(keys) <= 1:
+            for key, value in zip(keys, values):
+                if not self.set(key, value):
+                    return False
+            return True
+        # Independent per-page file writes; issue concurrently and report success
+        # only if every page landed (each targets a distinct file).
+        results = list(self._io_pool.map(self.set, keys, values))
+        return all(results)
 
     def exists(self, key: str) -> bool:
         key = self._get_suffixed_key(key)
@@ -580,10 +603,21 @@ class HiCacheFile(HiCacheStorage):
                 results[transfer.name] = [False] * len(keys)
                 continue
 
-            results[transfer.name] = [
-                op_fn(transfer.name, key, host_pool, host_indices[i * page_size].item())
-                for i, key in enumerate(keys)
-            ]
+            offsets = [host_indices[i * page_size].item() for i in range(len(keys))]
+            if self._io_pool is None or len(keys) <= 1:
+                results[transfer.name] = [
+                    op_fn(transfer.name, key, host_pool, off)
+                    for key, off in zip(keys, offsets)
+                ]
+            else:
+                name = transfer.name
+                results[transfer.name] = list(
+                    self._io_pool.map(
+                        lambda key, off: op_fn(name, key, host_pool, off),
+                        keys,
+                        offsets,
+                    )
+                )
         return results
 
     def batch_get_v2(

@@ -411,6 +411,12 @@ class Envs:
     SGLANG_HICACHE_FILE_BACKEND_MAX_SIZE = EnvStr(None)
     SGLANG_HICACHE_FILE_BACKEND_EVICTION_RATIO = EnvFloat(0.9)
     SGLANG_HICACHE_FILE_BACKEND_MIN_FREE_SPACE = EnvStr("0")
+    # Number of worker threads used to issue concurrent per-page reads/writes to
+    # the file backend. A single serial I/O stream keeps NVMe queue depth at ~1
+    # and leaves the device mostly idle; issuing independent page transfers
+    # concurrently exploits the SSD's internal parallelism. <=1 keeps the legacy
+    # serial path. Each page is a distinct file, so this is lossless.
+    SGLANG_HICACHE_FILE_BACKEND_IO_WORKERS = EnvInt(16)
     SGLANG_HICACHE_NIXL_BACKEND_STORAGE_DIR = EnvStr(None)
     # Enable O_DIRECT when opening NIXL POSIX backend files (bypasses OS page cache).
     # Disable with SGLANG_HICACHE_NIXL_USE_DIRECT_IO=0 or via the

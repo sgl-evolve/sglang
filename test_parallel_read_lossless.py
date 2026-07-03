@@ -102,9 +102,44 @@ def main():
         ids = {id(x) for x in hit_targets}
         assert len(ids) == len(hit_targets), "target buffers must be distinct objects"
 
-        print(f"PASS: parallel L3 read is LOSSLESS vs serial "
+        print(f"PASS[read]: parallel L3 read is LOSSLESS vs serial "
               f"({n_hit} hits byte-identical + order-preserved, {n_miss} misses None-aligned, "
               f"dtypes={{f16,bf16,u8,i32}}, sizes 1..4096, 16 threads).")
+
+        # ---- parallel WRITE losslessness: parallel batch_set must produce the same
+        #      on-disk bytes as serial batch_set (evictor lock-guarded; unique tmp +
+        #      atomic replace per set). Write the corpus two ways into two dirs, read
+        #      both back, assert byte-identical to the originals. ----
+        dir_ser = tempfile.mkdtemp(prefix="hicache_wser_")
+        dir_par = tempfile.mkdtemp(prefix="hicache_wpar_")
+        try:
+            ws = build_backend(dir_ser, threads=1)   # read pool irrelevant here
+            os.environ["SGLANG_HICACHE_FILE_WRITE_THREADS"] = "1"
+            ws_ser = build_backend(dir_ser, threads=1)
+            assert ws_ser._write_pool is None, "write threads=1 must disable the pool"
+            assert ws_ser.batch_set(keys, [t for _, t in specs]), "serial batch_set failed"
+
+            os.environ["SGLANG_HICACHE_FILE_WRITE_THREADS"] = "16"
+            ws_par = build_backend(dir_par, threads=1)
+            assert ws_par._write_pool is not None, "write threads=16 must enable the pool"
+            assert ws_par.batch_set(keys, [t for _, t in specs]), "parallel batch_set failed"
+            os.environ["SGLANG_HICACHE_FILE_WRITE_THREADS"] = "1"
+
+            # read both back (serial reader) and compare to originals + to each other
+            rs = build_backend(dir_ser, threads=1)
+            rp = build_backend(dir_par, threads=1)
+            got_ser = rs.batch_get(keys, [torch.zeros_like(t) for _, t in specs])
+            got_par = rp.batch_get(keys, [torch.zeros_like(t) for _, t in specs])
+            for i, (_, exp) in enumerate(specs):
+                assert torch.equal(got_ser[i], exp), f"serial-write byte mismatch at {i}"
+                assert torch.equal(got_par[i], exp), f"parallel-write byte mismatch at {i}"
+                assert torch.equal(got_par[i], got_ser[i]), f"parallel-write != serial-write at {i}"
+            print(f"PASS[write]: parallel L3 write is LOSSLESS vs serial "
+                  f"({len(specs)} pages byte-identical on disk, evictor lock-guarded, "
+                  f"unique-tmp + atomic-replace, 16 threads).")
+        finally:
+            shutil.rmtree(dir_ser, ignore_errors=True)
+            shutil.rmtree(dir_par, ignore_errors=True)
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

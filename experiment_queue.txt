@@ -1,4 +1,5 @@
 v11-be-selective|-|--hicache-storage-prefetch-policy best_effort --hicache-write-policy write_through_selective|config
+v15-be-parwrite|SGLANG_HICACHE_FILE_WRITE_THREADS=16|--hicache-storage-prefetch-policy best_effort|mechanism
 v12-be-writeback|-|--hicache-storage-prefetch-policy best_effort --hicache-write-policy write_back|config
 v9-be-page128|-|--hicache-storage-prefetch-policy best_effort --page-size 128|config
 v10-be-page32|-|--hicache-storage-prefetch-policy best_effort --page-size 32|config

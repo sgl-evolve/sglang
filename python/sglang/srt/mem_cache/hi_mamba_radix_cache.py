@@ -1613,7 +1613,8 @@ class HiMambaRadixCache(MambaRadixCache):
             f"[onyx-7q2] resolved prefetch config: threshold={prefetch_threshold} "
             f"timeout(base={prefetch_timeout_config.base},per_ki={prefetch_timeout_config.per_ki_token},"
             f"max={prefetch_timeout_config.max}) read_threads="
-            f"{envs.SGLANG_HICACHE_FILE_READ_THREADS.get()}"
+            f"{envs.SGLANG_HICACHE_FILE_READ_THREADS.get()} write_threads="
+            f"{envs.SGLANG_HICACHE_FILE_WRITE_THREADS.get()}"
         )
 
         return (

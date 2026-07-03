@@ -192,10 +192,32 @@ aggregate throughput peaks at **16 threads/rank (~5840 MB/s)**; 8→5384, 32→5
 frontier lever** (v6/v7/v8 deprioritized). Frontier search focuses on the orthogonal axes: prefetch
 grace-window (v13), write-policy (v11 selective / v12 write_back), page-size (v9/v10).
 
+## v15 — parallel L3 *writes*  [mechanism, queued, code+test landed]
+**Symmetric extension of the v3 read win.** The L3 *read* path was serial single-thread until v3
+parallelized `batch_get`; the L3 *write* path (`write_through` of every admitted page) was still a
+serial per-page loop in `HiCacheFile.batch_set` → `set()`, competing with the read/prefetch path for the
+same NVMe. `value.tofile()` releases the GIL, so a `ThreadPoolExecutor` writes a batch's pages
+concurrently. Hypothesis: faster write drain → less write↔read IO contention → lower prefetch tail →
+lower TTFT (stacks on best_effort).
+- **Change (pure Python, no recompile):** `hicache_storage.py` `HiCacheFile` gets a `_write_pool`;
+  `batch_set` uses `pool.map(self.set, keys, values)` when enabled (serial fallback at threads≤1 or
+  batch≤1). `environ.py`: new `SGLANG_HICACHE_FILE_WRITE_THREADS` (EnvInt, **default 1 = off**, so v1–v4
+  semantics are byte-unchanged; parallel writes are strictly opt-in).
+- **Safety/losslessness (proven, not argued):** the LRU evictor's `reserve/commit/abort/touch` are all
+  `threading.Lock`-guarded, and each `set()` writes a per-thread-unique tmp file (`pid.tid.uuid4`) then
+  an atomic `os.replace()` — same-key races converge to identical bytes, distinct keys are independent.
+  `test_parallel_read_lossless.py` now proves both directions: **200 pages byte-identical on disk,
+  parallel-write == serial-write == original** (CPU, no GPU). ✅
+- **Hot-path confirmed:** for `--hicache-storage-backend file`, the controller binds
+  `page_set_func = _generic_page_set` → `batch_set` (zero-copy is only for hf3fs/mooncake/eic/nixl/simm),
+  so this genuinely engages — same generic path the v3 read win exercised. Queued as **v15-be-parwrite**
+  (`SGLANG_HICACHE_FILE_WRITE_THREADS=16` + best_effort), tagged `mechanism`.
+
 ## Next (v5+): push the frontier (best_effort base)
 tpot is still +104% vs baseline (hit 0.59 ⇒ ~41% recompute). Levers: **v4 = parallel + best_effort**
 (0-wait admit; multiturn shared prefixes already in host from prior turns → keep hits at min TTFT);
-timeout-duration sweep (hit_rate↔TTFT tradeoff, now that reads are fast); read-thread-count tuning.
+**v15 = parallel L3 writes** (cut write↔read IO contention, code+test landed); write-policy (v11
+selective / v12 write_back); timeout-duration sweep; page-size (v9/v10).
 
 ## v1 (original planned result line — superseded above)
 **Lossless check.** Lossless by construction: `batch_get` returns bit-identical bytes in identical

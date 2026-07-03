@@ -380,6 +380,22 @@ class HiCacheFile(HiCacheStorage):
             else None
         )
 
+        # Symmetric write pool: L3 writes (write_through of each admitted page) are
+        # otherwise a serial per-page loop that contends with the read/prefetch IO on
+        # the same NVMe. value.tofile() releases the GIL; the evictor's reserve/commit/
+        # abort are all lock-guarded and each set() writes a per-thread-unique tmp file
+        # then atomically os.replace()s it, so concurrent writes are race-free and
+        # byte-lossless. 1 = serial (original, default); enable to overlap writes.
+        self._write_threads = max(1, int(envs.SGLANG_HICACHE_FILE_WRITE_THREADS.get()))
+        self._write_pool = (
+            ThreadPoolExecutor(
+                max_workers=self._write_threads,
+                thread_name_prefix="hicache-file-write",
+            )
+            if self._write_threads > 1
+            else None
+        )
+
     def _get_suffixed_key(self, key: str) -> str:
         return key + self.config_suffix
 
@@ -482,10 +498,17 @@ class HiCacheFile(HiCacheStorage):
         target_locations: Optional[Any] = None,
         target_sizes: Optional[Any] = None,
     ) -> bool:
-        for key, value in zip(keys, values):
-            if not self.set(key, value):
-                return False
-        return True
+        # Serial fallback (pool disabled or trivial batch): original behavior.
+        if self._write_pool is None or len(keys) <= 1:
+            for key, value in zip(keys, values):
+                if not self.set(key, value):
+                    return False
+            return True
+        # Write pages concurrently. Each set() reserves via the lock-guarded evictor
+        # and writes its own unique tmp file before an atomic rename, so writes don't
+        # race; True iff every page was persisted (matches the serial contract).
+        results = list(self._write_pool.map(self.set, keys, values))
+        return all(results)
 
     def exists(self, key: str) -> bool:
         key = self._get_suffixed_key(key)

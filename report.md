@@ -78,6 +78,37 @@ behind a knob (off) as it's array-bound (~9%) and its mamba path isn't concurren
 Hypothesis: removing the ~0.65 s/hit-query directory scan that grows with L3 fill collapses the
 growing TTFT tail, independent of prefetch policy. Lossless (byte-identical set + round-trip tests).
 
+### v2-scandirfix — RESULT (commit e77d37a8, `mechanism`) — **NEW BEST, 36× TTFT**
+| metric | v0_official | **v2-scandirfix** | Δ |
+|---|---|---|---|
+| **mean TTFT** | 87615 ms | **2425 ms** | **36.1× lower** |
+| TTFT p90 | 243466 ms | 4052 ms | 60× lower |
+| TTFT p99 | 270799 ms | 30636 ms | 8.8× lower |
+| TTFT median | 1224 ms | 1427 ms | ~flat |
+| out tok/s | 146.9 | 336.7 | 2.29× |
+| req thruput | 1.15 | 2.63 | 2.29× |
+| TPOT mean | 241 ms | 450 ms | worse (see caveats) |
+| hit_rate | 0.816 | 0.577 | lower |
+| L3 hit frac | 0.254 | 0.026 | disk barely used |
+| prefetched tok | 166 M | 14.3 M | 11.6× fewer |
+| disk_read tok | 20.7 M | 1.49 M | 13.9× fewer |
+
+**The catastrophic growing tail is gone** (p99 271 s → 31 s) — exactly what the S2 screen predicted:
+the O(total-files) scandir per prefetch was the tail. With an O(keys) hit-query, prefetches complete
+fast, the working set stays hot in GPU+host, and the system **barely spills to disk** (L3 25%→2.6%,
+prefetch 166M→14M). Serve wall-time ~45 min vs ~105 min. This is "less budget at better TTFT" — a
+charter-endorsed win. **Lossless by construction** (the fix is a faster existence check → identical
+KV loaded → identical outputs; correctness test proves set-equality vs scandir).
+
+Caveats (honest): (a) v2 has FlashInfer fusion disabled (env workaround) while the provided baseline
+may have it on — fusion is an allreduce (comm) opt that can only *slow* things, so it can't explain a
+TTFT *improvement*; it does inflate v2's TPOT (450 vs 241). (b) The regime shift (hit_rate↓, disk↓) is
+emergent from faster processing, not a caching bug. **To isolate the scandir fix from the fusion
+confound and establish a fusion-matched in-env reference, I am running a control `v0-ctrl-scandir` =
+original scandir + fusion-off** (both fusion-off ⇒ clean A/B of the scandir fix). New bottleneck after
+v2: TPOT / hit-rate, not disk-wait (disk now 2.6%), so disk-wait mechanisms (adaptive prefetch, SJF)
+are now low-value — v3 should target decode/throughput or hit-rate recovery.
+
 ## Operational notes (env / infra — not research variables)
 - **Pool coordination:** the manager's held pool is shared and some researchers run evals on it
   *without* the per-node flock (e.g. pinned launchers), so a flock-free node can still host a

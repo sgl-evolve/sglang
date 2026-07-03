@@ -5,6 +5,7 @@ import os
 import threading
 import uuid
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, List, Optional, Set
@@ -20,6 +21,14 @@ logger = logging.getLogger(__name__)
 
 # Max pages per batched storage IO call.
 STORAGE_BATCH_SIZE = 128
+
+# kv-heron-eb9 mechanism: concurrency for the HiCacheFile per-page disk IO + stat calls.
+# The stock file backend reads/writes/stats pages one-at-a-time on the single prefetch IO
+# thread, so requests block on serial disk IO under wait_complete (the dominant TTFT cost).
+# NVMe delivers far more at high queue depth; parallelizing the per-page IO within an
+# operation makes each prefetch fast (lossless: same bytes, distinct target buffers/fds,
+# thread-safe LRU evictor). Env override kept simple; default tuned for 128-page batches.
+HICACHE_FILE_IO_WORKERS = int(os.environ.get("SGLANG_HICACHE_FILE_IO_WORKERS", "16"))
 
 
 @dataclass
@@ -363,6 +372,11 @@ class HiCacheFile(HiCacheStorage):
             extra_config=storage_config.extra_config,
         )
 
+        # Shared pool for concurrent per-page disk IO / stat (see HICACHE_FILE_IO_WORKERS).
+        self._io_pool = ThreadPoolExecutor(
+            max_workers=HICACHE_FILE_IO_WORKERS, thread_name_prefix="hicache_file_io"
+        )
+
     def _get_suffixed_key(self, key: str) -> str:
         return key + self.config_suffix
 
@@ -404,12 +418,25 @@ class HiCacheFile(HiCacheStorage):
         target_locations: List[torch.Tensor],
         target_sizes: Optional[Any] = None,
     ) -> List[torch.Tensor | None]:
-        return [
-            self.get(key, target_location)
-            for key, target_location in zip(
-                keys, target_locations or [None] * len(keys)
-            )
-        ]
+        # Concurrent per-page reads: each get() reads a distinct file into a distinct
+        # target buffer with its own fd; the LRU evictor is internally locked -> race-free.
+        # Order is preserved (results[i] filled by index) so downstream break-on-None logic
+        # (first missing page) is unchanged. Lossless: identical bytes, just parallel.
+        tls = target_locations or [None] * len(keys)
+        if len(keys) <= 1:
+            return [self.get(k, t) for k, t in zip(keys, tls)]
+        results: List[torch.Tensor | None] = [None] * len(keys)
+        futs = {
+            self._io_pool.submit(self.get, k, t): i
+            for i, (k, t) in enumerate(zip(keys, tls))
+        }
+        for fut, i in futs.items():
+            try:
+                results[i] = fut.result()
+            except Exception as e:
+                logger.warning(f"Concurrent batch_get failed for {keys[i]}: {e}")
+                results[i] = None
+        return results
 
     def set(
         self,
@@ -463,10 +490,32 @@ class HiCacheFile(HiCacheStorage):
         target_locations: Optional[Any] = None,
         target_sizes: Optional[Any] = None,
     ) -> bool:
-        for key, value in zip(keys, values):
-            if not self.set(key, value):
-                return False
-        return True
+        # Concurrent per-page writes (distinct temp files + atomic replace, evictor locked).
+        if len(keys) <= 1:
+            return all(self.set(k, v) for k, v in zip(keys, values))
+        futs = [self._io_pool.submit(self.set, k, v) for k, v in zip(keys, values)]
+        ok = True
+        for f in futs:
+            try:
+                if not f.result():
+                    ok = False
+            except Exception as e:
+                logger.error(f"Concurrent batch_set failed: {e}")
+                ok = False
+        return ok
+
+    def batch_exists(
+        self, keys: List[str], extra_info: Optional[HiCacheStorageExtraInfo] = None
+    ) -> int:
+        # Parallelize the serial stat() scan; preserve "consecutive-existing-from-start"
+        # semantics by finding the first missing key after checking all concurrently.
+        if len(keys) <= 2:
+            return super().batch_exists(keys, extra_info)
+        exist = list(self._io_pool.map(self.exists, keys))
+        for i, e in enumerate(exist):
+            if not e:
+                return i
+        return len(keys)
 
     def exists(self, key: str) -> bool:
         key = self._get_suffixed_key(key)

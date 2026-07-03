@@ -182,6 +182,25 @@ so headroom to push the ratio further is limited (peak → 1.0 risks preemption)
 ratio to ~1.4, `--enable-int8-mamba-checkpoint` (2× cached-prefix capacity, but LOSSY → needs a
 quality gate), or the deeper decouple (keep full-attn KV on-device when a leaf's Mamba state evicts).
 
+### v4-mamba-ratio15 — `config` — **NEW BEST (56.2× vs baseline)**
+`--mamba-full-memory-ratio 1.5` → max_mamba_cache_size **1711** (vs 1611@1.3, 1350@0.9). Clean
+7037/7037, GPU KV peak 0.90 (1 preemption, negligible), fusion-off, lossless.
+| metric | v3(1.3) | **v4(1.5)** | vs v0_official |
+|---|---|---|---|
+| mean TTFT | 1802 ms | **1558 ms** | **56.2×** |
+| median TTFT | 1209 ms | 913 ms | 1.3× |
+| TTFT p99 | 12916 | 12866 | 21× |
+| TPOT | 392 ms | 300 ms | — |
+| out tok/s | 382 | 417 | 2.8× |
+| req thruput | 2.99 | 3.26 (→λ 3.5) | 2.8× |
+| hit_rate | 0.541 | **0.647** | — |
+More Mamba slots ⇒ more cached sequences ⇒ hit_rate recovers (0.54→0.65) ⇒ less prefill ⇒ throughput
+3.26 (nearing offered λ 3.5, so the queue is nearly drained) ⇒ median TTFT 913 ms. Monotonic gains
+0.9→1.3→1.5; GPU KV peak 0.90 leaves small headroom → v5 tries 1.6.
+
+## Curve so far (own versions, all lossless, fusion-off)
+v2 scandir-fix (mechanism) 2425 ms → v3 ratio1.3 1802 → v4 ratio1.5 **1558 ms** (baseline 87615 ms).
+
 ## Operational notes (env / infra — not research variables)
 - **Pool coordination:** the manager's held pool is shared and some researchers run evals on it
   *without* the per-node flock (e.g. pinned launchers), so a flock-free node can still host a

@@ -4,6 +4,27 @@ Independent researcher. Branch `evolve/kv-lynx-4d2`. W&B run `kv-lynx-4d2` in `s
 Model Qwen3.5-122B-A10B-FP8 (hybrid-Mamba), TP=8, fixed 3-tier protocol (GPU + 768 GB host +
 1.8 TB disk L3), real-text Mooncake 1:1:1 mix, λ=3.5, mc=128, 1553 prompts. Headline = mean TTFT.
 
+## EXECUTIVE SUMMARY (for a skeptical maintainer)
+Two robust, lossless wins take **mean TTFT 87,615 ms → 1,558 ms (56×)** and throughput 1.15 → 3.26
+req/s (nearing the offered λ=3.5) on the fixed protocol:
+1. **`mechanism` — O(keys) L3 hit-query (drop a whole-dir `os.scandir`) [commit bbf51108].** The
+   hybrid-Mamba prefetch path ran `os.scandir` over the *entire* L3 dir (~2M page files) on every
+   prefetch, every rank — O(total-files), growing as L3 fills → the catastrophic growing tail (p99
+   271 s). Fix = `os.path.isfile` on the specific targets (identical set → byte-lossless; set-equality
+   test). Alone: **36× TTFT** (v2). Microbench: 147–742× on the hit-query.
+2. **`config` — Mamba/KV GPU-memory rebalance (`--mamba-full-memory-ratio 0.9→1.5`).** After (1) the
+   run is GPU-prefill-bound; the GPU KV pool sits ~72% empty because the hybrid model's *Mamba-state
+   pool* is the binding GPU constraint. Shifting GPU cache memory to the Mamba pool (max_mamba_cache
+   1350→1711) raises cached-sequence capacity → hit_rate recovers → less prefill. Cumulative **56×**
+   (v4). Lossless (pure memory rebalance).
+
+**Robustness note:** the two provided baselines differ 87.6 s vs 108.8 s for the *same* config
+(~24% run-to-run variance), so the *big* deltas above are unambiguous, but fine version-to-version
+ranking (v3 1802 / v4 1558 / v5 1603 ms) is within noise — treat ratio∈[1.3,1.5] as one plateau.
+All my runs use `--enforce-disable-flashinfer-allreduce-fusion` (this venv's fusion NCCL init hangs;
+it's a comm opt that can only *slow* things, so my wins are if anything *conservative* vs a fusion-on
+baseline). Every version completed 7037/7037 requests clean.
+
 ## Baselines (provided; logged, not re-run)
 | version | mean TTFT | median TTFT | p90 | p99 | hit_rate | L3 hit frac | host_util | out tok/s |
 |---|---|---|---|---|---|---|---|---|

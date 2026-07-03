@@ -64,6 +64,36 @@ spent by SSD prefetch, and keep hot prefixes off the SSD tier. Two attack surfac
 - **Change:** config only (valid — the flag reaches `UnifiedRadixCache.prefetch_stop_policy`).
 - **Result:** _pending (~1 h)._  **Lossless:** recompute yields identical tokens.
 
+## Prior art (HiCache blog) — confirms the direction
+
+- The blog states SSD/**bandwidth saturation has "no dedicated throttling… addressed
+  indirectly"** (via write-through-selective / write-back). So a *load-aware prefetch admission*
+  policy (v4 below) targets a documented gap → genuinely novel.
+- It frames the exact tradeoff my mechanism navigates: `best_effort` "minimizes TTFT" vs staging
+  (`wait_complete`) "improves reuse / throughput."
+- **No in-flight transfer dedup** exists → prefetch coalescing is also a novel gap (candidate v6).
+- `write_through_selective` (hit-count-based, backs up only hot spots) is the documented
+  bandwidth-pressure lever → candidate config screen (baseline offload = 145 M tokens is large).
+
+## Live monitoring of v2cfg-besteffort (while running)
+
+Server `/metrics` under best_effort: **running_batch ≈ 124–126/128 (full), queue ≈ 0,
+token_usage ≈ 0.38** (GPU KV never the bottleneck — the run is concurrency/compute bound). So
+not-blocking-on-SSD keeps the decode batch full and drains the queue → confirms the
+wait_complete tail is decode-batch starvation from prefetch blocking. Baseline (wait_complete)
+almost certainly runs a smaller batch (requests stuck in prefetch).
+
+## Roadmap (ordered)
+
+1. **v2cfg-besteffort** (running) — the no-wait ceiling.
+2. **v4-adaptive-prefetch** (ready, capped 5 s) — wait for cheap/hot prefetches, give up on
+   saturating ones; aims to beat *both* wait_complete and best_effort.
+3. **v5-starvation-aware prefetch admission** (design ready) — plumb a scheduler signal: if the
+   last prefill pass ended with the batch underfull *because* requests were skipped for
+   prefetch, admit-all next pass (give up prefetch); else wait fully. Precise, self-correcting.
+4. **cfg: write_through_selective** — cut the 145 M-token offload write traffic (bandwidth).
+5. **v6: in-flight prefetch coalescing** — dedup concurrent SSD reads of shared pages (novel).
+
 ## v3cfg-timeout — timeout prefetch policy (config) — DEFERRED (no free node)
 
 - Third point on the prefetch-policy spectrum. Default timeout deadline is

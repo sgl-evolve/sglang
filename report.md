@@ -128,6 +128,22 @@ lever on the headline metric.
   runtime anyway ⇒ serving uses standard allreduce with or without the flag ⇒ TTFT/throughput
   unaffected, only load time). Used for v2 onward; does NOT affect comparability of serving metrics.
 
+
+### v3 — skip L3 storage write-backups under best_effort  [MECHANISM]  ** NEW BEST **
+- **Change:** `UnifiedRadixCache._finish_write_through_ack` — skip `write_backup_storage` when
+  `prefetch_stop_policy == best_effort` (commit 5bfd525a1). (Note: the ACTIVE cache class for this
+  hybrid-GDN model is UnifiedRadixCache, not HiRadixCache — the first edit was dormant; caught via
+  backuped_tokens>0 and fixed.)
+- **Why lossless:** under best_effort the disk tier is never READ (storage hits=0), so host->disk
+  backups are pure waste; skipping them means a miss recomputes (identical KV) — exactly what
+  best_effort already does. Verified: 0 L3 files written (v2 wrote ~770GB/776K files).
+- **Result vs v2 (isolates mechanism):** TTFT mean 1331 (v2 2467, -46%), median 801 (-48%), p99 10048
+  (-40%), out 387.6 t/s (+30%), req/s 3.03 (+31%, near offered 3.5), hit 0.614 (up from 0.543),
+  TPOT 268 (down from 514). vs tuned bar: **~82x lower TTFT, ~32x lower p99, ~3.25x throughput.**
+- **Why it works:** eliminating the host_ref pin during async disk-backup unblocks host eviction (host
+  99.7% full → faster admission), and freeing the backup thread's CPU/GIL + disk BW speeds
+  scheduling+decode (TPOT halved) and improves host cache quality (hit_rate up). Logged [mechanism]. Emailed.
+
 ### v3 direction — the disk (L3) tier is WASTED under timeout/best_effort
 - Under both policies, L3 storage hits = 0 (best_effort cancels prefetch immediately; timeout's serial
   disk path can't finish in time). So ~42% of prefill is recomputed and the 1.8TB disk tier is idle

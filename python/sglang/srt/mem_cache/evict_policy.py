@@ -74,7 +74,7 @@ class GSLRUStrategy(EvictionStrategy):
     def __init__(self, max_segment: int = 5, decay_tau: float = 25.0):
         self.max_segment = max_segment
         self.decay_tau = decay_tau
-        self.decay_tau_top = decay_tau * 3.0 / 2.0
+        self.decay_tau_top = decay_tau * 5.0 / 4.0
 
     def get_priority(self, node: TreeNode) -> Tuple[float, float]:
         segment = min(node.hit_count, self.max_segment)

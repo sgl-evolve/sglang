@@ -205,3 +205,13 @@ Reverted to v6 config (1 aux thread). **v6 (best_effort + 16-way concurrent per-
 the best; near the concurrent-IO ceiling (BW + queue-wait-lead-time capped).**
 Key reconciliation: under best_effort, hit_storage=0 yet concurrent-IO raises HOST hits (0.38→0.62) —
 it speeds the background disk→host prefetch so more lands in host before best_effort cancels-on-due.
+
+## Prefetch-policy × layout sweep (all with concurrent-IO mechanism, vs v6=2035ms best)
+- **v8-timeout-pario** (timeout policy): 2738 ms (worse than v6; same hit 0.62 but bounded wait adds
+  latency without more hits). best_effort (0 wait) is optimal for TTFT.
+- **v9-be-pario-pg128** (page_size 128): 3339 ms (+64%, WORSE); hit 0.62→0.26 — coarser page
+  granularity kills prefix-match hit rate, outweighing larger-transfer benefit.
+- **v10-be-pario-pg32** (page_size 32): [running] — finer matching may raise hit rate; test.
+**Conclusion so far: v6 (best_effort + concurrent per-page IO + page_size 64) = 2035 ms is the sweet
+spot / running best (41× vs anchor).** Prefetch-wait is the dominant TTFT lever; concurrent-IO makes
+best_effort capture more (hit 0.62 vs 0.38); timeout/page-size perturbations don't beat it.

@@ -411,6 +411,11 @@ class Envs:
     SGLANG_HICACHE_FILE_BACKEND_MAX_SIZE = EnvStr(None)
     SGLANG_HICACHE_FILE_BACKEND_EVICTION_RATIO = EnvFloat(0.9)
     SGLANG_HICACHE_FILE_BACKEND_MIN_FREE_SPACE = EnvStr("0")
+    # Worker threads for parallel page reads/writes (raises SSD queue depth so
+    # L3<->host transfers saturate local NVMe). 1 = original serial behavior.
+    # Tuned to 4 on 8xH100 local-SSD: 8 TP ranks * QD4 = aggregate QD32 peaks the
+    # device (~+34% vs serial); higher per-rank counts oversubscribe and regress.
+    SGLANG_HICACHE_FILE_BACKEND_IO_THREADS = EnvInt(4)
     SGLANG_HICACHE_NIXL_BACKEND_STORAGE_DIR = EnvStr(None)
     # Enable O_DIRECT when opening NIXL POSIX backend files (bypasses OS page cache).
     # Disable with SGLANG_HICACHE_NIXL_USE_DIRECT_IO=0 or via the

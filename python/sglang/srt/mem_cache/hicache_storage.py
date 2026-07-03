@@ -5,6 +5,7 @@ import os
 import threading
 import uuid
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, List, Optional, Set
@@ -363,6 +364,24 @@ class HiCacheFile(HiCacheStorage):
             extra_config=storage_config.extra_config,
         )
 
+        # Parallel page I/O. The stock backend reads/writes one page at a time on
+        # a single prefetch thread (NVMe queue depth 1), so L3<->host bandwidth is
+        # latency-bound far below the local SSD's capability. A thread pool issues
+        # concurrent open()+readinto()/tofile() calls (blocking file I/O releases
+        # the GIL) so the SSD sees a high queue depth. Reads land in per-page
+        # buffers and the evictor is fully lock-guarded, so this is race-free and
+        # byte-for-byte identical to the serial path. threads=1 restores the
+        # original behavior. [quartz-7m3] mechanism.
+        self._io_threads = max(1, envs.SGLANG_HICACHE_FILE_BACKEND_IO_THREADS.get())
+        self._io_pool = (
+            ThreadPoolExecutor(
+                max_workers=self._io_threads,
+                thread_name_prefix="hicache-file-io",
+            )
+            if self._io_threads > 1
+            else None
+        )
+
     def _get_suffixed_key(self, key: str) -> str:
         return key + self.config_suffix
 
@@ -404,12 +423,11 @@ class HiCacheFile(HiCacheStorage):
         target_locations: List[torch.Tensor],
         target_sizes: Optional[Any] = None,
     ) -> List[torch.Tensor | None]:
-        return [
-            self.get(key, target_location)
-            for key, target_location in zip(
-                keys, target_locations or [None] * len(keys)
-            )
-        ]
+        tls = target_locations or [None] * len(keys)
+        if self._io_pool is None or len(keys) <= 1:
+            return [self.get(key, tl) for key, tl in zip(keys, tls)]
+        # map() preserves input order in its output.
+        return list(self._io_pool.map(self.get, keys, tls))
 
     def set(
         self,
@@ -463,10 +481,12 @@ class HiCacheFile(HiCacheStorage):
         target_locations: Optional[Any] = None,
         target_sizes: Optional[Any] = None,
     ) -> bool:
-        for key, value in zip(keys, values):
-            if not self.set(key, value):
-                return False
-        return True
+        if self._io_pool is None or len(keys) <= 1:
+            for key, value in zip(keys, values):
+                if not self.set(key, value):
+                    return False
+            return True
+        return all(self._io_pool.map(self.set, keys, values))
 
     def exists(self, key: str) -> bool:
         key = self._get_suffixed_key(key)
@@ -580,10 +600,20 @@ class HiCacheFile(HiCacheStorage):
                 results[transfer.name] = [False] * len(keys)
                 continue
 
-            results[transfer.name] = [
-                op_fn(transfer.name, key, host_pool, host_indices[i * page_size].item())
-                for i, key in enumerate(keys)
-            ]
+            offs = [host_indices[i * page_size].item() for i in range(len(keys))]
+            if self._io_pool is None or len(keys) <= 1:
+                results[transfer.name] = [
+                    op_fn(transfer.name, key, host_pool, off)
+                    for key, off in zip(keys, offs)
+                ]
+            else:
+                results[transfer.name] = list(
+                    self._io_pool.map(
+                        lambda key, off: op_fn(transfer.name, key, host_pool, off),
+                        keys,
+                        offs,
+                    )
+                )
         return results
 
     def batch_get_v2(
@@ -612,3 +642,9 @@ class HiCacheFile(HiCacheStorage):
         except Exception as e:
             logger.error(f"Failed to clear HiCacheFile storage: {e}")
             return False
+
+    def close(self) -> None:
+        pool = getattr(self, "_io_pool", None)
+        if pool is not None:
+            pool.shutdown(wait=False)
+            self._io_pool = None

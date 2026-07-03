@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # eval_good_node.sh <name> <version> [eval args...]
-# Collision-SAFE eval launcher on the manager's held pool. Only launches on a held node that is:
-#   (1) disk >= 1.8T free on /mnt/localssd,
-#   (2) NOT already running another sglang.launch_server (avoid OOM-killing a neighbor -> fairness),
-#   (3) GPUs essentially idle (nvidia-smi),
-#   (4) acquirable via the per-node flock (coordinate with other eval-on-pool users).
-# Waits (loops) until such a node appears. NEVER edits the frozen eval.sh.
+# Race-winning, collision-SAFE eval launcher on the manager's held pool.
+# The pool flock is NOT authoritative (some researchers bypass it with their own launchers), so the
+# reliable readiness signal is: node has NO sglang.launch_server AND disk>=1.8T free AND idle GPUs.
+# We parallel-probe ALL held nodes every ~5s (fast detection to win the "who starts a server first
+# after a node frees" race), and the instant one is ready we flock (coordinate with flock-users) +
+# re-probe + srun the frozen eval.sh into it. NEVER edits eval.sh.
 set -uo pipefail
 ROOT=/home/junyanch_google_com/autoresearch
 set -a; . "$ROOT/.env"; set +a
@@ -13,48 +13,43 @@ SGL_HOME="${SGL_HOME:-$ROOT/programs/sgl}"
 EVAL="$SGL_HOME/researcher/.claude/skills/evaluation-sop/scripts/eval.sh"
 RT="${SGL_RUNTIME:-$SGL_HOME/manager/.runtime}"
 MIN_FREE_G=1800
-NAME="${1:?usage: eval_good_node.sh <name> <version> [eval args...]}"
-VER="${2:?}"; shift 2
-
+NAME="${1:?}"; VER="${2:?}"; shift 2
+mkdir -p "$RT/locks" /tmp/kvflint_logs 2>/dev/null
 held_nodes(){ compgen -G "$RT/held/*" >/dev/null 2>&1 && for f in "$RT/held"/*; do basename "$f"; done; }
-mkdir -p "$RT/locks" 2>/dev/null
-
-probe(){ # runs a probe on the node; prints "FREE_G;NSERVERS;GPUMEM_MIB"
-  srun --jobid="$1" --overlap -N1 -w "$2" bash -c '
-    fg=$(df -BG /mnt/localssd 2>/dev/null | tail -1 | awk "{gsub(/G/,\"\",\$4);print \$4}")
-    ns=$(pgrep -c -f "sglang.launch_server" 2>/dev/null || echo 0)
-    gm=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | sort -n | tail -1)
-    echo "${fg:-0};${ns:-0};${gm:-0}"
-  ' 2>/dev/null
-}
-
-echo "[good-node] $(date +%H:%M:%S) looking for a clean held node for $VER ..."
+probe(){ srun --jobid="$2" --overlap -N1 -w "$1" bash -c '
+    fg=$(df -BG /mnt/localssd 2>/dev/null|tail -1|awk "{gsub(/G/,\"\",\$4);print \$4}")
+    ns=$(pgrep -c -f sglang.launch_server 2>/dev/null||echo 0)
+    gm=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null|sort -n|tail -1)
+    echo "${fg:-0} ${ns:-0} ${gm:-0}"' 2>/dev/null; }
+echo "[good-node] $(date +%H:%M:%S) racing (parallel-probe 5s) for a held node for $VER"
+last_log=0
 while :; do
-  any_alive=0
-  for node in $(held_nodes); do
-    jid=$(cat "$RT/held/$node" 2>/dev/null) || continue
-    squeue -h -j "$jid" >/dev/null 2>&1 || continue
-    any_alive=1
-    read -r fg ns gm <<<"$(probe "$jid" "$node" | tr ';' ' ')"
-    if [ "${fg:-0}" -lt "$MIN_FREE_G" ]; then echo "[good-node] skip $node: disk ${fg}G<${MIN_FREE_G}G"; continue; fi
-    if [ "${ns:-0}" -gt 0 ]; then echo "[good-node] skip $node: $ns sglang server(s) already running (neighbor busy)"; continue; fi
-    if [ "${gm:-0}" -gt 5000 ]; then echo "[good-node] skip $node: GPU busy (${gm} MiB used)"; continue; fi
-    exec 200>"$RT/locks/$node.lock"
-    if flock -n 200; then
-      # re-probe under the lock to close the TOCTOU window
-      read -r fg2 ns2 gm2 <<<"$(probe "$jid" "$node" | tr ';' ' ')"
-      if [ "${ns2:-0}" -gt 0 ] || [ "${gm2:-0}" -gt 5000 ]; then
-        echo "[good-node] $node became busy under lock (ns=$ns2 gpu=${gm2}MiB) - releasing"; flock -u 200; exec 200>&-; continue
-      fi
-      echo "[good-node] $(date +%H:%M:%S) LAUNCH $VER on $node (job $jid, disk ${fg2}G, gpu ${gm2}MiB)"
-      srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" "$VER" "$@"
-      rc=$?
-      flock -u 200; exec 200>&-
-      echo "[good-node] $(date +%H:%M:%S) eval exit rc=$rc on $node"
-      exit $rc
-    fi
-    exec 200>&-
+  tmp=$(mktemp); alive=0
+  for n in $(held_nodes); do
+    j=$(cat "$RT/held/$n" 2>/dev/null) || continue
+    squeue -h -j "$j" >/dev/null 2>&1 || continue
+    alive=1
+    ( echo "$n $j $(probe "$n" "$j")" >> "$tmp" ) &
   done
-  [ "$any_alive" -eq 0 ] && { echo "[good-node] no live held nodes"; exit 1; }
-  sleep 45
+  wait
+  [ "$alive" = 0 ] && { echo "[good-node] no live held nodes"; rm -f "$tmp"; exit 1; }
+  while read -r n j fg ns gm; do
+    [ "${ns:-99}" -ne 0 ] && continue
+    [ "${gm:-99999}" -gt 5000 ] && continue
+    [ "${fg:-0}" -lt "$MIN_FREE_G" ] && continue
+    exec 200>"$RT/locks/$n.lock"
+    if flock -n 200; then
+      read -r fg2 ns2 gm2 <<<"$(probe "$n" "$j")"
+      if [ "${ns2:-99}" -eq 0 ] && [ "${gm2:-99999}" -le 5000 ] && [ "${fg2:-0}" -ge "$MIN_FREE_G" ]; then
+        echo "[good-node] $(date +%H:%M:%S) WON $n (disk ${fg2}G) — LAUNCH $VER"
+        srun --jobid="$j" --overlap -N1 -w "$n" --gres=gpu:8 bash "$EVAL" "$NAME" "$VER" "$@"
+        rc=$?; flock -u 200; exec 200>&-; rm -f "$tmp"
+        echo "[good-node] $(date +%H:%M:%S) eval exit rc=$rc on $n"; exit $rc
+      fi
+      flock -u 200; exec 200>&-
+    else exec 200>&-; fi
+  done < <(sort -k3 -nr "$tmp")
+  rm -f "$tmp"
+  now=$(date +%s); [ $((now-last_log)) -ge 120 ] && { echo "[good-node] $(date +%H:%M:%S) still racing..."; last_log=$now; }
+  sleep 5
 done

@@ -56,9 +56,10 @@ barger(){
 
 echo "[good-node] $(date +%H:%M:%S) tight barge-poll racing for $VER on: $(held_nodes|tr '\n' ' ')"
 : > "$STATE/pids"; pids=()
+NBARGE="${NBARGE:-3}"
 for n in $(held_nodes); do
   j=$(cat "$RT/held/$n" 2>/dev/null) || continue
-  barger "$n" "$j" "$@" & p=$!; pids+=($p); echo "$p" >> "$STATE/pids"
+  for k in $(seq 1 "$NBARGE"); do barger "$n" "$j" "$@" & p=$!; pids+=($p); echo "$p" >> "$STATE/pids"; done
 done
 last=0
 while [ ! -f "$STATE/rc" ]; do

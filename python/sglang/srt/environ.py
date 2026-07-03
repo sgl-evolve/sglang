@@ -417,6 +417,12 @@ class Envs:
     # reads, cutting the storage-prefetch tail latency. 1 = serial (original).
     # 16 is the measured NVMe sweet spot (~6x over serial; >32 over-parallelizes).
     SGLANG_HICACHE_FILE_READ_THREADS = EnvInt(16)
+    # Prefetch-timeout policy knobs (linear: wait = base + per_ki*ntok/1024, capped at max).
+    # None => use PrefetchTimeoutConfig code defaults (base 2.0, per_ki 0.1, max 30.0). With fast
+    # parallel reads a longer window lets more prefetch complete -> higher hit_rate, less recompute.
+    SGLANG_HICACHE_PREFETCH_TIMEOUT_BASE = EnvFloat(None)
+    SGLANG_HICACHE_PREFETCH_TIMEOUT_PER_KI = EnvFloat(None)
+    SGLANG_HICACHE_PREFETCH_TIMEOUT_MAX = EnvFloat(None)
     SGLANG_HICACHE_NIXL_BACKEND_STORAGE_DIR = EnvStr(None)
     # Enable O_DIRECT when opening NIXL POSIX backend files (bypasses OS page cache).
     # Disable with SGLANG_HICACHE_NIXL_USE_DIRECT_IO=0 or via the

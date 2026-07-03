@@ -1556,12 +1556,26 @@ class HiMambaRadixCache(MambaRadixCache):
                 raise e
 
         defaults = PrefetchTimeoutConfig()
+        # Env overrides let us sweep the timeout window without touching the frozen
+        # extra-config JSON (env > extra_config key > code default).
+        from sglang.srt.environ import envs
+
+        _env_base = envs.SGLANG_HICACHE_PREFETCH_TIMEOUT_BASE.get()
+        _env_perki = envs.SGLANG_HICACHE_PREFETCH_TIMEOUT_PER_KI.get()
+        _env_max = envs.SGLANG_HICACHE_PREFETCH_TIMEOUT_MAX.get()
         prefetch_threshold = extra_config.pop("prefetch_threshold", 256)
-        prefetch_timeout_base = extra_config.pop("prefetch_timeout_base", defaults.base)
-        prefetch_timeout_per_ki_token = extra_config.pop(
-            "prefetch_timeout_per_ki_token", defaults.per_ki_token
+        prefetch_timeout_base = extra_config.pop(
+            "prefetch_timeout_base",
+            _env_base if _env_base is not None else defaults.base,
         )
-        prefetch_timeout_max = extra_config.pop("prefetch_timeout_max", defaults.max)
+        prefetch_timeout_per_ki_token = extra_config.pop(
+            "prefetch_timeout_per_ki_token",
+            _env_perki if _env_perki is not None else defaults.per_ki_token,
+        )
+        prefetch_timeout_max = extra_config.pop(
+            "prefetch_timeout_max",
+            _env_max if _env_max is not None else defaults.max,
+        )
         hicache_storage_pass_prefix_keys = extra_config.pop(
             "hicache_storage_pass_prefix_keys", False
         )

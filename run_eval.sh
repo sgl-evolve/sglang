@@ -17,6 +17,7 @@ VER="${1:?usage: run_eval.sh <version> [args...]}"; shift || true
 SKIP_NODES="${SKIP_NODES:-slurm2-a3nodeset0-0}"
 held_nodes(){ for f in "$RT/held"/*; do [ -e "$f" ] && basename "$f"; done; }
 
+attempts=0; MAX_ATTEMPTS=4   # retry transient init crashes (OOM race, node lottery)
 while :; do
   any_free=0
   for node in $(held_nodes); do
@@ -37,7 +38,11 @@ while :; do
         srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" "$VER" "$@"
         rc=$?
         flock -u 200; exec 200>&-
-        exit $rc
+        [ "$rc" -eq 0 ] && exit 0
+        attempts=$((attempts+1))
+        echo "[run_eval] eval on $node FAILED rc=$rc (attempt $attempts/$MAX_ATTEMPTS) -> retry on another node"
+        [ "$attempts" -ge "$MAX_ATTEMPTS" ] && { echo "[run_eval] giving up after $attempts attempts"; exit "$rc"; }
+        sleep 30   # let a crashed node's memory settle before re-checking it
       else
         echo "[run_eval] node $node not ready (${mem_g}G RAM, $((free_kb/1024/1024))G disk) -> skip"
         flock -u 200; exec 200>&-

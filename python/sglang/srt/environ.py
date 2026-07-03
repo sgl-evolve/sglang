@@ -417,6 +417,13 @@ class Envs:
     # concurrently exploits the SSD's internal parallelism. <=1 keeps the legacy
     # serial path. Each page is a distinct file, so this is lossless.
     SGLANG_HICACHE_FILE_BACKEND_IO_WORKERS = EnvInt(16)
+    # Number of concurrent prefetch IO aux threads. The controller uses a single
+    # aux thread that processes storage->host prefetch operations one at a time, so
+    # a small request's L3 load waits behind a large one's (cross-request head-of-line
+    # blocking). Running several aux threads lets independent requests' prefetches
+    # proceed concurrently. Operations target disjoint host pages and per-op counters
+    # are locked, so this is lossless. <=1 keeps the legacy single-thread path.
+    SGLANG_HICACHE_PREFETCH_AUX_THREADS = EnvInt(4)
     SGLANG_HICACHE_NIXL_BACKEND_STORAGE_DIR = EnvStr(None)
     # Enable O_DIRECT when opening NIXL POSIX backend files (bypasses OS page cache).
     # Disable with SGLANG_HICACHE_NIXL_USE_DIRECT_IO=0 or via the

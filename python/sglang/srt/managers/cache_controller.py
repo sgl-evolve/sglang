@@ -384,7 +384,10 @@ class HiCacheController:
             if hasattr(self, "backup_queue"):
                 self.backup_queue.put_nowait(None)
             if hasattr(self, "prefetch_buffer"):
-                self.prefetch_buffer.put_nowait(None)
+                # One sentinel per aux thread (they also exit via the 1s queue timeout).
+                n = len(getattr(self, "prefetch_io_aux_threads", [1]))
+                for _ in range(max(1, n)):
+                    self.prefetch_buffer.put_nowait(None)
         except Exception:
             pass
 
@@ -394,7 +397,9 @@ class HiCacheController:
             threads.append(self.prefetch_thread)
         if hasattr(self, "backup_thread"):
             threads.append(self.backup_thread)
-        if hasattr(self, "prefetch_io_aux_thread"):
+        if hasattr(self, "prefetch_io_aux_threads"):
+            threads.extend(self.prefetch_io_aux_threads)
+        elif hasattr(self, "prefetch_io_aux_thread"):
             threads.append(self.prefetch_io_aux_thread)
 
         for t in threads:
@@ -1026,10 +1031,21 @@ class HiCacheController:
         Manage prefetching operations from storage backend to host memory.
         """
         self.prefetch_buffer = Queue()
-        self.prefetch_io_aux_thread = threading.Thread(
-            target=self.prefetch_io_aux_func, daemon=True
-        )
-        self.prefetch_io_aux_thread.start()
+        # v3: run several aux threads so independent requests' storage->host prefetches
+        # proceed concurrently (no cross-request head-of-line blocking). Each op targets
+        # disjoint host pages and uses a locked completed_tokens counter -> lossless.
+        from sglang.srt.environ import envs
+
+        n_aux = envs.SGLANG_HICACHE_PREFETCH_AUX_THREADS.get()
+        n_aux = max(1, int(n_aux)) if n_aux else 1
+        self.prefetch_io_aux_threads = [
+            threading.Thread(target=self.prefetch_io_aux_func, daemon=True)
+            for _ in range(n_aux)
+        ]
+        for _t in self.prefetch_io_aux_threads:
+            _t.start()
+        # Back-compat alias (some teardown paths reference the singular attribute).
+        self.prefetch_io_aux_thread = self.prefetch_io_aux_threads[0]
         while (not self.storage_stop_event.is_set()) or not self.prefetch_queue.empty():
             try:
                 operation = self.prefetch_queue.get(block=True, timeout=1)

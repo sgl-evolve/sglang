@@ -526,12 +526,17 @@ class HiCacheFile(HiCacheStorage):
             for key in keys:
                 target_files.add(f"{self._get_component_key(key, transfer.name)}.bin")
 
-        existing_files = set()
-        with os.scandir(self.file_path) as entries:
-            for entry in entries:
-                if entry.is_file() and entry.name in target_files:
-                    existing_files.add(entry.name)
-        return existing_files
+        # kv-lynx-4d2: probe the specific target files directly instead of
+        # os.scandir'ing the ENTIRE storage dir. This hit-query runs on every
+        # prefetch, on every rank; the L3 dir holds millions of page files at
+        # steady state, so the full scan is O(total files on disk) and gets
+        # slower as L3 fills -- a growing tax straight in the TTFT path. Direct
+        # os.path.isfile is O(len(target_files)) and yields the identical set
+        # (all targets are regular .bin files), so this is lossless.
+        fp = self.file_path
+        join = os.path.join
+        isfile = os.path.isfile
+        return {name for name in target_files if isfile(join(fp, name))}
 
     def batch_exists_v2(
         self,

@@ -213,7 +213,13 @@ lower TTFT (stacks on best_effort).
 - **Hot-path confirmed:** for `--hicache-storage-backend file`, the controller binds
   `page_set_func = _generic_page_set` → `batch_set` (zero-copy is only for hf3fs/mooncake/eic/nixl/simm),
   so this genuinely engages — same generic path the v3 read win exercised. Queued as **v15-be-parwrite**
-  (`SGLANG_HICACHE_FILE_WRITE_THREADS=16` + best_effort), tagged `mechanism`.
+  tagged `mechanism`.
+- **Premise validated + tuned by an offline write microbench** (`aggregate_write_bench.py`, 8 ranks ×
+  200×768KB, page-cache writes matching `set()`, run on an idle a3 node): serial write drain **14.3 GB/s
+  → 32.6 GB/s @ 8 threads (2.29×)**; 4→2.10×, 16→1.92×, 32→1.71×. So the serial write loop **is
+  thread-bound** (confirming v15 frees the controller thread ~2× faster), and — unlike reads (optimum
+  16) — **writes peak at 8 threads** (page-cache/replace contention past that). v15 therefore set to
+  `SGLANG_HICACHE_FILE_WRITE_THREADS=8`, the empirical optimum.
 
 ## Next (v5+): push the frontier (best_effort base)
 tpot is still +104% vs baseline (hit 0.59 ⇒ ~41% recompute). Levers: **v4 = parallel + best_effort**

@@ -314,3 +314,26 @@ so single-run TTFT has high variance. Implications for my curve:
   Confirms the best config is reproducible in the ~1.1–1.2 s range (~90–100× below the tuned bar), and
   that the small incrementals (lpm, skip-prefetch) sit within variance while best_effort + skip-writes
   are the definitive wins.
+
+### v10 — + `num_continuous_decode_steps=2`  [config]  ** NEUTRAL **
+- Result: TTFT mean 1191 (n=1 runs 1089-1205), median 620, out 424 t/s, req 3.32. Within ~10% variance
+  of the ncds=1 best → NEUTRAL. Confirms decode is not step-starved (throughput already near offered 3.5).
+  Valid (7037/7037, no fallback).
+
+## Conclusion (at the lossless ceiling for this protocol)
+Config space fully mapped; best config **best_effort + skip-L3-writes + skip-L3-prefetch-issue + lpm**
+reproducibly delivers **mean TTFT ~1.1-1.2 s (~90-100× below the tuned bar), p99 ~7-9 s, out ~410-430
+tok/s (~3.5×), req/s ~3.2-3.35 (near the offered 3.5)** — losslessly.
+- **Definitive wins** (≫ the ~10% run-to-run variance): `best_effort` prefetch policy (−97% TTFT) and the
+  **skip-L3-writes MECHANISM** (−46% TTFT, +30% throughput). Unifying insight: on this protocol the L3
+  disk tier is a *net liability* (serialized/slow, and its writes+prefetch contend with the 99.7%-full
+  host tier); under a non-reading policy it is provably dead, so eliminate its writes AND read-issue,
+  losslessly.
+- **Small/within-variance:** skip-prefetch-issue, lpm.
+- **Dead ends:** mixed_chunk (crashes — device pool leak), slru/write_through_selective (hurt hit-rate),
+  parallel-L3-reads (ranks already saturate NVMe). Residual ~38% prefill recompute is capacity-bound
+  (working set 19M ≫ device+host 10.2M); the natural fix (prefill/decode overlap) needs a working
+  mixed_chunk, which is blocked by an sglang bug on this hybrid-GDN model.
+- **Losslessness** is by construction: a recomputed KV block is numerically identical to a loaded one,
+  and skipping never-read writes/prefetch changes no computed value (outputs differ only by the same
+  batching-order fp nondeterminism present in the baseline). All kept runs completed 7037/7037.

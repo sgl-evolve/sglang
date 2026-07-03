@@ -68,6 +68,23 @@ lever on the headline metric.
   `min(30s, 2s+0.1s/Ktok)` then proceeds, recomputing the un-fetched suffix — lossless
   (`check_prefetch_progress` inserts the partial prefix; prefill recomputes the rest). Diagnostic:
   does *not blocking indefinitely on L3* raise throughput / cut the TTFT tail?
-- **Change:** none (extra arg `--hicache-storage-prefetch-policy timeout`); code = baseline a334877e5.
-- **Result vs baseline:** [running — waiting for a free good held node].
-- **Takeaway:** [pending; will also mine live metrics for the true bottleneck].
+- **Change:** none (extra arg `--hicache-storage-prefetch-policy timeout`); code = baseline (commit 953d8e197, sglang unchanged).
+- **Run notes:** cold-workspace first load was ~29 min (DeepGEMM/kernel JIT compile via cicc/nvcc/ptxas
+  → `~/.cache/deep_gemm`, NFS-persistent → future loads ~11 min). flashinfer allreduce-fusion crashes
+  and auto-disables at runtime (recoverable). Ran on self-held certified node 0-2 (escaped pool contention).
+- **Result vs baseline:** [bench running].
+- **LIVE BOTTLENECK DIAGNOSIS (mid-run, the real value of v1):**
+  - Running decode batch = **~110-128** (full offered concurrency 128) — NOT the ~35 I mis-inferred from
+    baseline out_tok_s/TPOT. The server fully uses the offered concurrency.
+  - **Device KV pool only ~30-45% used** (`full token usage`) — LARGE headroom; **NOT device-KV-bound.**
+    Mamba state pool ~30-35%. So a lossless "fit more active KV on device" mechanism is NOT the lever.
+  - **0 retract events** — no device-pressure thrashing (refutes the retract-mitigation hypothesis).
+  - gen throughput fluctuates ~145-940 tok/s; prefill input ~22-36K tok/s; small queue early.
+  - ⇒ Throughput/TTFT is limited by **pipeline efficiency** (compute for batch~128 + prefill steps
+    interrupting decode with `enable_mixed_chunk=False` + KV-movement stalls as tiers fill), NOT memory,
+    NOT L3 read bandwidth (S1). The TTFT tail = periodic pipeline stalls (long-doc chunked prefills
+    monopolizing forwards; KV load/prefetch waits).
+- **v2 candidates (data-grounded):** (a) `enable_mixed_chunk` [config] — overlap prefill+decode to kill
+  the decode-pause bubble (verify hybrid-Mamba support); (b) scheduling to reduce long-prefill
+  monopolization / bubble-fill; (c) reduce KV-movement stalls on the load/offload path.
+- **Takeaway:** [pending bench completion].

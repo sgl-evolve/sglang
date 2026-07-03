@@ -69,8 +69,31 @@ avoid any parallel-read over-saturation. Lossless (recompute = exact KV).
 num_running ≈ 109–127 (near max-conc 128), num_queue ≈ 0–18, GPU KV token_usage ≈ 0.33–0.43 — vs v1's
 num_running=15 / queue=113 / usage=0.04. Bench throughput ~1.6 req/s cumulative (instantaneous up to
 7.7 it/s) vs baseline 1.15. The GPU is busy instead of idle: admitting requests after a bounded wait
-(recomputing the un-prefetched tail) beats blocking them on full disk prefetch. **Final mean TTFT
-pending completion.**
+(recomputing the un-prefetched tail) beats blocking them on full disk prefetch.
+
+**Result (commit 13b0f250c, clean run node-0, on-contract, no silent fallback, W&B `v2-serial-timeout`
+[config]):**
+| metric | v2 | v0_official | Δ |
+|---|---|---|---|
+| **mean TTFT** | **4243.6 ms** | 87615.4 | **−95.2%** |
+| TTFT p90 | 10708 | 243466 | −95.6% |
+| TTFT p99 | 24505 | 270799 | −91.0% |
+| TTFT median | 2481 | 1224 | +102.7% |
+| e2e mean | 55435 | 108148 | −48.7% |
+| out tok/s | 272.6 | 146.9 | +85.6% |
+| req thruput | 2.13 | 1.15 | +85.2% |
+| tpot mean | 802 | 241 | +232% |
+| hit_rate | 0.442 | 0.816 | −45.9% |
+| L3 storage frac | 0.0 | 0.254 | −100% |
+
+**Lossless:** timeout recomputes the un-prefetched tail via prefill → exact KV → identical outputs
+(recompute ≡ no-cache path). **Interpretation:** a huge TTFT win, but it wins by *abandoning the slow
+L3 tier* (storage hits → 0) and spending the formerly-idle GPU on recompute — median TTFT and tpot rise
+slightly (more concurrent work), but the catastrophic tail collapses. This is a legitimate config win
+(prefetch policy is tunable; "less L3 at better TTFT" is a win per the charter), and it definitively
+maps the bottleneck. **But the real goal is to make L3 *useful*** — keep the hits AND the low TTFT.
+That is the next step: **v3 = parallel reads + timeout** (faster reads → more prefetch completes inside
+the timeout window → recover hit_rate without re-introducing the wait).
 
 ## v1 (original planned result line — superseded above)
 **Lossless check.** Lossless by construction: `batch_get` returns bit-identical bytes in identical

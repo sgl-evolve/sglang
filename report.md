@@ -95,6 +95,19 @@ maps the bottleneck. **But the real goal is to make L3 *useful*** — keep the h
 That is the next step: **v3 = parallel reads + timeout** (faster reads → more prefetch completes inside
 the timeout window → recover hit_rate without re-introducing the wait).
 
+## v3 — parallel L3 reads + timeout  [mechanism]  (running)
+**Refined hypothesis (bandwidth argument).** Why does v2 (serial) hit storage_frac=0? Not per-request
+read latency (a single 50K-tok prefix reads in <1s even serial), but **aggregate read bandwidth vs the
+timeout window**: under 128-way concurrency the working set to prefetch is ~tens of GB/rank; serial
+reads (~1 GB/s, one page's open/readinto/close at a time) can't deliver it before each request's
+timeout fires (2s + 0.1s/1024tok, cap 30s) → nearly everything recomputes. Parallel `batch_get`
+(16 threads ≈ the NVMe's ~6 GB/s ceiling, measured) should deliver the same working set ~6× faster,
+inside the timeout window → **recover storage hits, cut recompute → lower tpot (v2 regressed +232%) and
+raise hit_rate, at the same low TTFT**. This also implies multi-threaded prefetch (multiple aux threads)
+is *not* the lever — one aux thread's `batch_get` already saturates the 16-way pool at NVMe bandwidth;
+extra aux threads share the same pool and add no bandwidth. Lossless (exact KV). Result: _(pending a node
+— severe held-pool contention + the only free certified node self-locked by another researcher)._
+
 ## v1 (original planned result line — superseded above)
 **Lossless check.** Lossless by construction: `batch_get` returns bit-identical bytes in identical
 order (verified), so the KV loaded under wait_complete is identical to serial → model outputs identical

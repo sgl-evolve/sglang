@@ -119,6 +119,36 @@ loaded KV (deterministic model) → outputs unchanged; a policy flag, on-contrac
 EVAL_DONE. This is a CONFIG win (tuning), not novelty — the genuine-mechanism goal is to get this low
 TTFT *while still using L3* (overlap disk prefetch with prefill), or beat 3.06 s.
 
+## v4-lfu (config) — negative
+`--radix-eviction-policy lfu`: ttft_mean 123983 ms (+46.7% vs anchor), out_tok/s −23%. LFU shifts hits
+toward disk (hit_storage 0.26→0.52); under wait_complete that means MORE slow disk-prefetch-waits →
+worse. Reinforces: under wait_complete, any increase in disk reliance hurts TTFT.
+
+## v5-pario (MECHANISM, commit 8425dbe95) — negative but informative
+Concurrent per-page disk IO + parallel stat() in HiCacheFile (16-way pool). ttft_mean 82485 ms
+(−2.4% vs anchor, within noise); hit_rate 0.82 and load_back 446M UNCHANGED. **The mechanism engaged
+but per-page disk IO is NOT the prefetch bottleneck** — my disk micro-bench already showed reads at
+4.9 GB/s (parallel only 1.3×). The real bottleneck is the **single-threaded prefetch pipeline's
+operation-level + TP-all_reduce serialization** (each prefetch op does hit-query + a per-op gloo
+all_reduce + transfer, serially; ordering-locked so not naively parallelizable). Parallelizing the IO
+*within* an op can't fix serialization *across* ops. best_effort sidesteps the whole pipeline → why it
+wins. Lossless (same bytes). Kept as an honest negative.
+
+## Current standing
+| ver | tag | ttft_mean ms | out_tok/s | hit | note |
+|-----|-----|-------------|-----------|-----|------|
+| v0_official | ref | 87615 | 146.9 | 0.816 | golden |
+| v0_tuned | ref | 108824 | 119.3 | 0.821 | golden (likely lpm) |
+| v1-basefix | config | 84502 | 146.3 | 0.820 | my anchor (== golden) |
+| v2-lpm | config | 106296 | 119.9 | 0.819 | −, scheduling reorder hurts |
+| v4-lfu | config | 123983 | 112.1 | 0.812 | −, eviction→disk hurts |
+| v5-pario | mechanism | 82485 | 148.4 | 0.817 | ~noise, IO not the bottleneck |
+| **v3-besteffort** | **config** | **3062** | **255.7** | 0.382 | **★ 27× best (skip disk-prefetch-wait)** |
+
+Headline: **best_effort prefetch = 3.06 s mean TTFT (27× vs anchor/golden), +75% throughput, lossless.**
+The genuine research finding: the frozen baseline's `wait_complete` + serial prefetch pipeline makes
+TTFT catastrophically disk-prefetch-wait-bound; `best_effort` rebalances loading→(idle) compute.
+
 ## Ops lessons (hard-won)
 - **Evals must be `setsid`-detached** — an `srun --overlap` into a held node is a child of the
   researcher session; on session teardown slurm kills the srun step (killed v1-basefix at 16%).

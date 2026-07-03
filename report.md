@@ -3,6 +3,49 @@
 Independent researcher. Branch `evolve/kv-heron-e29`. W&B run `kv-heron-e29` in `sgl-evolve`.
 Bar to beat: **v0_tuned**. Headline metric: **mean TTFT** (lower better), lossless required.
 
+## Executive summary (for a skeptical maintainer)
+
+On the fixed protocol (Qwen3.5-122B-A10B-FP8 hybrid-GDN MoE, TP8, 3-tier HiCache, real-text
+ShareGPT+LEval+LooGLE mix at λ=3.5 / max-concurrency 128), **mean TTFT drops from the tuned baseline's
+108,824 ms to ~1,205 ms (v6) — ~90×, losslessly — with ~3.5× throughput** (out 119→412 tok/s, req
+0.93→3.22/s, near the offered 3.5) and p99 322,801→8,702 ms.
+
+**Root cause of the baseline pathology:** the frozen prefetch policy `wait_complete` blocks every
+L3(disk)-hit request in the scheduler queue until its full storage prefetch completes; the file backend's
+disk path is serialized (one `prefetch_io_aux_thread`, synchronous `readinto`) → the pipeline stalls →
+87–109 s mean TTFT (queue-dominated).
+
+**Three lossless changes** (outputs unchanged — a recomputed KV block is numerically identical to a
+loaded one; verified same 7037/7037 successful requests, no quality gate tripped):
+1. **[config] `--hicache-storage-prefetch-policy best_effort`** — never block on the disk tier; recompute
+   the un-cached suffix at prefill (cheap on 8×H100). 108824→2467 ms, throughput ~2.5×. Storage-tier hits
+   become 0 — the disk tier is effectively unused, i.e. we spend *less* of the memory budget at far better
+   TTFT (charter-sanctioned).
+2. **[MECHANISM] skip L3 write-backups under best_effort** (`UnifiedRadixCache._finish_write_through_ack`)
+   — the disk is never read, so its writes (~770 GB / 776k page-files per run) are pure waste; worse, each
+   backup pins a host node (`host_ref`/`protect_host`) until its async write acks, blocking host eviction
+   while the host tier is 99.7% full. Skipping frees host eviction → 2467→1331 ms (−46%), throughput +30%,
+   hit-rate 0.54→0.61, TPOT 514→268.
+3. **[MECHANISM] skip the L3 prefetch-ISSUE under best_effort** (`UnifiedRadixCache.prefetch_from_storage`)
+   — the prefetch is cancelled the next step (loads ~0 tokens) yet still allocs/evicts host per request
+   (same host-contention class). Skipping → −4% TTFT, −15% p99.
+   Plus **[config] `--schedule-policy lpm`** (prefix-bundling for the many-questions-per-doc mix): small gain.
+
+**Unifying principle for the two mechanisms:** under a non-reading prefetch policy the disk tier is
+provably dead, so BOTH its writes and its read-issue are pure host-contending churn — eliminate both,
+losslessly. (Suggested upstream: auto-disable storage backup + prefetch-issue when the effective read
+policy never consumes storage.)
+
+**Negatives (kept):** `enable_mixed_chunk` crashes (device KV-pool accounting leak on this hybrid-GDN
+model) — void; `radix_eviction_policy=slru` (−42%) and `write_through_selective` (hit 0.62→0.40) both
+hurt — LRU + write_through are optimal for this recency-heavy workload. Remaining cost is ~38% prefill
+recompute (capacity-bound: working set 19M ≫ device 2.35M + host 7.8M) competing with decode; the natural
+fix (prefill/decode overlap via mixed_chunk) is blocked by the crash above.
+
+**Variance caveat:** the two provided baselines differ ~24% at identical config, so the *big* wins
+(best_effort, skip-writes) are unambiguous but the last few-% incrementals (lpm, skip-prefetch) are
+small-and-directional (supported by a monotonic curve + monotonically-falling max-queue 37→32→27→v9-confirm).
+
 ## Baselines (reference points, not re-run)
 
 | version | TTFT mean (ms) | TTFT p99 (ms) | out tok/s | hit_rate | L3 hit frac | host_util |

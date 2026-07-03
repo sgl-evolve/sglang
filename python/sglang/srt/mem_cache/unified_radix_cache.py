@@ -372,6 +372,11 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self.prefetch_threshold = 256
         self.prefetch_timeout_base = 1.0
         self.prefetch_timeout_per_page = 0.25
+        # Hard cap on how long any single request will block the scheduler waiting
+        # for its SSD prefetch under the `adaptive` policy. Bounds worst-case decode
+        # starvation from a huge prefix read while still letting fast (small/hot)
+        # prefetches land and be counted as host hits.
+        self.adaptive_prefetch_max_wait = 5.0
         self.hicache_storage_pass_prefix_keys = False
 
         self.reset()
@@ -1996,6 +2001,10 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         pressure = min(1.0, occ / cap) if cap > 0 else 0.0
         size_term = len(operation.hash_value) * self.prefetch_timeout_per_page
         deadline = self.prefetch_timeout_base + size_term * (1.0 - pressure)
+        # Cap so a huge SSD-resident prefix can never idle the decode batch for
+        # tens/hundreds of seconds (the wait_complete tail); above the cap we
+        # admit + recompute (lossless).
+        deadline = min(deadline, self.adaptive_prefetch_max_wait)
         return (time.monotonic() - operation.start_time) >= deadline
 
     def can_terminate_prefetch(self, operation: PrefetchOperation) -> bool:

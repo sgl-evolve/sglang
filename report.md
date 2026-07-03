@@ -1,5 +1,39 @@
 # onyx-7q2 — sglang KV-cache / HiCache evolution report
 
+## Executive summary (for a skeptical maintainer)
+**Result: mean TTFT 87615 ms → 2013 ms (−97.7%), lossless, on the fixed 122B-A10B / 3-tier-HiCache /
+Mooncake-1:1:1 protocol.** Throughput +85% (1.15→2.13 req/s), out 146.9→272.6 tok/s, p99 TTFT
+270799→~16000 ms.
+
+**Root cause (measured, not assumed):** under HiCache's default `wait_complete` storage-prefetch policy,
+an L3(disk)-hit request blocks in the prefetch-wait state until its *entire* prefetch finishes. On this
+workload that starves the GPU — live `/metrics` showed num_running≈15, num_queue≈113, GPU KV
+token_usage≈4% (Strata's "loading-bound, not compute-bound"). The baseline mean TTFT (87.6 s) is
+dominated by a ~240 s tail of such requests.
+
+**Two levers, both lossless (recompute of any un-loaded tail = exact KV → identical outputs):**
+1. **Prefetch policy** (config): `timeout` (4244 ms, −95%) and then **`best_effort` (2013 ms, −97.7%)**
+   admit after ≤bounded / zero wait and recompute the rest, keeping the GPU busy (num_running≈120).
+   best_effort wins because on the multiturn mix each turn's prefix is already warm in the host tier
+   (from prior turns), so 0-wait admission removes the wait entirely and *raises* hit_rate (fast
+   turn-cycling → prefixes reused before eviction) while cutting decode contention (tpot −17% vs timeout).
+2. **Parallelized L3 disk reads** (mechanism / new engine code): the file backend read path was fully
+   serial (one IO thread, per-page open/readinto/close, ~1 GB/s). A `ThreadPoolExecutor` in
+   `HiCacheFile.batch_get` (`SGLANG_HICACHE_FILE_READ_THREADS`, default 16 ≈ NVMe's ~6 GB/s) reads a
+   batch concurrently — order preserved, distinct buffers, evictor locked → race-free, byte-identical.
+   Under `timeout` this is a clean +31.6% over serial (v2 4244 → v3 2903), by delivering the prefetch
+   working set inside the timeout window so the cache is used instead of recomputed.
+
+**Also fixed a real startup bug:** the FlashInfer allreduce-fusion NCCL group deadlocks intermittently
+on init for this MoE model (600 s c10d timeout); `--enforce-disable-flashinfer-allreduce-fusion` avoids
+it (lossless — pure perf fusion, identical numerics). Applied to all runs.
+
+**Evolution curve (mean TTFT, own versions):** v2 4244 (config) → v3 2903 (mechanism) → **v4 2013
+(best)**. Ongoing: a design-space sweep (best_effort × read-threads × page-size × write-policy) + a
+grace-window variant, node-availability permitting.
+
+---
+
 Researcher: **onyx-7q2** · branch `evolve/onyx-7q2` · W&B run `sgl-evolve/onyx-7q2`
 Bar to beat: **v0_official mean TTFT 87615 ms** (the better of the two given baselines; v0_tuned is
 108824 ms — worse despite identical resolved_args, so I treat the official number as the honest bar).

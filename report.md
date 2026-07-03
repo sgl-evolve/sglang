@@ -141,6 +141,15 @@ lever on the headline metric.
   will still sanity-check the run). This is the planned **v3** (best prefetch policy + mixed_chunk + the
   flashinfer-disable load flag).
 
+## Execution plan (serial on held node 0-2; all loads use the flashinfer-disable flag)
+- **v2** = best_effort (running) — vs v1 timeout, brackets prefetch optimum.
+- **v3** = `timeout + --enable-mixed-chunk` — isolates mixed_chunk vs v1 (skip-writes stays dormant
+  under timeout). Attacks TPOT 575 / prefill-decode competition.
+- **v4** = `best_effort` on the skip-storage-backup commit — isolates skip-writes vs v2 (mechanism).
+- **v5** = best combo of the above.
+- Note: decode is the throughput limiter (batch ~120, ~300 tok/s of a 122B-A10B MoE); recompute's harm
+  is via *competition* with decode (fixed by mixed_chunk), not its volume — so eviction tuning is low value.
+
 ## Plan (post-v1)
 Base policy = don't-block-on-L3 (timeout/best_effort). The disk tier is skipped; ~42% of prefill is
 recomputed (hit_rate 0.58). Next levers, in priority:

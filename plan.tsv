@@ -1,0 +1,5 @@
+v1-besteffort	config	-	--hicache-storage-prefetch-policy best_effort
+v2-balanced-r2	mechanism	SGLANG_ENABLE_BALANCED_PREFILL=1	-
+v3-wtselective	config	-	--hicache-write-policy write_through_selective
+v4-lpm	config	-	--schedule-policy lpm
+v5-mixedchunk	config	-	--enable-mixed-chunk

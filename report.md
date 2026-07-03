@@ -193,3 +193,14 @@ recomputed (hit_rate 0.58). Next levers, in priority:
 3. **Prefill/decode overlap** — `enable_mixed_chunk` to hide recompute-prefill behind decode (TPOT 575→);
    must verify hybrid-Mamba losslessness before logging.
 4. **Cache-aware scheduling** — `schedule_policy` lpm vs default fcfs, to batch shared-prefix work.
+
+### v4 — + `enable_mixed_chunk` on best stack  [VOID — reverted]
+- **Change:** best_effort + skip-writes + `--enable-mixed-chunk` (commit cfb80ca41).
+- **Result: VOID (crashed).** Server hit `ValueError: pool memory leak detected! [full] total=2347200,
+  available=5504, evictable=2341888, protected=0` on ALL TP ranks → scheduler crash → only 3847/7037
+  requests succeeded (v1/v2/v3 all completed 7037). The reported metrics (out 442 t/s, TTFT 5789) are
+  artifacts of the ~45% dropped requests — NOT a valid measurement, NOT logged to the curve.
+- **Diagnosis:** `enable_mixed_chunk` breaks the device KV-pool accounting for this hybrid-GDN model
+  (v3 = same stack minus mixed_chunk ran clean; skip-writes only touches host->disk backup, not device
+  pool). Despite `prepare_mixed` existing, mixed prefill+decode batches corrupt the full-attn pool
+  accounting here. **mixed_chunk is unusable for this model — reverted.** Best remains v3-skipwrites.

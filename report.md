@@ -85,6 +85,20 @@ skips a *failing* init and does **not** change the compute path → comparable t
 first-run kernel compile is slow (~15-30 min) but the per-workspace `$WORK/.cache` (on shared NFS) now
 warm, so subsequent evals are fast.
 
+## Findings so far (evidence-grounded)
+- **Anchor v1-basefix = 84.5 s** (== golden official 87.6 s). enforce-disable is comparability-neutral.
+- **v2-lpm (--schedule-policy lpm) = 106.3 s (+25.8% WORSE), out_tok/s -18%.** Cache-aware scheduling
+  REORDERING *hurts* this prefill-bound, tail-heavy workload (helps median -7% but wrecks p99 +26%).
+  Likely why golden "tuned" (108.8 s, ~lpm) < golden official (fcfs). **NEGATIVE: scheduling reordering
+  is not the lever; fcfs is better. load_back unchanged (446M) → churn is scheduling-independent.**
+- **Bottleneck = LOADING, not compute.** New-token prefill compute is only ~15-30 min of GPU work but
+  the run takes ~160 min → GPU stalls on KV transfer most of the time (Strata "loading-bound", 74%).
+  Dominant cost = **load_back 446M tokens (4.5x prompt 99.9M)** + evict 573M: multiturn prefixes evicted
+  to host while idle between turns, reloaded H→D next turn. Device plateaus ~45% (1.3M tokens free) yet
+  68% of hits pay a load (43% host + 25% disk). Layer-wise H→D overlap can't hide it when load≫compute.
+- **Levers to probe (loading-focused, since scheduling is ruled out):** transfer efficiency (page_size),
+  prefetch-wait (best_effort), eviction/retention (lfu / device-retention mechanism), write policy.
+
 ## Ops lessons (hard-won)
 - **Evals must be `setsid`-detached** — an `srun --overlap` into a held node is a child of the
   researcher session; on session teardown slurm kills the srun step (killed v1-basefix at 16%).

@@ -62,7 +62,30 @@ spent by SSD prefetch, and keep hot prefixes off the SSD tier. Two attack surfac
   never blocks scheduling on SSD (schedule immediately, recompute the un-loaded tail). If it
   sharply cuts mean TTFT, SSD-prefetch blocking is confirmed as the dominant tail.
 - **Change:** config only (valid — the flag reaches `UnifiedRadixCache.prefetch_stop_policy`).
-- **Result:** _pending (~1 h)._  **Lossless:** recompute yields identical tokens.
+- **RESULT — big win on the headline (commit `7605b7e52`, on-contract, no silent fallback):**
+
+  | metric | v0_official | v2cfg-besteffort | Δ |
+  |---|---|---|---|
+  | **mean TTFT (ms)** | 87615 | **3237** | **−96% (27×)** |
+  | TTFT p99 (ms) | 270798 | 20481 | −92% |
+  | TTFT median (ms) | 1225 | 1959 | +60% |
+  | req throughput (req/s) | 1.15 | 1.70 | +48% |
+  | out_tok/s | 146.9 | 217.1 | +48% |
+  | e2e mean (ms) | 108148 | 71104 | −34% |
+  | hit_rate | 0.816 | 0.368 | −55% |
+  | l3_hit_frac | 0.254 | 0.000 | SSD tier idle |
+  | TPOT mean (ms) | 241 | 752 | +212% (worse) |
+
+- **Takeaway:** `wait_complete` (the frozen *default*) is **pathological under this overload** — it
+  blocks requests on SSD, starves the decode batch, and the queue explodes (that's the 87 s mean vs
+  1.2 s median). `best_effort` drains the queue → 27× lower mean TTFT, +48% throughput. The cost:
+  cache hit-rate collapses (0.82→0.37, SSD tier unused) and decode slows (TPOT 3×) because the batch
+  is full and much prefix KV is recomputed rather than loaded. **This is a config change (bar-mapping),
+  not the novel win** — but it resets the bar to beat to **3237 ms**.
+- **Lossless:** recompute yields identical tokens (no cache = full compute).
+- **Implication for the mechanism:** the ideal keeps best_effort's drained queue while *retaining
+  cheap cache hits* (less recompute → lower TPOT, and possibly even lower TTFT via more decode
+  compute headroom). That is exactly v4-adaptive's goal.
 
 ## Prior art (HiCache blog) — confirms the direction
 

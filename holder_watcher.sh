@@ -39,9 +39,10 @@ while :; do
 done
 
 # Run the queue sequentially in my exclusive node until it drains or the hold job ends.
+# ALWAYS release the node (scancel) when done hill-climbing — never squat it (per submit-gpu-job skill).
 while :; do
   squeue -h -j "$JID" -o "%T" 2>/dev/null | grep -q RUNNING || { echo "[holder] hold job ended -> exit"; exit 0; }
-  exp=$(qpop); [ -z "$exp" ] && { echo "[holder] queue drained -> exit"; exit 0; }
+  exp=$(qpop); [ -z "$exp" ] && { echo "[holder] queue drained -> releasing hold (scancel $JID)"; scancel "$JID" 2>/dev/null; exit 0; }
   IFS='|' read -r lbl env flags tag <<<"$exp"
   echo "[holder] === running $lbl (env=[$env] flags=[$flags]) on $NODE ==="
   rm -rf "$WORK/runs/$lbl" 2>/dev/null

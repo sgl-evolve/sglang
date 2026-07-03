@@ -1970,6 +1970,34 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             + len(operation.hash_value) * self.prefetch_timeout_per_page
         )
 
+    def _adaptive_prefetch_ready(self, operation: PrefetchOperation) -> bool:
+        """Load-adaptive prefetch deadline.
+
+        Under `wait_complete`, a request cannot enter the running batch until its
+        *entire* SSD-resident prefix has been loaded to host. When the SSD tier is
+        saturated (many concurrent prefetches), those waits serialize, the decode
+        batch starves, throughput collapses, and the TTFT tail explodes.
+
+        This policy keeps the full "wait for the whole prefetch" behavior when the
+        prefetch backlog is light (so we still capture the host-cache benefit), but
+        linearly shrinks the size-proportional part of the deadline toward a flat
+        `prefetch_timeout_base` as the backlog approaches the capacity limit — so a
+        saturated SSD makes requests give up quickly, enter the batch, and recompute
+        the un-loaded tail (lossless) instead of starving decode.
+
+        deadline = base + (pages * per_page) * (1 - pressure)
+          pressure = prefetch_tokens_occupied / prefetch_capacity_limit  in [0, 1]
+        pressure=0 -> identical to the `timeout` policy deadline
+        pressure=1 -> flat `base` seconds regardless of prefix size
+        """
+        cc = self.cache_controller
+        cap = getattr(cc, "prefetch_capacity_limit", 0) or 0
+        occ = getattr(cc, "prefetch_tokens_occupied", 0) or 0
+        pressure = min(1.0, occ / cap) if cap > 0 else 0.0
+        size_term = len(operation.hash_value) * self.prefetch_timeout_per_page
+        deadline = self.prefetch_timeout_base + size_term * (1.0 - pressure)
+        return (time.monotonic() - operation.start_time) >= deadline
+
     def can_terminate_prefetch(self, operation: PrefetchOperation) -> bool:
         if self.prefetch_stop_policy == "best_effort":
             return True
@@ -1987,6 +2015,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             can_terminate = completed or self._prefetch_timeout_check_linear_func(
                 operation
             )
+        elif self.prefetch_stop_policy == "adaptive":
+            can_terminate = completed or self._adaptive_prefetch_ready(operation)
         else:
             return True
         if (

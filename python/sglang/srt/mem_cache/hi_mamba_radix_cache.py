@@ -58,6 +58,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# kv-lynx-4d2: knobs for the congestion-aware "adaptive" prefetch stop policy.
+# eff_wait = max(MIN_WAIT, linear_timeout / (1 + ALPHA * storage_io_backlog)).
+# ALPHA>0 shrinks the wait as the disk read backlog grows; tune by editing.
+_ADAPTIVE_CONGESTION_ALPHA = 1.0
+_ADAPTIVE_MIN_WAIT = 0.2
+
 
 class HostLRUList(LRUList):
     def __init__(self):
@@ -1656,6 +1662,32 @@ class HiMambaRadixCache(MambaRadixCache):
         timeout = min(cfg.max, cfg.base + cfg.per_ki_token * num_tokens / 1024)
         return time.monotonic() - operation.start_time > timeout
 
+    def _adaptive_should_terminate(self, operation: PrefetchOperation) -> bool:
+        """kv-lynx-4d2: congestion-aware prefetch give-up.
+
+        The storage (disk L3) read bandwidth is a hard ceiling (~6.6 GB/s, already
+        ~saturated by the 8 TP ranks), so under a burst of disk-hitting requests the
+        single per-rank prefetch IO thread backs up and every wait_complete request
+        blocks its TTFT behind the whole backlog. This scales the per-request wait
+        budget DOWN as the read backlog grows: when the storage IO queue is idle we
+        wait for the full read (keep the cache hit, offload the GPU); when it is deep
+        we give up early so the scheduler admits the request and prefill recomputes
+        the not-yet-loaded tail (lossless -- same KV; already-on-disk pages are not
+        re-written). This trades a saturated-disk wait for GPU compute (which has
+        headroom during load stalls -- Strata's loading-bound->compute-bound idea),
+        cutting the tail without sacrificing hits when the disk is uncongested.
+        Reduces to ~timeout behaviour when backlog==0, so it never hurts a
+        GPU-bound / uncongested regime.
+        """
+        cc = self.cache_controller
+        buf = getattr(cc, "prefetch_buffer", None)
+        backlog = (buf.qsize() if buf is not None else 0) + cc.prefetch_queue.qsize()
+        cfg = self.prefetch_timeout_config
+        num_tokens = len(operation.hash_value) * self.page_size
+        base = min(cfg.max, cfg.base + cfg.per_ki_token * num_tokens / 1024)
+        eff = max(_ADAPTIVE_MIN_WAIT, base / (1.0 + _ADAPTIVE_CONGESTION_ALPHA * backlog))
+        return (time.monotonic() - operation.start_time) > eff
+
     def can_terminate_prefetch(self, operation: PrefetchOperation):
         can_terminate = True
 
@@ -1673,6 +1705,8 @@ class HiMambaRadixCache(MambaRadixCache):
             can_terminate = completed
         elif self.prefetch_stop_policy == "timeout":
             can_terminate = completed or self.is_prefetch_timeout(operation)
+        elif self.prefetch_stop_policy == "adaptive":
+            can_terminate = completed or self._adaptive_should_terminate(operation)
         else:
             return True
 

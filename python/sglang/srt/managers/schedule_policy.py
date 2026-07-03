@@ -142,6 +142,7 @@ class CacheAgnosticPolicy(Enum):
 
     FCFS = "fcfs"  # first come first serve
     LOF = "lof"  # longest output first
+    SJF = "sjf"  # shortest job first (cache-aware): fewest remaining prefill tokens
     RANDOM = "random"
     ROUTING_KEY = "routing-key"  # prioritize by routing key frequency in running batch
 
@@ -212,6 +213,8 @@ class SchedulePolicy:
                     self.enable_priority_scheduling,
                     self.priority_sign,
                 )
+            elif policy == CacheAgnosticPolicy.SJF:
+                SchedulePolicy._sort_by_shortest_job(waiting_queue)
             elif policy == CacheAgnosticPolicy.RANDOM:
                 SchedulePolicy._sort_randomly(waiting_queue)
             elif policy == CacheAgnosticPolicy.ROUTING_KEY:
@@ -343,6 +346,31 @@ class SchedulePolicy:
             )
         else:
             waiting_queue.sort(key=lambda x: -x.sampling_params.max_new_tokens)
+
+    @staticmethod
+    def _sort_by_shortest_job(waiting_queue: List[Req]) -> None:
+        """Cache-aware shortest-job-first.
+
+        Order the waiting queue by the number of tokens that still need prefill
+        compute -- total sequence length minus the already-cached (matched)
+        prefix -- smallest first. Under this protocol prompt sizes are extremely
+        heterogeneous (input tokens span ~0 to ~190k), so FCFS makes short chats
+        wait behind long-document prefills; SJF lets the many cheap requests
+        finish first, minimizing MEAN TTFT (SJF is mean-response-time optimal for
+        a single server). ``num_matched_prefix_tokens`` is populated for
+        cache-agnostic policies in ``calc_priority`` (falls back to raw input
+        length when unavailable). Reordering only -- per-request outputs are
+        unchanged (lossless); no request is dropped (waiting-timeout abort is
+        disabled by default). [quartz-7m3] mechanism.
+        """
+        waiting_queue.sort(
+            key=lambda r: max(
+                0,
+                len(r.origin_input_ids)
+                + len(r.output_ids)
+                - r.num_matched_prefix_tokens,
+            )
+        )
 
     @staticmethod
     def _sort_randomly(waiting_queue: List[Req]) -> None:

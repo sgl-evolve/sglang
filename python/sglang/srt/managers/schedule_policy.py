@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from array import array
 
 from sglang.srt.environ import envs
@@ -362,15 +363,32 @@ class SchedulePolicy:
         length when unavailable). Reordering only -- per-request outputs are
         unchanged (lossless); no request is dropped (waiting-timeout abort is
         disabled by default). [quartz-7m3] mechanism.
+
+        Optional aging (``SGLANG_SJF_AGING_SEC`` > 0): a request that has waited
+        at least that long is promoted ahead of the shortest-job ordering (FCFS
+        among the aged), bounding tail starvation of large prompts. 0 = pure SJF.
         """
-        waiting_queue.sort(
-            key=lambda r: max(
+
+        def remaining(r):
+            return max(
                 0,
                 len(r.origin_input_ids)
                 + len(r.output_ids)
                 - r.num_matched_prefix_tokens,
             )
-        )
+
+        aging = envs.SGLANG_SJF_AGING_SEC.get()
+        if aging and aging > 0:
+            now = time.perf_counter()
+
+            def key(r):
+                entry = r.time_stats.wait_queue_entry_time or now
+                # Aged requests first (FCFS among them), then SJF for the rest.
+                return (0, entry) if (now - entry) >= aging else (1, remaining(r))
+
+            waiting_queue.sort(key=key)
+        else:
+            waiting_queue.sort(key=remaining)
 
     @staticmethod
     def _sort_randomly(waiting_queue: List[Req]) -> None:

@@ -12,11 +12,15 @@ RT=/home/junyanch_google_com/autoresearch/programs/sgl/manager/.runtime
 EVAL=$ROOT/programs/sgl/researcher/.claude/skills/evaluation-sop/scripts/eval.sh
 VER="${1:?usage: run_eval.sh <version> [args...]}"; shift || true
 
+# Known persistently-small-disk pool node: skip by name (avoids a wasteful srun
+# disk-check every poll). Override with SKIP_NODES env if it ever changes.
+SKIP_NODES="${SKIP_NODES:-slurm2-a3nodeset0-0}"
 held_nodes(){ for f in "$RT/held"/*; do [ -e "$f" ] && basename "$f"; done; }
 
 while :; do
   any_free=0
   for node in $(held_nodes); do
+    case " $SKIP_NODES " in *" $node "*) continue;; esac
     jid=$(cat "$RT/held/$node" 2>/dev/null) || continue
     squeue -h -j "$jid" >/dev/null 2>&1 || continue      # hold job dead -> skip
     exec 200>"$RT/locks/$node.lock"
@@ -39,5 +43,5 @@ while :; do
     fi
   done
   echo "[run_eval] no free good-disk held node right now ($(date +%H:%M:%S)) — retry in 45s"
-  sleep 45
+  sleep 15
 done

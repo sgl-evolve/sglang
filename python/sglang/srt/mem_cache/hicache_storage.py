@@ -376,12 +376,17 @@ class HiCacheFile(HiCacheStorage):
         # bounded thread pool (blocking file IO releases the GIL, so these run
         # truly concurrently) to raise queue depth. Lossless: same bytes, same
         # host destinations. Tunable via extra_config "hicache_io_workers".
+        # Default OFF (serial path): the parallel-IO path is a lossless but only
+        # ~9% steady-state win (the md array saturates ~6.6 GB/s under 8 ranks)
+        # and its concurrent _batch_io_v2 (mamba) path is not yet concurrency-
+        # tested, so we keep it behind a knob and off by default. Set
+        # extra_config "hicache_io_workers">1 to enable.
         try:
             io_workers = int((storage_config.extra_config or {}).get(
-                "hicache_io_workers", 8
+                "hicache_io_workers", 1
             ))
         except (TypeError, ValueError):
-            io_workers = 8
+            io_workers = 1
         self.io_workers = max(1, io_workers)
         self._io_pool = (
             ThreadPoolExecutor(

@@ -124,6 +124,24 @@ almost certainly runs a smaller batch (requests stuck in prefetch).
   tens–hundreds of s), and the timeout knobs live in the FROZEN `--hicache-...-extra-config`
   so I can't sharpen it via config. Low priority; run if a node is idle.
 
+## STATUS (live)
+
+- **best_effort (config): DONE — new best, 27× lower mean TTFT.** Reported + emailed.
+- **v4-adaptive-prefetch (mechanism, cap=2s, commit `7468090d4`): queued, running solo.**
+  - Two earlier attempts failed on **infrastructure, not the mechanism** (my code never runs
+    during model load/warmup): (1) Bus error on node-0 — a **concurrent `$WORK/.cache` JIT race**
+    with the still-running best_effort eval (eval.sh hardcodes one cache dir per workspace, so two
+    of my own evals can't run concurrently); (2) hang on ondem-3 — reading the **corrupted cache**
+    left by (1). Fixes: cleared `$WORK/.cache`; run adaptive **solo** (never concurrent with another
+    drift-3e7 eval). Lesson: serialize my own evals; wipe cache after a crash.
+  - Now waiting on **pool contention** — all certified nodes are busy (others) or `drain`ed;
+    the held pool is the only certified capacity. smart-eval polls until one frees.
+- **W&B:** interactive `wandb.init` times out (network) and the run id `drift-3e7` appears
+  **tombstoned** from an earlier delete, so offline-sync doesn't recreate it. **report.md is the
+  authoritative, commit-traceable record.** Will reconcile the cloud curve when it clears.
+- Helper scripts (session, in autoresearch root): `smart-eval.sh` (disk-aware pooled launcher),
+  `pinned-eval.sh` (flock+srun to a specific held node), `wandb_batch_log.py` (offline curve logger).
+
 ## v4-adaptive-prefetch — load-adaptive prefetch stop policy (MECHANISM) — READY (commit `8e15590dc`)
 
 - **Hypothesis:** the win is to keep `wait_complete`'s full-prefetch benefit when the SSD tier

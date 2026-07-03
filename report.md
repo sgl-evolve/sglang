@@ -134,8 +134,19 @@ almost certainly runs a smaller batch (requests stuck in prefetch).
     of my own evals can't run concurrently); (2) hang on ondem-3 — reading the **corrupted cache**
     left by (1). Fixes: cleared `$WORK/.cache`; run adaptive **solo** (never concurrent with another
     drift-3e7 eval). Lesson: serialize my own evals; wipe cache after a crash.
+  - **3rd attempt also failed to load** (hang after "GDN kernel dispatcher", before DeepGEMM
+    warmup: triton cache stuck at 1 entry, GPU 0%, scheduler procs ~7% CPU = a **NCCL/warmup
+    collective deadlock**, not slow compile). Ruled out: my code (never runs at init), the
+    `adaptive` flag (no init validation on the unified path), the JIT cache (cleared), and
+    concurrency (solo). Remaining cause = **environmental**: fabric/NCCL contention during model
+    warmup under many concurrent researcher server-loads (best_effort loaded at 06:38 when the
+    pool was quieter; cache-clear also forced a fresh recompile that compounds it). Killed to free
+    the node (a hung run holding an 8-GPU node is bad citizenship).
+  - **Decision:** adaptive is IMPLEMENTED + COMMITTED (`7468090d4`) and unit-tested; its formal
+    eval is deferred until pool contention eases (retry with close monitoring + fast-kill on
+    init-hang so no node is wasted). The mechanism is sound; the blocker is shared-cluster load.
   - Now waiting on **pool contention** — all certified nodes are busy (others) or `drain`ed;
-    the held pool is the only certified capacity. smart-eval polls until one frees.
+    the held pool is the only certified capacity.
 - **W&B:** interactive `wandb.init` times out (network) and the run id `drift-3e7` appears
   **tombstoned** from an earlier delete, so offline-sync doesn't recreate it. **report.md is the
   authoritative, commit-traceable record.** Will reconcile the cloud curve when it clears.

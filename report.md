@@ -84,7 +84,43 @@ lever on the headline metric.
     interrupting decode with `enable_mixed_chunk=False` + KV-movement stalls as tiers fill), NOT memory,
     NOT L3 read bandwidth (S1). The TTFT tail = periodic pipeline stalls (long-doc chunked prefills
     monopolizing forwards; KV load/prefetch waits).
-- **v2 candidates (data-grounded):** (a) `enable_mixed_chunk` [config] — overlap prefill+decode to kill
-  the decode-pause bubble (verify hybrid-Mamba support); (b) scheduling to reduce long-prefill
-  monopolization / bubble-fill; (c) reduce KV-movement stalls on the load/offload path.
-- **Takeaway:** [pending bench completion].
+- **CORRECTION (via /metrics kv_* gauges):** the "full token usage 0.15-0.47" in decode logs is only the
+  ACTIVE/protected fraction. The real device pool is ~FULL: `kv_used 489K (21% active) + kv_evictable
+  1.85M (79% cached radix) + 8.8K free ≈ 2.347M (100%)`. So **there is NO wasted device headroom** —
+  the "promote hot cache to device" lever is DEAD. All 3 tiers are full (working set 19M ≫ device 2.35M +
+  host 7.8M = 10.2M ⇒ ~half spills to disk). cached_tokens_total: device 3.6M vs host 7.95M (host serves
+  ~2× the device cache-hits). System is compute + KV-movement bound; `timeout` removes the wait_complete
+  pipeline stall.
+- **RESULT (vs baselines):**
+
+  | version | TTFT mean | TTFT med | TTFT p99 | out tok/s | req/s | hit_rate | L3 frac | TPOT |
+  |---|---|---|---|---|---|---|---|---|
+  | v0_official | 87615 | 1225 | 270799 | 146.9 | 1.15 | 0.816 | 0.254 | 241 |
+  | v0_tuned | 108824 | 1438 | 322801 | 119.3 | 0.93 | 0.821 | 0.259 | 294 |
+  | **v1-timeout** | **3526** | 2221 | **32915** | **295.3** | **2.31** | 0.580 | **0.000** | 575 |
+
+  ⇒ **~25× lower mean TTFT, ~8× lower p99, ~2.0–2.5× throughput.** Clears the tuned bar by a wide margin.
+- **Lossless:** `timeout` stops blocking on the slow serial L3(disk) path and RECOMPUTES the un-loaded
+  prefix at prefill (identical KV ⇒ identical outputs). L3 hits → 0 (disk skipped); device+host still
+  serve 58%. "Spend less budget at better TTFT" (charter-sanctioned). Self-audit passed (on-contract, no
+  SILENT FALLBACK, exit 0, 0 retracts).
+- **Takeaway:** the frozen baseline's `wait_complete` + serialized disk prefetch was catastrophic (87s
+  TTFT from pipeline stalls). Not waiting on disk is a huge lossless win. TPOT rose (241→575) because
+  recompute-prefill now competes with decode and concurrency is higher — a hint that **prefill/decode
+  overlap** and **reducing the 42% recompute** are the next levers.
+
+### v2 — prefetch policy = `best_effort` (vs v1 `timeout`)  [config]
+- **Hypothesis:** v1's TTFT median (2221ms) ≈ the `timeout` base (2s) ⇒ L3-needing requests still wait
+  ~2s before giving up. `best_effort` waits 0 ⇒ may cut TTFT median/mean further. Lossless (same recompute).
+- **Change:** extra arg `--hicache-storage-prefetch-policy best_effort`; code = baseline.
+- **Result:** [running on 0-2, warm cache].
+
+## Plan (post-v1)
+Base policy = don't-block-on-L3 (timeout/best_effort). The disk tier is skipped; ~42% of prefill is
+recomputed (hit_rate 0.58). Next levers, in priority:
+1. **v2 best_effort** — zero-wait prefetch (config).
+2. **Reduce recompute** — better device+host eviction/retention to raise hit_rate>0.58 (lossless; config
+   `radix_eviction_policy` lfu/slru first, then a novel value-aware policy).
+3. **Prefill/decode overlap** — `enable_mixed_chunk` to hide recompute-prefill behind decode (TPOT 575→);
+   must verify hybrid-Mamba losslessness before logging.
+4. **Cache-aware scheduling** — `schedule_policy` lpm vs default fcfs, to batch shared-prefix work.

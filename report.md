@@ -42,8 +42,43 @@ aggregate 8×QD1 = **4.44 GB/s** → 8×QD4 = **5.96 GB/s** (peak, **+34%**) →
 (oversubscribed). So 8 ranks at QD1 already reach ~aggregate QD8; per-rank parallelism adds a real but
 **modest ~34%** L3-read ceiling, optimal per-rank threads = **4**. Set default accordingly.
 
-**Result vs baseline.** _(full protocol eval pending)_
+**Result vs baseline.** _(eval pending — blocked by a cluster-wide shared-filesystem stall,
+2026-07-03: all researchers' evals, mine and others', stuck with GPUs 0% util and scheduler procs in
+`Dl`/`Sl` I/O-wait during model load / JIT. Not code-related — check_env passed; failures hit everyone.
+Repeated startup crashes seen: SIGBUS in DeepGEMM warmup, NCCL communicator 600 s timeout in FlashInfer
+init, and I/O-wait hangs — all downstream of the storage stall. Waiting for recovery.)_
 
-**Lossless check.** _(pending — outputs vs no-cache; bytes are identical by construction.)_
+**Lossless check.** _(pending — outputs vs no-cache; bytes are identical by construction: same reads,
+just concurrent.)_
 
-**Takeaway.** _(pending)_
+**Takeaway.** _(pending eval)_
+
+## v2 — cache-aware shortest-job-first (SJF) prefill scheduling  [mechanism] — READY, eval pending
+**Hypothesis.** Mean TTFT here is dominated by **prefill-queue waiting under overload** (median TTFT
+~1.2 s but mean ~90 s, p99 ~270 s; closed loop at max-concurrency 128), not by disk latency (per-rank
+L3 traffic averages ~70 MB/s « the ~6 GB/s SSD). The mix's prompt sizes are **extremely heterogeneous**
+— input tokens span ~0 to ~190k (p50≈7.3k, p90≈29k, p99≈59k) — so **FCFS** (the stock default) makes
+short chats wait behind long-document prefills. **Shortest-job-first is mean-response-time optimal**, so
+ordering the waiting queue by *remaining* prefill work should sharply cut mean TTFT.
+**What changed.** `schedule_policy.py`: new `sjf` CacheAgnostic policy (`_sort_by_shortest_job`) sorting
+the waiting queue by `len(input)+len(output) − num_matched_prefix_tokens` ascending (cache-aware; reuses
+the prefix-match already computed on the agnostic path). Agnostic ⇒ immune to LPM's >128-queue FCFS
+fallback. `server_args.py`: `sjf` added to `--schedule-policy` choices (an allowed extra arg). Committed
+on worktree branch `v2-sjf-dev` (1b511b6ff), unit-tested (orders correctly, cache-aware). Stacks on v1.
+**Lossless.** Reordering only — per-request outputs unchanged; no drops (waiting-timeout abort disabled
+by default, `SGLANG_REQ_WAITING_TIMEOUT=-1`). Trade-off to watch: p99/tail may rise (giants deferred);
+mean is the headline. Aged-SJF is the fallback if the tail regresses badly.
+**Offline screen (free, no GPU).** Single-server discrete model over the *real* 1553 document sizes:
+mean completion under **FCFS = 2.37× that of SJF**; the top-10% largest documents hold **33%** of all
+prefill tokens (they block everyone under FCFS). Strong prior that SJF cuts mean TTFT substantially.
+**Result / takeaway.** _(eval pending)_
+
+## Eval-infrastructure note (2026-07-03)
+The shared a3 pool was severely degraded this session: a cluster-wide networked-FS stall (all
+researchers' servers hung in `Dl` I/O-wait with GPUs 0%), half the certified nodes `drain`
+(SlurmdSpoolDir full), heavy contention, and an SSD-capacity crunch (every node's `/mnt/localssd`
+filled by concurrent 1.8 TB L3 caches). Six eval attempts failed at startup (SIGBUS in DeepGEMM warmup,
+NCCL communicator 600 s timeout, dirty-node-handoff SERVER_DIED) — all environmental, not code
+(check_env passed; other researchers hit the same; my changes reached model-load in earlier attempts).
+A self-healing retry loop (`retry_eval.sh`, disk-short nodes lock-blocked) is persisting until an eval
+serves + completes. Results will be logged once the pool yields a clean run.

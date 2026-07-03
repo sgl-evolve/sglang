@@ -130,7 +130,16 @@ lever on the headline metric.
   (a) **async fire-and-forget L3 prefetch** that completes in the background to warm HOST for the next
       multiturn turn (novel; risk: host is full ⇒ eviction churn); (b) `schedule_policy lpm` cache-aware
       batching [config, lossless]; (c) `radix_eviction_policy` lfu/slru [config, lossless]; (d)
-      `enable_mixed_chunk` overlap [needs Mamba lossless screen].
+      `enable_mixed_chunk` overlap prefill+decode.
+
+### mixed_chunk is code-proven LOSSLESS for this hybrid-GDN model
+- `hybrid_linear_attn_backend.init_forward_metadata` ALWAYS calls `Mamba2Metadata.prepare_mixed`
+  (mamba2_metadata.py:199), which explicitly splits a batch into `num_prefills` + `num_decodes`
+  (`num_decodes = batch_size - num_prefills`, :234), builds `MixedMetadata` for the prefill (chunked
+  scan) portion, and mamba.py:556-618 runs prefill+decode in one forward. Mixed prefill+decode is a
+  first-class, tested path ⇒ `enable_mixed_chunk` produces identical KV/outputs (lossless by construction;
+  will still sanity-check the run). This is the planned **v3** (best prefetch policy + mixed_chunk + the
+  flashinfer-disable load flag).
 
 ## Plan (post-v1)
 Base policy = don't-block-on-L3 (timeout/best_effort). The disk tier is skipped; ~42% of prefill is

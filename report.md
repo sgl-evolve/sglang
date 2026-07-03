@@ -113,7 +113,24 @@ lever on the headline metric.
 - **Hypothesis:** v1's TTFT median (2221ms) ≈ the `timeout` base (2s) ⇒ L3-needing requests still wait
   ~2s before giving up. `best_effort` waits 0 ⇒ may cut TTFT median/mean further. Lossless (same recompute).
 - **Change:** extra arg `--hicache-storage-prefetch-policy best_effort`; code = baseline.
-- **Result:** [running on 0-2, warm cache].
+- **Result:** [running on 0-2].
+
+### INFRA: `--enforce-disable-flashinfer-allreduce-fusion` (all evals v2+)
+- The flashinfer allreduce-fusion attempt **intermittently HANGS** server init (v1 attempt-1 and v2
+  attempt-1 both hung ~indefinitely post-GDN-init, then crash+disable). Passing
+  `--enforce-disable-flashinfer-allreduce-fusion` skips the fusion path entirely → **reliable ~4-min
+  loads** (was 10-30 min with hang risk). **Result-equivalent** (fusion always crashes+disables at
+  runtime anyway ⇒ serving uses standard allreduce with or without the flag ⇒ TTFT/throughput
+  unaffected, only load time). Used for v2 onward; does NOT affect comparability of serving metrics.
+
+### v3 direction — the disk (L3) tier is WASTED under timeout/best_effort
+- Under both policies, L3 storage hits = 0 (best_effort cancels prefetch immediately; timeout's serial
+  disk path can't finish in time). So ~42% of prefill is recomputed and the 1.8TB disk tier is idle
+  (except wasted write-backups). Candidate mechanisms to reclaim it or cut recompute:
+  (a) **async fire-and-forget L3 prefetch** that completes in the background to warm HOST for the next
+      multiturn turn (novel; risk: host is full ⇒ eviction churn); (b) `schedule_policy lpm` cache-aware
+      batching [config, lossless]; (c) `radix_eviction_policy` lfu/slru [config, lossless]; (d)
+      `enable_mixed_chunk` overlap [needs Mamba lossless screen].
 
 ## Plan (post-v1)
 Base policy = don't-block-on-L3 (timeout/best_effort). The disk tier is skipped; ~42% of prefill is

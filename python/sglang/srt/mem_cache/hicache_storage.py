@@ -538,6 +538,15 @@ class HiCacheFile(HiCacheStorage):
         # slower as L3 fills -- a growing tax straight in the TTFT path. Direct
         # os.path.isfile is O(len(target_files)) and yields the identical set
         # (all targets are regular .bin files), so this is lossless.
+        # KVLYNX_HITQUERY_SCANDIR=1 restores the original whole-dir scandir for a
+        # controlled A/B (isolate the scandir-fix effect); default is the fix.
+        if os.environ.get("KVLYNX_HITQUERY_SCANDIR") == "1":
+            existing = set()
+            with os.scandir(self.file_path) as entries:
+                for entry in entries:
+                    if entry.is_file() and entry.name in target_files:
+                        existing.add(entry.name)
+            return existing
         fp = self.file_path
         join = os.path.join
         isfile = os.path.isfile

@@ -204,3 +204,18 @@ recomputed (hit_rate 0.58). Next levers, in priority:
   (v3 = same stack minus mixed_chunk ran clean; skip-writes only touches host->disk backup, not device
   pool). Despite `prepare_mixed` existing, mixed prefill+decode batches corrupt the full-attn pool
   accounting here. **mixed_chunk is unusable for this model — reverted.** Best remains v3-skipwrites.
+
+### v5 — + `schedule_policy=lpm` on best stack  [config]  ** NEW BEST **
+- **Stack:** best_effort + skip-writes (mechanism, v3) + lpm. Commit e2f2d6023.
+- **Result vs v3 (isolates lpm):** TTFT mean 1255 (v3 1331, -5.7%), median 694 (-13.4%), p99 10207 (~=),
+  out 403.1 t/s (+4.0%), req/s 3.15 (+4%), hit 0.618, TPOT 257. Valid (7037/7037, no fallback, lossless).
+  vs tuned bar: **~87x lower TTFT, ~32x lower p99, ~3.4x throughput.** req/s 3.15 near offered 3.5.
+- **Why:** lpm (longest-prefix-match) co-schedules requests sharing a long prefix (LEval/LooGLE: many
+  questions per doc) → shared prefixes stay hot → small recompute reduction. Logged [config]. Emailed.
+
+## Status summary (best = v5)
+Curve: v0_official 87615 → v0_tuned 108824 (bar) → v1 3526 → v2 2467 → v3 **1331 (mechanism)** →
+v5 **1255** ms mean TTFT. The system now serves req/s 3.15 vs offered 3.5 (near saturation-free).
+Big wins: (1) don't block on the slow L3 disk tier [best_effort, config]; (2) don't WRITE a tier you
+never read [skip-writes, MECHANISM — unblocks host eviction]. Remaining cost: ~38% prefill recompute
+(disk skipped; capacity-bound) competing with decode. mixed_chunk (the natural overlap fix) crashes here.

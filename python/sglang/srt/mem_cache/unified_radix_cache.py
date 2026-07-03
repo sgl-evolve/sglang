@@ -1651,7 +1651,17 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             self._record_store_event(node, medium=StorageMedium.CPU)
         if lock_params is not None:
             self.dec_lock_ref(lock_node, lock_params)
-        if self.enable_storage:
+        # Co-design of the write path with the read path: under `best_effort` the
+        # scheduler never blocks on an L3(storage) prefetch and cancels it
+        # immediately, so storage hits are ~0 (the disk tier is never READ). In
+        # that regime the host->storage write-backups are pure waste — they burn
+        # disk write bandwidth + CPU (hashing/serialization of every page) and
+        # hold host_ref on each backed-up node until the write acks, blocking host
+        # eviction while the host tier is full. Skipping them is lossless (the
+        # entries are never read back; a miss just recomputes, exactly what
+        # best_effort already does). Gated on the live policy so it also tracks
+        # any runtime prefetch-policy change.
+        if self.enable_storage and self.prefetch_stop_policy != "best_effort":
             # Back up each fragment: after a split, lock_node only holds the
             # suffix; the prefix fragment must be persisted as well.
             for node in publish_nodes:

@@ -180,6 +180,13 @@ prefetch; on this *multiturn* workload the shared prefix from prior turns is alr
 →0. Less waiting also thins the concurrent batch → lower decode contention → tpot −17%. Lossless
 (recompute of any truly-missing tail = exact KV). **New optimal base policy: best_effort + parallel reads.**
 
+## Aggregate IO benchmark (offline, idle node) — read-thread count is already optimal
+8-process × N-thread NVMe read benchmark (mimics 8-rank concurrency, page-cache dropped):
+aggregate throughput peaks at **16 threads/rank (~5840 MB/s)**; 8→5384, 32→5528, 64→5353. So v4's
+`SGLANG_HICACHE_FILE_READ_THREADS=16` is already the NVMe aggregate optimum — **thread-count is not a
+frontier lever** (v6/v7/v8 deprioritized). Frontier search focuses on the orthogonal axes: prefetch
+grace-window (v13), write-policy (v11 selective / v12 write_back), page-size (v9/v10).
+
 ## Next (v5+): push the frontier (best_effort base)
 tpot is still +104% vs baseline (hit 0.59 ⇒ ~41% recompute). Levers: **v4 = parallel + best_effort**
 (0-wait admit; multiturn shared prefixes already in host from prior turns → keep hits at min TTFT);

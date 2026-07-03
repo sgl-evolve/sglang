@@ -149,6 +149,24 @@ Headline: **best_effort prefetch = 3.06 s mean TTFT (27× vs anchor/golden), +75
 The genuine research finding: the frozen baseline's `wait_complete` + serial prefetch pipeline makes
 TTFT catastrophically disk-prefetch-wait-bound; `best_effort` rebalances loading→(idle) compute.
 
+## ★★ v6-be-pario (MECHANISM, commit b066e32b1) — 41× best, genuine mechanism win
+**best_effort + my concurrent per-page disk IO/stat (16-way pool).** ttft_mean **2035 ms** (vs
+v3-besteffort 3062, −33.5%; vs anchor 84502, **41×**; vs golden 87615, 43×). out_tok/s 320 (+25%),
+req_throughput 2.5, **hit_rate 0.38→0.62 (+62%)**. On-contract, no fallback, EVAL_DONE. Lossless
+(parallel IO = same bytes; best_effort recompute = same KV).
+**Why it works (and why v5-pario didn't):** under `wait_complete` the request BLOCKS on the serial
+prefetch pipeline (stage-1 hit-query+all_reduce is ordering-locked → caps throughput → concurrent IO
+is neutral, v5-pario). Under `best_effort` the prefetch runs in the BACKGROUND during the request's
+short queue wait and is cancelled when due; making the per-page IO concurrent lets MORE background
+prefetch finish before cancellation → hit_rate 0.38→0.62 → less recompute → lower TTFT + higher
+throughput, while using MORE of the cache than plain best_effort (addresses best_effort's L3-bypass).
+Genuine KV-transfer mechanism (tag=mechanism). **New running best.**
+
+## v7-be-pario2 (MECHANISM, commit 137423bda) — [running]
++ Level-2: 4 concurrent prefetch IO aux worker threads (operation-level concurrency on top of v6's
+per-page IO). Hypothesis: more background prefetch completes before cancellation → hit_rate>0.62,
+TTFT<2035. Stage-1 (all_reduce) untouched.
+
 ## Ops lessons (hard-won)
 - **Evals must be `setsid`-detached** — an `srun --overlap` into a held node is a child of the
   researcher session; on session teardown slurm kills the srun step (killed v1-basefix at 16%).

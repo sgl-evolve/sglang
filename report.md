@@ -141,6 +141,19 @@ lever on the headline metric.
   will still sanity-check the run). This is the planned **v3** (best prefetch policy + mixed_chunk + the
   flashinfer-disable load flag).
 
+## Strata prior-art analysis (for novel mechanisms)
+Strata's scheduler pieces: delay-hit deferral (transient nodes), balanced/bundled batches, bubble-filling,
+GPU-assisted I/O, storage prefetch. Assessment for THIS regime:
+- **GPU-assisted I/O + storage prefetch**: already in sglang; and disk is skipped anyway → N/A.
+- **I/O-aware bubble-filling**: SKEPTICAL — `load_back` (host→device) is already layer-wise overlapped
+  (1.1ms, not a stall), and mixed_chunk (v3) covers prefill/decode overlap → marginal.
+- **Delay-hit deferral**: low benefit — my 42% recompute is disk-skip, not redundant in-queue prefills.
+- **Bundled/prefix-aware batching (`schedule_policy=lpm`)**: PROMISING for this mix — LEval/LooGLE have
+  many questions on the SAME long doc; under eviction pressure (skip-disk) a shared doc prefix stays hot
+  only if its requests are co-scheduled. lpm sorts the queue by prefix-match ⇒ keeps shared prefixes hot
+  ⇒ more device/host hits ⇒ less recompute. Lossless (order doesn't change outputs). Default is fcfs.
+  → candidate **v5** (config).
+
 ## Execution plan (serial on held node 0-2; all loads use the flashinfer-disable flag)
 - **v2** = best_effort (running) — vs v1 timeout, brackets prefetch optimum.
 - **v3** = `timeout + --enable-mixed-chunk` — isolates mixed_chunk vs v1 (skip-writes stays dormant

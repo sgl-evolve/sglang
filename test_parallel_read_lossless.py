@@ -13,7 +13,7 @@ Run: .venv/bin/python test_parallel_read_lossless.py
 """
 import os, sys, tempfile, shutil
 
-def build_backend(file_path, threads):
+def build_backend(file_path, threads, extra_config=None):
     # env is read at __init__ time; set BEFORE constructing.
     os.environ["SGLANG_HICACHE_FILE_READ_THREADS"] = str(threads)
     # force-reimport environ so the EnvInt re-reads (it caches nothing, but be safe)
@@ -23,7 +23,8 @@ def build_backend(file_path, threads):
         attn_cp_rank=0, attn_cp_size=1,
         is_mla_model=False, enable_storage_metrics=False,
         is_page_first_layout=True, model_name="test/parallel-read",
-        extra_config={},  # no max_size/min_free -> eviction disabled, always admits
+        # {} => eviction disabled (always admits); pass max_size to force eviction.
+        extra_config={} if extra_config is None else extra_config,
     )
     return HiCacheFile(cfg, file_path=file_path)
 
@@ -140,6 +141,45 @@ def main():
         finally:
             shutil.rmtree(dir_ser, ignore_errors=True)
             shutil.rmtree(dir_par, ignore_errors=True)
+
+        # ---- parallel WRITE *under eviction* (the real eval condition: L3 has a
+        #      max_size cap, so concurrent batch_set triggers concurrent
+        #      reserve()->_evict_locked()). Prove no corruption: every page that
+        #      survives on disk is byte-correct, and the cap is respected. ----
+        dir_ev = tempfile.mkdtemp(prefix="hicache_wev_")
+        try:
+            total_bytes = sum(t.numel() * t.element_size() for _, t in specs)
+            cap = max(4096, total_bytes // 3)  # ~1/3 of corpus -> heavy eviction churn
+            os.environ["SGLANG_HICACHE_FILE_WRITE_THREADS"] = "16"
+            be = build_backend(dir_ev, threads=16,
+                               extra_config={"max_size": str(cap), "min_free_space": "0"})
+            assert be._write_pool is not None
+            # Fire the whole corpus at a cap that can't hold it: many concurrent
+            # reserve/evict/commit races. Must not crash / corrupt.
+            be.batch_set(keys, [t for _, t in specs])
+            os.environ["SGLANG_HICACHE_FILE_WRITE_THREADS"] = "1"
+            # verify integrity of survivors: read each key; a hit must be byte-exact.
+            checker = build_backend(dir_ev, threads=1,
+                                    extra_config={"max_size": str(cap), "min_free_space": "0"})
+            survivors = corrupt = 0
+            for i, (k, exp) in enumerate(specs):
+                out = checker.get(k, torch.zeros_like(exp))
+                if out is None:
+                    continue  # evicted — legitimate under the cap
+                survivors += 1
+                if not torch.equal(out, exp):
+                    corrupt += 1
+            # disk usage must respect the cap (evictor kept total bounded)
+            import glob as _glob
+            on_disk = sum(os.path.getsize(f) for f in _glob.glob(os.path.join(dir_ev, "*.bin")))
+            assert corrupt == 0, f"{corrupt} corrupted survivors under concurrent eviction"
+            assert on_disk <= cap * 1.05, f"disk {on_disk} exceeds cap {cap} (evictor race?)"
+            assert survivors > 0, "expected some survivors"
+            print(f"PASS[evict]: parallel write is race-free UNDER EVICTION "
+                  f"(cap={cap}B; {survivors} survivors all byte-exact, 0 corrupt; "
+                  f"on-disk {on_disk}B <= cap; 16 threads).")
+        finally:
+            shutil.rmtree(dir_ev, ignore_errors=True)
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

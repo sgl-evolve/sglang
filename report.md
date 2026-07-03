@@ -206,8 +206,10 @@ lower TTFT (stacks on best_effort).
 - **Safety/losslessness (proven, not argued):** the LRU evictor's `reserve/commit/abort/touch` are all
   `threading.Lock`-guarded, and each `set()` writes a per-thread-unique tmp file (`pid.tid.uuid4`) then
   an atomic `os.replace()` — same-key races converge to identical bytes, distinct keys are independent.
-  `test_parallel_read_lossless.py` now proves both directions: **200 pages byte-identical on disk,
-  parallel-write == serial-write == original** (CPU, no GPU). ✅
+  `test_parallel_read_lossless.py` now proves both directions **and the real eval condition**: 200
+  pages byte-identical (parallel-write == serial-write == original), *plus* parallel writes **under an
+  active L3 cap** (concurrent `reserve`→`_evict_locked`) → survivors all byte-exact, 0 corrupt, disk
+  respects the cap. All CPU, no GPU. ✅
 - **Hot-path confirmed:** for `--hicache-storage-backend file`, the controller binds
   `page_set_func = _generic_page_set` → `batch_set` (zero-copy is only for hf3fs/mooncake/eic/nixl/simm),
   so this genuinely engages — same generic path the v3 read win exercised. Queued as **v15-be-parwrite**

@@ -27,7 +27,7 @@ while :; do
   info=$(srun --jobid="$jid" --overlap -N1 -w "$NODE" bash -c "df -BG /mnt/localssd 2>/dev/null|tail -1|awk '{gsub(/G/,\"\",\$4);print \$4}'; free -g 2>/dev/null|awk '/Mem:/{print \$7}'; pgrep -c -f sglang.launch_server 2>/dev/null" 2>/dev/null)
   d=$(printf '%s\n' "$info"|sed -n 1p); m=$(printf '%s\n' "$info"|sed -n 2p); f=$(printf '%s\n' "$info"|sed -n 3p)
   if [ "${d:-0}" -lt 1800 ] || [ "${m:-0}" -lt 1400 ] || [ "${f:-0}" -gt 0 ]; then
-    flock -u 200; exec 200>&-; sleep 8; continue      # node busy (foreign present) -> release, brief sleep
+    flock -u 200; exec 200>&-; sleep 2; continue      # node busy (foreign present) -> release, brief sleep
   fi
   # global citizen cap: at most 2 of my evals at once
   if [ "$(myruns)" -ge 2 ]; then flock -u 200; exec 200>&-; sleep 15; continue; fi

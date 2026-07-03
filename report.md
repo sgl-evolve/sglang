@@ -252,3 +252,15 @@ hit_rate 0.635 (vs 0.647), p99 15197 (vs 12866). Slightly WORSE than v4 — past
 pool shrinks too far (peak→0.94) so the KV-shrink cost outweighs the extra Mamba capacity. **Ratio
 lever peaks at 1.5 (v4).** v6+: get more Mamba capacity WITHOUT shrinking KV — mamba cache strategy
 (no_buffer/lazy frees the ping-pong buffer, lossless) or int8-mamba (2×, lossy → quality gate).
+
+### v6-ratio15-nobuffer / v6-ratio15-lazy — not logged
+`no_buffer` is incompatible with the frozen page_size=64 (`no_buffer only supports page_size=1`) — dead
+end. `extra_buffer_lazy` ran but was collision-contaminated (1497/7037, tpot 600ms = 2× v4) → invalid,
+not logged. Added contamination-detect-retry to run_eval.sh so future runs auto-reject+retry collisions.
+
+## Status: near the practical KV-cache optimum for this workload+infra
+Lossless big levers are exhausted: scandir O(N) fix (v2, the novel mechanism) + Mamba/KV GPU-mem
+rebalance (v3/v4, validated config) → 56× TTFT, throughput near offered λ, GPU-prefill-bound. Fine
+config ranking is within the ~24% baseline noise. int8-mamba (2× capacity) is the only above-noise
+lever left but is LOSSY (disqualified by the lossless bar unless output-equivalence is proven).
+Running the fusion-matched control (scandir-ON + fusion-off) to isolate the scandir mechanism.

@@ -2857,6 +2857,22 @@ class Scheduler(
         mamba_allocator = getattr(self.req_to_token_pool, "mamba_allocator", None)
         if mamba_allocator is not None:
             mamba_allocator.alloc_group_begin(len(self.waiting_queue))
+        # Loading-bound-aware ("balanced") prefill batching (kv-flint-2c): keep the
+        # per-batch H->D load:compute token ratio bounded so the unavoidable per-layer
+        # load_back is paired with enough prefill compute to hide it. Lossless (admission
+        # reorder). Accumulators + one-shot env read; off by default (stock behavior).
+        bp_on = envs.SGLANG_ENABLE_BALANCED_PREFILL.get()
+        bp_ratio = envs.SGLANG_BALANCED_PREFILL_RATIO.get()
+        bp_max_defer = envs.SGLANG_BALANCED_PREFILL_MAX_DEFER.get()
+        bp_batch_load = 0
+        bp_batch_compute = 0
+        if bp_on and not getattr(self, "_bp_logged", False):
+            logger.info(
+                "[kv-flint-2c] balanced prefill batching ENABLED: ratio=%s max_defer=%s",
+                bp_ratio,
+                bp_max_defer,
+            )
+            self._bp_logged = True
         # Get requests from the waiting queue to a new prefill batch
         for req in self.waiting_queue:
             if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
@@ -2889,11 +2905,50 @@ class Scheduler(
                 )
 
             req.init_next_round_input(self.tree_cache)
+
+            bp_req_load = 0
+            bp_req_compute = 0
+            if bp_on:
+                bp_req_load = (
+                    req.host_hit_length
+                    + req.swa_host_hit_length
+                    + req.mamba_host_hit_length
+                )
+                bp_extend = len(req.full_untruncated_fill_ids) - len(req.prefix_indices)
+                bp_req_compute = max(0, bp_extend - req.host_hit_length)
+                # Defer a load-heavy request that would make the batch loading-bound
+                # (load > ratio*compute). Always keep >=1 req in the batch (progress),
+                # and never starve a request deferred more than max_defer rounds.
+                if (
+                    len(adder.can_run_list) >= 1
+                    and bp_req_load > 0
+                    and getattr(req, "_bp_defer_count", 0) < bp_max_defer
+                    and (bp_batch_load + bp_req_load)
+                    > bp_ratio * (bp_batch_compute + bp_req_compute)
+                ):
+                    req._bp_defer_count = getattr(req, "_bp_defer_count", 0) + 1
+                    # Mirror the NO_TOKEN cleanup: free the mamba slot that
+                    # init_next_round_input's COW match just allocated, so a deferred
+                    # req doesn't leak it (it re-allocates when reconsidered).
+                    if (
+                        req.mamba_pool_idx is not None
+                        and not getattr(req, "session", None)
+                    ):
+                        self.tree_cache.req_to_token_pool.mamba_allocator.free(
+                            req.mamba_pool_idx.unsqueeze(-1)
+                        )
+                        req.mamba_pool_idx = None
+                    continue
+
             res = adder.add_one_req(
                 req,
                 has_chunked_req=(self.chunked_req is not None),
                 truncation_align_size=self.truncation_align_size,
             )
+            if bp_on and res == AddReqResult.CONTINUE:
+                bp_batch_load += bp_req_load
+                bp_batch_compute += bp_req_compute
+                req._bp_defer_count = 0
 
             if self.enable_lora:
                 running_loras.add(req.lora_id)

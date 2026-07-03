@@ -357,6 +357,16 @@ class Envs:
     SGLANG_DYNAMIC_CHUNKING_SMOOTH_FACTOR = EnvFloat(0.75)
     SGLANG_SCHEDULER_SKIP_ALL_GATHER = EnvBool(False)
     SGLANG_SCHEDULER_DECREASE_PREFILL_IDLE = EnvBool(False)
+    # Loading-bound-aware ("balanced") prefill batching (kv-flint-2c research).
+    # When on, the prefill admission loop defers a load-heavy request (large H->D
+    # host_hit load_back) if it would make the batch's load:compute token ratio exceed
+    # SGLANG_BALANCED_PREFILL_RATIO, so the unavoidable per-layer H->D load is paired
+    # with enough prefill compute to hide it (Strata "balanced batches"). Lossless
+    # (admission reorder only). Always admits >=1 req; a request deferred
+    # SGLANG_BALANCED_PREFILL_MAX_DEFER times is admitted regardless (anti-starvation).
+    SGLANG_ENABLE_BALANCED_PREFILL = EnvBool(False)
+    SGLANG_BALANCED_PREFILL_RATIO = EnvFloat(2.0)
+    SGLANG_BALANCED_PREFILL_MAX_DEFER = EnvInt(8)
     SGLANG_KILLPG_ON_SCHEDULER_EXCEPTION = EnvBool(False)
     SGLANG_PREFILL_DELAYER_MAX_DELAY_PASSES = EnvInt(None)
     SGLANG_PREFILL_DELAYER_TOKEN_USAGE_LOW_WATERMARK = EnvFloat(None)

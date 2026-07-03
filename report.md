@@ -140,9 +140,15 @@ finishes warming). This is NOT NFS/disk (a LOCAL-cache rewarm hit the same wall)
 (never runs at init). **best_effort worked only because it had a WARM cache → rank 0 skips compile →
 reaches the barrier fast.** My earlier "hangs" were slow cold compiles I killed at ~12 min — right in
 the 600 s-timeout aftermath.
-**FIX:** warm `$WORK/.cache` once via a helper `launch_server` with a long `--dist-timeout` (5400 s) so
-rank 0's cold compile finishes before any barrier times out; thereafter eval.sh loads are fast (warm
-cache) and need no timeout change (contract untouched). Job 18154 is doing this. (I must never clear
+**FIX (DONE — job 18154):** warmed the caches via a helper `launch_server` with `--dist-timeout 5400`
+so rank 0's cold compile finished before any barrier timed out. It reached "server ready" and warmed:
+`$WORK/.cache/triton` (150 entries) + the slow kernel `trtllm_allreduce_fusion` into
+**`~/.cache/flashinfer`** (32M). KEY: FlashInfer uses `~/.cache/flashinfer` (its
+`FLASHINFER_WORKSPACE_BASE`/home), and **ignores eval.sh's `FLASHINFER_CACHE_DIR`** — this shared-home
+cache was missing this model's trtllm kernel, and is the true cold-compile culprit; the rewarm
+populated it. Since all three caches (triton on NFS `$WORK`, flashinfer on NFS home, DeepGEMM `_C.so`
+in the NFS venv) are shared across nodes, eval.sh on any certified node now skips the >600 s compile →
+loads fast → no wedge, with the contract (default 600 s dist-timeout) untouched. (I must never clear
 `$WORK/.cache` again, and never run two of my own evals concurrently.)
 
 **adaptive eval blocker (earlier framing — 4 attempts, all failed to LOAD — never a mechanism-logic failure):**

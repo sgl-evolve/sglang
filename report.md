@@ -215,3 +215,38 @@ it speeds the background disk→host prefetch so more lands in host before best_
 **Conclusion so far: v6 (best_effort + concurrent per-page IO + page_size 64) = 2035 ms is the sweet
 spot / running best (41× vs anchor).** Prefetch-wait is the dominant TTFT lever; concurrent-IO makes
 best_effort capture more (hit 0.62 vs 0.38); timeout/page-size perturbations don't beat it.
+
+### Honest note on v10/v11 (queued, never completed)
+During a multi-hour stretch where all 4 held nodes were locked by other researchers' evals, the
+marginal sweep points **v10-be-pario-pg32** (page_size 32) and **v11-be-pario-wtsel**
+(write_through_selective) were queued but **never landed a node**, so they produced **no result and are
+NOT logged** (they do not count against the 100-version budget). I consolidated to a single fair claim
+(one polling launcher, not several) and swapped that marginal config point for a genuine mechanism (v12).
+
+## v12-be-zlibL1 (MECHANISM, commit 5f1db1e4f) — transparent lossless disk-tier compression [PRE-REGISTERED]
+**Pre-registration (written before the result, honest science).**
+- **Bottleneck it attacks (both drivers of the v6 ceiling):** (1) disk **read BW is ~4.9 GB/s-capped**
+  — every prefetch read pays it; (2) working set **spills past host capacity to disk**, so hit rate is
+  capped by how much fits on the 1.8 TB disk. v7 proved the concurrent-IO path is already BW-saturated,
+  so the only way past is **fewer bytes**, not more parallelism.
+- **Mechanism:** each per-page file on the L3 file backend is stored **zlib-compressed** (4-byte magic
+  → self-describing, so reads transparently handle compressed *and* legacy raw pages) and inflated on
+  read straight into the host KV buffer. `set` reserves the **compressed** size, so the disk holds
+  ~ratio× more pages (a second-order hit-rate win on top of the per-read BW saving). Decompress runs in
+  the existing 16-way IO pool (spare CPU while disk-IO-bound; zlib-L1 inflate ≫ 4.9 GB/s across 16
+  threads, so it overlaps with and is dwarfed by the disk latency it removes).
+- **Lossless:** zlib is exact. Offline roundtrip (venv torch, CPU) is **byte-identical** across 1-D /
+  multi-dim / odd-shaped bf16+fp16 tensors. Measured zlib-L1 ratio: worst-case high-entropy Gaussian
+  bf16 **1.25×**, fp16 1.08×, sparse **2.09×** — real KV expected ≥ these.
+- **On-contract & default-OFF:** gated by `SGLANG_HICACHE_FILE_COMPRESS=1`; with the flag unset the code
+  path and on-disk format are byte-for-byte identical to v6. No forbidden args; resolved_args unchanged
+  vs v6. v12 is a **single-lever change vs v6** (best_effort + concurrent-IO + compression; default
+  write policy) for clean attribution.
+- **Verification gate before logging:** grep `server.log` for the loud "compression ENABLED" line to
+  confirm the env propagated through `srun --export=ALL` (no silent fallback), then require lossless
+  outputs + eval exit 0. If the line is absent the run is a silent no-op and will NOT be logged as a
+  compression result.
+- **Prediction:** if the disk-BW/capacity model is right, v12 lowers TTFT below v6's 2035 ms (more of
+  the working set effectively resident + faster reads). If KV is near-incompressible at these settings,
+  expect ≈v6 or slightly worse (added CPU) — a legitimate negative that bounds the compression lever.
+  Status: **queued, polling saturated held pool.**

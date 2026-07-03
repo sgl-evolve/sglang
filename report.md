@@ -233,3 +233,12 @@ never read [skip-writes, MECHANISM — unblocks host eviction]. Remaining cost: 
   per request — churn contending with the full host tier. Skipping it (miss=recompute, unchanged
   outputs) removes that churn. Together with skip-writes: "fully bypass the provably-dead L3 tier under
   best_effort." Logged [mechanism]. Emailed.
+
+### v7 — + `radix_eviction_policy=slru`  [config]  ** NEGATIVE — reverted **
+- **Result vs v6 (isolates eviction policy):** WORSE. TTFT mean 1707 (v6 1205, +42%), median 1093 (+68%),
+  out 366 t/s (-11%), **hit_rate 0.347 (v6 0.624 — crashed)**. Valid run (7037/7037, no fallback).
+- **Why:** SLRU's protected segment (hit≥2) over-protects older multi-hit nodes and evicts recent
+  single-hit nodes too aggressively; this workload is recency-heavy (multiturn), so plain LRU is the
+  right policy. **Eviction-policy tuning does NOT help — LRU is well-suited.** Confirms the ~38%
+  recompute is capacity-bound (working set 19M ≫ device+host 10.2M), not an eviction-policy problem.
+  Reverted to LRU. Best remains v6.

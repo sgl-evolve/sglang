@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# holder_watcher.sh — my GUARANTEED, race-free eval path. My exclusive 8h a3 hold job (JOBID in
+# .holdjob) is pending for a node. The shared held pool is unwinnable (foreign researchers cycle their
+# pinned nodes with ~0 gap; my collision-safe waiter loses every micro-race), so this watcher makes the
+# exclusive holder productive: when it starts, disk-check its node; if eval-capable (>=1800G, healthy),
+# run my queue there SEQUENTIALLY (one 122B eval at a time, ~2h each, ~4 fit in 8h), autologging each.
+# If it landed on a small-disk / unusable node, RELEASE it (never squat a node I can't eval on).
+# Pops from the SAME experiment_queue.txt under the SAME lock as the waiters -> no double-runs.
+set -uo pipefail
+NAME=onyx-7q2
+ROOT=/home/junyanch_google_com/autoresearch
+EVAL=$ROOT/programs/sgl/researcher/.claude/skills/evaluation-sop/scripts/eval.sh
+WORK=$ROOT/workspace/sgl/researchers/$NAME
+Q=$WORK/experiment_queue.txt
+PORT=30761
+cd "$WORK"
+[ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; export HF_TOKEN="$HF_API_KEY"; export WANDB_API_KEY; }
+JID=$(cat "$WORK/.holdjob" 2>/dev/null)
+[ -z "$JID" ] && { echo "[holder] no .holdjob -> exit"; exit 0; }
+
+qpop(){ exec 201>"$Q.lock"; flock 201; local l; l=$(grep -vE '^[[:space:]]*$' "$Q" 2>/dev/null|head -1); [ -n "$l" ] && { grep -vFx "$l" "$Q">"$Q.tmp" 2>/dev/null; mv "$Q.tmp" "$Q"; }; flock -u 201; exec 201>&-; printf '%s' "$l"; }
+
+echo "[holder] watching hold job $JID for a node..."
+while :; do
+  st=$(squeue -h -j "$JID" -o "%T" 2>/dev/null)
+  [ -z "$st" ] && { echo "[holder] job $JID gone (done/cancelled) -> exit"; exit 0; }
+  [ "$st" != "RUNNING" ] && { sleep 60; continue; }
+  NODE=$(squeue -h -j "$JID" -o "%N" 2>/dev/null); [ -z "$NODE" ] && { sleep 10; continue; }
+  echo "[holder] job $JID RUNNING on $NODE"
+  # disk/dram health of my exclusive node
+  info=$(srun --jobid="$JID" --overlap -N1 -w "$NODE" bash -c "df -BG /mnt/localssd 2>/dev/null|tail -1|awk '{gsub(/G/,\"\",\$4);print \$4}'; free -g 2>/dev/null|awk '/Mem:/{print \$7}'" 2>/dev/null)
+  d=$(printf '%s\n' "$info"|sed -n 1p); m=$(printf '%s\n' "$info"|sed -n 2p)
+  if [ "${d:-0}" -lt 1800 ] || [ "${m:-0}" -lt 1400 ]; then
+    echo "[holder] $NODE not eval-capable (disk=${d}G dram=${m}G) -> releasing (scancel $JID)"
+    scancel "$JID"; exit 0
+  fi
+  echo "[holder] $NODE eval-capable (disk=${d}G dram=${m}G) -> running queue sequentially"
+  break
+done
+
+# Run the queue sequentially in my exclusive node until it drains or the hold job ends.
+while :; do
+  squeue -h -j "$JID" -o "%T" 2>/dev/null | grep -q RUNNING || { echo "[holder] hold job ended -> exit"; exit 0; }
+  exp=$(qpop); [ -z "$exp" ] && { echo "[holder] queue drained -> exit"; exit 0; }
+  IFS='|' read -r lbl env flags tag <<<"$exp"
+  echo "[holder] === running $lbl (env=[$env] flags=[$flags]) on $NODE ==="
+  rm -rf "$WORK/runs/$lbl" 2>/dev/null
+  ( unset SGLANG_HICACHE_FILE_READ_THREADS SGLANG_HICACHE_FILE_WRITE_THREADS SGLANG_HICACHE_PREFETCH_TIMEOUT_BASE SGLANG_HICACHE_PREFETCH_TIMEOUT_PER_KI SGLANG_HICACHE_PREFETCH_TIMEOUT_MAX
+    [ "$env" != "-" ] && export $env
+    export PORT
+    srun --jobid="$JID" --overlap -N1 -w "$NODE" --gres=gpu:8 --export=ALL,PORT="$PORT" \
+      bash "$EVAL" "$NAME" "$lbl" --enforce-disable-flashinfer-allreduce-fusion $flags > "eval-$lbl.log" 2>&1 )
+  echo "[holder] $lbl finished rc=$?"
+  [ -f "runs/$lbl/summary.json" ] && { bash finish_eval.sh "$lbl" "$tag" >> "logs_finish_$lbl.txt" 2>&1; touch "runs/$lbl/.logged"; echo "[holder] $lbl autologged"; }
+done

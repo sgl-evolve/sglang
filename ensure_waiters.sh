@@ -10,7 +10,7 @@ for nd in $NODES; do
   n=$(ps -eo args 2>/dev/null | grep -F "node_waiter.sh $nd" | grep -v grep | grep -cv ensure_waiters)
   if [ "$n" -eq 0 ]; then
     echo "[ensure] relaunch waiter $nd"
-    nohup bash node_waiter.sh "$nd" > "waiter-$nd.out" 2>&1 &
+    setsid bash node_waiter.sh "$nd" > "waiter-$nd.out" 2>&1 < /dev/null &
   elif [ "$n" -gt 1 ]; then
     echo "[ensure] WARN $n waiters for $nd (dedup: keeping oldest)"
     # kill all but the oldest (smallest etime => oldest = last in default ps order; kill extras by pid)
@@ -20,6 +20,15 @@ for nd in $NODES; do
     echo "[ensure] ok waiter $nd"
   fi
 done
-echo "--- wins/finishes ---"; grep -h "WON\|finished rc\|queue empty" waiter-*.out 2>/dev/null | tail -6 || true
+# keep the holder-watcher alive too (my guaranteed race-free path via the exclusive hold job)
+hw=$(ps -eo args 2>/dev/null | grep -F "bash holder_watcher.sh" | grep -v grep | grep -cv ensure_waiters)
+if [ "$hw" -eq 0 ]; then
+  if [ -n "$(cat "$(dirname "$0")/.holdjob" 2>/dev/null)" ] && squeue -h -j "$(cat "$(dirname "$0")/.holdjob")" >/dev/null 2>&1; then
+    echo "[ensure] relaunch holder_watcher"; setsid bash holder_watcher.sh > holder_watcher.out 2>&1 < /dev/null &
+  fi
+else
+  echo "[ensure] ok holder_watcher"
+fi
+echo "--- wins/finishes ---"; grep -h "WON\|finished rc\|queue empty\|\[holder\]" waiter-*.out holder_watcher.out 2>/dev/null | tail -8 || true
 echo "--- queue depth ---"; grep -cvE '^[[:space:]]*$' experiment_queue.txt 2>/dev/null
 echo "--- logged versions (W&B run dirs) ---"; ls -d wandb/run-*onyx-7q2 2>/dev/null | wc -l

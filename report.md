@@ -128,6 +128,36 @@ the 2.4 s mean TTFT; the rest is prefill.
   (regime change) or elsewhere. Then target **throughput** — most likely **hit-rate recovery**
   (reuse-aware retention to reduce prefill recompute), the genuine KV-cache lever.
 
+### v0-ctrl-scandir — control (scandir ON + fusion-off) — FAILED / NOT LOGGED
+Intended as a fusion-matched in-env baseline to isolate the scandir fix. Result was invalid:
+**63 / 7037 requests completed**, 0.08 req/s, tpot 8.3 s, server shut down early. Either a mid-run
+pool collision (a neighbor's server on the same node — the shared pool has non-flock users) or the
+fusion-off+scandir combo being too slow to complete before client timeouts. Not logged (incomplete).
+Note: `running-req` peaks at 139 (>128 max-concurrency) in BOTH v2 and this run — it counts chunked
+sub-requests, so it is NOT a collision signal; v2 is confirmed clean (7037/7037 completed, 2.63 req/s).
+Takeaway: without the scandir fix a fusion-off run may not even complete this workload — the fix is
+what makes it tractable in-env. The 36× TTFT claim rests on: (a) logic — fusion-off can only *slow*
+allreduce, never improve TTFT; (b) the S2 screen — scandir was 147–742× and O(N)-growing on the
+scheduler thread; (c) v2's clean 7037/7037 completion vs baseline's tail.
+
+## v2 validity (self-audit, confirmed)
+resolved_args == contract (ctx 262144, mem-frac 0.85, hicache_size 96, tp 8, page 64, wait_complete);
+no SILENT FALLBACK; **7037/7037 requests completed** at 2.63 req/s; lossless by construction. On-contract.
+
+## Remaining bottleneck & future directions (for a maintainer)
+v2 is **GPU-compute-bound, prefill-dominated** (prefill:decode batches 9406:454; #running-req p90=128
+== max-concurrency), throughput 2.63 < offered λ 3.5 ⇒ the queue (mean queue ~1.33 s ≈ 55% of the
+2.4 s mean TTFT) is the residual. Prefill is inflated by the hit-rate drop (0.82→0.58 ⇒ ~42%
+recompute), itself caused by the faster regime evicting prefixes before multiturn reuse. The GPU KV
+pool sits ~72% empty (token-usage p50 0.26) while host is full — likely because the hybrid model's
+**Mamba SSM-state pool is the binding GPU constraint** (evicting a leaf to free Mamba state also frees
+its full-attn KV). Genuine next levers (all lossless, none easy):
+- **Decouple Mamba-state and KV eviction** so hot full-attn KV can stay in the empty GPU KV pool even
+  when a leaf's Mamba state is evicted → more device hits → less prefill → higher throughput.
+- **Reuse-aware retention** for multiturn conversation prefixes across the inter-turn gap.
+- (Fusion is an env artifact: this venv's FlashInfer allreduce-fusion NCCL init hangs; all my runs are
+  fusion-off, so version-to-version comparisons are consistent.)
+
 ## Operational notes (env / infra — not research variables)
 - **Pool coordination:** the manager's held pool is shared and some researchers run evals on it
   *without* the per-node flock (e.g. pinned launchers), so a flock-free node can still host a

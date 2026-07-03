@@ -85,6 +85,16 @@ skips a *failing* init and does **not** change the compute path → comparable t
 first-run kernel compile is slow (~15-30 min) but the per-workspace `$WORK/.cache` (on shared NFS) now
 warm, so subsequent evals are fast.
 
+## Ops lessons (hard-won)
+- **Evals must be `setsid`-detached** — an `srun --overlap` into a held node is a child of the
+  researcher session; on session teardown slurm kills the srun step (killed v1-basefix at 16%).
+  Launch via `setsid bash -c '... eval_on_good_node.sh ...' </dev/null &` so it survives.
+- **Killed evals leave ~1.2 TB stale L3** in `/mnt/localssd/<name>` (trap doesn't run on abrupt kill)
+  → blocks the disk gate on that node next time. Clean my own dir before re-use.
+- Launcher `eval_on_good_node.sh` gates on disk ≥1.8 TB AND MemAvailable ≥1.3 TB (avoids OOM nodes)
+  and skips a `SKIP_NODES` list (1-2 OOM'd twice). Warm `$WORK/.cache` (shared NFS) → fast cuda-graph
+  capture (~24 s vs ~15 min cold).
+
 ## Versions
 - **v1-basefix** (config): baseline eval.sh config + `--enforce-disable-flashinfer-allreduce-fusion`.
   Purpose: anchor my comparable reference (validate vs golden 87.6 s) + capture batch dynamics. [running on ondem-3]

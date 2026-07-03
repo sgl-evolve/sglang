@@ -105,8 +105,34 @@ timeout fires (2s + 0.1s/1024tok, cap 30s) → nearly everything recomputes. Par
 inside the timeout window → **recover storage hits, cut recompute → lower tpot (v2 regressed +232%) and
 raise hit_rate, at the same low TTFT**. This also implies multi-threaded prefetch (multiple aux threads)
 is *not* the lever — one aux thread's `batch_get` already saturates the 16-way pool at NVMe bandwidth;
-extra aux threads share the same pool and add no bandwidth. Lossless (exact KV). Result: _(pending a node
-— severe held-pool contention + the only free certified node self-locked by another researcher)._
+extra aux threads share the same pool and add no bandwidth. Lossless (exact KV).
+
+**Result (commit 390f0a0f8, clean run node1-2, on-contract, no fallback, W&B `v3-parallel-timeout`
+[mechanism]).** v3 vs v2 differ *only* in `SGLANG_HICACHE_FILE_READ_THREADS` (16 vs 1) — both timeout,
+both fusion-off — so this cleanly isolates the parallel-read mechanism:
+| metric | v0_official | v2 serial+timeout | **v3 parallel+timeout** | v3 vs v2 |
+|---|---|---|---|---|
+| **mean TTFT** | 87615 | 4243.6 | **2903.4** (−96.7% vs base) | **−31.6%** |
+| p90 TTFT | 243466 | 10708 | **6498** | −39% |
+| p99 TTFT | 270799 | 24505 | **17654** | −28% |
+| tpot mean | 241 | 802 | **493** | **−38%** |
+| e2e mean | 108148 | 55435 | **42925** | −23% |
+| out tok/s | 146.9 | 272.6 | **339.6** | +25% |
+| req thruput | 1.15 | 2.13 | **2.66** | +25% |
+| hit_rate | 0.816 | 0.442 | **0.587** | **+33%** |
+
+**Confirmed:** parallel L3 reads (≈NVMe bandwidth) deliver the prefetch working set inside the timeout
+window, so more requests get KV from the (host) cache instead of recomputing → hit_rate recovers
+0.44→0.59, recompute drops → **tpot −38%**, and TTFT/throughput improve further. A genuine, cleanly
+attributed **mechanism** win over the strong timeout config bar. Lossless (parallel reads = identical
+bytes/order, verified; timeout recompute = exact KV). storage_frac stays 0 (disk-served pages land in
+host before they're "hit", so hits are attributed to host) — the disk tier is now a fast *feeder* of the
+host tier rather than a blocking wait.
+
+## Next (v4+): push the frontier
+tpot is still +104% vs baseline (hit 0.59 ⇒ ~41% recompute). Levers: **v4 = parallel + best_effort**
+(0-wait admit; multiturn shared prefixes already in host from prior turns → keep hits at min TTFT);
+timeout-duration sweep (hit_rate↔TTFT tradeoff, now that reads are fast); read-thread-count tuning.
 
 ## v1 (original planned result line — superseded above)
 **Lossless check.** Lossless by construction: `batch_get` returns bit-identical bytes in identical

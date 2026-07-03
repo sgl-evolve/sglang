@@ -371,3 +371,9 @@ win), num_continuous_decode_steps (neutral), max_prefill_tokens (neutral), page_
 Running batch already saturates offered concurrency (128), so admission knobs can't help; throughput is
 compute-bound + recompute is capacity-bound. The two novel MECHANISMS (skip-writes, skip-prefetch) +
 best_effort are the wins. At the lossless ceiling for this fixed protocol.
+
+### v13 — best-config robustness repro (via shared pool)  [config]
+- Result: TTFT mean 1098, median 583, out 431.6 t/s, req 3.37/s, hit 0.623. Valid (7037/7037, no fallback).
+- **Robustness: best-config TTFT_mean over 6 runs = [1205,1089,1191,1139,1131,1098] → 1142±43 ms
+  (CV 3.8%).** Rock-solid ~95× below the tuned bar, reproduced across runs (and node — v13 via the shared
+  pool, likely a different certified node). The headline is well-characterized and low-variance.

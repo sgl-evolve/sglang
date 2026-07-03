@@ -124,11 +124,46 @@ almost certainly runs a smaller batch (requests stuck in prefetch).
   tens–hundreds of s), and the timeout knobs live in the FROZEN `--hicache-...-extra-config`
   so I can't sharpen it via config. Low priority; run if a node is idle.
 
-## STATUS (live) — session checkpoint
+## STATUS (live)
 
-**Bottom line:** `best_effort` (config) is a validated **new best: 27× lower mean TTFT** (reported +
-emailed). The novel `adaptive` mechanism is implemented, committed (`7468090d4`), and unit-tested,
-but its formal eval is currently **blocked by a cold-cache/contention init-hang** (details below).
+**Bottom line:** Two validated results on the fixed protocol, both **~27× lower mean TTFT than the
+official baseline**: (1) `best_effort` (config); (2) `v4-adaptive-prefetch` (**MECHANISM**, commit
+`b58201066`) which **ties best_effort's headline TTFT while dominating the balance** (+40% throughput,
+−34% e2e, better TPOT, hit_rate 0.37→0.62). Adaptive is the novel win the program targets.
+
+### v4-adaptive-prefetch — RESULT (mechanism, commit `b58201066`, on-contract, lossless, rc=0)
+
+| metric | v0_official | v0_tuned | v2cfg-besteffort (config) | **v4-adaptive (mechanism)** |
+|---|---|---|---|---|
+| **mean TTFT (ms)** | 87615 | 108824 | **3237** | 3299  (−96.2% vs official; ≈ best_effort) |
+| TTFT median (ms) | 1225 | 1438 | 1959 | 1915 |
+| TTFT p90 (ms) | 243466 | 295413 | 6889 | 6556 |
+| TTFT p99 (ms) | 270798 | 322801 | 20481 | 34077 (worse tail than best_effort) |
+| req throughput (req/s) | 1.15 | 0.93 | 1.70 | **2.39** (+40% vs best_effort) |
+| out_tok/s | 147 | 119 | 217 | **305** (+40%) |
+| e2e mean (ms) | 108148 | 133930 | 71104 | **47112** (−34% vs best_effort) |
+| TPOT mean (ms) | 241 | 294 | 752 | **531** (better decode) |
+| hit_rate | 0.816 | 0.821 | 0.368 | **0.624** (reclaimed cache) |
+| l3_hit_frac | 0.254 | 0.259 | 0.000 | 0.000 |
+| hit host/device frac | .43/.31 | .43/.31 | .27/.73 | .56/.44 |
+
+- **Self-audit:** rc=0; resolved `hicache_storage_prefetch_policy=adaptive` (no silent fallback);
+  budget exact (ctx 262144, mem-frac 0.85, hicache 96, tp 8); 7037/7037 successful; lossless
+  (un-prefetched prefix is recomputed → identical tokens).
+- **Takeaway:** the 2 s-capped adaptive deadline lets requests wait briefly to **reclaim host hits
+  (0.37→0.62)** — halving recompute vs best_effort → **TPOT 752→531, throughput 1.70→2.39,
+  e2e 71 s→47 s** — at the **same headline mean TTFT** (3299 vs 3237, within run-to-run noise).
+  It never reclaims L3/SSD hits (l3=0): the 2 s cap is shorter than an SSD read, so it behaves like
+  best_effort for SSD-resident prefixes but recaptures the cheap host-resident ones. A better
+  speed↔memory balance and a genuine mechanism (not config). **Next ideas:** raise the cap / make it
+  SSD-aware to also reclaim L3 hits; or attack the p99 tail (34 s) which best_effort keeps lower.
+
+### (historical) load-blocker saga — RESOLVED
+
+**Bottom line (earlier):** `best_effort` (config) validated **27× lower mean TTFT** (reported +
+emailed). The novel `adaptive` mechanism was blocked from eval by a cold-cache init issue (below),
+now resolved: **never kill a load mid-compile** (it corrupts the shared `~/.cache/flashinfer` trtllm
+kernel); let cold compiles finish (they warm the shared cache) → subsequent loads are fast.
 
 **TRUE ROOT CAUSE of the adaptive load failures (diagnosed via /proc + server.log, not my mechanism):**
 The load has a **cold-start deadlock**: rank 0 spends **>600 s cold-compiling DeepGEMM/CUDA kernels**

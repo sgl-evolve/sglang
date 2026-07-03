@@ -1035,7 +1035,7 @@ class HiCacheController:
         # prefetch finish before a request is due (op-level concurrency, on top of per-page IO)
         # -> higher hit rate, lower TTFT. Lossless (same bytes). Serial stage-1 (hit-query +
         # all_reduce, ordering-locked) is untouched; only stage-2 (IO) is parallelized.
-        _n_aux = 4
+        _n_aux = 1  # v7 (4) diluted the shared IO pool -> worse; single aux + 16-way per-page IO (v6) is best
         self.prefetch_io_aux_threads = [
             threading.Thread(target=self.prefetch_io_aux_func, daemon=True)
             for _ in range(_n_aux)

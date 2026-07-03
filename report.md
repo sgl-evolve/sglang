@@ -109,6 +109,25 @@ original scandir + fusion-off** (both fusion-off ⇒ clean A/B of the scandir fi
 v2: TPOT / hit-rate, not disk-wait (disk now 2.6%), so disk-wait mechanisms (adaptive prefetch, SJF)
 are now low-value — v3 should target decode/throughput or hit-rate recovery.
 
+## Post-v2 bottleneck analysis (from v2 raw metrics) — reshapes v3+
+The residual v2 tail (p99 31 s) is **queue-time-bound, not disk-wait**: v2's `queue_time_seconds`
+histogram is p99 ~30 s (≈ p99 TTFT), and **req_throughput 2.63 < offered λ 3.5** ⇒ the system is
+**throughput-bound**, so the waiting queue builds over the run. Mean queue time (~1.33 s) is ~55% of
+the 2.4 s mean TTFT; the rest is prefill.
+- ⇒ **Adaptive/timeout prefetch and SJF (disk-wait mechanisms) are the WRONG lever now** — disk is
+  only 2.6% of hits, and recompute-on-congestion would ADD GPU work → lower throughput → *worse*
+  queueing. C1 (adaptive prefetch) is built + logic-tested but **shelved** by this evidence.
+- The throughput ceiling is **GPU work per request**: prefill (inflated by the hit-rate drop
+  0.82→0.58 ⇒ ~42% recompute) + decode (TPOT 450 vs 241, inflated by the fusion-off env workaround).
+- **Why the scandir fix boosted throughput 1.15→2.63:** the O(N) scandir ran on the *scheduler
+  thread* (prefetch_from_storage ← _add_request_to_queue), serializing request admission. Removing it
+  unblocked the scheduler. Next scheduler-thread candidate: `evict_host`'s per-prefetch O(N) heapify
+  (C5) — but after the scandir fix the system is likely GPU-bound, so C5's headroom is uncertain.
+- **v3+ plan:** run the control (v0-ctrl-scandir = scandir ON + fusion-off) to (a) isolate the scandir
+  fix, (b) get a fusion-matched baseline, (c) reveal whether the hit-rate drop is from the scandir fix
+  (regime change) or elsewhere. Then target **throughput** — most likely **hit-rate recovery**
+  (reuse-aware retention to reduce prefill recompute), the genuine KV-cache lever.
+
 ## Operational notes (env / infra — not research variables)
 - **Pool coordination:** the manager's held pool is shared and some researchers run evals on it
   *without* the per-node flock (e.g. pinned launchers), so a flock-free node can still host a

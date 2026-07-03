@@ -57,6 +57,11 @@ flock-bypassing neighbour (`quartz-7m3`) co-locating on my held node. Fix: I **s
 certified node** for the session (submit-gpu-job's hill-climb recipe) — true `--exclusive` isolation
 (what the protocol requires for comparable numbers) + collision-free back-to-back evals. Helper:
 `run_on_hold.sh` (unique PORT 30729, srun into holder job in `.holdjob`).
+Update: the self-locked node **slurm2-a3nodeset0-2 is faulty** — the server hangs reproducibly (2×,
+warm cache) right after KV-cache alloc during FlashInfer workspace NCCL setup (rank-0 c10d 600 s
+timeout, 0% GPU), even though the 8-GPU NCCL preflight passes. node-0 clears this stage fine. Released
+it (`scancel`) and fell back to the hardened **held-pool** path (`run_eval.sh`, node-0/node1-2/ondem-3),
+accepting the residual foreign-collision risk (mitigated by the foreign-server skip + unique port).
 
 ### Planned eval sequence (all on the self-locked node, back-to-back)
 - **v1-parallel-reads**: parallel reads + wait_complete — isolate the mechanism vs v0_official.

@@ -43,7 +43,29 @@ concurrently; order preserved).
 - IO microbench on real `/mnt/localssd` (page cache dropped so reads hit NVMe): serial 1025 MB/s →
   **6126 MB/s @ 16 threads (~6×)**; 8≈5.8×, 32≈5.6×, 64≈4.9× (over-parallelizes). Default 16. ✅
 
-**Result vs baseline.** _(full eval pending — running on my self-locked exclusive node)_
+**Result (partial, aborted).** Ran ~50 min on node-0 (parallel reads 16/rank + wait_complete +
+fusion-off). Cumulative request throughput **0.86 req/s vs baseline 1.15** (2547/7037 at 36%), i.e.
+*slower* than baseline. Live /metrics in the L3-pressure regime (host tier 99.4% full) showed the
+smoking gun: **num_running ≈ 15, num_queue ≈ 113, GPU KV-pool token_usage ≈ 4%** — the GPU sits nearly
+idle while 113 requests are stuck in the prefetch-wait state. **Diagnosis: under `wait_complete` the
+scheduler blocks each L3 request until its *entire* prefetch finishes, so the GPU starves regardless of
+read speed** (Strata's "loading-bound, not compute-bound"). Faster per-op reads (parallel) don't fix
+this because the bottleneck is the *blocking admission policy*, not read bandwidth. Aborted at 36% to
+prioritise the real lever. (Possible secondary effect: 8 ranks × 16 threads = 128 concurrent disk
+readers may over-saturate the NVMe vs baseline's 8; to be isolated by v2 serial vs v3 parallel.)
+**Takeaway.** wait_complete is the villain. Pivot to prefetch **`timeout`** (admit after a bounded wait,
+recompute the un-prefetched tail) to fill the idle GPU. Measure parallel-reads cleanly *on top of*
+timeout (v3) vs serial+timeout (v2).
+
+---
+
+## v2 — serial reads + prefetch `timeout`  [config]
+**Hypothesis.** `timeout` admits an L3 request after a bounded wait (2 s + 0.1 s/1024 tok, cap 30 s),
+recomputing the not-yet-loaded tail via prefill — filling the GPU that `wait_complete` leaves idle.
+Serial reads (`SGLANG_HICACHE_FILE_READ_THREADS=1`, original path) to isolate the timeout effect and
+avoid any parallel-read over-saturation. Lossless (recompute = exact KV). Result: _(pending)_
+
+## v1 (original planned result line — superseded above)
 **Lossless check.** Lossless by construction: `batch_get` returns bit-identical bytes in identical
 order (verified), so the KV loaded under wait_complete is identical to serial → model outputs identical
 to the baseline. Pure read-concurrency change.

@@ -1,0 +1,85 @@
+_wandb:
+    value:
+        cli_version: 0.28.0
+        e:
+            3ysba9vw2s0cq1ogal473axm2vhj1i3j:
+                args:
+                    - kv-lynx-4d2
+                    - runs/v5-mamba-ratio16/summary.json
+                    - v5-mamba-ratio16
+                    - 574656ca3
+                    - config
+                cpu_count: 44
+                cpu_count_logical: 44
+                disk:
+                    /:
+                        total: "1040442621952"
+                        used: "451812515840"
+                email: acjy777@gmail.com
+                executable: /home/junyanch_google_com/autoresearch/workspace/sgl/researchers/kv-lynx-4d2/.venv/bin/python
+                git:
+                    commit: 574656ca312537c756ad0a81b57a599b60901ca9
+                    remote: https://x-access-token:@github.com/sgl-evolve/sglang.git
+                host: slurm2-c3nodeset-0
+                memory:
+                    total: "371914428416"
+                os: Linux-6.8.0-1027-gcp-tcpx-x86_64-with-glibc2.35
+                program: /home/junyanch_google_com/autoresearch/programs/sgl/researcher/.claude/skills/report-sop/scripts/log_wandb.py
+                python: CPython 3.12.13
+                root: /home/junyanch_google_com/autoresearch/workspace/sgl/researchers/kv-lynx-4d2
+                startedAt: "2026-07-03T19:23:40.233613Z"
+                writerId: 3ysba9vw2s0cq1ogal473axm2vhj1i3j
+        m: []
+        python_version: 3.12.13
+        t:
+            "3":
+                - 2
+                - 5
+                - 13
+                - 14
+                - 16
+                - 62
+            "4": 3.12.13
+            "5": 0.28.0
+            "12": 0.28.0
+            "13": linux-x86_64
+code_churn:
+    value:
+        v3-mamba-ratio13:
+            added: 130
+            deleted: 21
+            files: 3
+            net: 151
+        v4-mamba-ratio15:
+            added: 130
+            deleted: 21
+            files: 3
+            net: 151
+        v5-mamba-ratio16:
+            added: 130
+            deleted: 21
+            files: 3
+            net: 151
+commit:
+    value: 574656ca3
+resolved_args:
+    value:
+        context_length: "262144"
+        hicache_io_backend: direct
+        hicache_mem_layout: page_first_direct
+        hicache_size: "96"
+        hicache_storage_prefetch_policy: wait_complete
+        hicache_write_policy: write_through
+        mem_fraction_static: "0.85"
+        page_size: "64"
+        tp_size: "8"
+version:
+    value: v5-mamba-ratio16
+version_kind:
+    value:
+        v0_official: '-'
+        v0_tuned: '-'
+        v2-scandirfix: mechanism
+        v3-mamba-ratio13: config
+        v4-mamba-ratio15: config
+        v5-mamba-ratio16: config

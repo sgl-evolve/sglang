@@ -224,3 +224,10 @@ v2 scandir-fix (mechanism) 2425 ms → v3 ratio1.3 1802 → v4 ratio1.5 **1558 m
 After v2, re-measure the bottleneck from the new metric profile. Candidate v3+: congestion/deadline-
 aware adaptive prefetch (wait-vs-recompute), SJF prefetch ordering, or write_through_selective to cut
 disk write contention — chosen from evidence, prizing novelty over tuning.
+
+### v5-mamba-ratio16 — `config` — reverted (ratio ceiling)
+`--mamba-full-memory-ratio 1.6` → max_mamba 1754, GPU KV peak 0.94. mean TTFT 1603 ms (vs v4 1558),
+hit_rate 0.635 (vs 0.647), p99 15197 (vs 12866). Slightly WORSE than v4 — past the sweet spot; the KV
+pool shrinks too far (peak→0.94) so the KV-shrink cost outweighs the extra Mamba capacity. **Ratio
+lever peaks at 1.5 (v4).** v6+: get more Mamba capacity WITHOUT shrinking KV — mamba cache strategy
+(no_buffer/lazy frees the ping-pong buffer, lossless) or int8-mamba (2×, lossy → quality gate).

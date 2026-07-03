@@ -26,16 +26,20 @@ while :; do
     exec 200>"$RT/locks/$node.lock"
     if flock -n 200; then
       any_free=1
-      # disk gate under the lock
-      free_kb=$(srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "df --output=avail /mnt/localssd | tail -1" 2>/dev/null | tr -d ' ')
-      if [[ -n "$free_kb" && "$free_kb" -ge 1932735283 ]]; then   # 1.8 TiB in KB
-        echo "[run_eval] node $node OK ($((free_kb/1024/1024))G free) -> running $VER"
+      # disk gate + free-RAM gate under the lock. The RAM gate avoids the OOM
+      # race where a node's flock frees before the previous eval's 768 GB pinned
+      # host pool finishes releasing (new server then SIGKILLs during init).
+      read free_kb mem_g < <(srun --jobid="$jid" --overlap -N1 -w "$node" bash -c \
+        "echo \$(df --output=avail /mnt/localssd | tail -1) \$(free -g | awk '/^Mem:/{print \$7}')" 2>/dev/null)
+      free_kb=${free_kb:-0}; mem_g=${mem_g:-0}
+      if [[ "$free_kb" -ge 1932735283 && "$mem_g" -ge 1300 ]]; then   # 1.8 TiB disk, 1.3 TB RAM
+        echo "[run_eval] node $node OK (${mem_g}G RAM, $((free_kb/1024/1024))G disk) -> running $VER"
         srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" "$VER" "$@"
         rc=$?
         flock -u 200; exec 200>&-
         exit $rc
       else
-        echo "[run_eval] node $node disk too small ($((free_kb/1024/1024))G) -> skip"
+        echo "[run_eval] node $node not ready (${mem_g}G RAM, $((free_kb/1024/1024))G disk) -> skip"
         flock -u 200; exec 200>&-
       fi
     else

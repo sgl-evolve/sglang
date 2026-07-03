@@ -31,6 +31,26 @@ TTFT** — which beats both.
   (`hicache_storage.py:401`) is a serial list-comprehension of blocking `open()+readinto()`.
 
 ## Screens (free; never on the curve)
+### S2 — Whole-dir `os.scandir` per prefetch hit-query (the smoking gun) — STRONG POSITIVE
+The hybrid-Mamba prefetch path always takes `batch_exists_v2`
+(`hybrid_cache_controller.py:600`, `pool_transfers` present), whose
+`_collect_existing_component_keys` (`hicache_storage.py:487`) did an **`os.scandir` over the
+entire L3 storage dir**, filtered to a ~256-name target set — on **every** prefetch hit-query, on
+**every** rank. The L3 dir holds ~millions of page files at steady state (1.8 TB of ~768 KB pages),
+so the scan is **O(total files on disk)** and **degrades as L3 fills** — a growing tax directly on
+the prefetch/TTFT critical path. Microbench (cold dir, 256-key target):
+| files on disk | scandir+filter | direct `isfile` | speedup |
+|---|---|---|---|
+| 200k | 64.3 ms | 0.44 ms | 147× |
+| 500k | 161.8 ms | 0.43 ms | 373× |
+| 1M | 324.7 ms | 0.44 ms | 742× |
+Linear in file count ⇒ **~650 ms/hit-query at steady-state ~2M files**. This explains the extreme,
+*growing* tail (median 1.2 s but p99 271 s): late in the run, every prefetch pays ~0.65 s of
+directory scan before it can even read, and they serialize on the single per-rank prefetch thread.
+**Fix (commit bbf51108):** probe the specific target files with `os.path.isfile`, O(len(target_files)).
+Identical result set ⇒ **lossless** (correctness test asserts set-equality vs the scandir impl).
+Helps under *any* prefetch policy. **This is my v2 headline mechanism.**
+
 ### S1 — Parallel disk IO (cold-read microbench on /mnt/localssd md NVMe) — NEGATIVE as headline
 Mechanism built (commit 4ce727b6): fan per-page reads/writes across a bounded thread pool in
 `HiCacheFile`. **Lossless** (round-trip test: byte-identical, serial==parallel, order preserved).
@@ -47,12 +67,18 @@ Mechanism built (commit 4ce727b6): fan per-page reads/writes across a bounded th
   (c) **overlap disk load with prefill**.
 
 ## Versions (full evals — every one logged, kept or reverted)
-### v1-timeout — `config` — RUNNING
+### v1-timeout — `config` — RUNNING (on node 1-2; very slow first-time Triton compile at init)
 Change: `--hicache-storage-prefetch-policy timeout` (default cap min(30 s, 2 s + 0.1 s/1k tok)).
 Hypothesis: capping the per-request disk wait collapses the p99 tail (lossless — recompute of the
 not-yet-loaded tail yields identical KV). Tests the "don't wait on disk" lever. Result pending.
 
+### v2-scandirfix — `mechanism` — QUEUED (commit bbf51108, includes parallel IO 4ce727b6)
+Change: O(keys) `os.path.isfile` L3 hit-query (drop the whole-dir scandir) + parallel disk IO.
+Hypothesis: removing the ~0.65 s/hit-query directory scan that grows with L3 fill collapses the
+growing TTFT tail, independent of prefetch policy. Lossless (byte-identical set + round-trip tests).
+Highest-confidence win. Runs after a good pool node frees.
+
 ## Next
-Pick v2 mechanism from v1 result + live disk iostat: leading candidate is a **congestion/deadline-
-aware adaptive prefetch** (decide wait-vs-recompute per request from live disk-queue depth & GPU
-headroom) that dominates the static timeout config — genuine novelty beyond tuning.
+After v2, re-measure the bottleneck from the new metric profile. Candidate v3+: congestion/deadline-
+aware adaptive prefetch (wait-vs-recompute), SJF prefetch ordering, or write_through_selective to cut
+disk write contention — chosen from evidence, prizing novelty over tuning.

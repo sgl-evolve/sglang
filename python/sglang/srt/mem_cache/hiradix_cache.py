@@ -1140,7 +1140,10 @@ class HiRadixCache(RadixCache):
             self._update_host_leaf_status(x.parent)
 
             if len(x.parent.children) == 0 and x.parent.evicted:
-                new_priority = self.eviction_strategy.get_priority(x.parent)
+                # Must use host_eviction_strategy (same as the initial heap at the
+                # top of this method); mixing a float LRU priority into a heap of
+                # SLRU tuple priorities raises TypeError when heapq compares them.
+                new_priority = self.host_eviction_strategy.get_priority(x.parent)
                 heapq.heappush(eviction_heap, (new_priority, x.parent))
 
     def load_back(

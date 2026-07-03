@@ -63,6 +63,20 @@ timeout, 0% GPU), even though the 8-GPU NCCL preflight passes. node-0 clears thi
 it (`scancel`) and fell back to the hardened **held-pool** path (`run_eval.sh`, node-0/node1-2/ondem-3),
 accepting the residual foreign-collision risk (mitigated by the foreign-server skip + unique port).
 
+**Init-hang root cause (affects ALL my runs).** The server hangs at startup right after KV-cache alloc,
+in creating the **FlashInfer allreduce-fusion NCCL process group** — last log line is
+`ProcessGroupNCCL.cpp:5188 Guessing device ID based on global rank. This can cause a hang if rank to
+GPU mapping is heterogeneous`, then a 600 s c10d rendezvous timeout, 0% GPU. The fusion is
+**auto-enabled for MoE models** (server_args `_handle_model_specific_adjustments`) and its NCCL-group
+init deadlocks intermittently on these nodes (seen on node0-2 ×2, node-0, ondem-3; cold *and* warm
+cache; no collision). Fix: launch with **`--enforce-disable-flashinfer-allreduce-fusion`**. This is
+**lossless** (the fusion is a pure perf fusion of allreduce+residual+RMSNorm — identical numerics; the
+unfused path is the same result) and **not a frozen/budget knob**; its TTFT effect is negligible (µs/layer
+vs an ~87 s KV-bound TTFT). Applied to ALL my eval launches for consistency. To keep attribution clean
+despite the supervisor baseline possibly running with fusion auto-on, I also run a **v0-repro-serial**
+control (serial reads, `SGLANG_HICACHE_FILE_READ_THREADS=1`, fusion-off) so the parallel-read delta is
+measured with everything else held constant. Wrapper: `run_eval_robust.sh` (auto-retry on init-hang/collision).
+
 ### Planned eval sequence (all on the self-locked node, back-to-back)
 - **v1-parallel-reads**: parallel reads + wait_complete — isolate the mechanism vs v0_official.
 - **v2**: parallel reads + `--hicache-storage-prefetch-policy timeout` — cap any residual tail.

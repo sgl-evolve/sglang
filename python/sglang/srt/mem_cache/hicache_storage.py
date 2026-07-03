@@ -370,14 +370,28 @@ class HiCacheFile(HiCacheStorage):
         # exploits the SSD's internal parallelism. Every page is a distinct file
         # and the evictor is internally locked, so this is lossless. <=1 workers
         # preserves the legacy serial path.
+        # v2: read-priority — dedicate a pool to prefetch READS (batch_get, on the
+        # critical TTFT path) and a SEPARATE, smaller pool to backup WRITES
+        # (batch_set, background). In v1 both shared one pool, so a burst of
+        # write_through backups could occupy all workers and starve a concurrent
+        # prefetch read. Splitting guarantees reads always have concurrency.
         io_workers = envs.SGLANG_HICACHE_FILE_BACKEND_IO_WORKERS.get()
         self._io_workers = max(1, int(io_workers)) if io_workers else 1
+        self._write_workers = max(1, self._io_workers // 2)
         self._io_pool: Optional[ThreadPoolExecutor] = (
             ThreadPoolExecutor(
                 max_workers=self._io_workers,
-                thread_name_prefix="hicache-file-io",
+                thread_name_prefix="hicache-file-read",
             )
             if self._io_workers > 1
+            else None
+        )
+        self._write_pool: Optional[ThreadPoolExecutor] = (
+            ThreadPoolExecutor(
+                max_workers=self._write_workers,
+                thread_name_prefix="hicache-file-write",
+            )
+            if self._write_workers > 1
             else None
         )
 
@@ -481,14 +495,15 @@ class HiCacheFile(HiCacheStorage):
         target_locations: Optional[Any] = None,
         target_sizes: Optional[Any] = None,
     ) -> bool:
-        if self._io_pool is None or len(keys) <= 1:
+        if self._write_pool is None or len(keys) <= 1:
             for key, value in zip(keys, values):
                 if not self.set(key, value):
                     return False
             return True
-        # Independent per-page file writes; issue concurrently and report success
-        # only if every page landed (each targets a distinct file).
-        results = list(self._io_pool.map(self.set, keys, values))
+        # Independent per-page file writes on the dedicated WRITE pool (so backup
+        # never steals workers from critical prefetch reads); report success only
+        # if every page landed (each targets a distinct file).
+        results = list(self._write_pool.map(self.set, keys, values))
         return all(results)
 
     def exists(self, key: str) -> bool:

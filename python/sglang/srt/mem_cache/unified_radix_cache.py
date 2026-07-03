@@ -1890,6 +1890,16 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
     ) -> None:
         if not self.enable_storage or self.cache_controller is None:
             return
+        # Co-design (read side, mirrors the write-side skip in
+        # _finish_write_through_ack): under `best_effort` the scheduler cancels
+        # the storage prefetch on the very next step, so it loads ~0 useful tokens
+        # (measured storage-hit fraction = 0.0). Yet issuing it still pins a host
+        # node (inc_host_lock_ref), allocates host pages, and may call evict_host
+        # — churn that contends with real host allocation while the host tier is
+        # full. Skipping the issue is lossless (a miss recomputes, exactly what
+        # best_effort already does) and removes that per-request host churn.
+        if self.prefetch_stop_policy == "best_effort":
+            return
 
         extra_key = last_host_node.key.extra_key if last_host_node.key else None
         prefetch_key = RadixKey(

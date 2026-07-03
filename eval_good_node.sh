@@ -32,6 +32,7 @@ barger(){
     if [ "$now" -ge "$next_sq" ]; then squeue -h -j "$j" >/dev/null 2>&1 || { sleep 15; next_sq=$((now+20)); continue; }; next_sq=$((now+20)); fi
     exec 200>"$RT/locks/$n.lock"
     if flock -n 200; then
+      # won the flock (node's pool slot is free). Probe once.
       if [ ! -f "$STATE/winner" ]; then
         read -r fg ns gm <<<"$(probe "$n" "$j")"
         if [ "${ns:-99}" -eq 0 ] && [ "${gm:-99999}" -le 5000 ] && [ "${fg:-0}" -ge "$MIN_FREE_G" ]; then
@@ -47,10 +48,12 @@ barger(){
           flock -u 201 2>/dev/null; exec 201>&-
         fi
       fi
-      flock -u 200
+      flock -u 200; exec 200>&-
+      sleep 10          # won flock but node not usable (bad disk / busy) -> back off, don't hammer
+    else
+      exec 200>&-
+      sleep 0.2         # flock held by a running eval -> tight poll to catch its release window
     fi
-    exec 200>&-
-    sleep 0.2
   done
 }
 

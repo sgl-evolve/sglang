@@ -73,3 +73,12 @@ Order of attack after v2: read iostat (read vs write GB/s, %util) + GPU-util dur
 - disk %util high & writes large → C4 then C2.
 - disk %util moderate but GPU idles during stalls → C1 (recompute) and/or C3.
 - reads dominate & serialized → C2 (SJF) first (safe, policy-independent).
+
+### C6 refinement — GPU underfill is likely MAMBA-state-constrained (hybrid model)
+GPU holds full-attn KV + Mamba SSM states. If the Mamba-state pool is the binding constraint,
+`evict()` frees leaves to relieve Mamba pressure, which ALSO frees their full-attn KV → KV pool
+underfills (28%). So "retain more KV in GPU" is bounded by Mamba capacity, not KV. A real fix would
+decouple: keep full-attn KV on-device even when a leaf's Mamba state is evicted (partial-tier node).
+Deep/risky. CONFIRM via control server.log: if the slow baseline ALSO shows GPU~28%, it's a
+structural Mamba-KV imbalance (worth a bold v4); if it fills GPU, v2's fast regime is the cause.
+Cheap alt to probe hit-rate lever: --page-size 32 (finer prefix match; config; uncertain).

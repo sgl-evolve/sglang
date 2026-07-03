@@ -63,7 +63,14 @@ timeout (v3) vs serial+timeout (v2).
 **Hypothesis.** `timeout` admits an L3 request after a bounded wait (2 s + 0.1 s/1024 tok, cap 30 s),
 recomputing the not-yet-loaded tail via prefill — filling the GPU that `wait_complete` leaves idle.
 Serial reads (`SGLANG_HICACHE_FILE_READ_THREADS=1`, original path) to isolate the timeout effect and
-avoid any parallel-read over-saturation. Lossless (recompute = exact KV). Result: _(pending)_
+avoid any parallel-read over-saturation. Lossless (recompute = exact KV).
+
+**Live validation (L3-pressure regime, host tier full).** timeout **fixes the GPU starvation**:
+num_running ≈ 109–127 (near max-conc 128), num_queue ≈ 0–18, GPU KV token_usage ≈ 0.33–0.43 — vs v1's
+num_running=15 / queue=113 / usage=0.04. Bench throughput ~1.6 req/s cumulative (instantaneous up to
+7.7 it/s) vs baseline 1.15. The GPU is busy instead of idle: admitting requests after a bounded wait
+(recomputing the un-prefetched tail) beats blocking them on full disk prefetch. **Final mean TTFT
+pending completion.**
 
 ## v1 (original planned result line — superseded above)
 **Lossless check.** Lossless by construction: `batch_get` returns bit-identical bytes in identical

@@ -44,7 +44,9 @@ fix (prefill/decode overlap via mixed_chunk) is blocked by the crash above.
 
 **Variance caveat:** the two provided baselines differ ~24% at identical config, so the *big* wins
 (best_effort, skip-writes) are unambiguous but the last few-% incrementals (lpm, skip-prefetch) are
-small-and-directional (supported by a monotonic curve + monotonically-falling max-queue 37→32→27→v9-confirm).
+small-and-directional (supported by a monotonic curve + monotonically-falling max-queue). **v9 = re-run of the best config gave 1089 ms vs v6's 1205 ms → my
+run-to-run variance is ~10%**, so lpm/skip-prefetch (~4% each) are within noise (directional, not
+definitive); best_effort (−97%) and skip-writes (−46%) are far beyond it.
 
 ## Baselines (reference points, not re-run)
 
@@ -304,3 +306,11 @@ so single-run TTFT has high variance. Implications for my curve:
   nodes to host → smaller effective host cache → more recompute. **write_through (default) is best.**
   Reverted. CONFIG SPACE NOW FULLY MAPPED: best_effort (win), write_through (best), LRU (best), lpm
   (small win); only best_effort + the 2 skip-mechanisms help.
+
+### v9 — repro of best config (= v6: best_effort + skip-writes + skip-prefetch + lpm)  [config]
+- **Purpose:** reproducibility / variance check. Same config as v6, commit 9012478df (sglang code == v6).
+- **Result:** TTFT mean **1089** ms (v6 1205), median 623, p99 6680, out 428.9 t/s, req 3.35/s, hit 0.622.
+  Valid (7037/7037, no fallback). **v9 vs v6 = −9.6% for identical config ⇒ run-to-run variance ~10%.**
+  Confirms the best config is reproducible in the ~1.1–1.2 s range (~90–100× below the tuned bar), and
+  that the small incrementals (lpm, skip-prefetch) sit within variance while best_effort + skip-writes
+  are the definitive wins.

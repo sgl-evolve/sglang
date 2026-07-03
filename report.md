@@ -256,4 +256,8 @@ so single-run TTFT has high variance. Implications for my curve:
 
 ### v8 — + `write_through_selective` (device→host backup only for hot nodes)  [config]
 - Stack: best_effort + skip-writes + skip-prefetch + lpm + write_through_selective. Compare vs v6.
-- **Result:** [running].
+- **Result: NEGATIVE.** TTFT mean 1460 (v6 1205, +21%), median 931 (+43%), p99 7932 (-9%), out 385 t/s
+  (-7%), hit_rate 0.40 (v6 0.62 — dropped). Valid (7037/7037). write_through_selective backs up fewer
+  nodes to host → smaller effective host cache → more recompute. **write_through (default) is best.**
+  Reverted. CONFIG SPACE NOW FULLY MAPPED: best_effort (win), write_through (best), LRU (best), lpm
+  (small win); only best_effort + the 2 skip-mechanisms help.

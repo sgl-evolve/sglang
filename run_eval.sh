@@ -56,11 +56,21 @@ while :; do
         srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" "$VER" "$@"
         rc=$?
         flock -u 200; exec 200>&-
-        [ "$rc" -eq 0 ] && exit 0
+        # Contamination check: a non-flock neighbor can collide mid-run (TOCTOU
+        # after our GPU-idle gate), producing a slow, partial bench (seen: 63/7037,
+        # 1497/7037). Treat <95% of 7037 completed as a failed (contaminated) run
+        # and retry, so we don't log a garbage number.
+        comp=$(grep -oiE "Successful requests: +[0-9]+" "$WORK/runs/$VER/mix.txt" 2>/dev/null | grep -oE "[0-9]+" | tail -1)
+        comp=${comp:-0}
+        if [ "$rc" -eq 0 ] && [ "$comp" -ge 6685 ]; then exit 0; fi   # 6685 ~= 0.95*7037
         attempts=$((attempts+1))
-        echo "[run_eval] eval on $node FAILED rc=$rc (attempt $attempts/$MAX_ATTEMPTS) -> retry on another node"
-        [ "$attempts" -ge "$MAX_ATTEMPTS" ] && { echo "[run_eval] giving up after $attempts attempts"; exit "$rc"; }
-        sleep 30   # let a crashed node's memory settle before re-checking it
+        if [ "$rc" -eq 0 ]; then
+          echo "[run_eval] eval on $node CONTAMINATED (only $comp/7037 completed; likely collision) (attempt $attempts/$MAX_ATTEMPTS) -> retry"
+        else
+          echo "[run_eval] eval on $node FAILED rc=$rc (attempt $attempts/$MAX_ATTEMPTS) -> retry on another node"
+        fi
+        [ "$attempts" -ge "$MAX_ATTEMPTS" ] && { echo "[run_eval] giving up after $attempts attempts"; exit "${rc:-1}"; }
+        sleep 30   # let a crashed/contaminated node settle before re-checking it
       else
         echo "[run_eval] node $node not ready (${mem_g}G RAM, $((free_kb/1024/1024))G disk, gpu ${gpu_max}MiB busy) -> skip"
         flock -u 200; exec 200>&-

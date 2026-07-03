@@ -42,6 +42,17 @@ with prefetch reads on the ~6.6 GB/s array. `write_through_selective` (hit_count
 permits" — it doesn't here. Config flag `--hicache-write-policy write_through_selective`. Maps whether
 write contention matters; a mechanism could make the write threshold congestion-adaptive.
 
+## C5 — Incremental host-eviction LRU (kill per-prefetch O(N) heapify)  [NOVEL, gate on evidence]
+`hi_mamba_radix_cache.py:evict_host` (L737) rebuilds a heap over the ENTIRE
+`evictable_full_host_leaves` set on every call: `heap=[(n.last_access_time,n) for n in
+evictable_full_host_leaves]; heapq.heapify(heap)`, then pops only ~num_tokens worth. Host is 100%
+full (host_util≈1.0) so ~every prefetch triggers eviction, and this runs in the SCHEDULER main loop
+(`_add_request_to_queue`→`_prefetch_kvcache`→`prefetch_from_storage`→`_alloc_with_evict(...,evict_host)`)
+— O(N_evictable_leaves) on the critical path, growing with cache occupancy (scandir-like). Fix: keep a
+persistent LRU (like the existing `mamba_host_lru_list`) and pop the tail, instead of rebuilding the
+heap each call. Lossless (same LRU victim order). Risk: must keep the LRU in sync on insert/access/
+evict — invasive. MEASURE N first (instrument or infer from v2 residual scheduler stalls) before building.
+
 Order of attack after v2: read iostat (read vs write GB/s, %util) + GPU-util during stalls.
 - disk %util high & writes large → C4 then C2.
 - disk %util moderate but GPU idles during stalls → C1 (recompute) and/or C3.

@@ -72,11 +72,30 @@ Change: `--hicache-storage-prefetch-policy timeout` (default cap min(30 s, 2 s +
 Hypothesis: capping the per-request disk wait collapses the p99 tail (lossless — recompute of the
 not-yet-loaded tail yields identical KV). Tests the "don't wait on disk" lever. Result pending.
 
-### v2-scandirfix — `mechanism` — QUEUED (commit bbf51108, includes parallel IO 4ce727b6)
-Change: O(keys) `os.path.isfile` L3 hit-query (drop the whole-dir scandir) + parallel disk IO.
+### v2-scandirfix — `mechanism` — RUNNING (commit 264d2e0d, scandir fix only; parallel IO off)
+Change: O(keys) `os.path.isfile` L3 hit-query (drop the whole-dir scandir). Parallel IO shelved
+behind a knob (off) as it's array-bound (~9%) and its mamba path isn't concurrency-tested.
 Hypothesis: removing the ~0.65 s/hit-query directory scan that grows with L3 fill collapses the
 growing TTFT tail, independent of prefetch policy. Lossless (byte-identical set + round-trip tests).
-Highest-confidence win. Runs after a good pool node frees.
+
+## Operational notes (env / infra — not research variables)
+- **Pool coordination:** the manager's held pool is shared and some researchers run evals on it
+  *without* the per-node flock (e.g. pinned launchers), so a flock-free node can still host a
+  neighbor's 8-GPU server. My launcher (`run_eval.sh`) now gates on **flock + ≥1.8 TB disk + ≥1.3 TB
+  free RAM + GPUs idle (<10 GB used)** so I never collide (collisions were causing OOM / SIGKILL /
+  NCCL-timeout during init), plus a bounded retry.
+- **Do NOT probe a loading server** via `srun --overlap` — health/GPU/py-spy probes during the
+  sensitive 8-rank init destabilize it (observed SIGBUS on a rank). Detect serving by reading
+  `server.log` on the shared FS; capture live metrics only after serving, sparingly.
+- **FlashInfer allreduce fusion hangs in this venv.** The model auto-enables FlashInfer trtllm
+  allreduce fusion on H100; in my env its NCCL communicator init **times out (600 s) and the server
+  then hangs** in the silent post-barrier phase (reproduced on 1-2 and ondem-3, v1 and v2). Fix:
+  pass **`--enforce-disable-flashinfer-allreduce-fusion`** (not in eval.sh's FORBIDDEN list) → reaches
+  the same fusion-off state the fallback targets, but loads normally (~11 min) instead of hanging.
+  **Caveat:** fusion is an allreduce (comm) optimization, orthogonal to KV-cache/prefill; it does not
+  touch the KV-loading path that dominates the TTFT tail (my headline). All my versions use this flag,
+  so version-to-version comparisons are consistent; vs the provided baseline there may be a small
+  fusion-state difference (noted, TTFT-neutral).
 
 ## Next
 After v2, re-measure the bottleneck from the new metric profile. Candidate v3+: congestion/deadline-

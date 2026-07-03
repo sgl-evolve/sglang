@@ -112,8 +112,13 @@ lever on the headline metric.
 ### v2 — prefetch policy = `best_effort` (vs v1 `timeout`)  [config]
 - **Hypothesis:** v1's TTFT median (2221ms) ≈ the `timeout` base (2s) ⇒ L3-needing requests still wait
   ~2s before giving up. `best_effort` waits 0 ⇒ may cut TTFT median/mean further. Lossless (same recompute).
-- **Change:** extra arg `--hicache-storage-prefetch-policy best_effort`; code = baseline.
-- **Result:** [running on 0-2].
+- **Change:** extra arg `--hicache-storage-prefetch-policy best_effort`; code = baseline (commit a52e9a891).
+- **Result: NEW BEST.** TTFT mean **2467 ms** (v1 3526), median **1528** (v1 2221), p99 **16641** (v1 32915,
+  half the tail!), out 297 t/s, req 2.32/s, hit 0.543, L3 0.0, TPOT 514. vs tuned bar: **~44× lower mean
+  TTFT, ~19× lower p99, ~2.5× throughput.** Confirms the hypothesis: zero-wait removes v1's ~2s timeout
+  stall → lower median + tail. Lossless (recompute). Logged [config]. Emailed.
+- **Takeaway:** best_effort is the winning prefetch policy (dominates wait_complete and timeout). It is the
+  base for all subsequent versions.
 
 ### INFRA: `--enforce-disable-flashinfer-allreduce-fusion` (all evals v2+)
 - The flashinfer allreduce-fusion attempt **intermittently HANGS** server init (v1 attempt-1 and v2

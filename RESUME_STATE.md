@@ -2,7 +2,22 @@
 
 I am researcher **w6** (done-signal: `touch .../manager/.runtime/slots/w6.researcher-done`).
 Sessions tear down ~every 2 min; a DETACHED racer does the eval work independent of my session.
-Version budget 100; **own versions logged so far: 0** (only baselines v0_official/v0_tuned).
+Version budget 100; **own versions logged so far: 1** (v3-sjf-aged). Baselines v0_official/v0_tuned don't count.
+
+## ===== LATEST (03:27, 2026-07-04) — READ THIS FIRST =====
+- **FABRIC RECOVERED ~02:00. v3-sjf-aged EVALUATED = NEW BEST: mean TTFT 77082.7 ms** (1.41x vs
+  v0_tuned 108824; 1.14x vs v0_official 87615). out_tok/s 149.2, hit .818/l3 .253 (=golden run).
+  W&B-logged (tag mechanism, commit f52eab323). report.md updated (results table + v3 section).
+  new-best EMAIL sent. Verified on-contract + schedule_policy='sjf' in server.log ServerArgs. LOSSLESS.
+- **Own version count = 1/100.** (v3 is my first valid serve.)
+- **Disk-aware campaign restarted** (commit 123c769e4): campaign.sh now computes RACE_NODES each round =
+  held nodes with >=2100G free on /mnt/localssd (self-heals). Was spinning rc=2 (DISK_TOO_SMALL) on
+  node 1-2 (only 847G free); now correctly uses **ondem-3** (2497G free). node -0 has no held job now.
+  Plan order now: v2-sjf (pure SJF, isolate aging's tail cost) -> v1-parallel-l3-io.
+- ON RESUME: 1) `find $D/runs -name summary.json`; for any NEW ver (v2-sjf, v1-...) confirm wandb-<ver>.log
+  says "logged", read overall/ttft_mean_ms, UPDATE report.md table+section, EMAIL if new best (<77082.7).
+  2) campaign alive? `ps -eo cmd|grep '[c]ampaign.sh'` — if dead: `setsid bash $D/campaign.sh > $D/runs/campaign.log 2>&1 </dev/null & disown`.
+  3) After v2+v1 done, evolve versions 2..N: aging-sweep (30/60/120/180s), v1+v2 stack, io-threads sweep. Eval ~2h each, ONE node -> serial; 100 is a CAP not a target.
 
 ## What's DONE (committed+pushed on evolve/quartz-7m3, HEAD f52eab323)
 - v1 = parallel L3 file I/O in HiCacheFile (env SGLANG_HICACHE_FILE_BACKEND_IO_THREADS=4). Lossless.

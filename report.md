@@ -230,6 +230,10 @@ v6 page32 1897 ms.
   neighbor's 8-GPU server. My launcher (`run_eval.sh`) now gates on **flock + ≥1.8 TB disk + ≥1.3 TB
   free RAM + GPUs idle (<10 GB used)** so I never collide (collisions were causing OOM / SIGKILL /
   NCCL-timeout during init), plus a bounded retry.
+- **Node `slurm2-a3nodeset0-0` is bad — skip it.** It presents as `free` with idle GPUs (0 MiB) and
+  (intermittently) enough disk, but the server **OOMs at init every time** (`cudaErrorMemoryAllocation`
+  on rank 3, 4/4 attempts observed) despite `nvidia-smi` reporting 0 MiB used — a stuck/faulted GPU,
+  not a transient neighbor collision. `run_eval.sh` skips it by default (`SKIP_NODES`); do not override.
 - **Do NOT probe a loading server** via `srun --overlap` — health/GPU/py-spy probes during the
   sensitive 8-rank init destabilize it (observed SIGBUS on a rank). Detect serving by reading
   `server.log` on the shared FS; capture live metrics only after serving, sparingly.

@@ -36,7 +36,7 @@ fi
 probe(){ timeout 60 srun --jobid="$HOLDJID" --overlap -N1 -w "$node" bash -c \
   'd=$(df --output=avail -BG /mnt/localssd | tail -1 | tr -dc 0-9); m=$(awk "/MemAvailable/{print int(\$2/1024/1024)}" /proc/meminfo); echo $d $m' 2>/dev/null; }
 
-runeval(){  # $@ = version + eval.sh args
+runeval(){  # $@ = version + eval.sh args ; returns eval rc (6 = NCCL/GPU preflight fail = bad node)
   local ver="$1"
   echo "[batch2] --- prep $ver: wiping my L3 /mnt/localssd/$NAME ---"
   srun --jobid="$HOLDJID" --overlap -N1 -w "$node" bash -c "rm -rf /mnt/localssd/$NAME/* 2>/dev/null; true" 2>/dev/null
@@ -45,13 +45,23 @@ runeval(){  # $@ = version + eval.sh args
   if [ -n "${free:-}" ] && [ "${free:-0}" -ge 1800 ] && [ -n "${memg:-}" ] && [ "${memg:-0}" -ge 1300 ]; then
     echo "[batch2] === running $ver on $node ==="
     srun --jobid="$HOLDJID" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" "$@"
-    echo "[batch2] $ver rc=$?"
+    local rc=$?; echo "[batch2] $ver rc=$rc"; return $rc
   else
-    echo "[batch2] $ver SKIP: disk/dram gate failed"
+    echo "[batch2] $ver SKIP: disk/dram gate failed"; return 9
   fi
 }
 
+# A wedged GPU (dead context) shows 0 MiB used but OOMs at NCCL init -> eval.sh returns rc=6.
+# On the first NCCL fail, record the node as bad + release so the re-queue --excludes it (one
+# wasted preflight, not two). Only run v15 if v14's node proved healthy.
 runeval v14-be-cons0.5 --enforce-disable-flashinfer-allreduce-fusion --hicache-storage-prefetch-policy best_effort --schedule-conservativeness 0.5
+rc14=$?
+if [ "$rc14" = 6 ]; then
+  echo "$node" >> /home/junyanch_google_com/autoresearch/workspace/sgl/researchers/kv-heron-eb9/.bad_nodes
+  echo "[batch2] NCCL/GPU preflight FAIL on $node (rc6) — recorded bad, skipping rest"
+  scancel "$HOLDJID"; echo "[batch2] released $HOLDJID (bad node)"; exit 2
+fi
+
 runeval v15-be-mixchunk --enforce-disable-flashinfer-allreduce-fusion --hicache-storage-prefetch-policy best_effort --enable-mixed-chunk
 
 scancel "$HOLDJID" && echo "[batch2] released hold $HOLDJID"

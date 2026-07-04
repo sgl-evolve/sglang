@@ -1,0 +1,131 @@
+_wandb:
+    value:
+        cli_version: 0.28.0
+        e:
+            5hgv6ugbnzqjrsb9l43wdigdcv1jzh1q:
+                args:
+                    - online
+                    - /tmp/wb_v8.tsv
+                cpu_count: 44
+                cpu_count_logical: 44
+                disk:
+                    /:
+                        total: "1040442621952"
+                        used: "451878293504"
+                email: acjy777@gmail.com
+                executable: /home/junyanch_google_com/autoresearch/workspace/sgl/researchers/drift-3e7/.venv/bin/python3
+                git:
+                    commit: aabb65991d0b5f9b490bbb2e3cc43332049e757a
+                    remote: https://x-access-token:@github.com/sgl-evolve/sglang.git
+                host: slurm2-c3nodeset-0
+                memory:
+                    total: "371914428416"
+                os: Linux-6.8.0-1027-gcp-tcpx-x86_64-with-glibc2.35
+                program: /home/junyanch_google_com/autoresearch/wandb_batch_log.py
+                python: CPython 3.12.13
+                root: /home/junyanch_google_com/autoresearch/workspace/sgl/researchers/drift-3e7
+                startedAt: "2026-07-03T23:22:08.115182Z"
+                writerId: 5hgv6ugbnzqjrsb9l43wdigdcv1jzh1q
+        m: []
+        python_version: 3.12.13
+        t:
+            "3":
+                - 2
+                - 5
+                - 13
+                - 14
+                - 62
+            "4": 3.12.13
+            "5": 0.28.0
+            "12": 0.28.0
+            "13": linux-x86_64
+commit:
+    value: aabb65991
+resolved_args/v0_official:
+    value:
+        context_length: "262144"
+        hicache_io_backend: direct
+        hicache_mem_layout: page_first_direct
+        hicache_size: "96"
+        hicache_storage_prefetch_policy: wait_complete
+        hicache_write_policy: write_through
+        mem_fraction_static: "0.85"
+        page_size: "64"
+        tp_size: "8"
+resolved_args/v0_tuned:
+    value:
+        context_length: "262144"
+        hicache_io_backend: direct
+        hicache_mem_layout: page_first_direct
+        hicache_size: "96"
+        hicache_storage_prefetch_policy: wait_complete
+        hicache_write_policy: write_through
+        mem_fraction_static: "0.85"
+        page_size: "64"
+        tp_size: "8"
+resolved_args/v2cfg-besteffort:
+    value:
+        context_length: "262144"
+        hicache_io_backend: direct
+        hicache_mem_layout: page_first_direct
+        hicache_size: "96"
+        hicache_storage_prefetch_policy: best_effort
+        hicache_write_policy: write_through
+        mem_fraction_static: "0.85"
+        page_size: "64"
+        tp_size: "8"
+resolved_args/v4-adaptive-prefetch:
+    value:
+        context_length: "262144"
+        hicache_io_backend: direct
+        hicache_mem_layout: page_first_direct
+        hicache_size: "96"
+        hicache_storage_prefetch_policy: adaptive
+        hicache_write_policy: write_through
+        mem_fraction_static: "0.85"
+        page_size: "64"
+        tp_size: "8"
+resolved_args/v5-adaptive-1s:
+    value:
+        context_length: "262144"
+        hicache_io_backend: direct
+        hicache_mem_layout: page_first_direct
+        hicache_size: "96"
+        hicache_storage_prefetch_policy: adaptive
+        hicache_write_policy: write_through
+        mem_fraction_static: "0.85"
+        page_size: "64"
+        tp_size: "8"
+resolved_args/v7-selective-wt:
+    value:
+        context_length: "262144"
+        hicache_io_backend: direct
+        hicache_mem_layout: page_first_direct
+        hicache_size: "96"
+        hicache_storage_prefetch_policy: adaptive
+        hicache_write_policy: write_through_selective
+        mem_fraction_static: "0.85"
+        page_size: "64"
+        tp_size: "8"
+resolved_args/v8-adaptive-uncap3:
+    value:
+        context_length: "262144"
+        hicache_io_backend: direct
+        hicache_mem_layout: page_first_direct
+        hicache_size: "96"
+        hicache_storage_prefetch_policy: adaptive
+        hicache_write_policy: write_through
+        mem_fraction_static: "0.85"
+        page_size: "64"
+        tp_size: "8"
+version:
+    value: v8-adaptive-uncap3
+version_kind:
+    value:
+        v0_official: baseline
+        v0_tuned: baseline
+        v2cfg-besteffort: config
+        v4-adaptive-prefetch: mechanism
+        v5-adaptive-1s: mechanism
+        v7-selective-wt: config
+        v8-adaptive-uncap3: mechanism

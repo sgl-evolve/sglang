@@ -382,7 +382,7 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # deadline = min(base + pages*per_page*(1-pressure), 3.0) -> under low SSD-backlog
         # windows (the bursty workload has them) it waits longer and reclaims more host hits;
         # under saturation it still shrinks toward ~1s. Full adaptive form vs v5's flat 1s.
-        self.adaptive_prefetch_max_wait = 6.0
+        self.adaptive_prefetch_max_wait = 3.0
         self.hicache_storage_pass_prefix_keys = False
 
         self.reset()

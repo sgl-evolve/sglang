@@ -1,0 +1,30 @@
+{
+  "os": "Linux-6.8.0-1027-gcp-tcpx-x86_64-with-glibc2.35",
+  "python": "CPython 3.12.13",
+  "startedAt": "2026-07-03T22:19:17.361134Z",
+  "args": [
+    "online",
+    "/tmp/wb_v7.tsv"
+  ],
+  "program": "/home/junyanch_google_com/autoresearch/wandb_batch_log.py",
+  "git": {
+    "remote": "https://x-access-token:@github.com/sgl-evolve/sglang.git",
+    "commit": "cace7d954b8be1add6672f021f8bf5a2b6a9bd58"
+  },
+  "email": "acjy777@gmail.com",
+  "root": "/home/junyanch_google_com/autoresearch/workspace/sgl/researchers/drift-3e7",
+  "host": "slurm2-c3nodeset-0",
+  "executable": "/home/junyanch_google_com/autoresearch/workspace/sgl/researchers/drift-3e7/.venv/bin/python3",
+  "cpu_count": 44,
+  "cpu_count_logical": 44,
+  "disk": {
+    "/": {
+      "total": "1040442621952",
+      "used": "451869089792"
+    }
+  },
+  "memory": {
+    "total": "371914428416"
+  },
+  "writerId": "qcrmuf972cg7ujnca6cpnbbpzbxv0yc8"
+}

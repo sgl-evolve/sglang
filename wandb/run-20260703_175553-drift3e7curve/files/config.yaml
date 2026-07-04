@@ -1,0 +1,36 @@
+_wandb:
+    value:
+        cli_version: 0.28.0
+        e:
+            usap00s1dcunl08kllyqgebg9e1twnhe:
+                cpu_count: 44
+                cpu_count_logical: 44
+                disk:
+                    /:
+                        total: "1040442621952"
+                        used: "451736006656"
+                email: acjy777@gmail.com
+                executable: /home/junyanch_google_com/autoresearch/workspace/sgl/researchers/drift-3e7/.venv/bin/python3
+                git:
+                    commit: becda596c436b1b0609461c7aebdf499b74ef426
+                    remote: https://x-access-token:@github.com/sgl-evolve/sglang.git
+                host: slurm2-c3nodeset-0
+                memory:
+                    total: "371914428416"
+                os: Linux-6.8.0-1027-gcp-tcpx-x86_64-with-glibc2.35
+                program: <python with no main file>
+                python: CPython 3.12.13
+                root: /home/junyanch_google_com/autoresearch/workspace/sgl/researchers/drift-3e7
+                startedAt: "2026-07-03T17:55:53.309128Z"
+                writerId: usap00s1dcunl08kllyqgebg9e1twnhe
+        m: []
+        python_version: 3.12.13
+        t:
+            "3":
+                - 2
+                - 13
+                - 14
+            "4": 3.12.13
+            "5": 0.28.0
+            "12": 0.28.0
+            "13": linux-x86_64

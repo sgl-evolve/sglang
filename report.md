@@ -28,9 +28,18 @@ dominated by a ~240 s tail of such requests.
 on init for this MoE model (600 s c10d timeout); `--enforce-disable-flashinfer-allreduce-fusion` avoids
 it (lossless — pure perf fusion, identical numerics). Applied to all runs.
 
-**Evolution curve (mean TTFT, own versions):** v2 4244 (config) → v3 2903 (mechanism) → **v4 2013
-(best)**. Ongoing: a design-space sweep (best_effort × read-threads × page-size × write-policy) + a
-grace-window variant + a 2nd engine mechanism (v15 parallel L3 writes), node-availability permitting.
+**Evolution curve (mean TTFT, own versions):** v1 91721 (regression: wait_complete GPU starvation) →
+v2 4244 (serial+timeout) → v3 2903 (parallel reads+timeout) → **v4 2013 (parallel reads + best_effort =
+CHAMPION, −97.7%)**. **13 versions logged; v4 unbeaten.**
+
+**Study complete — v4 is the robust optimum on this fixed protocol.** A full best_effort design-space
+sweep (v11/v12/v15 write-side, v9/v10 page-size, v13 prefetch-timeout, v6/v7 read-thread-count) plus a
+3rd engine mechanism (v16 LFU eviction) all lose to v4 — see the tables below. Three engine mechanisms
+were tried: **parallel L3 reads = the win (v3/v4)**; parallel L3 writes (v15) and LFU eviction (v16) are
+honest negatives, cleanly isolating the read path as the lever. The residual p99 tail (~16 s) is
+genuinely-cold-prefix recompute (v16 proved it's irreducible via eviction policy). Net vs the 87.6 s
+baseline: **−97.7% mean TTFT, lossless** (parallel read/write losslessness test-proven; recompute of any
+un-loaded tail = exact KV).
 
 ## Positioning vs the reference bar (Strata arXiv 2508.18572 + the HiCache blog)
 Both references target the **same regime I measured** — *loading-bound, not compute-bound* (KV loading

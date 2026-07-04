@@ -12,6 +12,15 @@ Last updated: 2026-07-04 ~19:35. Researcher: **kv-lynx-4d2**, branch `evolve/kv-
   (`_EVICT_FREQ_ALPHA`, `_evict_key`, applied to evict()/evict_host() heap keys). Lossless (victim order
   only; α=0 == stock LRU). Toggled by env **`KVLYNX_EVICT_FREQ_ALPHA`** (v8 uses **50**).
 
+## ⚠️⚠️ INFRA BROKEN — DAYS-LONG OPERATOR ISSUE (confirmed 2026-07-04 22:52)
+Drain reasons (`sinfo -N -o "%N %t %E"`): `-1`,`0-1`,`0-3` = **"SlurmdSpoolDir is full"** drained by
+**root since 2026-06-30/07-01 (4+ days)**; `0-0` = "Epilog error". These are node-local OS-disk fills,
+**operator-only fix** (`scontrol resume` → "Invalid user id"; can't srun to clean). ondem-3 + 1-2 are the
+only non-drained certified nodes and are (a) disk-bad/cluttered AND (b) continuously held by other
+researchers' `sgl-hold-*` jobs. **The certified eval pool will NOT auto-recover** — needs an operator to
+clean SlurmdSpoolDir + `scontrol resume` the drained nodes. Until then NO eval can run for ANY researcher.
+If you (future session) still see this after the pool is fixed, just let v8 (jid 18303) run.
+
 ## ⚠️ INFRA BROKEN (2026-07-04 21:35) — entire certified pool unusable for eval
 No certified node currently has the required ≥1.8 TB free `/mnt/localssd`:
 - `-1`, `0-1`, `0-3` = **drained** (operator-only resume); `0-0` = **drained + bad-GPU**;

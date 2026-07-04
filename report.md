@@ -576,9 +576,24 @@ Isolating the two new mechanisms (mean TTFT / hit_rate, on best_effort + skip-L3
   d8192+SJF stands as the best (~790 ms). Note hit_rate again non-monotonic with TTFT (d4096 higher hit,
   ≈same TTFT) — reinforces that cost-aware wins by cheaper misses, not more hits.
 
+### v26 — SJF + costfreq (2-factor cost×frequency eviction)  [mechanism]  ** STRONG NEGATIVE — reverted **
+- **Hypothesis:** extend cost-aware eviction with a frequency factor — priority `(is_deep, min(hit_count,8),
+  last_access)` — to *also* retain frequently-reused shallow prefixes, not just deep ones. New
+  `CostFreqStrategy` (`evict_policy.py`), selected via `--radix-eviction-policy costfreq`.
+- **Result (on best_effort + SJF, same stack as the 777 ms best):** Mean TTFT **1398 ms** (vs costaware
+  **777** — ~80% WORSE), Median 883 (vs 522), P99 7842 (vs 4884), throughput 2.97 req/s (vs 3.52),
+  duration 2371 s. **hit_rate collapses to 0.333** (vs costaware 0.681, LRU ~0.62) — worse than *every*
+  prior policy including plain LRU. On-contract (ctx 262144 / mem-frac 0.85 / hicache 96 / tp 8, no silent
+  fallback); lossless by construction (eviction changes retention only). W&B point logged (mechanism).
+- **Takeaway:** the frequency factor is actively HARMFUL here — mixing hit-count into the eviction key
+  evicts recompute-expensive prefixes that pure recency-within-depth-bucket would keep, roughly halving the
+  hit rate. This is the sharpest confirmation yet of the v18–v25 finding that **minimizing recompute COST
+  (protect the few deep O(L²) prefixes, LRU within bucket) ≠ maximizing hit COUNT**. Pure `costaware`
+  (d8192, recency tie-break) remains the optimum; costfreq is dropped.
+
 ## STATUS: comprehensive lossless optimum reached for this fixed protocol
-Design space explored end-to-end (config + capacity + disk-tier + eviction + scheduling), 25 logged
-versions. Best = best_effort + skip-L3-writes + skip-L3-prefetch + cost-aware eviction (d8192) + SJF
+Design space explored end-to-end (config + capacity + disk-tier + eviction + scheduling), 26 logged
+versions (incl. the costfreq negative, which re-confirms cost≠count). Best = best_effort + skip-L3-writes + skip-L3-prefetch + cost-aware eviction (d8192) + SJF
 scheduling = **~790 ms mean TTFT, ~138× below v0_tuned, lossless, system keeps up with λ=3.5**. The floor
 is now the unavoidable long-context first-touch recomputes (P99 ~5 s); the only remaining lever is
 prefill/decode overlap (mixed_chunk), declined for a device-KV-pool leak + silent-losslessness risk.

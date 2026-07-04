@@ -5,6 +5,7 @@ import os
 import threading
 import uuid
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, List, Optional, Set
@@ -20,6 +21,14 @@ logger = logging.getLogger(__name__)
 
 # Max pages per batched storage IO call.
 STORAGE_BATCH_SIZE = 128
+
+# Default number of worker threads the file backend uses to issue concurrent
+# page reads (one open()+readinto() per page-file). A single synchronous thread
+# only ever keeps NVMe queue-depth 1, wasting most of the SSD's bandwidth; the
+# L3 read is the acknowledged slow tier that gates every wait_complete request.
+# Reads target disjoint host buffers, so concurrency is lossless. Overridable via
+# the storage backend extra_config key "file_read_threads".
+DEFAULT_FILE_READ_THREADS = 16
 
 
 @dataclass
@@ -363,6 +372,29 @@ class HiCacheFile(HiCacheStorage):
             extra_config=storage_config.extra_config,
         )
 
+        # Thread pool for concurrent page-file IO. Each page is an independent
+        # file read/write into a disjoint host buffer, so issuing them in
+        # parallel keeps NVMe queue-depth high (readinto releases the GIL during
+        # the syscall) without changing any bytes -> lossless. See
+        # DEFAULT_FILE_READ_THREADS.
+        extra_config = storage_config.extra_config or {}
+        try:
+            self._io_threads = max(1, int(extra_config.get(
+                "file_read_threads", DEFAULT_FILE_READ_THREADS)))
+        except (TypeError, ValueError):
+            self._io_threads = DEFAULT_FILE_READ_THREADS
+        self._io_pool = (
+            ThreadPoolExecutor(
+                max_workers=self._io_threads,
+                thread_name_prefix="hicache-file-io",
+            )
+            if self._io_threads > 1
+            else None
+        )
+        logger.info(
+            f"HiCacheFile: page IO parallelism = {self._io_threads} thread(s)."
+        )
+
     def _get_suffixed_key(self, key: str) -> str:
         return key + self.config_suffix
 
@@ -404,12 +436,12 @@ class HiCacheFile(HiCacheStorage):
         target_locations: List[torch.Tensor],
         target_sizes: Optional[Any] = None,
     ) -> List[torch.Tensor | None]:
-        return [
-            self.get(key, target_location)
-            for key, target_location in zip(
-                keys, target_locations or [None] * len(keys)
-            )
-        ]
+        locs = target_locations or [None] * len(keys)
+        if self._io_pool is None or len(keys) <= 1:
+            return [self.get(key, loc) for key, loc in zip(keys, locs)]
+        # Issue all page reads concurrently; each targets a disjoint buffer.
+        # ThreadPoolExecutor.map preserves input order in the returned list.
+        return list(self._io_pool.map(self.get, keys, locs))
 
     def set(
         self,
@@ -580,10 +612,20 @@ class HiCacheFile(HiCacheStorage):
                 results[transfer.name] = [False] * len(keys)
                 continue
 
-            results[transfer.name] = [
-                op_fn(transfer.name, key, host_pool, host_indices[i * page_size].item())
-                for i, key in enumerate(keys)
-            ]
+            offsets = [host_indices[i * page_size].item() for i in range(len(keys))]
+            if self._io_pool is None or len(keys) <= 1:
+                results[transfer.name] = [
+                    op_fn(transfer.name, key, host_pool, off)
+                    for key, off in zip(keys, offsets)
+                ]
+            else:
+                # Each page op touches a distinct file / disjoint host slice.
+                results[transfer.name] = list(
+                    self._io_pool.map(
+                        lambda ko: op_fn(transfer.name, ko[0], host_pool, ko[1]),
+                        list(zip(keys, offsets)),
+                    )
+                )
         return results
 
     def batch_get_v2(
@@ -612,3 +654,9 @@ class HiCacheFile(HiCacheStorage):
         except Exception as e:
             logger.error(f"Failed to clear HiCacheFile storage: {e}")
             return False
+
+    def close(self) -> None:
+        pool = getattr(self, "_io_pool", None)
+        if pool is not None:
+            pool.shutdown(wait=False)
+            self._io_pool = None

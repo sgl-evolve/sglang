@@ -18,6 +18,11 @@ cd "$WORK"
 JID=$(cat "$WORK/.holdjob" 2>/dev/null)
 [ -z "$JID" ] && { echo "[holder] no .holdjob -> exit"; exit 0; }
 
+# SINGLE-INSTANCE: never allow two holder_watchers (a duplicate double-launched v11 onto the same node
+# and corrupted the hold). A 2nd instance exits immediately.
+exec 210>/tmp/onyx-7q2-holder.lock
+flock -n 210 || { echo "[holder] another holder_watcher holds the lock -> exit"; exit 0; }
+
 qpop(){ exec 201>"$Q.lock"; flock 201; local l; l=$(grep -vE '^[[:space:]]*$' "$Q" 2>/dev/null|head -1); [ -n "$l" ] && { grep -vFx "$l" "$Q">"$Q.tmp" 2>/dev/null; mv "$Q.tmp" "$Q"; }; flock -u 201; exec 201>&-; printf '%s' "$l"; }
 
 echo "[holder] watching hold job $JID for a node..."

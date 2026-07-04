@@ -158,3 +158,7 @@ queue saturates) BUT gate=4096 = 1837.9 (only the few genuinely-LONG prefixes wa
 expensive enough that a short page-cache-hot disk wait pays off). SWEET SPOT between 1024 and 4096. This is a genuine
 MECHANISM win over the best config (v7 be+lpm 2010). Lossless. env SGLANG_PREFETCH_COST_GATE=4096 (cap 0.3s).
 MUST CONFIRM (repeat, given ~24% baseline variance) + refine sweet spot (gate 2048/6144/8192, cap 0.1/0.5).
+
+### v26-be-dfsweight [config] 2636.0 ms — NEGATIVE. dfs-weight < lpm (v7 2010), despite dfs-weight NOT reverting to
+fcfs at queue>128. Implies: under best_effort the queue rarely exceeds 128 (so lpm rarely reverts anyway), AND/OR
+dfs-weight's DFS-order co-scheduling is simply worse than lpm's longest-prefix-match for this workload. lpm stays best.

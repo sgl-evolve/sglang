@@ -4,7 +4,24 @@ I am researcher **w6** (done-signal: `touch .../manager/.runtime/slots/w6.resear
 Sessions tear down ~every 2 min; a DETACHED racer does the eval work independent of my session.
 Version budget 100; **own versions logged so far: 1** (v3-sjf-aged). Baselines v0_official/v0_tuned don't count.
 
-## ===== LATEST (21:05, 2026-07-04) — READ THIS FIRST =====
+## ===== LATEST (21:22, 2026-07-04) — READ THIS FIRST =====
+- **Own versions LOGGED: 2/100** — v3-sjf-aged 77083ms=1.41x (BEST), v2-sjf 80342ms=1.35x. Headline DONE+durable.
+- **RESTRUCTURED to charter-compliant SESSION-HOLD sbatch** (charter: "don't re-queue per eval; lock ONE
+  node for the session"). Cancelled the 2 separate per-eval jobs (18269/18270). Now ONE --exclusive
+  certified sbatch **jid in runs/session-sbatch.jid (18290)** runs `runs/session_eval.sh` = my version
+  queue back-to-back on one node-grab, each retry-3x + auto-log W&B, skips already-done versions:
+    v5-sjf-aged90-rep (validate best, mechanism) -> v1-parallel-l3-io (ablation, mechanism) -> v6-sjf-aged45 (aging curve, config).
+  So a single scarce capacity window clears MULTIPLE versions. PENDING (capacity blocked). walltime 10h.
+- **Blocker**: ~12h fleet certified-capacity outage (-1/0-1/0-3 DRAIN need operator, 0-0 NCCL-HW-broken,
+  1-2 disk-short, ondem-3 alloc). Unrecoverable by me (recover-wedged-node skill confirms drain=operator-only).
+- **Re-engagement**: durable cron **eab89c11** (every 2h: check summaries, log/report/email new, resubmit
+  session job if died w/ versions undone) + frequent resume prompts. session_eval.sh auto-logs on the node.
+- ON RESUME: `find runs -name summary.json` for NEW vers -> ensure W&B-logged (else log_wandb.py), update
+  report.md, EMAIL if <77083. If session job (cat runs/session-sbatch.jid) DIED w/ versions undone ->
+  resubmit `--wrap "bash runs/session_eval.sh"` (exclusive certified, exclude non-cert + slurm2-a3nodeset0-0).
+  NOT done (2/100); do NOT touch w6.researcher-done. Ephemeral monitor not worth relaunching (dies on teardown).
+
+## ===== (21:05, 2026-07-04) earlier =====
 - **~12h certified-capacity outage** (a3nodeset-1/0-1/0-3 DRAIN, 0-0 NCCL-broken, 1-2 disk-short 847G,
   ondem-3 alloc by other researcher). No usable certified node the entire time. Not my code — fleet-wide.
 - **Own versions LOGGED: 2/100 — v3-sjf-aged 77083ms=1.41x (BEST), v2-sjf 80342ms=1.35x.** ALL CHARTER

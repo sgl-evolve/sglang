@@ -255,15 +255,23 @@ NOT logged** (they do not count against the 100-version budget). I consolidated 
     already-clustered data, and adds an unshuffle transpose on the read path. Marginal + distribution-
     dependent → deferred to a possible v14 refinement, gated on v12 first proving compression helps.*
 
-## Next mechanism candidate (v13, orthogonal to compression) — device-tier retention [SCOPED, not yet run]
-From the v1 batch-dynamics diagnosis: workload is **prefill-bound** and the **device KV pool is only
-~34% used (66% idle)** while 43% of hits come from host + 25% from disk, each paying an H→D load-back
-(and disk read). Hypothesis: **retain hot reused prefixes on the idle device capacity** → convert
-host/disk hits into device hits → fewer H→D transfers + disk reads → lower prefill TTFT. This is
-orthogonal to v12 (compression shrinks/speeds disk reads; retention *avoids* them). On-contract: it
-does NOT touch the forbidden knobs (mem-frac 0.85 / hicache-size 96 / ratio) — only the *policy* of what
-stays resident. Concrete entry points (active class for this hybrid-Mamba model = **`HiMambaRadixCache`**
-in `mem_cache/hi_mamba_radix_cache.py`): `load_back_threshold=10`, `write_through_threshold`,
-`evictable_full_device_leaves`, and the `write_backup`/`load_back`/`init_load_back` eviction path — lever
-is likely **lazier device eviction while device has free capacity** (only evict under real allocator
-pressure). Decision gated on v12's result: pursue if compression doesn't already dominate.
+## v13-be-mamba700 (config, device-capacity reallocation) — [QUEUED, batched after v12]
+From the v1 batch-dynamics diagnosis: workload is **prefill-bound** and 43% of hits come from host +
+25% from disk, each paying an H→D load-back (and disk read). Hypothesis: **give the device KV pool more
+capacity so more hot reused prefixes stay resident** → convert host/disk hits into device hits → fewer
+H→D transfers + disk reads → lower prefill TTFT. Orthogonal to v12 (compression shrinks/speeds disk
+reads; this *avoids* them).
+- **Lever (config, in-budget, lossless):** `--max-mamba-cache-size 700`. This hybrid-Mamba model splits
+  the frozen GPU budget between the Mamba SSM state pool and the attention device-KV pool. The default
+  resolves to 1350 (SSM ≈ 23.75 GB/rank); 700 → SSM ≈ 12.32 GB/rank, freeing ~11.4 GB/rank that grows
+  the device KV pool ~2.35M → ~3.36M tokens (**+43%**). It does NOT touch the forbidden/asserted knobs
+  (mem-frac 0.85 / hicache-size 96 / ratio / ctx / tp) — it *reallocates within* the frozen GPU budget,
+  so it's a smarter-engine win, not more memory. `--max-mamba-cache-size` is a real server_args flag,
+  not in eval.sh's FORBIDDEN list.
+- **Chosen over eviction-code surgery:** the alternative (lazier device eviction in `HiMambaRadixCache`)
+  can't be de-risked offline (needs a live server to confirm losslessness + no preemptions), so it's a
+  higher-risk use of a scarce node. This config lever tests the same device-retention hypothesis safely
+  first; if it wins, a follow-up code mechanism (smarter eviction using the enlarged pool) is justified.
+- **Verification gate:** lossless (outputs vs v6 — reducing the SSM pool must not change results, only
+  concurrency/eviction) + resolved_args shows mamba 700 + eval exit 0. Runs back-to-back after v12 on
+  the same self-locked node (batch watcher `hold_batch.sh`).

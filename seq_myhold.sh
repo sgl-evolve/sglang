@@ -12,7 +12,7 @@ POST=$WORK/post_eval.sh
 FUSION="--enforce-disable-flashinfer-allreduce-fusion"
 V1REF=2dda8247a
 JID=$(cat "$WORK/.myhold_jobid")
-NODE=slurm2-a3nodeset0-2
+NODE="${NODE:-slurm2-a3nodeset0-2}"
 # version|gitref|tag|extra eval args   (pass SEQ via env SEQSPEC newline-separated to override)
 DEFAULT_SEQ="be-writeback|$V1REF|config|--hicache-storage-prefetch-policy best_effort --hicache-write-policy write_back
 v4-tunedto|5014a841a|mechanism|--hicache-storage-prefetch-policy timeout

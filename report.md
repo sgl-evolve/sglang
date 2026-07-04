@@ -172,9 +172,12 @@ plus completing the mechanism curve (v2-wc, v3-wc).
 | v0_tuned | base | 108,824 | 322,801 | 119.3 | 0.82 | 0.26 | **bar to beat** |
 | **v1-parallel-io** | mech | **60,745** | 255,154 | 170.8 | 0.77 | 0.15 | parallel L3 I/O, wait_complete: **−31% vs official** |
 | v3-wc | mech | 92,956 | 280,154 | 138.2 | 0.82 | 0.26 | +read-priority+aux-threads: WORSE than v1 (contention) |
-| **v1b-besteffort** | config | **2,529** | 21,356 | 288.8 | 0.55 | 0.00 | **CHAMPION −97%**; bypasses L3 (recompute) |
-| be-writeback | config | 2,796 | 11,328 | 198.9 | – | – | best_effort+write_back ≈ champion |
-| be-wtsel | config | 2,914 | 15,473 | 247.0 | 0.27 | 0.00 | best_effort+wt_selective ≈ champion |
+| **be-lpm** | config | **2,014** | 17,704 | 323.1 | 0.61 | 0.00 | **CHAMPION −98%**; best_effort + cache-aware `lpm` scheduling: **−20% & lower p99 vs plain best_effort** |
+| v1b-besteffort | config | 2,529 | 21,356 | 288.8 | 0.55 | 0.00 | best_effort, default fcfs schedule: −97% |
+| be-lpm-timeout | mech | 2,751 | 22,499 | – | 0.60 | 0.00 | timeout+lpm: WORSE than be-lpm (bounded L3 wait re-adds latency, still l3=0) |
+| be-writeback | config | 2,796 | 11,328 | 198.9 | – | – | best_effort+write_back ≈ plain best_effort |
+| v1d-timeout | config | 2,761 | 20,196 | – | 0.60 | 0.00 | timeout(fcfs): ≈ best_effort, no L3 gain |
+| be-wtsel | config | 2,914 | 15,473 | 247.0 | 0.27 | 0.00 | best_effort+wt_selective ≈ plain best_effort |
 | v4-tunedto | mech | 2,942 | 20,688 | 327.4 | 0.59 | 0.00 | v3+timeout(0.3/0.02/1.5s): l3=0 even at 1.5s wait |
 
 ### Narrative for a skeptical maintainer
@@ -198,10 +201,19 @@ plus completing the mechanism curve (v2-wc, v3-wc).
    concurrency (v2 read-priority pools, v3 aux-threads) does **not** help (v3-wc 93 s > v1 61 s) —
    added thread/host-eviction contention. Honest negative.
 
-5. **Takeaway:** for this overloaded 3-tier workload, the biggest lever is *scheduling/admission
-   policy* (don't block on slow L3), not L3 I/O speed. The engine win (v1) matters when you must
-   use L3; otherwise `best_effort` dominates. A production system should combine `best_effort`
-   admission with v1's faster L3 backup path (v1 also cuts disk-read/eviction volume).
+5. **Cache-aware *scheduling* on top of `best_effort` is a second, independent win (be-lpm, the new
+   champion).** Switching the request schedule from default `fcfs` to `lpm` (longest-prefix-match:
+   order/group requests that share a radix prefix) cuts mean TTFT a further **2,529→2,014 ms (−20%)**,
+   raises radix hit-rate 0.55→0.61, AND lowers p99 21.4→17.7 s. Mechanism: `lpm` batches same-prefix
+   requests so the device/host radix prefix is reused before eviction (multiturn locality) — pure
+   scheduling, fully lossless, l3 still 0. A *bounded-wait* variant (be-lpm-timeout) is worse (2,751 ms):
+   re-adding L3 waits only hurts, reconfirming L3 is unusable here.
+
+6. **Takeaway:** for this overloaded 3-tier workload the two biggest levers are both in the
+   *scheduler/admission* path — (a) don't block admission on slow L3 (`best_effort`, −97%), then
+   (b) order admitted requests cache-awarely (`lpm`, another −20%) — not L3 I/O speed. The engine
+   win (v1 parallel I/O) matters only when you must use L3. A production system should combine
+   `best_effort` + `lpm` with v1's faster L3 backup path (v1 also cuts disk-read/eviction volume).
 
 Global eval condition: all my versions pass `--enforce-disable-flashinfer-allreduce-fusion`
 (the auto-enabled fusion hangs CUDA-graph capture with hicache on this cluster; lossless,

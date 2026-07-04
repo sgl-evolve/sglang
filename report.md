@@ -488,3 +488,11 @@ protocol/budget.**
   O(L²)-expensive long-context prefixes), not by maximizing hit count. d8192 best balances protecting the
   expensive prefixes against diluting the cache; d16384 protects too few (→LRU-like hit); d2048/d4096
   protect too many (dilute). All lossless. Confirming d8192 with a reproduction (v21) before finalizing.
+
+### v21 — cost-aware d8192 reproduction  [mechanism]  ** CONFIRMED OPTIMIZED BEST **
+- Repro: TTFT **971.9 ms** (v19 936; mean of the two ~954), hit_rate 0.6817, P90 2031, P99 7661,
+  throughput 50455 tok/s / 3.52 req/s. Lossless (7037/7037).
+- **FINAL BEST = cost-aware eviction, depth threshold 8192** (n=2: 936/972 ms, mean ~954): **−16.5% mean
+  TTFT vs the LRU best (1142±43)**, +5.8 pp hit (0.623→0.682), +5% throughput — all lossless, in-budget,
+  on the fixed protocol. Stacked on best_effort + skip-writes + skip-prefetch + lpm (~100× below the
+  tuned bar overall). Emailed. This is the definitive new mechanism from this evolution.

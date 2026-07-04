@@ -496,3 +496,22 @@ protocol/budget.**
   TTFT vs the LRU best (1142±43)**, +5.8 pp hit (0.623→0.682), +5% throughput — all lossless, in-budget,
   on the fixed protocol. Stacked on best_effort + skip-writes + skip-prefetch + lpm (~100× below the
   tuned bar overall). Emailed. This is the definitive new mechanism from this evolution.
+
+### v22 — costtiered (graded depth tiers) refinement  [mechanism]  ** NEGATIVE — binary d8192 is optimal **
+- Tested graded protection (tier = depth//8192 capped at 4; protect the truly-huge ≥32k MORE than the
+  moderately-long 8-16k) vs the binary "protect all ≥8192 equally" of costaware.
+- Result: TTFT **1060 ms**, hit_rate **0.5658** (WORSE than LRU's 0.623, and far below costaware d8192's
+  0.681). Grading over-commits cache to the huge LEval/LooGLE prefixes (they hog space) → medium/short
+  prefixes evicted aggressively → hit rate craters. Median TTFT also jumped (743 vs ~548).
+- **Definitive: binary cost-aware (protect all ≥threshold EQUALLY, LRU within; threshold=8192) is the
+  optimum.** Grading hurts. Cost-aware eviction is now fully optimized and refinement-tested.
+
+## FINAL RESULT (this evolution)
+Two novel, lossless engine mechanisms compound on the fixed protocol:
+1. **best_effort regime + skip-L3-writes + skip-L3-prefetch + lpm** — bypass the catastrophically-slow
+   serialized L3 disk by recomputing misses on-GPU (~95× below the v0_tuned bar; 108.8 s → ~1.1 s).
+2. **recompute-cost-aware eviction (`--radix-eviction-policy costaware`, threshold 8192)** — protect
+   deep, O(L²)-expensive, heavily-reused long-context prefixes from eviction; evict shallow (cheap)
+   first, LRU within. A further **−16.5%** mean TTFT (1142→~954 ms), +5.8 pp hit, +5% throughput.
+Negatives mapped: mamba→KV realloc (neutral, host-capacity-bound), parallel-L3-reads+wait_complete
+(worse, churns frozen cache), costtiered (worse, over-protects). All results lossless & reproduced.

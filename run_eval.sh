@@ -8,6 +8,11 @@ set -uo pipefail
 ROOT=/home/junyanch_google_com/autoresearch
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; export HF_TOKEN="${HF_API_KEY:-}"; }
 NAME=kv-lynx-4d2
+# WORK = this researcher's clone root (where runs/<ver>/ is written by eval.sh). run_eval.sh lives
+# at the clone root, so derive it from the script's own location. (Previously $WORK was undefined
+# here -> the contamination grep read a non-existent path -> comp always 0 -> every SUCCESSFUL run was
+# falsely flagged CONTAMINATED and wastefully re-run up to MAX_ATTEMPTS. Fixed.)
+WORK="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RT=/home/junyanch_google_com/autoresearch/programs/sgl/manager/.runtime
 EVAL=$ROOT/programs/sgl/researcher/.claude/skills/evaluation-sop/scripts/eval.sh
 VER="${1:?usage: run_eval.sh <version> [args...]}"; shift || true
@@ -60,7 +65,16 @@ while :; do
         # after our GPU-idle gate), producing a slow, partial bench (seen: 63/7037,
         # 1497/7037). Treat <95% of 7037 completed as a failed (contaminated) run
         # and retry, so we don't log a garbage number.
-        comp=$(grep -oiE "Successful requests: +[0-9]+" "$WORK/runs/$VER/mix.txt" 2>/dev/null | grep -oE "[0-9]+" | tail -1)
+        # Read completed-request count from mix.txt; fall back to the authoritative mix_result.json.
+        # Settle-retry once (5s) in case the tee/summary post-step hasn't flushed when srun returns.
+        read_comp(){
+          local c
+          c=$(grep -oiE "Successful requests: +[0-9]+" "$WORK/runs/$VER/mix.txt" 2>/dev/null | grep -oE "[0-9]+" | tail -1)
+          [ -z "$c" ] && c=$(grep -oE "\"completed\": *[0-9]+" "$WORK/runs/$VER/mix_result.json" 2>/dev/null | grep -oE "[0-9]+" | tail -1)
+          echo "${c:-0}"
+        }
+        comp=$(read_comp)
+        if [ "$rc" -eq 0 ] && [ "${comp:-0}" -lt 6685 ]; then sleep 5; comp=$(read_comp); fi
         comp=${comp:-0}
         if [ "$rc" -eq 0 ] && [ "$comp" -ge 6685 ]; then exit 0; fi   # 6685 ~= 0.95*7037
         attempts=$((attempts+1))

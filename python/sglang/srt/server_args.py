@@ -718,6 +718,7 @@ class ServerArgs:
                 "lof",
                 "priority",
                 "routing-key",
+                "sjf",
             ],
         ),
     ] = "fcfs"

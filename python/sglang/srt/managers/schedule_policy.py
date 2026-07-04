@@ -144,6 +144,7 @@ class CacheAgnosticPolicy(Enum):
     LOF = "lof"  # longest output first
     RANDOM = "random"
     ROUTING_KEY = "routing-key"  # prioritize by routing key frequency in running batch
+    SJF = "sjf"  # shortest-job-first by UNCACHED prefill work (cost-aware; drains queue fast)
 
 
 class SchedulePolicy:
@@ -212,6 +213,8 @@ class SchedulePolicy:
                     self.enable_priority_scheduling,
                     self.priority_sign,
                 )
+            elif policy == CacheAgnosticPolicy.SJF:
+                SchedulePolicy._sort_by_shortest_prefill(waiting_queue)
             elif policy == CacheAgnosticPolicy.RANDOM:
                 SchedulePolicy._sort_randomly(waiting_queue)
             elif policy == CacheAgnosticPolicy.ROUTING_KEY:
@@ -302,6 +305,23 @@ class SchedulePolicy:
                 -r.num_matched_prefix_tokens
                 if r.rid not in temporary_deprioritized
                 else float("inf")
+            )
+        )
+
+    @staticmethod
+    def _sort_by_shortest_prefill(waiting_queue: List[Req]) -> None:
+        """SJF for prefill: serve the request with the SMALLEST uncached suffix first
+        (cheapest to prefill/recompute) so the many cheap requests drain quickly -> lower
+        MEAN TTFT. Uses num_matched_prefix_tokens (cheaply populated in calc_priority for
+        cache-agnostic policies), so it stays cost-aware at ANY queue size -- unlike LPM,
+        which reverts to FCFS once the queue exceeds 128 (exactly our saturated regime).
+        Lossless: changes only the service ORDER, never any computed value."""
+        waiting_queue.sort(
+            key=lambda r: max(
+                0,
+                len(r.origin_input_ids)
+                + len(r.output_ids)
+                - r.num_matched_prefix_tokens,
             )
         )
 

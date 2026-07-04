@@ -293,3 +293,27 @@ reads; this *avoids* them).
   is a sensible first point with headroom to **sweep lower (e.g. 500/300) as a follow-up** if it helps.
 - **Verification gate:** lossless (outputs vs v6) + resolved_args shows mamba 700 + eval exit 0. Runs
   back-to-back after v12 on the same self-locked node (batch watcher `hold_batch.sh`).
+
+**RESULT (commit fe0ed6efe, on ondem-3): ttft_mean = 2119.18 ms, ttft_median = 1197.22 ms** (vs v6 2035
+/ v12 1957 mean; v12 median 1178.81). Self-audit PASS: on-budget (ctx 262144 / mf 0.85 / hicache 96 /
+tp 8), launch_cmd confirms `--max-mamba-cache-size 700`, server.log confirms the effect
+(`max_total_num_tokens=3363136` = **+43%** device KV; `max_running_requests` 270→140), no SILENT
+FALLBACK, EVAL_DONE + rc=0. **Lossless:** mamba usage peaked ~0.42 (700 slots under-utilized) and
+max_running 140 ≥ load concurrency 128 → no admission drops / no state eviction; hit_rate 0.614 ≈ v6/v12.
+**The mechanism did exactly what it promised** — `hit_device_frac` 0.4587→**0.4771** (more device
+retention) and `load_back_tokens` 301M→**259M** (fewer host→device transfers). **But end-to-end TTFT did
+not improve** (mean nominally worse, driven by the p99≈19.5s tail; median ~flat 1197 vs 1178).
+
+### ★ Plateau conclusion (v6 ≈ v12 ≈ v13, evidence-grounded)
+Three back-to-back-ish points now bracket the same operating point: **median TTFT ≈ 1178–1197 ms**, mean
+≈ 1957–2119 ms, hit ≈ 0.61–0.63, all with p99 ≈ 19–19.5 s. The **median is essentially invariant**; the
+mean differences are tail-driven run-to-run variance, not lever effects. Both new levers behaved exactly
+as designed at the tier level (compression compresses; mamba→KV retains more on device) yet **neither
+moved end-to-end TTFT**, because under best_effort the serving path is **not disk-bound and not
+device-load-back-bound** (load_back mean ≈ 1.4 ms) — it is dominated by **prefill compute on cache
+misses** (~38% of tokens) and the long-context tail (LEval/LooGLE cold prefills), which no KV-tiering
+lever can remove (chunked-prefill size is frozen; recompute is exact/lossless). **Net: v6/v12 (~1957 ms,
+~43×) is at the cache-architecture ceiling for this fixed protocol.** Remaining upside, if any, lives in
+the scheduler/prefill path, not KV tiering. Compression + device-capacity are kept as lossless,
+in-budget options that would matter in a *different* regime (wait_complete, or host too small to hold the
+working set) but are inert here.

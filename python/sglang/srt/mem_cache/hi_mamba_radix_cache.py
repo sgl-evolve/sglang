@@ -107,10 +107,9 @@ class HiMambaRadixCache(MambaRadixCache):
                     "switching to page first direct layout"
                 )
 
-        # Eviction policy for this cache's evict()/evict_host(): default LRU; opt-in frequency-aware
-        # (LFU with LRU tiebreak) to retain hot shared prefixes under host-cache pressure (onyx-7q2).
-        self._evict_lfu = envs.SGLANG_HICACHE_MAMBA_EVICT_LFU.get()
-        logger.info(f"[onyx-7q2] HiMambaRadixCache eviction policy = {'LFU' if self._evict_lfu else 'LRU'}")
+        # Eviction policy for this cache's evict()/evict_host(): lru (default) | lfu | slru (onyx-7q2).
+        self._evict_policy = (envs.SGLANG_HICACHE_MAMBA_EVICT_POLICY.get() or "lru").lower()
+        logger.info(f"[onyx-7q2] HiMambaRadixCache eviction policy = {self._evict_policy}")
 
         self.page_size = params.page_size
         self.hybrid_kv_cache = params.token_to_kv_pool_allocator.get_kvcache()
@@ -706,11 +705,15 @@ class HiMambaRadixCache(MambaRadixCache):
         return self._evict_to_host(x)
 
     def _evict_entry(self, n):
-        # Heap entry for eviction. LFU: (hit_count, last_access_time) => evict least-frequently-used
-        # first, LRU tiebreak (retain hot shared prefixes). LRU (default): last_access_time only.
-        # id(n) is a unique tiebreaker so TreeNode objects are never compared; n is popped as [-1].
-        if self._evict_lfu:
+        # Heap entry for eviction (min-heap pops smallest key = evicted first). id(n) is a unique
+        # tiebreaker so TreeNode objects are never compared; n is popped as [-1]. Policies:
+        #   lfu:  (hit_count, last_access_time)        -> least-frequently-used first, LRU tiebreak
+        #   slru: (0 if hit_count<2 else 1, last_access_time) -> probationary before protected, LRU within
+        #   lru:  (last_access_time,)                  -> oldest first (default)
+        if self._evict_policy == "lfu":
             return (n.hit_count, n.last_access_time, id(n), n)
+        if self._evict_policy == "slru":
+            return (0 if n.hit_count < 2 else 1, n.last_access_time, id(n), n)
         return (n.last_access_time, id(n), n)
 
     def evict(self, params: EvictParams) -> EvictResult:

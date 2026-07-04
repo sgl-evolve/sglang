@@ -1,1 +1,2 @@
-v16-be-lfu|SGLANG_HICACHE_MAMBA_EVICT_LFU=true|--hicache-storage-prefetch-policy best_effort|mechanism
+v4r-repeat|-|--hicache-storage-prefetch-policy best_effort|config
+v17-be-slru|SGLANG_HICACHE_MAMBA_EVICT_POLICY=slru|--hicache-storage-prefetch-policy best_effort|mechanism

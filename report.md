@@ -292,6 +292,27 @@ lower TTFT (stacks on best_effort).
   16) — **writes peak at 8 threads** (page-cache/replace contention past that). v15 therefore set to
   `SGLANG_HICACHE_FILE_WRITE_THREADS=8`, the empirical optimum.
 
+## Frontier: cold-recompute tail via engine eviction change (v16) — negative, but definitive
+The design sweep left one lever untouched: the p99 TTFT tail (v4 ~16 s), which is cold-miss recompute.
+Hypothesis: under host-cache pressure (v4 host tier 99.4% full) LRU may drop hot *shared* prefixes when
+idle → cold recompute. Since `--radix-eviction-policy` is **ignored by HiMambaRadixCache** (its evict()/
+evict_host() are hardcoded LRU; only unified/radix_cache honor the flag — verified before wasting a run),
+I implemented frequency-aware eviction in the engine: env-gated `SGLANG_HICACHE_MAMBA_EVICT_LFU` switches
+the eviction heap to `(hit_count, last_access_time)` (least-frequently-used first, LRU tiebreak). Lossless
+by construction (eviction only changes *what* recomputes).
+
+| v16-be-lfu | eviction LRU → **LFU** (engine change) | 2638 ms (+31%), p99 18391 (+15%) | loses on BOTH mean & tail |
+
+**Definitive finding:** LFU makes both the mean *and* the p99 tail **worse**, not better. This shows the
+p99 tail is **genuinely-cold-prefix recompute** (first-occurrence prefixes that were never cached), NOT
+evictable-hot-prefix loss — so it is **irreducible via cache-eviction policy**. LRU already tracks the
+working set best; frequency-based eviction pollutes the cache (stale high-count entries survive while
+newly-hot low-count prefixes are evicted early). Combined with the full design sweep, this establishes
+that **v4's −97.7% is the robust optimum on this fixed protocol**: the win is the parallel-L3-read engine
+mechanism + best_effort 0-wait admission; write-side, page-size, timeout, read-thread-count, and eviction
+policy are all neutral-to-negative. Three engine mechanisms were tried — parallel reads (WIN, v3/v4),
+parallel writes (neutral-negative, v15), LFU eviction (negative, v16) — cleanly isolating reads as the lever.
+
 ## Next (v5+): push the frontier (best_effort base)
 tpot is still +104% vs baseline (hit 0.59 ⇒ ~41% recompute). Levers: **v4 = parallel + best_effort**
 (0-wait admit; multiturn shared prefixes already in host from prior turns → keep hits at min TTFT);

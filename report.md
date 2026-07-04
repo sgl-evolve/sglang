@@ -104,3 +104,14 @@ exclusion, retry, claim-lock, flashinfer-disable) — see eval_good_node.sh/dedi
 ### Plan (best_effort winning regime): v2-balanced-r2 (mechanism, wait_complete+balanced — tests my
 loading-bound batching in its target regime), v6-be-balanced (mechanism in winning regime),
 v7-be-lpm, v8-be-mixedchunk, v9-be-wtselective, v10-timeout. Genuine-novelty goal: beat 3241ms with a mechanism.
+
+### v2-balanced-r2 [mechanism, LOSSLESS]  ttft_mean 82853.9 ms (wait_complete + balanced, R=2)
+vs v0_official 87615 (wait_complete baseline): ~5% better but WITHIN ~24% run-to-run noise -> balanced
+batching is ~neutral in the slow wait_complete regime (the disk-wait dominates; low headroom to help).
+
+### v6-be-balanced [mechanism, LOSSLESS] — NEW BEST  ttft_mean 3023.2 ms (best_effort + balanced, R=2)
+vs v1-besteffort 3241.8 (best_effort alone): **-6.7% TTFT, +9.8% req tput (2.13), +9.6% out tput (271.8)**,
+hit 0.452. Measured same-node back-to-back (ondem-3) => low variance; throughput corroborates. GENUINE
+MECHANISM WIN: loading-bound-aware balanced prefill batching pays off in the low-queue best_effort regime
+(pairs unavoidable per-layer H->D load_back with enough prefill compute to hide it). Lossless.
+Next: ratio sweep (v11 R=1.0, v12 R=1.5, v13 R=3.0) to find the balancing optimum; +be-configs v7-v10.

@@ -321,7 +321,14 @@ I implemented frequency-aware eviction in the engine: env-gated `SGLANG_HICACHE_
 the eviction heap to `(hit_count, last_access_time)` (least-frequently-used first, LRU tiebreak). Lossless
 by construction (eviction only changes *what* recomputes).
 
-| v16-be-lfu | eviction LRU → **LFU** (engine change) | 2638 ms (+31%), p99 18391 (+15%) | loses on BOTH mean & tail |
+| v16-be-lfu | eviction LRU → **LFU** (engine change) | 2638 ms, p99 18391 | within noise (see variance caveat) |
+| v17-be-slru | eviction LRU → **SLRU** (engine change) | 2799 ms, p99 19518 | within noise |
+
+**Complete eviction ablation (engine-level, all lossless): LRU (v4 2013 / v4r 2603), LFU (2638), SLRU
+(2799) — all inside the ~30% run-to-run noise band.** Eviction policy has no reliable effect on TTFT for
+this workload, consistent with the p99 tail being genuinely-cold-prefix recompute (first-occurrence
+prefixes never cached) rather than evictable-hot-prefix loss. (Note: `--radix-eviction-policy` is a no-op
+here — HiMambaRadixCache hardcodes LRU — so LFU/SLRU required the engine change above to test at all.)
 
 **Definitive finding:** LFU makes both the mean *and* the p99 tail **worse**, not better. This shows the
 p99 tail is **genuinely-cold-prefix recompute** (first-occurrence prefixes that were never cached), NOT

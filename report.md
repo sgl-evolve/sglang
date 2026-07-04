@@ -231,7 +231,14 @@ Ran on a clean exclusive nodeset-0 hold. Two datapoints so far, both **honest ne
 
 Page-size is a clean concave curve around v4's default 64: 32→2219, **64→2013 (v4)**, 128→3119. Smaller
 beats larger, but 64 is optimal (finer granularity raises hit_rate up to a point, then per-page overhead
-dominates). Remaining: timeout-grace (v13),
+dominates).
+
+| v13-grace | policy → tuned `timeout` (base0.3/perKi0.03/max2) | 4161 ms (+107%) | loses badly — best_effort ≫ any timeout |
+
+**v13 decisively confirms the policy choice:** even an aggressively-tuned short-grace `timeout` (~4161 ms,
+≈ v2's untuned serial-timeout 4244) can't approach `best_effort` (v4 2013). The *policy* is the lever, not
+its tuning — 0-wait admission + warm multiturn host prefixes beats any bounded-wait-then-recompute scheme.
+Remaining: read-thread ablation (v6=32, v7=8; expect ≈v4 since IO-bench pinned 16 as the NVMe optimum).
 read-thread ablation (v6=32/v7=8, expected ≈v4 since IO-bench pinned 16 as optimum). **v4 (2013 ms)
 unbeaten across the entire best_effort design space so far** — the parallel-read mechanism + 0-wait
 admission is the win; every other axis (write-policy, write-parallelism, page-size) is neutral-to-negative.

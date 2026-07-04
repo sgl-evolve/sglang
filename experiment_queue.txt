@@ -1,8 +1,1 @@
-v11-be-selective|-|--hicache-storage-prefetch-policy best_effort --hicache-write-policy write_through_selective|config
-v15-be-parwrite|SGLANG_HICACHE_FILE_WRITE_THREADS=8|--hicache-storage-prefetch-policy best_effort|mechanism
-v12-be-writeback|-|--hicache-storage-prefetch-policy best_effort --hicache-write-policy write_back|config
-v9-be-page128|-|--hicache-storage-prefetch-policy best_effort --page-size 128|config
-v10-be-page32|-|--hicache-storage-prefetch-policy best_effort --page-size 32|config
-v13-grace|SGLANG_HICACHE_PREFETCH_TIMEOUT_BASE=0.3 SGLANG_HICACHE_PREFETCH_TIMEOUT_PER_KI=0.03 SGLANG_HICACHE_PREFETCH_TIMEOUT_MAX=2|--hicache-storage-prefetch-policy timeout|config
-v6-be-thr32|SGLANG_HICACHE_FILE_READ_THREADS=32|--hicache-storage-prefetch-policy best_effort|config
-v7-be-thr8|SGLANG_HICACHE_FILE_READ_THREADS=8|--hicache-storage-prefetch-policy best_effort|config
+v16-be-lfu|SGLANG_HICACHE_MAMBA_EVICT_LFU=true|--hicache-storage-prefetch-policy best_effort|mechanism

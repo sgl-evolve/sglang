@@ -425,6 +425,13 @@ class Envs:
     # writes a per-thread-unique tmp file then atomically os.replace()s, so parallel
     # writes are race-free and lossless. 1 = serial (original, default).
     SGLANG_HICACHE_FILE_WRITE_THREADS = EnvInt(1)
+    # Frequency-aware eviction for the hybrid-Mamba HiRadix cache. Its evict()/evict_host() default to
+    # pure LRU (evict oldest last_access_time), which under host-cache pressure can drop hot *shared*
+    # prefixes (system prompts reused across turns) that were merely idle, forcing cold recompute (the
+    # p99 TTFT tail). ENABLE => evict by (hit_count, last_access_time): least-FREQUENTLY-used first, LRU
+    # tiebreak, so frequently-reused prefixes survive. Lossless by construction (eviction only changes
+    # WHICH entries recompute, never outputs). Default False = LRU (v4 semantics unchanged).
+    SGLANG_HICACHE_MAMBA_EVICT_LFU = EnvBool(False)
     # Prefetch-timeout policy knobs (linear: wait = base + per_ki*ntok/1024, capped at max).
     # None => use PrefetchTimeoutConfig code defaults (base 2.0, per_ki 0.1, max 30.0). With fast
     # parallel reads a longer window lets more prefetch complete -> higher hit_rate, less recompute.

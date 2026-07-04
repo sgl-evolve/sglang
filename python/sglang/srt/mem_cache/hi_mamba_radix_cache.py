@@ -107,6 +107,11 @@ class HiMambaRadixCache(MambaRadixCache):
                     "switching to page first direct layout"
                 )
 
+        # Eviction policy for this cache's evict()/evict_host(): default LRU; opt-in frequency-aware
+        # (LFU with LRU tiebreak) to retain hot shared prefixes under host-cache pressure (onyx-7q2).
+        self._evict_lfu = envs.SGLANG_HICACHE_MAMBA_EVICT_LFU.get()
+        logger.info(f"[onyx-7q2] HiMambaRadixCache eviction policy = {'LFU' if self._evict_lfu else 'LRU'}")
+
         self.page_size = params.page_size
         self.hybrid_kv_cache = params.token_to_kv_pool_allocator.get_kvcache()
         if not isinstance(self.hybrid_kv_cache, HybridLinearKVPool):
@@ -700,6 +705,14 @@ class HiMambaRadixCache(MambaRadixCache):
                 return self._evict_regular(x)
         return self._evict_to_host(x)
 
+    def _evict_entry(self, n):
+        # Heap entry for eviction. LFU: (hit_count, last_access_time) => evict least-frequently-used
+        # first, LRU tiebreak (retain hot shared prefixes). LRU (default): last_access_time only.
+        # id(n) is a unique tiebreaker so TreeNode objects are never compared; n is popped as [-1].
+        if self._evict_lfu:
+            return (n.hit_count, n.last_access_time, id(n), n)
+        return (n.last_access_time, id(n), n)
+
     def evict(self, params: EvictParams) -> EvictResult:
         if self.disable:
             return EvictResult()
@@ -710,11 +723,11 @@ class HiMambaRadixCache(MambaRadixCache):
 
         if full_num_tokens > 0:
             leaves = list(self.evictable_full_device_leaves)
-            eviction_heap = [(n.last_access_time, n) for n in leaves]
+            eviction_heap = [self._evict_entry(n) for n in leaves]
             heapq.heapify(eviction_heap)
 
             while full_num_evicted < full_num_tokens and eviction_heap:
-                _, x = heapq.heappop(eviction_heap)
+                x = heapq.heappop(eviction_heap)[-1]
                 if x not in self.evictable_full_device_leaves:
                     continue
 
@@ -724,7 +737,7 @@ class HiMambaRadixCache(MambaRadixCache):
 
                 parent = x.parent
                 if parent in self.evictable_full_device_leaves:
-                    heapq.heappush(eviction_heap, (parent.last_access_time, parent))
+                    heapq.heappush(eviction_heap, self._evict_entry(parent))
 
         if params.mamba_num > 0:
             mamba_num_evicted += self.evict_mamba(params.mamba_num)
@@ -736,19 +749,19 @@ class HiMambaRadixCache(MambaRadixCache):
 
     def evict_host(self, num_tokens: int):
         """Evict host-resident leaf nodes: free host KV + mamba, delete from tree, cascade."""
-        heap = [(n.last_access_time, n) for n in self.evictable_full_host_leaves]
+        heap = [self._evict_entry(n) for n in self.evictable_full_host_leaves]
         heapq.heapify(heap)
 
         num_evicted = 0
         while num_evicted < num_tokens and heap:
-            _, x = heapq.heappop(heap)
+            x = heapq.heappop(heap)[-1]
             if x not in self.evictable_full_host_leaves:
                 continue
 
             num_evicted += self._evict_host_leaf(x)
 
             if x.parent in self.evictable_full_host_leaves:
-                heapq.heappush(heap, (x.parent.last_access_time, x.parent))
+                heapq.heappush(heap, self._evict_entry(x.parent))
 
     def evict_mamba_host(self, num_mamba_hosts: int) -> int:
         """Evict host mamba states.

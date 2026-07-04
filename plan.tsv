@@ -14,3 +14,6 @@ v16-be-lpm-bal-r1	mechanism	SGLANG_ENABLE_BALANCED_PREFILL=1 SGLANG_BALANCED_PRE
 v17-be-lpm-bal-r3	mechanism	SGLANG_ENABLE_BALANCED_PREFILL=1 SGLANG_BALANCED_PREFILL_RATIO=3.0	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
 v18-to-lpm	config	-	--hicache-storage-prefetch-policy timeout --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
 v19-to-lpm-balanced	mechanism	SGLANG_ENABLE_BALANCED_PREFILL=1	--hicache-storage-prefetch-policy timeout --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v20-be-lpm-wtsel	config	-	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --hicache-write-policy write_through_selective --enforce-disable-flashinfer-allreduce-fusion
+v21-be-lpm-wb	config	-	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --hicache-write-policy write_back --enforce-disable-flashinfer-allreduce-fusion
+v22-to-lpm-wtsel	config	-	--hicache-storage-prefetch-policy timeout --schedule-policy lpm --hicache-write-policy write_through_selective --enforce-disable-flashinfer-allreduce-fusion

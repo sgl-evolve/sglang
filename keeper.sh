@@ -17,7 +17,7 @@ while :; do
   [ "$alldone" = 1 ] && { klog "plan fully done -> keeper exit"; break; }
   n=$(squeue -u "$me" -h -o "%j" 2>/dev/null | grep -c "ded-kvflint" || true)
   if [ "${n:-0}" = 0 ]; then
-    BAD=$(sort -u "$WS/.bad_nodes" 2>/dev/null | paste -sd, ); EXCL="$BASEEXCL${BAD:+,$BAD}"; jid=$(sbatch --parsable -p a3 -N1 --exclusive --gres=gpu:8 --exclude="$EXCL" -t 12:00:00 \
+    BAD=$(awk -v now="$(date +%s)" 'NF>=2 && $2>now-1800{print $1}' "$WS/.bad_nodes" 2>/dev/null | sort -u | paste -sd,); EXCL="$BASEEXCL${BAD:+,$BAD}"; jid=$(sbatch --parsable -p a3 -N1 --exclusive --gres=gpu:8 --exclude="$EXCL" -t 12:00:00 \
           -J ded-kvflint -o /tmp/kvflint_logs/ded-%j.out "$RUNNER" 2>>"$WS/keeper.log") \
       && klog "submitted ded-kvflint job $jid" || klog "sbatch submit failed"
   fi

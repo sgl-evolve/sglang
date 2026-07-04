@@ -58,7 +58,9 @@ while :; do
       fi
       if [[ "$free_kb" -ge 1932735283 && "$mem_g" -ge 1300 && "$gpu_max" -lt 10000 ]]; then
         echo "[run_eval] node $node OK (${mem_g}G RAM, $((free_kb/1024/1024))G disk, gpu ${gpu_max}MiB) -> running $VER"
-        srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" "$VER" "$@"
+        # --export=ALL guarantees my KVLYNX_* mechanism toggles (e.g. KVLYNX_EVICT_FREQ_ALPHA)
+        # reach eval.sh -> the server process; else a toggled mechanism would silently run stock.
+        srun --export=ALL --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" "$VER" "$@"
         rc=$?
         flock -u 200; exec 200>&-
         # Contamination check: a non-flock neighbor can collide mid-run (TOCTOU

@@ -64,6 +64,23 @@ logger = logging.getLogger(__name__)
 _ADAPTIVE_CONGESTION_ALPHA = 1.0
 _ADAPTIVE_MIN_WAIT = 0.2
 
+# kv-lynx-4d2: frequency-aware eviction. The hybrid Mamba radix cache evicts the
+# full-KV device/host leaf with the smallest key from a min-heap; stock key is pure
+# LRU (last_access_time). --radix-eviction-policy is IGNORED by this cache (only
+# radix_cache/unified honor it), so LFU-style retention must be a mechanism here.
+# Key := last_access_time + ALPHA * hit_count  → a leaf reused K times survives as if
+# it were accessed ALPHA*K seconds more recently (LRU-with-frequency-credit / aged LFU).
+# Lossless: changes ONLY the eviction victim ORDER, never any KV/mamba value. Off by
+# default (ALPHA=0.0 → byte-identical to stock LRU); enable/tune via env for A/B.
+_EVICT_FREQ_ALPHA = float(os.environ.get("KVLYNX_EVICT_FREQ_ALPHA") or "0.0")
+
+
+def _evict_key(n):
+    # min-heap victim key; larger => evicted later. hit_count defaults to 0.
+    if _EVICT_FREQ_ALPHA == 0.0:
+        return n.last_access_time
+    return n.last_access_time + _EVICT_FREQ_ALPHA * getattr(n, "hit_count", 0)
+
 
 class HostLRUList(LRUList):
     def __init__(self):
@@ -189,6 +206,11 @@ class HiMambaRadixCache(MambaRadixCache):
 
         # Detach storage backend automatically on process shutdown
         atexit.register(self.shutdown)
+
+        # kv-lynx-4d2: confirm the frequency-aware eviction knob in server.log so an
+        # eval can VERIFY the mechanism is actually active (env propagated) vs silently
+        # stock-LRU. ALPHA=0.0 == stock LRU (lossless default).
+        logger.info("kv-lynx-4d2 eviction: _EVICT_FREQ_ALPHA=%s (0.0=stock LRU)", _EVICT_FREQ_ALPHA)
 
         super().__init__(params=params)
 
@@ -716,7 +738,7 @@ class HiMambaRadixCache(MambaRadixCache):
 
         if full_num_tokens > 0:
             leaves = list(self.evictable_full_device_leaves)
-            eviction_heap = [(n.last_access_time, n) for n in leaves]
+            eviction_heap = [(_evict_key(n), n) for n in leaves]
             heapq.heapify(eviction_heap)
 
             while full_num_evicted < full_num_tokens and eviction_heap:
@@ -730,7 +752,7 @@ class HiMambaRadixCache(MambaRadixCache):
 
                 parent = x.parent
                 if parent in self.evictable_full_device_leaves:
-                    heapq.heappush(eviction_heap, (parent.last_access_time, parent))
+                    heapq.heappush(eviction_heap, (_evict_key(parent), parent))
 
         if params.mamba_num > 0:
             mamba_num_evicted += self.evict_mamba(params.mamba_num)
@@ -742,7 +764,7 @@ class HiMambaRadixCache(MambaRadixCache):
 
     def evict_host(self, num_tokens: int):
         """Evict host-resident leaf nodes: free host KV + mamba, delete from tree, cascade."""
-        heap = [(n.last_access_time, n) for n in self.evictable_full_host_leaves]
+        heap = [(_evict_key(n), n) for n in self.evictable_full_host_leaves]
         heapq.heapify(heap)
 
         num_evicted = 0
@@ -754,7 +776,7 @@ class HiMambaRadixCache(MambaRadixCache):
             num_evicted += self._evict_host_leaf(x)
 
             if x.parent in self.evictable_full_host_leaves:
-                heapq.heappush(heap, (x.parent.last_access_time, x.parent))
+                heapq.heappush(heap, (_evict_key(x.parent), x.parent))
 
     def evict_mamba_host(self, num_mamba_hosts: int) -> int:
         """Evict host mamba states.

@@ -188,7 +188,20 @@ Five levers explored; best = **v14 (adaptive prefetch cap 3s + LPM scheduling) =
 ### Mixed-chunk root cause (investigated, deferred) + next scheduler mechanism (SRPF)
 - **Mixed-chunk root cause:** `enable_mixed_chunk` is only auto-disabled for `dual_chunk_flash_attn` and diffusion LLMs (`server_args.py:4865,6320`) — there is **no guard for hybrid-SSM/Mamba models.** The scheduler's `mix_with_running` (`scheduler.py:~2989`) concatenates prefill+decode `input_ids` into one forward pass; the Mamba/GDN recurrent conv/ssm state update does not correctly separate the mixed batch types on this model → corrupted state → the v11 request failures. A lossless fix is deep model-executor/Mamba-kernel work; deferred (not testable while eval capacity is degraded, high blast radius).
 - **v17-srpf-sched (built, eval pending capacity):** new `--schedule-policy srpf` = shortest-remaining-prefill-first. LPM sorts by *longest matched prefix* (absolute), but mean-TTFT SJF should sort by *shortest remaining uncached prefill* = `(len(origin_input_ids)+len(output_ids)) − num_matched_prefix_tokens` (device+host match). These diverge under this wide prompt-length mix, so SRPF should beat LPM's proxy on the headline. Cleanly wired (`schedule_policy.py` enum + `_sort_by_shortest_remaining_prefill` + `server_args` choice + >128 fallback); committed on `evolve/drift-3e7`. Queued on a durable launcher; will log as the 13th own version when a certified ≥1.8TB node frees.
-- **Infra note (2026-07-04):** eval capacity degraded — held node 0-0 has a hardware-broken GPU3 (16MB alloc OOMs, nvidia-smi clean); certified 0-1/0-3/-1 draining; 1-2 disk-full with other users' data. `smart-eval.sh` hardened to blocklist NCCL-failing nodes (rc=6) and wait for a good one.
+- **Infra note (2026-07-04):** eval capacity degraded — held node 0-0 has a hardware-broken GPU3 (16MB alloc OOMs, nvidia-smi clean); certified 0-1/0-3/-1 draining; 1-2 disk-full with other users' persistent data (rqiang 1.9T, kv-heron 1.1T, not mine → never reaches the 1.8TB gate). `smart-eval.sh` hardened to blocklist NCCL-failing nodes (rc=6) and wait for a good one. Manager auto-manages pool health (observed it remove broken 0-0).
+
+### Cross-run tail analysis (motivates aged-SRPF as v18)
+Comparing mean vs p99 TTFT across all runs reveals a **mean↔tail tradeoff on the scheduling axis**:
+| version | mean | p99 | p99/mean | note |
+|---|---|---|---|---|
+| v14 (LPM, best mean) | **2496** | 19132 | 7.7× | lowest mean, **highest tail** |
+| v15 (LPM+LFU) | 2542 | 18529 | 7.3× | |
+| v8 (adaptive, FCFS) | 2580 | 17097 | 6.6× | highest hit_rate 0.633 |
+| v9 (cap6, FCFS) | 2613 | 16419 | 6.3× | lowest tail |
+| v5 (cap1, FCFS) | 2719 | 16827 | 6.2× | |
+- **LPM already trades tail for mean:** its SJF-like ordering prioritises cheap requests → lowest mean (2496) but **worst p99 (19132)** among good runs (FCFS runs have p99 ~16400–17100). So the mean gain comes partly from starving expensive requests.
+- **Prediction for SRPF (v17):** even more aggressive SJF → lower mean but likely a *worse* tail; if the tail explodes enough it offsets the mean gain (mean includes the tail). So the winning mechanism probably needs to **balance both** → motivates **v18 = aged-SRPF** (SJF with a wait-time boost to bound starvation): keep the mean gain while capping the tail. v17 (plain SRPF) is the clean isolation test; v18 refines based on its tail.
+- **Confirms scheduling-bound, not recompute-bound:** v8 has the *highest* hit_rate (0.633) yet not the best mean; hit_rate and mean-TTFT are decoupled at this operating point.
 - Infra: robust workflow = isolated flashinfer cache (`FLASHINFER_WORKSPACE_BASE=$WORK`) +
   `--dist-timeout 5400`. The shared `~/.cache/flashinfer` was corrupted by cross-researcher concurrent
   compiles (hangs + a SIGBUS in CUDA-graph capture); isolation fixed it (loads in ~147 s).

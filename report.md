@@ -163,3 +163,46 @@ architecture is wasted (0% hits); the interesting *mechanism* question becomes w
 **bounded-wait (`timeout`) policy + fast L3 I/O** can keep TTFT low while *retaining* L3 reuse
 (better TPOT/hit-rate than best_effort). That's the batch-2 focus (v1d-timeout, v3-timeout)
 plus completing the mechanism curve (v2-wc, v3-wc).
+
+## RESULTS SUMMARY (all logged versions; all fusion-off, so internally comparable)
+
+| version | tag | TTFT mean (ms) | TTFT p99 | out tok/s | hit | L3 frac | notes |
+|---|---|---|---|---|---|---|---|
+| v0_official | base | 87,615 | 270,799 | 146.9 | 0.82 | 0.25 | shared baseline |
+| v0_tuned | base | 108,824 | 322,801 | 119.3 | 0.82 | 0.26 | **bar to beat** |
+| **v1-parallel-io** | mech | **60,745** | 255,154 | 170.8 | 0.77 | 0.15 | parallel L3 I/O, wait_complete: **−31% vs official** |
+| v3-wc | mech | 92,956 | 280,154 | 138.2 | 0.82 | 0.26 | +read-priority+aux-threads: WORSE than v1 (contention) |
+| **v1b-besteffort** | config | **2,529** | 21,356 | 288.8 | 0.55 | 0.00 | **CHAMPION −97%**; bypasses L3 (recompute) |
+| be-writeback | config | 2,796 | 11,328 | 198.9 | – | – | best_effort+write_back ≈ champion |
+| be-wtsel | config | 2,914 | 15,473 | 247.0 | 0.27 | 0.00 | best_effort+wt_selective ≈ champion |
+| v4-tunedto | mech | 2,942 | 20,688 | 327.4 | 0.59 | 0.00 | v3+timeout(0.3/0.02/1.5s): l3=0 even at 1.5s wait |
+
+### Narrative for a skeptical maintainer
+
+1. **The baseline's catastrophic mean TTFT (~88 s) is prefetch-wait-bound.** The default
+   `wait_complete` policy blocks a request's admission until its (slow, SSD-backed) L3 prefetch
+   finishes; under λ=3.5/mc=128 this makes requests pile up. The median TTFT is ~1.2 s but the
+   mean is ~88 s — a pure queueing tail.
+
+2. **`best_effort` (config) is the overwhelming winner: 2.5 s mean TTFT (−97%), ~2× throughput,
+   losslessly** (it admits immediately and recomputes the un-prefetched prefix → identical KV).
+   It drives L3 hits to **0%** — i.e., it **bypasses the L3/SSD tier entirely**.
+
+3. **The L3/SSD tier is fundamentally unusable at low TTFT in this regime.** Even a tuned SHORT
+   `timeout` (≤1.5 s wait, v4) yields **l3_frac 0.0** — the prefetch can't land any page that fast
+   under load. So no bounded-wait policy recovers L3 reuse without re-incurring the queueing tail.
+
+4. **My novel mechanism — parallel L3 file-backend I/O (v1) — is the best *engine* change and the
+   only regime where the L3 architecture helps.** Under `wait_complete` it cuts mean TTFT 88→61 s
+   (−31%) losslessly by raising NVMe queue depth (micro-bench: read 1.6×/write 2.9×). Stacking more
+   concurrency (v2 read-priority pools, v3 aux-threads) does **not** help (v3-wc 93 s > v1 61 s) —
+   added thread/host-eviction contention. Honest negative.
+
+5. **Takeaway:** for this overloaded 3-tier workload, the biggest lever is *scheduling/admission
+   policy* (don't block on slow L3), not L3 I/O speed. The engine win (v1) matters when you must
+   use L3; otherwise `best_effort` dominates. A production system should combine `best_effort`
+   admission with v1's faster L3 backup path (v1 also cuts disk-read/eviction volume).
+
+Global eval condition: all my versions pass `--enforce-disable-flashinfer-allreduce-fusion`
+(the auto-enabled fusion hangs CUDA-graph capture with hicache on this cluster; lossless,
+pessimistic — applies equally to every version).

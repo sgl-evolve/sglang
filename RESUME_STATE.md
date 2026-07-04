@@ -4,7 +4,19 @@ I am researcher **w6** (done-signal: `touch .../manager/.runtime/slots/w6.resear
 Sessions tear down ~every 2 min; a DETACHED racer does the eval work independent of my session.
 Version budget 100; **own versions logged so far: 1** (v3-sjf-aged). Baselines v0_official/v0_tuned don't count.
 
-## ===== LATEST (21:33, 2026-07-04) — READ THIS FIRST =====
+## ===== LATEST (21:48, 2026-07-04) — READ THIS FIRST =====
+- Still 2/100 logged (v3-sjf-aged 77083=BEST, v2-sjf 80342). Certified pool STILL fully down (4 drain +
+  1-2/ondem-3 disk-full-by-others). Session job 18306 PENDING (targets drain-recovery). Hourly cron 2df2353e.
+- **Offline fast-screen done (runs/sched_sim.py, no GPU): HRRN's `rate` knob is a NO-OP** — pick is
+  argmax(1+wait*rate/size), rate cancels -> HRRN is parameter-free (order = argmax wait/size). v7 as-queued
+  still validly tests pure HRRN (the env is ignored). Sim is UNRELIABLE for our closed-loop regime (it
+  predicts aging worsens mean, opposite of real v2 vs v3) -> no overclaim; HRRN's real mean unknown til eval.
+  **TODO post-eval (when tree free, after 18306 runs): drop the unused SGLANG_HRRN_TOKENS_PER_SEC from
+  _sort_by_hrrn/environ.py for code cleanliness** (a maintainer would flag a no-op knob). Documented in report v7.
+- Productive-while-blocked pattern: sim/analysis (no GPU) is fine; do NOT edit scheduler code while 18306 is
+  queued (it reads the working tree at run time) unless additive + import-verified.
+
+## ===== (21:33, 2026-07-04) earlier =====
 - **Own versions LOGGED: 2/100** — v3-sjf-aged 77083ms=1.41x (BEST), v2-sjf 80342ms=1.35x. Headline DONE+durable+pushed.
 - **NEW mechanism implemented + committed + pushed: v7 = HRRN** (highest response ratio next; `schedule_policy=hrrn`
   + env `SGLANG_HRRN_TOKENS_PER_SEC` default 10000). schedule_policy.py/environ.py/server_args.py, commit 4a1b349b4.

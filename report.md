@@ -138,6 +138,10 @@ almost certainly runs a smaller batch (requests stuck in prefetch).
   low-backlog windows. The full adaptive form beats the flat-1 s v5.
 - **v9-adaptive-cap6** (mechanism, cap 6s): 2613 ms — cap climb PLATEAUED (1s→2719, 3s→2580 best, 6s→2613); v8 (cap 3s) stays the headline best (v9 slightly better throughput/e2e/p99 but +TTFT). Optimum cap ~3s; code restored to 3s.
 - **v10-adaptive-contention** (mechanism): running — occupancy pressure rarely saturates, so add a direct contention signal (len(ongoing_prefetch)/64) to the adaptive deadline: give up sooner when many requests are blocked on prefetch, wait longer when few.
+- **v10-adaptive-contention** (mechanism): 2757 ms — NOT a new best. The contention signal raised throughput (2.68→2.84) and cut e2e (41.4→38.9 s) but WORSENED mean TTFT (giving up prefetch sooner → more recompute → longer per-request prefill). Learning: for the headline (mean TTFT), the patient occupancy-only pressure (v8) beats aggressive contention give-up. Reverted to v8.
+
+### Adaptive prefetch — exploration summary (mechanism is well-mapped)
+The load-adaptive prefetch-admission mechanism is the novel win. Best = **v8 (cap 3 s, occupancy pressure): 2580 ms mean TTFT = 34× below v0_official (87615), 42× below v0_tuned**. Levers explored: prefetch policy (best_effort 3237 → adaptive 2580); cap sweep (1 s 2719, 3 s 2580, 6 s 2613 → optimum ~3 s); write policy (write_through essential; selective 6190 starves host); pressure signal (occupancy beats contention for the headline). Lossless throughout. Further gains need a different lever (host-eviction frequency-awareness, or scheduler decode-protection to cut TPOT).
 - Infra: robust workflow = isolated flashinfer cache (`FLASHINFER_WORKSPACE_BASE=$WORK`) +
   `--dist-timeout 5400`. The shared `~/.cache/flashinfer` was corrupted by cross-researcher concurrent
   compiles (hangs + a SIGBUS in CUDA-graph capture); isolation fixed it (loads in ~147 s).

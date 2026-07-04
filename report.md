@@ -472,3 +472,19 @@ protocol/budget.**
   sweet spot is toward MORE-selective (protect only the genuinely-long), not less.
 - **v19 (threshold=8192):** in progress — testing the more-selective direction.
 - Takeaway so far: threshold ~4096 is a good operating point (hit 0.69); 2048 over-protects (0.66).
+
+### Cost-aware eviction DEPTH_THRESHOLD sweep — COMPLETE (peak = 8192)
+| policy / threshold | Mean TTFT | hit_rate | P99 TTFT | note |
+|---|---|---|---|---|
+| LRU (prev best)    | 1142±43 ms | 0.6234 | ~7665 | baseline eviction |
+| costaware d2048    | 1020 ms | 0.6645 | 7630 | over-protects (medium prefixes dilute) |
+| costaware d4096    | 1030/1051 ms | 0.688–0.691 | 7624 | v17/v17b (first new best) |
+| **costaware d8192**| **936 ms** | 0.6806 | **7070** | **PEAK — best TTFT + best tail** |
+| costaware d16384   | 993 ms | 0.6260 | 7677 | too selective (≈LRU hit; only longest protected) |
+
+- **Inverted-U with peak at threshold≈8192** (~18% below LRU's 1142 ms, ~13% below the first-cut d4096).
+- **Key insight:** hit_rate is NOT monotonic with TTFT — d4096 has the highest hit (0.690) but WORSE TTFT
+  than d8192 (0.681 hit). Cost-aware eviction wins by minimizing recompute COST (protecting the few
+  O(L²)-expensive long-context prefixes), not by maximizing hit count. d8192 best balances protecting the
+  expensive prefixes against diluting the cache; d16384 protects too few (→LRU-like hit); d2048/d4096
+  protect too many (dilute). All lossless. Confirming d8192 with a reproduction (v21) before finalizing.

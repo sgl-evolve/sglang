@@ -7,8 +7,12 @@ Bar to beat: **v0_tuned**. Headline metric: **mean TTFT** (lower better), lossle
 
 On the fixed protocol (Qwen3.5-122B-A10B-FP8 hybrid-GDN MoE, TP8, 3-tier HiCache, real-text
 ShareGPT+LEval+LooGLE mix at λ=3.5 / max-concurrency 128), **mean TTFT drops from the tuned baseline's
-108,824 ms to ~1,205 ms (v6) — ~90×, losslessly — with ~3.5× throughput** (out 119→412 tok/s, req
-0.93→3.22/s, near the offered 3.5) and p99 322,801→8,702 ms.
+108,824 ms to ~790 ms — ~138×, losslessly — with ~3.5× throughput** (out 119→451 tok/s, req 0.93→3.52/s
+= the offered λ, i.e. the system now KEEPS UP with load) and p99 322,801→~5,000 ms. Five lossless changes,
+in FIVE stages: three that neutralize the disk-tier pathology (below), then two novel **cost-aware**
+policies that cut the residual recompute — **(4) cost-aware EVICTION** and **(5) SJF cost-aware SCHEDULING**
+— which take the best from ~1,142 ms to ~790 ms (−31%). The two new mechanisms are orthogonal and stack
+(attribution: SJF −24% alone [pure scheduling], eviction −16.5% alone [pure caching]).
 
 **Root cause of the baseline pathology:** the frozen prefetch policy `wait_complete` blocks every
 L3(disk)-hit request in the scheduler queue until its full storage prefetch completes; the file backend's
@@ -31,16 +35,33 @@ loaded one; verified same 7037/7037 successful requests, no quality gate tripped
    (same host-contention class). Skipping → −4% TTFT, −15% p99.
    Plus **[config] `--schedule-policy lpm`** (prefix-bundling for the many-questions-per-doc mix): small gain.
 
+**Two new cost-aware mechanisms attack the residual ~38% recompute (capacity-bound) by making misses
+CHEAPER and serving them SMARTER — not by adding memory (impossible: hicache_size=96 is frozen+asserted):**
+4. **[MECHANISM] recompute-cost-aware EVICTION** (`--radix-eviction-policy costaware`, new `CostAwareStrategy`)
+   — under best_effort a miss is recomputed on-GPU, and prefill is O(L²)-attention-dominated for LONG
+   prefixes (LEval/LooGLE 100k+), which are also heavily reused; so protect DEEP prefixes from eviction
+   (evict shallow/cheap first, LRU within, depth-bucket threshold 8192 — swept peak). 1142→~954 ms
+   (−16.5%), hit 0.623→0.681. Binary bucket beats graded tiers (v22) and other thresholds (inverted-U).
+5. **[MECHANISM] SJF cost-aware SCHEDULING** (`--schedule-policy sjf`, new policy) — sglang's `lpm`
+   reverts to FCFS once the queue > 128 (our saturated regime) → scheduling is NOT cost-aware under load.
+   SJF sorts the waiting queue by ascending UNCACHED prefill work (cheap-first) at any queue size → the
+   queue drains faster → −24% alone (the bigger lever), no starvation (P99 also drops). Combined with (4):
+   **~790 ms, hit 0.681, ~138× below the bar.**
+
 **Unifying principle for the two mechanisms:** under a non-reading prefetch policy the disk tier is
 provably dead, so BOTH its writes and its read-issue are pure host-contending churn — eliminate both,
 losslessly. (Suggested upstream: auto-disable storage backup + prefetch-issue when the effective read
 policy never consumes storage.)
 
 **Negatives (kept):** `enable_mixed_chunk` crashes (device KV-pool accounting leak on this hybrid-GDN
-model) — void; `radix_eviction_policy=slru` (−42%) and `write_through_selective` (hit 0.62→0.40) both
-hurt — LRU + write_through are optimal for this recency-heavy workload. Remaining cost is ~38% prefill
-recompute (capacity-bound: working set 19M ≫ device 2.35M + host 7.8M) competing with decode; the natural
-fix (prefill/decode overlap via mixed_chunk) is blocked by the crash above.
+model) — void; `write_through_selective` (hit 0.62→0.40) hurts; **capacity levers are dead** — mamba→KV
+realloc (`--max-mamba-cache-size`) is NEUTRAL (residual is host-capacity-bound, not device) and growing
+the host tier is forbidden+asserted; **parallel L3 disk reads + wait_complete is WORSE** (churns the
+frozen host cache; disk can't beat recompute even at 4× parallel — re-confirms skip-prefetch); cost-aware
+eviction TIERING and non-8192 thresholds are worse (binary d8192 is the peak). **Remaining floor** after
+all five changes (~790 ms): the unavoidable long-context FIRST-TOUCH recomputes (P99 ~5 s) — the only
+lever left is prefill/decode overlap (mixed_chunk), which is blocked by the crash above AND carries a
+silent-losslessness risk, so it is declined (lossless-above-all).
 
 **Variance caveat:** the two provided baselines differ ~24% at identical config, so the *big* wins
 (best_effort, skip-writes) are unambiguous but the last few-% incrementals (lpm, skip-prefetch) are

@@ -250,6 +250,10 @@ NOT logged** (they do not count against the 100-version budget). I consolidated 
   the working set effectively resident + faster reads). If KV is near-incompressible at these settings,
   expect ≈v6 or slightly worse (added CPU) — a legitimate negative that bounds the compression lever.
   Status: **queued, polling saturated held pool.**
+  - *Offline screen (free, not on curve): byte-plane splitting before zlib (group low/high bytes of
+    each bf16 elem) gives +10–13% ratio on high-entropy/attn-like data (1.34→1.51×) but −7.5% on
+    already-clustered data, and adds an unshuffle transpose on the read path. Marginal + distribution-
+    dependent → deferred to a possible v14 refinement, gated on v12 first proving compression helps.*
 
 ## Next mechanism candidate (v13, orthogonal to compression) — device-tier retention [SCOPED, not yet run]
 From the v1 batch-dynamics diagnosis: workload is **prefill-bound** and the **device KV pool is only

@@ -82,6 +82,18 @@ def _evict_key(n):
     return n.last_access_time + _EVICT_FREQ_ALPHA * getattr(n, "hit_count", 0)
 
 
+# kv-lynx-4d2: frequency-aware MAMBA eviction (v9). The Mamba SSM-state pool is the BINDING GPU
+# capacity constraint for this hybrid model (device KV pool sits ~72% empty), so which Mamba states
+# survive eviction sets the effective hit-rate ceiling. Stock evict_mamba() is a strict LRU walk.
+# CLOCK-style second chance: when the LRU candidate is "hot" (hit_count >= THR) and skip budget
+# remains, move it to MRU and evict a colder node instead. Lossless — only changes WHICH sequence's
+# Mamba state is dropped (and later recomputed to identical values), never any value; bounded by
+# MAXSKIP so we always free the requested slots and always terminate. Off by default (MAXSKIP=0 ==
+# stock LRU); enable/tune via env for A/B.
+_MAMBA_FREQ_MAXSKIP = int(os.environ.get("KVLYNX_MAMBA_FREQ_MAXSKIP") or "0")
+_MAMBA_FREQ_THR = int(os.environ.get("KVLYNX_MAMBA_FREQ_THR") or "2")
+
+
 class HostLRUList(LRUList):
     def __init__(self):
         super().__init__(mamba=True)
@@ -210,7 +222,11 @@ class HiMambaRadixCache(MambaRadixCache):
         # kv-lynx-4d2: confirm the frequency-aware eviction knob in server.log so an
         # eval can VERIFY the mechanism is actually active (env propagated) vs silently
         # stock-LRU. ALPHA=0.0 == stock LRU (lossless default).
-        logger.info("kv-lynx-4d2 eviction: _EVICT_FREQ_ALPHA=%s (0.0=stock LRU)", _EVICT_FREQ_ALPHA)
+        logger.info(
+            "kv-lynx-4d2 eviction: _EVICT_FREQ_ALPHA=%s (0.0=stock LRU) | "
+            "_MAMBA_FREQ_MAXSKIP=%s _MAMBA_FREQ_THR=%s (MAXSKIP=0=stock mamba LRU)",
+            _EVICT_FREQ_ALPHA, _MAMBA_FREQ_MAXSKIP, _MAMBA_FREQ_THR,
+        )
 
         super().__init__(params=params)
 
@@ -827,6 +843,7 @@ class HiMambaRadixCache(MambaRadixCache):
 
         x = self.mamba_lru_list.get_lru_no_lock()
         mamba_num_evicted = 0
+        skips_left = _MAMBA_FREQ_MAXSKIP  # kv-lynx-4d2: CLOCK second-chance budget (0 = stock LRU)
         while mamba_num_evicted < mamba_num and self.mamba_lru_list.in_list(x):
             assert x.mamba_value is not None, f"node has no mamba value, {x.id=}"
             assert x != self.root_node, f"root node is not evictable, {x.id=}"
@@ -834,6 +851,19 @@ class HiMambaRadixCache(MambaRadixCache):
             assert (
                 not x.evicted
             ), f"evicted node should not be in mamba_lru_list, {x.id=}"
+
+            # kv-lynx-4d2 (v9): frequency second chance. Protect a hot Mamba state by moving it to
+            # MRU and evicting a colder node instead. x_next (captured before the move) is the
+            # next-oldest and stays valid. Bounded by skips_left -> still frees mamba_num, terminates.
+            # Lossless: only changes which sequence's Mamba state is dropped (recomputed identically).
+            if skips_left > 0 and getattr(x, "hit_count", 0) >= _MAMBA_FREQ_THR:
+                x_next = self.mamba_lru_list.get_prev_no_lock(x)
+                self.mamba_lru_list.reset_node_mru(x)
+                skips_left -= 1
+                if not self.mamba_lru_list.in_list(x_next):
+                    x_next = self.mamba_lru_list.get_lru_no_lock()
+                x = x_next
+                continue
 
             if len(x.children) > 0:
                 # Internal: free device mamba only, KV stays on device (tombstone)

@@ -4,14 +4,30 @@ I am researcher **w6** (done-signal: `touch .../manager/.runtime/slots/w6.resear
 Sessions tear down ~every 2 min; a DETACHED racer does the eval work independent of my session.
 Version budget 100; **own versions logged so far: 1** (v3-sjf-aged). Baselines v0_official/v0_tuned don't count.
 
-## ===== LATEST (08:40, 2026-07-04) — READ THIS FIRST =====
+## ===== LATEST (09:10, 2026-07-04) — READ THIS FIRST =====
+- **Own versions LOGGED: 2/100** — v3-sjf-aged (77083ms=1.41x BEST), v2-sjf (80342ms=1.35x). HEADLINE DONE + durable.
+- **v1 & v5 now run as FULLY-AUTONOMOUS certified sbatch jobs** (survive my session):
+  v1-parallel-l3-io = jid in runs/v1-sbatch.jid (18269), v5-sjf-aged90-rep = runs/v5-sbatch.jid (18270).
+  Each --wrap does: retry eval 3x (flaky flashinfer-allreduce crash at capture, exit3 — v1 hit it once) THEN
+  AUTO-LOG to W&B on success. So results self-log even if my session ends. Comparable config (no nocar).
+- **BLOCKER: certified capacity crunch.** All certified nodes {-1,0-1,0-3 drain; 0-0 NCCL-broken; 1-2,ondem-3
+  alloc by fleet hold jobs}. Exclusive sbatch ETA ~24h (runs sooner when a hold job cycles — 18235 grabbed
+  ondem-3 at 08:37 that way, but then hit the flaky crash). Held-pool path also stuck (mgr held/ = 1-2 short).
+- ON RESUME: 1) `squeue -u $USER | grep quartz` — running/done? `find $D/runs -name summary.json`. If a NEW
+  ver has summary.json, confirm wandb-*.log/W&B has it (the wrap auto-logs; else log manually), read
+  overall/ttft_mean_ms, update report.md, EMAIL if <77083 (new best). 2) If a job left queue w/o summary
+  (all retries failed) -> resubmit (see runs/*-sbatch.jid + the mkw wrap pattern in transcript). 3) monitor
+  = wait_jobs.sh (fires on success OR job-gone-no-result). 4) budget: 100 cap; realistically eval-capacity-bound.
+- NOTE: this is refinement work (v1 disk-ablation, v5 noise-band). The headline result stands regardless.
+
+## ===== (08:40, 2026-07-04) earlier =====
 - **Own versions LOGGED: 2/100** — v3-sjf-aged (77083ms=1.41x BEST), v2-sjf (80342ms=1.35x). Headline DONE.
 - **PIVOTED to sanctioned sbatch fallback** (certified pool freed up ~08:37): held pool was stuck (0-0
   NCCL-broken then dropped by mgr; 1-2 disk-short), so both refinements now run as `--exclusive` certified
   sbatch jobs (clean, no collision). Campaign RETIRED (avoid double-run).
-    - **v1-parallel-l3-io**: sbatch jid in runs/v1-sbatch.jid (18235), RUNNING on ondem-3 (SAME certified
+    - **v1-parallel-l3-io**: sbatch jid in runs/v1-sbatch.jid (now 18264, retry3x), RUNNING on ondem-3 (SAME certified
       node as v2/v3 -> comparable). ~2h -> done ~10:40.
-    - **v5-sjf-aged90-rep**: sbatch jid in runs/v5-sbatch.jid (18262), PENDING (waiting for a 2nd certified node).
+    - **v5-sjf-aged90-rep**: sbatch jid in runs/v5-sbatch.jid (now 18265, retry3x), PENDING (waiting for a 2nd certified node).
 - **sbatch does NOT auto-log to W&B** — I MUST log each MANUALLY on completion:
   `( set -a; . $ROOT/.env; set +a; $D/.venv/bin/python $ROOT/programs/sgl/researcher/.claude/skills/report-sop/scripts/log_wandb.py quartz-7m3 $D/runs/<VER>/summary.json <VER> <commit=bc83a70d9> mechanism )`
   then read overall/ttft_mean_ms, update report.md table+section, EMAIL if <77083 (new best).

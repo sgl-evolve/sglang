@@ -9,6 +9,9 @@ import unittest
 from unittest.mock import MagicMock
 
 from sglang.srt.mem_cache.evict_policy import (
+    CostAwareStrategy,
+    CostFreqStrategy,
+    CostTieredStrategy,
     FIFOStrategy,
     FILOStrategy,
     LFUStrategy,
@@ -25,6 +28,36 @@ def _make_node(**kwargs):
     node.hit_count = kwargs.get("hit_count", 0)
     node.creation_time = kwargs.get("creation_time", 0.0)
     node.priority = kwargs.get("priority", 0)
+    return node
+
+
+def _make_depth_node(depth, last_access_time=0.0, hit_count=0, seg=None):
+    """Build a leaf whose cumulative prefix DEPTH (tokens root->node) == `depth`.
+
+    The cost-aware strategies walk parents summing len(node.key); `seg` optionally
+    splits the depth across a multi-hop chain to exercise the bounded parent-walk.
+    """
+    root = MagicMock()
+    root.key = None
+    root.parent = None
+    seg = seg or max(depth, 1)
+    node = None
+    remaining = depth
+    child = root
+    while remaining > 0:
+        take = min(seg, remaining)
+        n = MagicMock()
+        n.key = list(range(take))
+        n.parent = child
+        child = n
+        node = n
+        remaining -= take
+    if node is None:  # depth == 0
+        node = MagicMock()
+        node.key = []
+        node.parent = root
+    node.last_access_time = last_access_time
+    node.hit_count = hit_count
     return node
 
 
@@ -213,6 +246,108 @@ class TestEvictionOrdering(unittest.TestCase):
         ]
         actual = [strategy.get_priority(n) for n in eviction_order]
         self.assertEqual(actual, expected)
+
+
+class TestCostAwareStrategy(unittest.TestCase):
+    """Recompute-cost-aware eviction: protect DEEP (expensive-to-recompute) prefixes;
+    evict SHALLOW (cheap) first; LRU within each depth bucket. Threshold = 8192 tokens."""
+
+    def setUp(self):
+        self.strategy = CostAwareStrategy()
+
+    def test_shallow_is_bucket_zero(self):
+        node = _make_depth_node(depth=2000, last_access_time=5.0)
+        self.assertEqual(self.strategy.get_priority(node), (0, 5.0))
+
+    def test_deep_is_bucket_one(self):
+        node = _make_depth_node(depth=9000, last_access_time=5.0)
+        self.assertEqual(self.strategy.get_priority(node), (1, 5.0))
+
+    def test_at_threshold_is_deep(self):
+        node = _make_depth_node(depth=8192, last_access_time=5.0)
+        self.assertEqual(self.strategy.get_priority(node), (1, 5.0))
+
+    def test_shallow_evicted_before_deep(self):
+        shallow = _make_depth_node(depth=1000, last_access_time=100.0)  # even if recent
+        deep = _make_depth_node(depth=20000, last_access_time=1.0)  # even if old
+        self.assertLess(
+            self.strategy.get_priority(shallow), self.strategy.get_priority(deep)
+        )
+
+    def test_lru_within_bucket(self):
+        old = _make_depth_node(depth=9000, last_access_time=1.0)
+        new = _make_depth_node(depth=9000, last_access_time=10.0)
+        self.assertLess(
+            self.strategy.get_priority(old), self.strategy.get_priority(new)
+        )
+
+    def test_depth_via_multihop_chain(self):
+        # depth split into 64-token segments (page-aligned) still classifies deep
+        node = _make_depth_node(depth=9000, last_access_time=3.0, seg=64)
+        self.assertEqual(self.strategy.get_priority(node), (1, 3.0))
+
+    def test_walk_is_bounded(self):
+        # Very deep prefix in tiny segments must still terminate (break at threshold).
+        node = _make_depth_node(depth=40000, last_access_time=2.0, seg=64)
+        self.assertEqual(self.strategy.get_priority(node), (1, 2.0))
+
+
+class TestCostTieredStrategy(unittest.TestCase):
+    """Graded depth tiers (tier=depth//8192 capped at 4): deeper -> higher tier -> kept longer."""
+
+    def setUp(self):
+        self.strategy = CostTieredStrategy()
+
+    def test_tier_increases_with_depth(self):
+        t0 = self.strategy.get_priority(_make_depth_node(depth=1000))[0]
+        t1 = self.strategy.get_priority(_make_depth_node(depth=9000))[0]
+        t2 = self.strategy.get_priority(_make_depth_node(depth=17000))[0]
+        self.assertEqual((t0, t1, t2), (0, 1, 2))
+
+    def test_tier_capped(self):
+        big = self.strategy.get_priority(_make_depth_node(depth=100000, seg=8192))[0]
+        self.assertEqual(big, self.strategy.MAX_TIER)
+
+    def test_lower_tier_evicted_first(self):
+        shallow = _make_depth_node(depth=1000, last_access_time=100.0)
+        deep = _make_depth_node(depth=40000, last_access_time=1.0)
+        self.assertLess(
+            self.strategy.get_priority(shallow), self.strategy.get_priority(deep)
+        )
+
+
+class TestCostFreqStrategy(unittest.TestCase):
+    """2-factor: (is_deep, hit_bucket, last_access). Protect deep AND frequently-reused."""
+
+    def setUp(self):
+        self.strategy = CostFreqStrategy()
+
+    def test_priority_tuple_shape(self):
+        node = _make_depth_node(depth=9000, last_access_time=4.0, hit_count=3)
+        self.assertEqual(self.strategy.get_priority(node), (1, 3, 4.0))
+
+    def test_hit_count_capped(self):
+        node = _make_depth_node(depth=1000, last_access_time=4.0, hit_count=999)
+        self.assertEqual(
+            self.strategy.get_priority(node), (0, self.strategy.HIT_CAP, 4.0)
+        )
+
+    def test_depth_dominates_frequency(self):
+        # a shallow, very-hot node is still evicted before a deep, cold node
+        shallow_hot = _make_depth_node(depth=1000, last_access_time=1.0, hit_count=100)
+        deep_cold = _make_depth_node(depth=20000, last_access_time=100.0, hit_count=0)
+        self.assertLess(
+            self.strategy.get_priority(shallow_hot),
+            self.strategy.get_priority(deep_cold),
+        )
+
+    def test_frequency_tiebreak_within_bucket(self):
+        # within the same depth bucket, the less-frequently-hit is evicted first
+        cold = _make_depth_node(depth=9000, last_access_time=10.0, hit_count=1)
+        hot = _make_depth_node(depth=9000, last_access_time=1.0, hit_count=5)
+        self.assertLess(
+            self.strategy.get_priority(cold), self.strategy.get_priority(hot)
+        )
 
 
 if __name__ == "__main__":

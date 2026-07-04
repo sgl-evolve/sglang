@@ -187,6 +187,12 @@ MIN artifact). Correspondingly `prefetched_tokens_total` is absent from the metr
 So the SSD **read** tier was completely non-functional; parallelizing reads was moot (nothing was read) —
 independent of the dead-path bug.
 
+**Strong prior that L3 is NOT structurally dead:** the provided **baseline (`wait_complete`) reports L3
+hit fraction 0.254** — i.e. the storage read tier *does* produce hits with this exact model+workload when
+the policy waits for the read. So my universal `loaded=0` is a property of my runs (best_effort/timeout on
+disk-jammed nodes), not of the code. This shifts weight toward the disk-artifact hypothesis and makes v19
+(clean disk) worth running.
+
 **Why loaded=0 — two hypotheses, not yet distinguished:**
 1. **Disk-space artifact (likely):** v4's server.log is **32% write-refusals** (`refusing ... to avoid
    OOM/ENOSPC`, 17433/54168 lines) — the node's `/mnt/localssd` sat at the 200 GB min_free watermark

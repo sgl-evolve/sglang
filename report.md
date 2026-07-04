@@ -221,6 +221,8 @@ More Mamba slots ⇒ more cached sequences ⇒ hit_rate recovers (0.54→0.65) �
 
 ## Curve so far (own versions, all lossless, fusion-off)
 v2 scandir-fix (mechanism) 2425 ms → v3 ratio1.3 1802 → v4 ratio1.5 **1558 ms** (baseline 87615 ms).
+Reverted config points (all within/above noise of v4, kept for honest mapping): v5 ratio1.6 1603 ms,
+v6 page32 1897 ms.
 
 ## Operational notes (env / infra — not research variables)
 - **Pool coordination:** the manager's held pool is shared and some researchers run evals on it
@@ -258,16 +260,32 @@ lever peaks at 1.5 (v4).** v6+: get more Mamba capacity WITHOUT shrinking KV —
 end. `extra_buffer_lazy` ran but was collision-contaminated (1497/7037, tpot 600ms = 2× v4) → invalid,
 not logged. Added contamination-detect-retry to run_eval.sh so future runs auto-reject+retry collisions.
 
+### v6-page32 — `config` — reverted (finer paging: higher hit-rate, but decode/match overhead nets worse)
+`--page-size 32` (on the v4 engine: scandir-fix + ratio 1.5) to test the *hit-rate lever from a
+different angle* — finer prefix granularity captures partial matches lost at the 64-token page
+boundary, independent of Mamba capacity. It **worked as hypothesized on hit-rate** (0.5515) but was
+**consistently WORSE across every latency metric**: mean TTFT 1897 ms (v4 1558), median 1097 (913),
+p99 16710 (12866), **TPOT 381 ms (v4 300, +27%)**, throughput 3.17 req/s (3.26). The uniform
+regression — especially TPOT — shows finer paging adds real per-page overhead (more page-table
+entries + attention-kernel launches per token in decode, more hash/match ops in prefill) that
+outweighs the marginal hit-rate gain. **Keep page_size 64.** Corollary from this run's tier split:
+hits are 48.9% device / 50.0% host / **1.14% storage** (disk_read 627 K tok) — the **L3 disk tier is
+near-irrelevant** in this regime (working set fits GPU+host), which independently confirms why the
+*scandir query-path* fix mattered (it was the O(N) hit-query, not disk reads) and predicts the
+remaining disk-tier config levers (write-policy, io-backend, mem-layout) are ~neutral here.
+
 ## Status: near the practical KV-cache optimum for this workload+infra
 Lossless big levers are exhausted: scandir O(N) fix (v2, the novel mechanism) + Mamba/KV GPU-mem
 rebalance (v3/v4, validated config) → 56× TTFT, throughput near offered λ, GPU-prefill-bound. Fine
 config ranking is within the ~24% baseline noise. int8-mamba (2× capacity) is the only above-noise
 lever left but is LOSSY (disqualified by the lossless bar unless output-equivalence is proven).
-Running the fusion-matched control (scandir-ON + fusion-off) to isolate the scandir mechanism.
+(The scandir mechanism is already isolated by the S2 microbenchmark — a direct O(N)→O(1) algorithmic
+proof — so a full fusion-matched control eval was dropped as low-value given the ~1.5 h pool wait.)
 
 ### int8-mamba — DEAD END (incompatible with the frozen protocol)
 `--enable-int8-mamba-checkpoint` (2× Mamba capacity, the only above-noise lever left) raises
 `ValueError: not supported together with --enable-hierarchical-cache`. HiCache is frozen, so int8-mamba
 can't be used. With `no_buffer` (needs page_size=1, frozen at 64) and the ratio ceiling (v4@1.5) also
 ruled out, the **Mamba-capacity lever is definitively exhausted**; v4 (56×) is the near-optimal lossless
-result. Running the fusion-matched control (scandir-ON + fusion-off) to isolate the v2 scandir mechanism.
+result. The v6-page32 run additionally shows the L3 disk tier is near-irrelevant here (1.14% of hits),
+so the remaining disk-tier config levers are expected ~neutral — v4 stands as the near-optimal point.

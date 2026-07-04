@@ -144,6 +144,7 @@ class CacheAgnosticPolicy(Enum):
     FCFS = "fcfs"  # first come first serve
     LOF = "lof"  # longest output first
     SJF = "sjf"  # shortest job first (cache-aware): fewest remaining prefill tokens
+    HRRN = "hrrn"  # highest response ratio next (cache-aware): SJF with smooth anti-starvation
     RANDOM = "random"
     ROUTING_KEY = "routing-key"  # prioritize by routing key frequency in running batch
 
@@ -216,6 +217,8 @@ class SchedulePolicy:
                 )
             elif policy == CacheAgnosticPolicy.SJF:
                 SchedulePolicy._sort_by_shortest_job(waiting_queue)
+            elif policy == CacheAgnosticPolicy.HRRN:
+                SchedulePolicy._sort_by_hrrn(waiting_queue)
             elif policy == CacheAgnosticPolicy.RANDOM:
                 SchedulePolicy._sort_randomly(waiting_queue)
             elif policy == CacheAgnosticPolicy.ROUTING_KEY:
@@ -389,6 +392,43 @@ class SchedulePolicy:
             waiting_queue.sort(key=key)
         else:
             waiting_queue.sort(key=remaining)
+
+    @staticmethod
+    def _sort_by_hrrn(waiting_queue: List[Req]) -> None:
+        """Cache-aware Highest-Response-Ratio-Next.
+
+        A smoother alternative to SJF+binary-aging (v2/v3): order the waiting queue by the classic
+        HRRN response ratio ``R = (wait + service) / service = 1 + wait/service``, highest first.
+        ``service`` = estimated prefill time = remaining (uncached) prefill tokens converted to seconds
+        via ``SGLANG_HRRN_TOKENS_PER_SEC`` (prefill throughput). Short jobs get a high ratio (favored,
+        as in SJF → low mean TTFT), while a long job's ratio *grows with its wait*, so it is eventually
+        promoted — bounding tail starvation **continuously** (no threshold cliff like aging). Fully
+        cached requests (service 0) are free → scheduled first. Reordering only ⇒ lossless (outputs
+        unchanged, no drops). ``num_matched_prefix_tokens`` is populated in ``calc_priority``. [quartz-7m3] mechanism.
+        """
+
+        rate = envs.SGLANG_HRRN_TOKENS_PER_SEC.get()
+        if not rate or rate <= 0:
+            rate = 1.0
+        now = time.perf_counter()
+
+        def remaining(r):
+            return max(
+                0,
+                len(r.origin_input_ids)
+                + len(r.output_ids)
+                - r.num_matched_prefix_tokens,
+            )
+
+        def neg_ratio(r):
+            s = remaining(r)
+            if s <= 0:
+                return float("-inf")  # fully cached: zero service, infinite ratio -> schedule first
+            w = now - (r.time_stats.wait_queue_entry_time or now)
+            # service seconds = s / rate ; R = 1 + w / service_sec = 1 + w*rate/s . Sort desc -> negate.
+            return -(1.0 + (w * rate) / s)
+
+        waiting_queue.sort(key=neg_ratio)
 
     @staticmethod
     def _sort_randomly(waiting_queue: List[Req]) -> None:

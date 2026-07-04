@@ -717,6 +717,7 @@ class ServerArgs:
                 "dfs-weight",
                 "lof",
                 "sjf",
+                "hrrn",
                 "priority",
                 "routing-key",
             ],

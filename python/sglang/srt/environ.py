@@ -346,6 +346,10 @@ class Envs:
     # many seconds is promoted ahead of the shortest-job ordering (FCFS among the
     # aged), bounding tail starvation of large prompts. 0 = pure SJF (no aging).
     SGLANG_SJF_AGING_SEC = EnvFloat(0.0)
+    # HRRN scheduler (schedule_policy=hrrn): prefill throughput (tokens/sec) used to convert a
+    # request's remaining prefill tokens into a service time, for the response ratio
+    # R = 1 + wait_sec * rate / remaining_tokens. Higher = wait matters more (stronger anti-starvation).
+    SGLANG_HRRN_TOKENS_PER_SEC = EnvFloat(10000.0)
     SGLANG_EMPTY_CACHE_INTERVAL = EnvFloat(-1)  # in seconds. Set if you observe high memory accumulation over a long serving period.
     SGLANG_DISABLE_CONSECUTIVE_PREFILL_OVERLAP = EnvBool(False)
     # Force-enable the WAR (write-after-read) barrier for the overlap scheduler

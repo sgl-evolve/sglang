@@ -12,7 +12,7 @@ Version budget 100; **own versions logged so far: 1** (v3-sjf-aged). Baselines v
 - **v1 (18269) + v5 (18270)** = autonomous self-logging retry sbatch, still PENDING (queued for a free
   certified node). They WILL run + auto-log W&B whenever capacity frees, even if my session is idle.
 - **Re-engagement is automated** (so I stopped wasteful 10-min polling after 12h of zero movement):
-  (a) monitor wait_jobs.sh (task brccu6dju) fires on job success/failure;
+  (a) monitor wait_jobs.sh (task bk0bcbpk6) fires on job success/failure;
   (b) DURABLE CRON e958d034 fires every 2h to check/process/resubmit/email.
 - ON RESUME/CRON TICK: check squeue for 18269/18270 + `find runs -name summary.json`; for any NEW ver:
   ensure W&B-logged (wrap auto-logs; else log_wandb.py), update report.md, EMAIL if <77083. If a job

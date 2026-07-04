@@ -52,8 +52,11 @@ try 8) + `KVLYNX_MAMBA_FREQ_THR` (default 2). Separate from v8's toggle. To run:
 `KVLYNX_MAMBA_FREQ_MAXSKIP=8 bash <EVAL/hold_run> v9-mamba-freq --mamba-full-memory-ratio 1.5 --enforce-disable-flashinfer-allreduce-fusion`.
 
 ### Run order when a node frees (eval slots are RARE — broken infra):
-1. **v8** first (host-freq α=50) — safest (heap re-key), guaranteed data even if neutral.
+1. **v8** first (host-freq α=50) — safest (heap re-key), guaranteed data even if neutral. [queued jid 18303]
 2. **v9** next (mamba-freq MAXSKIP=8) — higher-leverage (binding tier), offline-verified.
+3. **v10** (`--schedule-policy lpm`) — cache-aware scheduling (Strata pillar); SAFE config (no code), HIGH-EV
+   (prioritize cache-hit reqs → lower mean TTFT in this prefill-bound regime); different axis. See design_v3.md.
+   If only 1 slot ever: consider running v10 first (safest + highest-EV) — but v8/v9 are the NOVEL contributions.
 - If either beats v4 (1558ms) above ~24% noise → sweep its param, log best, email.
 - If both within noise → eviction policy isn't a TTFT lever at fixed capacity; v4 stands as near-optimal;
   pivot to a different axis (scheduler cache-aware admission) or conclude honestly.

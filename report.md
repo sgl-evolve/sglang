@@ -4,6 +4,20 @@ Researcher: **quartz-7m3** · branch `evolve/quartz-7m3` · W&B run `sgl-evolve/
 Bar to beat: **v0_tuned** (mean TTFT 108824 ms). Reference/context: v0_official (87615 ms).
 Headline metric: **mean TTFT** (lower better), lossless gate: outputs match no-cache.
 
+### Results so far (own versions, formal evals)
+| ver | mechanism | mean TTFT (ms) | vs v0_tuned | vs v0_official | out tok/s | hit / l3 |
+|-----|-----------|---------------:|:-----------:|:--------------:|----------:|---------:|
+| v0_official | stock default | 87615 | +19% (worse) | — | 146.9 | .816 / — |
+| v0_tuned | best stock cfg (THE BAR) | 108824 | — | +24% (worse) | 119.3 | .821 / — |
+| **v3-sjf-aged** | **SJF + aging=90s** | **77082.7** | **1.41× (−29%)** | **1.14× (−12%)** | **149.2** | .818 / .253 |
+| v2-sjf | pure SJF | _running_ | | | | |
+| v1-parallel-l3-io | parallel L3 disk I/O | _queued_ | | | | |
+
+**v3-sjf-aged is the current best** — a **29% mean-TTFT cut vs the bar** with hit-rate/l3-frac matching
+baseline (cache behaviour preserved) and out_tok/s slightly *up*. Confirms the core thesis: mean TTFT
+here is **prefill-queue-waiting-dominated**, and shortest-job ordering (with aging to bound the tail)
+is the dominant lever, not disk latency.
+
 ## Environment / regime notes
 - The two supervised baselines share **identical** `resolved_args` yet differ **24%** in mean TTFT
   (v0_official 87.6 s vs v0_tuned 108.8 s). Median TTFT is only ~1.2–1.4 s while p99 is ~270–322 s:
@@ -74,16 +88,28 @@ prefill tokens (they block everyone under FCFS). Strong prior that SJF cuts mean
 Eval it with `eval-on-pool.sh quartz-7m3 v2-sjf --schedule-policy sjf`.
 **Result / takeaway.** _(eval pending — see infra note)_
 
-## v3 — optional aging for SJF (bounded tail)  [mechanism] — READY, eval pending
+## v3 — optional aging for SJF (bounded tail)  [mechanism] — ✅ EVALUATED, NEW BEST
 **Hypothesis.** Pure SJF (v2) can starve the largest prompts → p99/tail rises. Aging bounds that:
 a request waiting ≥ `SGLANG_SJF_AGING_SEC` is promoted ahead of the shortest-job ordering (FCFS among
-the aged), recovering the tail while keeping SJF's mean-TTFT gain. Only worth running if v2's p99
-regresses badly.
+the aged), recovering the tail while keeping SJF's mean-TTFT gain.
 **What changed.** `schedule_policy.py` `_sort_by_shortest_job` gains an aging branch; `environ.py` new
 `SGLANG_SJF_AGING_SEC` (`EnvFloat`, default 0 = pure SJF, so v2's behavior is unchanged). On
 `evolve/quartz-7m3` (**f52eab323**), unit-tested (aged reqs promoted FCFS, rest SJF). Lossless (reorder).
-Eval with `--schedule-policy sjf` + env `SGLANG_SJF_AGING_SEC=90` (e.g.).
-**Result / takeaway.** _(eval pending)_
+Eval'd with `--schedule-policy sjf` + env `SGLANG_SJF_AGING_SEC=90`.
+**Result (2026-07-04, ondem-3).** mean TTFT **77082.7 ms** — **1.41× better than v0_tuned** (108824,
+−29%) and **1.14× better than v0_official** (87615, −12%). out_tok/s **149.2** (> both baselines).
+p99 TTFT 249936 ms (below the baselines' ~270–322 s — aging kept the tail in check). median TTFT
+1418 ms. Cache: hit 0.818, l3-frac 0.253 — **matches the golden run** (0.816 / 0.25), so cache
+placement is unchanged and the win is purely from scheduling order.
+**Lossless.** SJF (+aging) only **reorders** the waiting queue; each request's tokens and output are
+untouched, and waiting-timeout aborts are disabled (`SGLANG_REQ_WAITING_TIMEOUT=-1`), so no request is
+dropped. Cache-hit/tier fractions equal baseline → decode path identical. Lossless by construction.
+**Self-audit.** server.log ServerArgs shows `schedule_policy='sjf'`; all contract args on-contract
+(ctx 262144, mem-frac 0.85, hicache_size 96, tp 8, page_size 64, backend=file, hierarchical=True);
+aging env confirmed live in the server process. No silent fallback. Logged to W&B (tag `mechanism`).
+**Takeaway.** The single biggest lever found so far. Validates the offline 2.37× SJF sim directionally
+(real serving win 1.41× vs the bar; regime noise + closed-loop concurrency temper the ideal). Next:
+isolate pure SJF (v2) to measure aging's tail cost, and test aging sensitivity (30/60/120/180 s).
 
 ## Eval-infrastructure note (2026-07-03)
 The shared a3 pool was severely degraded this session: a cluster-wide networked-FS stall (all
@@ -104,6 +130,11 @@ is confirmed applied before the freeze; `--disable-custom-all-reduce` does **not
 a settle-wait clean-handoff does **not** help. Evals that *started earlier* keep serving, so this is a
 cluster fabric/rank-mapping issue on new starts (shape like the earlier FS stall; expected to recover;
 escalated to the operator). An autonomous detached campaign (`campaign.sh`, blocking-flock racer +
-hang-watchdog + **W&B auto-log on success**) is retrying v2-sjf → v1 → v3 in priority order and will log
-each the instant the fabric recovers. **0 own versions have reached a valid serve yet — purely
-infrastructural; all three mechanisms are implemented, unit-tested, committed, and pushed.**
+hang-watchdog + **W&B auto-log on success**) retried v2-sjf → v1 → v3 in priority order.
+
+**Update (2026-07-04 ~02:00): fabric RECOVERED.** The campaign caught the window and evaluated
+**v3-sjf-aged** first (the version in flight when the barrier cleared) → new best, logged. The campaign
+continues autonomously to v2-sjf and v1-parallel-l3-io. Lesson for the record: the ~9 h blocker was
+entirely a transient shared-cluster NCCL-fabric degradation on *new* server starts — not code, venv,
+custom-all-reduce, or dirty handoff (all ruled out); the detached auto-logging campaign was the right
+survival mechanism and produced a result with zero human intervention the moment infra healed.

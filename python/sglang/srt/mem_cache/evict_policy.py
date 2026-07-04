@@ -63,8 +63,8 @@ class CostAwareStrategy(EvictionStrategy):
     pathological tree can't make eviction quadratic.
     """
 
-    DEPTH_THRESHOLD = 8192  # tokens; separates short turns from long-context prefixes
-    MAX_WALK = 96           # cap the parent walk so get_priority stays ~O(1)
+    DEPTH_THRESHOLD = 2048  # tokens; separates short turns from long-context prefixes
+    MAX_WALK = 512          # cap the parent walk so get_priority stays ~O(1)
 
     def get_priority(self, node: TreeNode) -> Tuple[int, float]:
         depth = 0

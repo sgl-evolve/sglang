@@ -63,7 +63,7 @@ class CostAwareStrategy(EvictionStrategy):
     pathological tree can't make eviction quadratic.
     """
 
-    DEPTH_THRESHOLD = 4096  # tokens; separates short turns from long-context prefixes
+    DEPTH_THRESHOLD = 8192  # tokens; swept peak (separates short turns from long-context prefixes)
     MAX_WALK = 512          # cap the parent walk so get_priority stays ~O(1)
 
     def get_priority(self, node: TreeNode) -> Tuple[int, float]:
@@ -79,6 +79,34 @@ class CostAwareStrategy(EvictionStrategy):
         is_deep = 1 if depth >= self.DEPTH_THRESHOLD else 0
         # min-heap pops smallest first: (shallow=0, older) evicted before (deep=1, ...)
         return (is_deep, node.last_access_time)
+
+
+class CostFreqStrategy(EvictionStrategy):
+    """2-factor cost×frequency eviction: like CostAwareStrategy (protect DEEP/expensive prefixes,
+    threshold 8192), but WITHIN each depth bucket, protect FREQUENTLY-REUSED nodes (higher hit_count)
+    before evicting by recency. Rationale: cost-aware alone can evict a shallow-but-hot prefix (a
+    short doc reused by many questions) that is cheap-per-hit but reused often. Ordering:
+    evict (shallow, low-hit, old) first; keep (deep, high-hit, recent). Lossless (eviction only).
+    """
+
+    DEPTH_THRESHOLD = 8192
+    MAX_WALK = 512
+    HIT_CAP = 8  # cap hit_count influence so a few mega-hit nodes don't dominate
+
+    def get_priority(self, node: TreeNode) -> Tuple[int, int, float]:
+        depth = 0
+        n = node
+        hops = 0
+        while n is not None and getattr(n, "key", None) is not None and hops < self.MAX_WALK:
+            depth += len(n.key)
+            if depth >= self.DEPTH_THRESHOLD:
+                break
+            n = n.parent
+            hops += 1
+        is_deep = 1 if depth >= self.DEPTH_THRESHOLD else 0
+        hit_bucket = min(getattr(node, "hit_count", 0), self.HIT_CAP)
+        # min-heap: (shallow, infrequent, old) evicted first; (deep, frequent, recent) kept
+        return (is_deep, hit_bucket, node.last_access_time)
 
 
 class CostTieredStrategy(EvictionStrategy):

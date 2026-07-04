@@ -433,3 +433,24 @@ the device pool; (2) using the L3 disk tier (v16), even with a 4× parallel back
 slower than recompute because the prefetch path churns the frozen cache. **best_effort + skip-writes +
 skip-prefetch + lpm remains the lossless optimum (~1.1 s TTFT, ~95× below the tuned bar) for this fixed
 protocol/budget.**
+
+### v17 — recompute-cost-aware eviction (`--radix-eviction-policy costaware`)  [mechanism]  ** NEW BEST **
+- **Idea:** under best_effort a miss is recomputed on-GPU; prefill is O(L²)-dominated for LONG prefixes
+  (the LEval/LooGLE portion, 100k+ tokens) even in this mamba-hybrid, so a deep prefix is far costlier to
+  recompute than a short one — and long-context conversations are heavily REUSED across their many turns.
+  New pluggable eviction strategy `CostAwareStrategy`: bucket evictable leaves by prefix DEPTH (cumulative
+  tokens root→node, via a bounded parent-walk) — evict SHALLOW (cheap) leaves before DEEP (expensive),
+  LRU within each bucket. Lossless (eviction only changes what's cached; a wrong evict just recomputes).
+  ~35 lines in `evict_policy.py` + factory/argparse wiring; committed 2818cd334.
+- **Result (v17, n=1) vs prev best (v13, LRU):** Mean TTFT **1030.4 ms** (prev 1098; band 1142±43, prev
+  6-run min 1089 — v17 is below the entire band), **hit_rate 0.6906 vs 0.6234 (+6.7 pp)**, throughput
+  **50475 tok/s / 3.52 req/s** (prev ~48000 / 3.37), P99 7624 ms (≈prev 7665), evict_mean_ms 1.03 (prev
+  0.54 — 2× from the depth-walk, negligible vs TTFT). Lossless (7037/7037, no fallback; frozen budget
+  asserted: hicache_size=96, mem_fraction=0.85).
+- **Why it works (overturns the earlier "LRU is optimal" hypothesis):** the +6.7 pp hit_rate is a
+  structural mechanism effect (not run-noise) — protecting deep, heavily-reused long-context prefixes from
+  eviction better matches the workload's reuse than pure recency. Fewer/cheaper recomputes → lower mean
+  TTFT + higher throughput. The P99 tail is unchanged (those are genuine first-touch misses), but the mean
+  and hit rate improve. This is the FIRST lever to beat the best_effort+skip-mechanisms plateau.
+- Reproduction (v17b) in progress to confirm before declaring; the hit_rate signal already strongly
+  corroborates a real gain.

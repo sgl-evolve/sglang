@@ -227,8 +227,11 @@ Ran on a clean exclusive nodeset-0 hold. Two datapoints so far, both **honest ne
 + parallel-reads + best_effort is optimal.
 
 | v9-be-page128 | page-size 64 → **128** | 3119 ms (+55%) | loses: coarser cache granularity ⇒ lower effective hit_rate |
+| v10-be-page32 | page-size 64 → **32** | 2219 ms (+10%) | closest challenger, still loses — page 64 is the sweet spot |
 
-Page-size 128 (larger) hurts vs v4's default 64. v10 tests 32 (smaller); then timeout-grace (v13),
+Page-size is a clean concave curve around v4's default 64: 32→2219, **64→2013 (v4)**, 128→3119. Smaller
+beats larger, but 64 is optimal (finer granularity raises hit_rate up to a point, then per-page overhead
+dominates). Remaining: timeout-grace (v13),
 read-thread ablation (v6=32/v7=8, expected ≈v4 since IO-bench pinned 16 as optimum). **v4 (2013 ms)
 unbeaten across the entire best_effort design space so far** — the parallel-read mechanism + 0-wait
 admission is the win; every other axis (write-policy, write-parallelism, page-size) is neutral-to-negative.

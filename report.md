@@ -115,3 +115,13 @@ hit 0.452. Measured same-node back-to-back (ondem-3) => low variance; throughput
 MECHANISM WIN: loading-bound-aware balanced prefill batching pays off in the low-queue best_effort regime
 (pairs unavoidable per-layer H->D load_back with enough prefill compute to hide it). Lossless.
 Next: ratio sweep (v11 R=1.0, v12 R=1.5, v13 R=3.0) to find the balancing optimum; +be-configs v7-v10.
+
+### More results (best_effort/timeout winning regime; all --enforce-disable-flashinfer-allreduce-fusion)
+- v7-be-lpm [config] **2010.3 ms — BEST (54x < v0_tuned)**. lpm cache-aware sched: hit 0.44->0.618 -> fewer recomputes.
+- v8-be-mixedchunk [config] 16180 ms — NEGATIVE (mixed-chunk fragments prefill throughput in recompute-heavy regime).
+- v10-timeout [config] 2588 ms — timeout prefetch BEATS best_effort-alone (3241): bounded disk wait -> hit 0.44->0.612.
+- v14-be-lpm-balanced [mechanism] 2708 ms — NEGATIVE: my balanced batching CONFLICTS with lpm (both reorder the
+  queue; balanced's deferral breaks lpm's prefix co-scheduling -> hit 0.618->0.469). Balanced helps best_effort-ALONE
+  (v6 +7%) but not with lpm. KEY INSIGHT: two cache-aware schedulers interfere; lpm alone dominates.
+Curve summary (mean TTFT, lower=better): v0_tuned 108824 > v0_official 87615 >> v1 3241 (best_effort, 34x) >
+  v6 3023 (best_effort+balanced, mechanism +7%) > v10 2588 (timeout) > v7 2010 (best_effort+lpm, BEST 54x).

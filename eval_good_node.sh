@@ -19,7 +19,7 @@ GLOCK="$STATE/global.lock"
 held_nodes(){ compgen -G "$RT/held/*" >/dev/null 2>&1 && for f in "$RT/held"/*; do basename "$f"; done; }
 probe(){ srun --jobid="$2" --overlap -N1 -w "$1" bash -c '
     fg=$(df -BG /mnt/localssd 2>/dev/null|tail -1|awk "{gsub(/G/,\"\",\$4);print \$4}")
-    ns=$(pgrep -c -f sglang.launch_server 2>/dev/null||echo 0)
+    ns=$(pgrep -c -f "[s]glang.launch_server" 2>/dev/null||echo 0)
     gm=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null|sort -n|tail -1)
     echo "${fg:-0} ${ns:-0} ${gm:-0}"' 2>/dev/null; }
 

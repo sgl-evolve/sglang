@@ -21,6 +21,18 @@ done
 node=$(squeue -h -j "$HOLDJID" -o '%N' 2>/dev/null | tr -d ' ')
 echo "[batch2] hold $HOLDJID landed on $node"
 
+# GPU-health gate: a node freed from the manager pool can carry foreign leftover GPU state
+# (NCCL init then OOMs). Check max GPU mem used; if occupied, record the bad node + release + exit
+# so the re-queue can --exclude it (avoids wasting eval preflights on a wedged node).
+maxmem=$(timeout 60 srun --jobid="$HOLDJID" --overlap -N1 -w "$node" bash -c \
+  'nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | sort -rn | head -1' 2>/dev/null | tr -dc 0-9)
+echo "[batch2] $node max GPU mem used = ${maxmem:-?} MiB"
+if [ -z "${maxmem:-}" ] || [ "${maxmem:-99999}" -gt 2000 ]; then
+  echo "[batch2] WEDGED node $node (GPU occupied) — recording + releasing, re-queue must --exclude it"
+  echo "$node" >> /home/junyanch_google_com/autoresearch/workspace/sgl/researchers/kv-heron-eb9/.bad_nodes
+  scancel "$HOLDJID"; echo "[batch2] released $HOLDJID (wedged)"; exit 2
+fi
+
 probe(){ timeout 60 srun --jobid="$HOLDJID" --overlap -N1 -w "$node" bash -c \
   'd=$(df --output=avail -BG /mnt/localssd | tail -1 | tr -dc 0-9); m=$(awk "/MemAvailable/{print int(\$2/1024/1024)}" /proc/meminfo); echo $d $m' 2>/dev/null; }
 

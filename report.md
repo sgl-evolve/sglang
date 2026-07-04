@@ -30,9 +30,20 @@ it (lossless — pure perf fusion, identical numerics). Applied to all runs.
 
 **Evolution curve (mean TTFT, own versions):** v1 91721 (regression: wait_complete GPU starvation) →
 v2 4244 (serial+timeout) → v3 2903 (parallel reads+timeout) → **v4 2013 (parallel reads + best_effort =
-CHAMPION, −97.7%)**. **13 versions logged; v4 unbeaten.**
+CHAMPION vs baseline, −97.7%)**. **14+ versions logged.** (v4's exact config re-run at 2603 ms — see the
+~30% run-to-run variance caveat below; the −97% regime win is robust, fine per-knob rankings are not.)
 
-**Study complete — v4 is the robust optimum on this fixed protocol.** A full best_effort design-space
+**⚠️ Run-to-run variance is large (~30%) — the sweep's fine rankings are within noise.** A reproducibility
+re-run of the exact v4 config (v4r-repeat) gave **2603 ms vs the original 2013 ms** — a ~590 ms (~29%)
+spread on *identical* settings. So the best_effort design-space results all cluster in ~2000–3000 ms
+(v4 2013 / v4r 2603 / page32 2219 / thr8 2588 / lfu 2638 / thr32 2863 / selective 2843 / writeback 2917 /
+page128 3119) and are **NOT reliably distinguishable from each other at single-run precision** — the
+apparent "v4 wins every axis" is mostly noise, not real per-knob effects. What IS robust (differences far
+larger than the ~30% noise): the **regime** wins — best_effort (~2–2.6 s) ≫ timeout (~4.0–4.2 s) ≫
+wait_complete (~92 s, v1) ≫ baseline (87.6 s); and parallel L3 reads vs serial (v2→v3, ~1.4×). The
+headline **−97% (≈40×) vs baseline is rock-solid**; fine config tuning within best_effort is second-order.
+
+**Study conclusion — best_effort + parallel-L3-reads is the robust optimum regime on this fixed protocol.** A full best_effort design-space
 sweep (v11/v12/v15 write-side, v9/v10 page-size, v13 prefetch-timeout, v6/v7 read-thread-count) plus a
 3rd engine mechanism (v16 LFU eviction) all lose to v4 — see the tables below. Three engine mechanisms
 were tried: **parallel L3 reads = the win (v3/v4)**; parallel L3 writes (v15) and LFU eviction (v16) are

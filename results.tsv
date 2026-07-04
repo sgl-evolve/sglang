@@ -9,3 +9,4 @@
 07-04 18:53	v20-be-lpm-wtsel	config	ttft_mean=2705.6ms	e1aa1727a	logged
 07-04 19:16	v21-be-lpm-wb	config	ttft_mean=2819.1ms	bfa830410	logged
 07-04 20:09	v23-be-lpm-cgate1k	mechanism	ttft_mean=2212.0ms	a89ed660e	logged
+07-04 20:58	v24-be-lpm-cgate4k	mechanism	ttft_mean=1837.9ms	a0b978c38	logged

@@ -151,3 +151,10 @@ lpm REVERTS to fcfs when waiting_queue > 128 (prefix-sort too expensive for big 
 best_effort+lpm wins: best_effort keeps the queue SMALL (<128, no disk waits) so lpm actually engages; under
 wait_complete the queue is huge -> lpm silently == fcfs. The revert is LPM-ONLY: dfs-weight (other stock cache-aware
 policy) does NOT revert -> stays cache-aware even in queue bursts >128. Hypothesis: v26 be+dfs-weight may beat be+lpm.
+
+### *** v24-be-lpm-cgate4k [MECHANISM] 1837.9 ms — NEW BEST (~59x < v0_tuned, -8.6% vs v7) *** EMAILED.
+My length/cost-aware prefetch gate WINS when tuned: gate=1024 (v23) too aggressive 2212 (too many prefixes wait ->
+queue saturates) BUT gate=4096 = 1837.9 (only the few genuinely-LONG prefixes wait 0.3s; their O(L^2) recompute is
+expensive enough that a short page-cache-hot disk wait pays off). SWEET SPOT between 1024 and 4096. This is a genuine
+MECHANISM win over the best config (v7 be+lpm 2010). Lossless. env SGLANG_PREFETCH_COST_GATE=4096 (cap 0.3s).
+MUST CONFIRM (repeat, given ~24% baseline variance) + refine sweet spot (gate 2048/6144/8192, cap 0.1/0.5).

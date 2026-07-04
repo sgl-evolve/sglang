@@ -250,3 +250,16 @@ NOT logged** (they do not count against the 100-version budget). I consolidated 
   the working set effectively resident + faster reads). If KV is near-incompressible at these settings,
   expect ≈v6 or slightly worse (added CPU) — a legitimate negative that bounds the compression lever.
   Status: **queued, polling saturated held pool.**
+
+## Next mechanism candidate (v13, orthogonal to compression) — device-tier retention [SCOPED, not yet run]
+From the v1 batch-dynamics diagnosis: workload is **prefill-bound** and the **device KV pool is only
+~34% used (66% idle)** while 43% of hits come from host + 25% from disk, each paying an H→D load-back
+(and disk read). Hypothesis: **retain hot reused prefixes on the idle device capacity** → convert
+host/disk hits into device hits → fewer H→D transfers + disk reads → lower prefill TTFT. This is
+orthogonal to v12 (compression shrinks/speeds disk reads; retention *avoids* them). On-contract: it
+does NOT touch the forbidden knobs (mem-frac 0.85 / hicache-size 96 / ratio) — only the *policy* of what
+stays resident. Concrete entry points (active class for this hybrid-Mamba model = **`HiMambaRadixCache`**
+in `mem_cache/hi_mamba_radix_cache.py`): `load_back_threshold=10`, `write_through_threshold`,
+`evictable_full_device_leaves`, and the `write_backup`/`load_back`/`init_load_back` eviction path — lever
+is likely **lazier device eviction while device has free capacity** (only evict under real allocator
+pressure). Decision gated on v12's result: pursue if compression doesn't already dominate.

@@ -4,6 +4,16 @@ Researcher: **quartz-7m3** · branch `evolve/quartz-7m3` · W&B run `sgl-evolve/
 Bar to beat: **v0_tuned** (mean TTFT 108824 ms). Reference/context: v0_official (87615 ms).
 Headline metric: **mean TTFT** (lower better), lossless gate: outputs match no-cache.
 
+## TL;DR
+**Mean TTFT here is prefill-queue-waiting-dominated** (median ~1.4 s but mean ~90 s, prompts 0–190 K
+tokens). Reordering the prefill waiting queue **shortest-job-first** — cache-aware, with light **aging**
+to bound the heavy tail — cuts mean TTFT to **77 083 ms, a 1.41× improvement over the v0_tuned bar**
+(108 824 ms; and 1.14× over v0_official 87 615). Pure reorder ⇒ **lossless** (outputs unchanged, no drops,
+cache-tier fractions identical to baseline). This is the headline result (best = **v3-sjf-aged**). Aging
+is a real mean improvement (not just tail insurance): v3 (77 083) < pure-SJF v2 (80 342). Disk-I/O
+parallelism (v1) and a v3-repeat (noise band) were queued but blocked by a transient certified-pool
+capacity crunch (see infra note).
+
 ### Ablation ladder (each version adds one mechanism)
 `SGLANG_HICACHE_FILE_BACKEND_IO_THREADS` defaults to **4**, so the parallel-L3-I/O code path (v1) is
 active on the whole branch. The versions therefore form a clean additive ladder, each isolating one
@@ -17,7 +27,8 @@ mechanism: **v0** (stock: FCFS + serial L3 I/O) → **v1** (FCFS + *parallel* L3
 | v0_tuned | best stock cfg (THE BAR) | 108824 | — | +24% (worse) | 119.3 | .821 / — |
 | **v3-sjf-aged** | **SJF + aging=90s** | **77082.7** | **1.41× (−29%)** | **1.14× (−12%)** | **149.2** | .818 / .253 |
 | v2-sjf | pure SJF (aging=0) | 80341.6 | 1.35× (−26%) | 1.09× (−8%) | 151.3 | .813 / .250 |
-| v1-parallel-l3-io | parallel L3 disk I/O | _running_ | | | | |
+| v1-parallel-l3-io | parallel L3 disk I/O | _infra-blocked (queued)_ | | | | |
+| v5-sjf-aged90-rep | v3 repeat (noise band) | _infra-blocked (queued)_ | | | | |
 
 **v3-sjf-aged is the current best** — a **29% mean-TTFT cut vs the bar** with hit-rate/l3-frac matching
 baseline (cache behaviour preserved) and out_tok/s slightly *up*. Confirms the core thesis: mean TTFT

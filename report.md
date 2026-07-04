@@ -145,3 +145,9 @@ waiting hurts less than indiscriminate waiting, but still loses to pure best_eff
 QUEUE-bound not recompute-cost-bound -> disk is NEVER worth waiting for (even for long O(L^2) prefixes, even a 0.3s
 page-cache-hot wait), because any wait backs up the queue. Re-confirms best_effort (skip all disk, recompute) optimal.
 Sweep continues: v24 gate=4096 (fewer prefixes wait -> should approach but not beat v7), v25 cap=0.8s.
+
+### Key stock-code insight (my own reading of schedule_policy.py::_determine_active_policy):
+lpm REVERTS to fcfs when waiting_queue > 128 (prefix-sort too expensive for big queues). This EXPLAINS why
+best_effort+lpm wins: best_effort keeps the queue SMALL (<128, no disk waits) so lpm actually engages; under
+wait_complete the queue is huge -> lpm silently == fcfs. The revert is LPM-ONLY: dfs-weight (other stock cache-aware
+policy) does NOT revert -> stays cache-aware even in queue bursts >128. Hypothesis: v26 be+dfs-weight may beat be+lpm.

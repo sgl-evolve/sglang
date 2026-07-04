@@ -145,6 +145,24 @@ aging env confirmed live in the server process. No silent fallback. Logged to W&
 (real serving win 1.41× vs the bar; regime noise + closed-loop concurrency temper the ideal). Next:
 isolate pure SJF (v2) to measure aging's tail cost, and test aging sensitivity (30/60/120/180 s).
 
+## v7 — HRRN (highest response ratio next) prefill scheduling  [mechanism] — QUEUED (commit 4a1b349b4)
+**Hypothesis.** v2/v3 show SJF wins and light aging helps. But binary aging (promote once wait ≥ T) is a
+**threshold cliff** and needs T tuned. **HRRN** replaces it with a smooth, parameter-light rule from
+classic scheduling: order by response ratio `R = 1 + wait/service`, highest first. Short jobs get a high
+R (favored → low mean TTFT, the SJF effect); a long job's R **grows continuously with its wait**, so it
+is promoted exactly when it has waited long enough relative to its size — bounding the tail without a
+hard threshold. HRRN is the classic mean-response-time-competitive, starvation-free policy; plausibly ≥
+SJF+aging on mean TTFT while being smoother/more robust.
+**What changed.** `schedule_policy.py`: new `hrrn` CacheAgnostic policy (`_sort_by_hrrn`) sorting by
+`-(1 + wait_sec·rate/remaining_tokens)` (cache-aware `remaining`; fully-cached ⇒ served first).
+`environ.py`: `SGLANG_HRRN_TOKENS_PER_SEC` (prefill-throughput knob for the token→time conversion,
+default 10000). `server_args.py`: `hrrn` added to `--schedule-policy` choices. Unit-tested: orders
+cached → short → long-that-waited → fresh-long (correct). Additive — the sjf/default paths are byte-
+identical, so it can't affect the other queued versions.
+**Lossless.** Reordering only — per-request outputs unchanged, no drops. **Eval queued** (session job)
+with `--schedule-policy hrrn`, `SGLANG_HRRN_TOKENS_PER_SEC=10000`.
+**Result / takeaway.** _(eval pending — certified-capacity blocked; runs in the session-hold job)_
+
 ## Eval-infrastructure note (2026-07-03)
 The shared a3 pool was severely degraded this session: a cluster-wide networked-FS stall (all
 researchers' servers hung in `Dl` I/O-wait with GPUs 0%), half the certified nodes `drain`

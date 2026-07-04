@@ -24,6 +24,7 @@ exec 210>/tmp/onyx-7q2-holder.lock
 flock -n 210 || { echo "[holder] another holder_watcher holds the lock -> exit"; exit 0; }
 
 qpop(){ exec 201>"$Q.lock"; flock 201; local l; l=$(grep -vE '^[[:space:]]*$' "$Q" 2>/dev/null|head -1); [ -n "$l" ] && { grep -vFx "$l" "$Q">"$Q.tmp" 2>/dev/null; mv "$Q.tmp" "$Q"; }; flock -u 201; exec 201>&-; printf '%s' "$l"; }
+qpush_front(){ exec 201>"$Q.lock"; flock 201; { printf '%s\n' "$1"; cat "$Q" 2>/dev/null; } > "$Q.tmp" && mv "$Q.tmp" "$Q"; flock -u 201; exec 201>&-; }
 
 echo "[holder] watching hold job $JID for a node..."
 while :; do
@@ -39,10 +40,17 @@ while :; do
   info=$(srun --jobid="$JID" --overlap -N1 -w "$NODE" bash -c "df -BG /mnt/localssd 2>/dev/null|tail -1|awk '{gsub(/G/,\"\",\$4);print \$4}'; free -g 2>/dev/null|awk '/Mem:/{print \$7}'" 2>/dev/null)
   d=$(printf '%s\n' "$info"|sed -n 1p); m=$(printf '%s\n' "$info"|sed -n 2p)
   if [ "${d:-0}" -lt 1800 ] || [ "${m:-0}" -lt 1400 ]; then
-    echo "[holder] $NODE not eval-capable (disk=${d}G dram=${m}G) -> releasing (scancel $JID)"
-    scancel "$JID"; exit 0
+    echo "[holder] $NODE not eval-capable (disk=${d}G dram=${m}G) -> record bad + release (scancel $JID)"
+    echo "$NODE" >> bad_nodes.txt; scancel "$JID"; exit 0
   fi
-  echo "[holder] $NODE eval-capable (disk=${d}G dram=${m}G) -> running queue sequentially"
+  # GPU preflight: a freed node can carry a zombie holding GPU memory (slurm didn't reap it) -> every
+  # eval would NCCL/OOM (rc=6). Refuse + release if any GPU already has >2GB used (not a clean 8-GPU node).
+  gpu=$(srun --jobid="$JID" --overlap -N1 -w "$NODE" bash -c "nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null|sort -rn|head -1" 2>/dev/null)
+  if [ "${gpu:-0}" -gt 2000 ]; then
+    echo "[holder] $NODE GPU-wedged (max mem.used=${gpu}MB, zombie holding GPU) -> record bad + release"
+    echo "$NODE" >> bad_nodes.txt; scancel "$JID"; exit 0
+  fi
+  echo "[holder] $NODE eval-capable (disk=${d}G dram=${m}G gpu_used=${gpu:-0}MB) -> running queue sequentially"
   break
 done
 
@@ -59,6 +67,16 @@ while :; do
     export PORT
     srun --jobid="$JID" --overlap -N1 -w "$NODE" --gres=gpu:8 --export=ALL,PORT="$PORT" \
       bash "$EVAL" "$NAME" "$lbl" --enforce-disable-flashinfer-allreduce-fusion $flags > "eval-$lbl.log" 2>&1 )
-  echo "[holder] $lbl finished rc=$?"
-  [ -f "runs/$lbl/summary.json" ] && { bash finish_eval.sh "$lbl" "$tag" >> "logs_finish_$lbl.txt" 2>&1; touch "runs/$lbl/.logged"; echo "[holder] $lbl autologged"; }
+  rc=$?
+  echo "[holder] $lbl finished rc=$rc"
+  if [ -f "runs/$lbl/summary.json" ]; then
+    # SUCCESS -> autolog + advance to next experiment
+    bash finish_eval.sh "$lbl" "$tag" >> "logs_finish_$lbl.txt" 2>&1; touch "runs/$lbl/.logged"; echo "[holder] $lbl autologged"
+  else
+    # FAILURE (rc=6 NCCL/OOM node-wedge, or other) -> DO NOT drain the queue. Re-queue this experiment
+    # at the front, record the node as bad, release it, and exit. A fresh hold (excluding bad nodes)
+    # retries $lbl on a healthy node. Only successful evals advance the queue.
+    echo "[holder] $lbl FAILED (rc=$rc, no summary) -> re-queue front + record bad node $NODE + release"
+    qpush_front "$exp"; echo "$NODE" >> bad_nodes.txt; scancel "$JID"; exit 0
+  fi
 done

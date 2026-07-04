@@ -610,9 +610,20 @@ Isolating the two new mechanisms (mean TTFT / hit_rate, on best_effort + skip-L3
   emailed as a new best; that would overclaim a noise-level delta). The 777 ms headline is solid and
   reproducible; P99 also stable-to-better (3992–5204). Logged W&B (mechanism).
 
+### v28 — page-size 128 on best config (layout-dimension map)  [config]  ** NEUTRAL **
+- **Result:** Mean TTFT **793.7 ms** (within the page-64 best band {767–802}), Median 521, P99 4775,
+  hit_rate 0.678 (vs 0.686 at page-64 — marginally lower, as expected for coarser prefix-match granularity,
+  but within noise), 3.52 req/s (keeps up with λ). On-contract (resolved page_size=128, ctx/mem-frac/hicache/
+  tp all frozen-correct, no silent fallback); lossless (page-size changes cache granularity, not outputs).
+- **Layout dimension now fully mapped: page-size {32 (v12, neutral), 64 (best band), 128 (v28, neutral)}.**
+  Page-size does NOT move mean TTFT here — consistent with the compute-bound floor (page-size affects
+  prefix-match granularity + transfer efficiency, neither of which is the bottleneck when the floor is
+  first-touch recompute). Layout is not a lever in this regime. Logged W&B [config].
+
 ## STATUS: comprehensive lossless optimum reached for this fixed protocol
-Design space explored end-to-end (config + capacity + disk-tier + eviction + scheduling), 27 logged
-versions (incl. the costfreq negative re-confirming cost≠count, and the best config reproduced n=3 @ ~782 ms). Best = best_effort + skip-L3-writes + skip-L3-prefetch + cost-aware eviction (d8192) + SJF
+Design space explored end-to-end (config + capacity + disk-tier + eviction + scheduling + layout), 28 logged
+versions (incl. the costfreq negative re-confirming cost≠count, the best config reproduced n=3 @ ~782 ms,
+and the layout/page-size dimension mapped neutral across 32/64/128). Best = best_effort + skip-L3-writes + skip-L3-prefetch + cost-aware eviction (d8192) + SJF
 scheduling = **~790 ms mean TTFT, ~138× below v0_tuned, lossless, system keeps up with λ=3.5**. The floor
 is now the unavoidable long-context first-touch recomputes (P99 ~5 s); the only remaining lever is
 prefill/decode overlap (mixed_chunk), declined for a device-KV-pool leak + silent-losslessness risk.

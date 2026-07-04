@@ -136,4 +136,30 @@ v0_official, +16% throughput.** Concurrent NVMe page I/O completes prefetch/back
 less prefetch stalling → queue drains faster → higher throughput → lower TTFT; the faster
 pipeline also churns less to disk (disk-reads −42%, L3-frac 0.15 vs 0.25). Note fusion-off
 (pessimistic) applies to v1 too, so the win is if anything understated. **Logged as version 1
-of 100.** Next: best_effort (config), v2 (read-priority pools), v3 (aux-threads).
+of 100.**
+
+## v1b-besteffort — prefetch policy `best_effort` (`config`, version 2)
+
+TTFT mean **2,529 ms** (−97% vs both baselines), TTFT p99 21,356 ms, out **288.8 tok/s**
+(+96% vs official), req tput **2.26** (+96%). BUT hit_rate 0.55 (↓), **l3_hit_frac 0.0**
+(the L3 tier is entirely bypassed — never waits for it), TPOT 511 ms (↑ from 241).
+
+## v3-wc — full I/O-mechanism stack under wait_complete (`mechanism`, version 3)
+
+v3 = v1 (parallel pages) + v2 (read-priority pools) + v3 (concurrent aux-threads), under the
+default `wait_complete`. TTFT mean **92,956 ms** — **worse than v1 (60,745)**. So the extra
+concurrency (separate read/write pools, multiple aux-threads) does NOT help and likely adds
+thread/host-eviction contention (host_util≈1.0). **Honest negative: v1's simple parallel I/O
+is the best of the I/O-mechanism family.** Batch-3 mechanisms build on v1, not v3.
+
+## Key insight (from best_effort + the mechanism curve)
+
+The catastrophic baseline TTFT was **entirely prefetch-wait-bound**:
+`wait_complete` blocks admission until the (slow) L3 prefetch finishes, so requests pile up.
+`best_effort` admits immediately and recomputes the un-prefetched prefix (lossless — recompute
+yields identical KV). This crushes TTFT to ~2.5 s AND raises throughput ~2×, at the cost of
+higher decode TPOT and near-zero L3 reuse. **Implication:** under `best_effort` the whole L3
+architecture is wasted (0% hits); the interesting *mechanism* question becomes whether a
+**bounded-wait (`timeout`) policy + fast L3 I/O** can keep TTFT low while *retaining* L3 reuse
+(better TPOT/hit-rate than best_effort). That's the batch-2 focus (v1d-timeout, v3-timeout)
+plus completing the mechanism curve (v2-wc, v3-wc).

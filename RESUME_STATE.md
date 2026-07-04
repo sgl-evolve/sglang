@@ -1,0 +1,61 @@
+# onyx-7q2 — RESUME STATE (read this first on resume)
+
+I am **onyx-7q2**, an independent sglang KV-cache researcher (worker w7). Branch `evolve/onyx-7q2`,
+W&B run `sgl-evolve/onyx-7q2`. Budget: 100 own logged versions; signal done via
+`touch programs/sgl/manager/.runtime/slots/w7.researcher-done` at 100 (currently ~16 logged).
+Charter: `programs/sgl/researcher/program.md`. Independence: never read other researchers'
+branches/workspaces/W&B/reports; only SEND mail. Never touch foreign `/mnt/localssd/*` or the manager area.
+
+## THE BIG THING THIS SESSION: integrity correction (done, committed 619bbdedd, pushed, W&B flagged)
+A self-audit of raw metrics + active code paths proved **all 3 of my "engine mechanisms" were no-ops**:
+- Eviction (v16 LFU/v17 SLRU): edited `hi_mamba_radix_cache.py`, but the ACTIVE cache is
+  **`UnifiedRadixCache`** (`unified_radix_cache.py`) — my class is dormant → v16/v17 RETRACTED (invalid).
+- Parallel L3 reads (v3, `batch_get`) / writes (v15, `batch_set`): the "v2→v3 +31.6% win" was
+  **hit-rate variance** (0.442→0.587), not the code. L3 read tier delivered **0 tokens** (see below).
+- **Only validated win = prefetch POLICY (best_effort, a config flag), −97.3% (mean 2330±243ms).** No
+  validated engine code yet. v6/v7/v15/v16/v17 are best_effort-config replicates (their env vars were no-ops).
+- W&B: run tagged `flagged`, `retracted_versions`=[v3,v6,v7,v15,v16,v17] with per-version reasons.
+
+## KEY FINDINGS (all in report.md, committed)
+- **Hit rate is THE lever** for mean TTFT: r²=0.72, slope ≈ −263ms per +0.10 hit. BUT hit rate swings
+  ±0.15 run-to-run → any host-side mechanism is NOISE-SWAMPED unless it gains ≳+0.15 (or multi-sampled).
+- **L3 read tier delivered 0 tokens** (`HiCache prefetch success ... completed_local=0 matched=0 loaded=0`
+  for ALL ~12–13k prefetches, v3+v4). Measure via: `grep 'HiCache prefetch success' server.log` → `loaded=`.
+  No storage-read prometheus counter exists. NO keying bug (write/read use same hash).
+- **WHY loaded=0 — two live hypotheses:** (1) DISK-SPACE ARTIFACT — v4 log is 32% write-refusals
+  (`refusing...OOM/ENOSPC`, node /mnt/localssd at 200G min_free from FOREIGN leftovers) → reusable
+  long-doc (LooGLE multi-Q) prefixes couldn't persist → prefetch finds 0. (2) STRUCTURAL — L3 only caches
+  one-shot cold prefixes never reused. **v19 distinguishes them.**
+
+## ACTIVE CODE PATHS (verify a mechanism is exercised before claiming — see memory sgl-active-code-paths-trap)
+- Cache = `UnifiedRadixCache`; `hi_mamba_radix_cache.py` is DORMANT.
+- `--radix-eviction-policy` (lru/lfu/slru/fifo/mru/filo/priority) IS honored by UnifiedRadixCache's
+  `full_component.drive_host_eviction` (host tier). This is the CORRECT way to test eviction (not env vars).
+- File KV read = `_generic_page_get → HiCacheFile.batch_get` (my parallel code is live here, but L3=0 hits
+  so moot); mamba pool read = serial `_batch_io_v2` (small states, low value).
+
+## CURRENT PLAN (queued, blocked on capacity)
+Queue (`experiment_queue.txt`): **v19-timeout-clean** (`--hicache-storage-prefetch-policy timeout`) FIRST,
+then **v18-be-slru** (`best_effort --radix-eviction-policy slru`, config).
+- **v19 = DECISIVE:** timeout on a CLEAN ≥2.5TB certified node → check `loaded=` in server.log.
+  - loaded>0 → storage tier is REAL; disk-starvation crippled all prior runs → revive storage direction
+    (then optimize the now-functional L3 path; parallel reads finally matter, correctly placed).
+  - loaded=0 → L3 fundamentally dead → lever is host eviction (v18) / accept the policy-win conclusion.
+- After v19: build/validate the indicated mechanism on the ACTIVE path, with a counter proving it runs,
+  multi-sampled vs the ±0.15 hit noise. Independent bold option: Strata balanced-batching (scheduler) —
+  but low fit (GPU already busy at best_effort). AVOID scheduler-ordering/SJF (another researcher's area).
+
+## MACHINERY (autonomous, self-healing)
+- Hold **18314** (`.holdjob`): `sbatch --exclusive --gres=gpu:8 --nodelist=<6 certified nodes>`; PENDING.
+  RESTRICTED TO CERTIFIED NODES (fixed a bug where 18311 could've run an invalid eval on a non-cert node).
+- `holder_watcher.sh` (single-instance flock `/tmp/onyx-7q2-holder.lock`, detached): watches 18314, on a
+  RUNNING node disk-gates (≥1800G) + GPU-preflights, runs the queue sequentially, auto-logs on success
+  (`finish_eval.sh`), re-queues+records-bad+releases on failure, scancels hold on queue-drain.
+- Relaunch if dead: `cd <workspace>; setsid bash holder_watcher.sh > holder_watcher.out 2>&1 < /dev/null &`
+  (NEVER use `pkill -f holder_watcher` — self-matches, exit 144; kill by exact PID).
+
+## THE BLOCK (external, operator-recoverable — sanctioned response = note+wait)
+All 6 usable certified nodes are unavailable: nodeset-1/0-0/0-1/0-3 DRAIN ("SlurmdSpoolDir is full",
+operator-only resume — I lack rights, can't srun to clean), 1-2/ondem-3 = manager-pool-held + foreign-disk-
+jammed. nodeset-2 = dead fabric (Err 802). The drain nodes DO recover periodically (operator). My hold
+targets them and doesn't burn walltime while pending → auto-runs v19 when one recovers. Just WAIT.

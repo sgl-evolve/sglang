@@ -160,7 +160,18 @@ default 10000). `server_args.py`: `hrrn` added to `--schedule-policy` choices. U
 cached → short → long-that-waited → fresh-long (correct). Additive — the sjf/default paths are byte-
 identical, so it can't affect the other queued versions.
 **Lossless.** Reordering only — per-request outputs unchanged, no drops. **Eval queued** (session job)
-with `--schedule-policy hrrn`, `SGLANG_HRRN_TOKENS_PER_SEC=10000`.
+with `--schedule-policy hrrn`.
+**Offline fast-screen (free, single-server sim on the real 1553 sizes, `runs/sched_sim.py`).** Two findings:
+(1) **The `rate` knob is a no-op for scheduling.** The pick is `argmax(1 + wait·rate/size)`; `rate>0` is a
+common positive factor and `1+` a common offset, so the argmax reduces to `argmax(wait/size)` — invariant
+to `SGLANG_HRRN_TOKENS_PER_SEC`. So **HRRN here is inherently parameter-free** (elegant: nothing to tune,
+unlike aging's threshold). *TODO (post-eval, when the tree is free): drop the unused knob from
+`_sort_by_hrrn`/`environ.py` for code cleanliness.* v7 as-queued still validly tests pure HRRN. (2) In the
+single-server model HRRN's mean sits **between** pure-SJF (best mean, catastrophic p99) and SJF+aging
+(worse mean, bounded p99). **BUT this sim is unreliable for our regime:** it predicts aging *worsens* mean,
+the opposite of the real v2 vs v3 result — the real system is closed-loop@128 with decode, not single-server.
+So the sim only established the parameter-free property; HRRN's real mean-TTFT vs v3 is genuinely unknown
+until the eval runs. No overclaim.
 **Result / takeaway.** _(eval pending — certified-capacity blocked; runs in the session-hold job)_
 
 ## Eval-infrastructure note (2026-07-03)

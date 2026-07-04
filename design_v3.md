@@ -101,3 +101,16 @@ host tier full (util 1.0, evict_tokens 612M), host hits = 50% of all hits, disk 
   - both neutral → eviction policy is not a TTFT lever at fixed capacity; v4 stands as near-optimal;
     pivot to a different axis (scheduler cache-aware admission) or conclude.
 - Also worth 1 clean exclusive-node re-run of v4 (best) to tighten the headline vs the fusion/noise caveat.
+
+## v10 (planned, HIGH-EV, SAFE config) — cache-aware scheduling `--schedule-policy lpm`
+Baseline uses `schedule_policy=fcfs` (eval.sh doesn't set it -> sglang default fcfs). sglang supports
+`lpm` (longest-prefix-match): admit requests whose prefix is already cached FIRST, so they skip prefill.
+In this GPU-prefill-bound, batch-saturated(128) regime, serving cache-hit (cheap-prefill) requests first
+-> they finish faster + free batch slots faster -> higher throughput -> shorter queue -> lower mean TTFT.
+This is the Strata/HiCache "cache-aware scheduling" pillar, as a NON-forbidden CONFIG flag (no code, no
+risk). Lossless: scheduling ORDER doesn't change greedy(temp0) outputs. Risk: may starve cache-miss
+(long-prefill) reqs -> watch p99/tail. Different axis than eviction (v8/v9) -> diversifies the bets.
+Run (on v4's best config): `bash <EVAL/hold_run> v10-sched-lpm --schedule-policy lpm
+--mamba-full-memory-ratio 1.5 --enforce-disable-flashinfer-allreduce-fusion`. Also worth `lof`.
+Priority when a slot opens: this (v10, safe+high-EV) is a strong candidate to run FIRST alongside/ before
+the novel eviction mechanisms, given eval scarcity.

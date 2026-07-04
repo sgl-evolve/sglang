@@ -17,3 +17,6 @@ v19-to-lpm-balanced	mechanism	SGLANG_ENABLE_BALANCED_PREFILL=1	--hicache-storage
 v20-be-lpm-wtsel	config	-	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --hicache-write-policy write_through_selective --enforce-disable-flashinfer-allreduce-fusion
 v21-be-lpm-wb	config	-	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --hicache-write-policy write_back --enforce-disable-flashinfer-allreduce-fusion
 v22-to-lpm-wtsel	config	-	--hicache-storage-prefetch-policy timeout --schedule-policy lpm --hicache-write-policy write_through_selective --enforce-disable-flashinfer-allreduce-fusion
+v23-be-lpm-cgate1k	mechanism	SGLANG_PREFETCH_COST_GATE=1024	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v24-be-lpm-cgate4k	mechanism	SGLANG_PREFETCH_COST_GATE=4096	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v25-be-lpm-cgate4k-cap8	mechanism	SGLANG_PREFETCH_COST_GATE=4096 SGLANG_PREFETCH_COST_GATE_MAX_S=0.8	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion

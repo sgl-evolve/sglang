@@ -22,3 +22,8 @@ v24-be-lpm-cgate4k	mechanism	SGLANG_PREFETCH_COST_GATE=4096	--hicache-storage-pr
 v25-be-lpm-cgate4k-cap8	mechanism	SGLANG_PREFETCH_COST_GATE=4096 SGLANG_PREFETCH_COST_GATE_MAX_S=0.8	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
 v26-be-dfsweight	config	-	--hicache-storage-prefetch-policy best_effort --schedule-policy dfs-weight --enforce-disable-flashinfer-allreduce-fusion
 v27-be-dfsw-balanced	mechanism	SGLANG_ENABLE_BALANCED_PREFILL=1	--hicache-storage-prefetch-policy best_effort --schedule-policy dfs-weight --enforce-disable-flashinfer-allreduce-fusion
+v28-be-lpm-cgate4k-rpt	mechanism	SGLANG_PREFETCH_COST_GATE=4096	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v29-be-lpm-cgate8k	mechanism	SGLANG_PREFETCH_COST_GATE=8192	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v30-be-lpm-cgate2k	mechanism	SGLANG_PREFETCH_COST_GATE=2048	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v31-be-lpm-cgate4k-cap5	mechanism	SGLANG_PREFETCH_COST_GATE=4096 SGLANG_PREFETCH_COST_GATE_MAX_S=0.5	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v32-be-lpm-cgate6k	mechanism	SGLANG_PREFETCH_COST_GATE=6144	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion

@@ -176,6 +176,28 @@ protocol the SSD tier costs write bandwidth for no read benefit — the meaningf
 rate and eviction under host pressure** (`host_util ≈ 1.0`, `evict_tokens` ≈ 580M ≫ working set → heavy
 host thrash), not the storage tier.
 
+## Quantitative analysis: hit rate is the lever (and how big a gain is needed)
+Across 11 best_effort-cluster runs, **mean TTFT tracks hit rate: r = −0.85 (r² = 0.72)**, slope
+**≈ −263 ms per +0.10 hit rate** (−2629 ms per unit). So mean TTFT is hit-rate-bound, confirming the tail
+= misses. But two facts bound what's achievable:
+- **Sensitivity is modest** (~11% of the 2330 ms mean per +0.10 hit), and **hit rate itself swings ±0.15
+  run-to-run** at fixed config (observed range 0.26–0.61). So a mechanism must deliver a **large** hit-rate
+  gain (≳+0.15) — or be measured over multiple samples — to clear the noise. A single eviction-policy run
+  (v18) will most likely land within noise; I run it anyway to *honestly close* the eviction question that
+  the invalid v16/v17 left open, but I don't expect it to be the win.
+- **The one large opportunity is the discarded L3 reuse.** The baseline (`wait_complete`) served **0.254 of
+  hits from L3**; best_effort throws all of it away (storage_frac 0) to get 0-wait admission. Recovering
+  even part of that ~0.25 predicts ~−660 ms — comfortably above noise. The catch: L3 reads require *waiting*
+  (which starved the GPU under wait_complete). `timeout` bounds the wait but still got 0 L3 hits — because
+  the **live** read path couldn't deliver the working set inside the timeout window under 128-way concurrency.
+
+**Corrected flagship mechanism (what my parallel-reads idea *should* have been):** parallelize the **live**
+storage read path — the serial `_batch_io_v2` (mamba extra-pool) and confirm the KV `batch_get` threading —
+and test it under **`timeout`** (where L3 is actually read), not best_effort (where it never is). If faster
+reads deliver the prefetch working set inside the timeout window, L3 hits recover → hit rate rises toward
+the baseline's 0.8 → TTFT could beat best_effort. This is the honest, on-the-active-path, right-policy redo
+of the flagship idea; it must be verified exercised via an L3-read counter before any claim.
+
 ## Next steps (a *real*, validated mechanism this time)
 Constraints learned: the active class is `UnifiedRadixCache`; the file KV-read path is
 `_generic_page_get → HiCacheFile.batch_get` (live) but reads ≈0; the mamba pool IO is serial

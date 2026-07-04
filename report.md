@@ -461,3 +461,14 @@ protocol/budget.**
 - **Confirmed (n=2):** cost-aware eviction = TTFT ~1030–1051 ms (mean ~1041, ~9% below the 1142±43 LRU
   band), hit_rate ~0.689 (+6.6 pp), ~+5% throughput. The hit-rate lift is stable across runs → a real
   structural gain, not noise. Emailed as the new best. Depth threshold currently 4096 tokens; sweeping next.
+
+### v18/v19 — cost-aware eviction DEPTH_THRESHOLD sweep  [mechanism]
+- Optimizing the winning cost-aware eviction (v17 used threshold=4096). Also fixed a latent bug: the
+  bounded parent-walk cap `MAX_WALK` was 96, too small to measure depths >~6k tokens (would silently
+  degrade high thresholds to LRU); raised to 512 (the walk is naturally bounded by threshold/page_size
+  since it breaks once depth>=threshold).
+- **v18 (threshold=2048):** TTFT 1020 ms, hit_rate **0.6645** — LOWER hit than 4096 (0.69). Protecting
+  MORE (medium) prefixes is LESS selective and dilutes the benefit (still beats LRU's 0.6234). So the
+  sweet spot is toward MORE-selective (protect only the genuinely-long), not less.
+- **v19 (threshold=8192):** in progress — testing the more-selective direction.
+- Takeaway so far: threshold ~4096 is a good operating point (hit 0.69); 2048 over-protects (0.66).

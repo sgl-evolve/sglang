@@ -377,3 +377,32 @@ best_effort are the wins. At the lossless ceiling for this fixed protocol.
 - **Robustness: best-config TTFT_mean over 6 runs = [1205,1089,1191,1139,1131,1098] → 1142±43 ms
   (CV 3.8%).** Rock-solid ~95× below the tuned bar, reproduced across runs (and node — v13 via the shared
   pool, likely a different certified node). The headline is well-characterized and low-variance.
+
+### v15 — mamba→KV memory reallocation (--max-mamba-cache-size 700)  [config]  ** NEUTRAL — closes the capacity-lever direction **
+- **Hypothesis:** the ~38% recompute residual is capacity-bound; the Mamba state pool is oversized
+  (default `max_mamba_cache_size=1350` → ssm_state **23.75 GB/rank**, but observed `mamba usage ≈0.42`).
+  Shrinking it to 700 (still ≫128 concurrency) frees ~11.4 GB/rank which the engine reallocates to the
+  device KV pool — **in-budget** (frozen `mem_fraction_static=0.85` unchanged) and **lossless** (cache
+  size cannot change outputs).
+- **Mechanism verified live:** device KV pool grew **2,347,200 → 3,363,136 tokens (+43%)**
+  (K/V 13.43→19.24 GB); mamba ssm_state 23.75→12.32 GB. hicache_size stayed 96 (frozen assert passed).
+- **Result:** TTFT mean **1106 ms** (best band 1142±43), hit_rate 0.6201, out 432 t/s. **NEUTRAL**
+  (within noise; vs v13 best 1098 ms / hit 0.6234 it is marginally *worse*). Valid (7037/7037, no fallback).
+- **Why neutral (definitive):** the +43% device KV only *shifted* the hit mix host→device
+  (hit_device 0.42→0.46, hit_host 0.58→0.54) — same **total** hit_rate (~62%), same TTFT. The host tier
+  runs at **host_util ≈ 1.00 (100% full)** and is HARD-FROZEN at 96 GB (eval asserts it). The device tier
+  is only ~22% of total attn-KV cache, so growing it +43% lifts total effective cache only ~+9% — too
+  small to dent the miss rate. **The residual recompute is bound by the frozen host tier, not the device
+  pool.** load_back is already ~1.2 ms (negligible), so moving hits to device buys nothing.
+- **Consequence:** the in-budget capacity levers are now exhausted — host is frozen+saturated, and GPU
+  realloc (mamba→KV) is neutral. Any further TTFT reduction must come from using the *fixed* cache more
+  effectively (admission/eviction that lowers per-miss recompute cost), not from more capacity.
+
+## EVAL CONTRACT (learned v15) — what is a legitimate mechanism
+`eval.sh` FORBIDS (rc=5) and POST-LAUNCH-ASSERTS the budget: `hicache_size==96`,
+`mem_fraction_static==0.85`, `context_length==262144`, `tp_size==8`. So **growing the host L2 tier or
+total memory is impossible by any means** (flag or engine default → assert aborts) — and rightly so, it
+is a budget increase, not an algorithm. Legitimate levers = the tunable policy flags
+(prefetch/write/io-backend/mem-layout/page-size), non-forbidden flags (schedule, eviction,
+**max-mamba-cache-size**, mamba-full-memory-ratio), and NEW engine mechanisms. The only in-budget
+*capacity* move is reallocating the frozen GPU pool (mamba↔KV) — shown neutral above.

@@ -4,7 +4,29 @@ I am researcher **w6** (done-signal: `touch .../manager/.runtime/slots/w6.resear
 Sessions tear down ~every 2 min; a DETACHED racer does the eval work independent of my session.
 Version budget 100; **own versions logged so far: 1** (v3-sjf-aged). Baselines v0_official/v0_tuned don't count.
 
-## ===== LATEST (03:27, 2026-07-04) — READ THIS FIRST =====
+## ===== LATEST (06:25, 2026-07-04) — READ THIS FIRST =====
+- **Own versions logged: 3/100** — v3-sjf-aged (77083ms, BEST), v2-sjf (80342ms), v1-parallel-l3-io (running).
+- **RESULTS**: v3 (SJF+aging90) 77083 = 1.41x vs v0_tuned = BEST. v2 (pure SJF) 80342 = 1.35x.
+  KEY FINDING: **aging LOWERS the mean** (v3<v2 by 4.1%) by bounding the heavy tail (p90~230s); it's not
+  just tail-insurance. But 4.1% is within the ~24% regime noise -> treat v3>v2 as DIRECTIONAL; the robust
+  claim is SJF±aging >> FCFS baselines (1.35-1.41x). Both LOSSLESS (pure queue reorder).
+- **ABLATION LADDER** (io-threads default=4, so parallel-L3-IO is on for the whole branch):
+  v0(FCFS+serial-IO) -> v1(FCFS+parallel-IO) -> v2(+SJF) -> v3(+aging). v1-v0=disk, v2-v1=SJF, v3-v2=aging.
+  => a separate io=1 ablation is REDUNDANT (v1 vs v2 already isolates SJF cleanly).
+- **v1-parallel-l3-io RUNNING** on ondem-3 via an ORPHANED racer (PID was 540511, PPID=1; campaign killed).
+  It uses OLD racer code -> WILL hang in teardown after summary.json (KNOWN bug). HANDLE MANUALLY:
+  when runs/v1-parallel-l3-io/summary.json appears -> (a) manually log:
+  `( set -a; . $ROOT/.env; set +a; $D/.venv/bin/python $ROOT/programs/sgl/researcher/.claude/skills/report-sop/scripts/log_wandb.py quartz-7m3 $D/runs/v1-parallel-l3-io/summary.json v1-parallel-l3-io 88fa0f5c4 mechanism )`
+  (b) kill orphan racer + `srun ... pkill sglang` on ondem-3 to free it. (c) update report.md table+section.
+- **RACER PATCHED** (commit 88fa0f5c4): race_eval.sh now force-cleans once summary.json exists (no more
+  teardown hang) — future campaigns are robust. v2 auto-log FAILED via old racer; I logged it manually.
+- **NEXT PHASE** (launch a fresh campaign AFTER v1 frees ondem-3, using patched racer): highest value =
+  v5-sjf-aged90-rep (REPEAT of best -> establish noise band; credibility). Then optionally v6 aging tuning
+  (one point, e.g. 45 or 135). Disk (v1) likely neutral (queue-bound regime). New scheduling mechanism
+  (continuous priority = remaining - k*wait) only if pushing past 77083 seems worth a noise-limited eval.
+- v2 result backed up at runs/v2-sjf.SAVED. commit HEAD=88fa0f5c4 (+ next commits).
+
+## ===== (03:27, 2026-07-04) earlier =====
 - **FABRIC RECOVERED ~02:00. v3-sjf-aged EVALUATED = NEW BEST: mean TTFT 77082.7 ms** (1.41x vs
   v0_tuned 108824; 1.14x vs v0_official 87615). out_tok/s 149.2, hit .818/l3 .253 (=golden run).
   W&B-logged (tag mechanism, commit f52eab323). report.md updated (results table + v3 section).

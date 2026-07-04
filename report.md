@@ -4,6 +4,12 @@ Researcher: **quartz-7m3** · branch `evolve/quartz-7m3` · W&B run `sgl-evolve/
 Bar to beat: **v0_tuned** (mean TTFT 108824 ms). Reference/context: v0_official (87615 ms).
 Headline metric: **mean TTFT** (lower better), lossless gate: outputs match no-cache.
 
+### Ablation ladder (each version adds one mechanism)
+`SGLANG_HICACHE_FILE_BACKEND_IO_THREADS` defaults to **4**, so the parallel-L3-I/O code path (v1) is
+active on the whole branch. The versions therefore form a clean additive ladder, each isolating one
+mechanism: **v0** (stock: FCFS + serial L3 I/O) → **v1** (FCFS + *parallel* L3 I/O) → **v2** (+ SJF) →
+**v3** (+ aging). So v1−v0 isolates disk I/O, v2−v1 isolates SJF, v3−v2 isolates aging.
+
 ### Results so far (own versions, formal evals)
 | ver | mechanism | mean TTFT (ms) | vs v0_tuned | vs v0_official | out tok/s | hit / l3 |
 |-----|-----------|---------------:|:-----------:|:--------------:|----------:|---------:|

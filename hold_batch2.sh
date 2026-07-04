@@ -56,9 +56,11 @@ runeval(){  # $@ = version + eval.sh args ; returns eval rc (6 = NCCL/GPU prefli
 # wasted preflight, not two). Only run v15 if v14's node proved healthy.
 runeval v14-be-cons0.5 --enforce-disable-flashinfer-allreduce-fusion --hicache-storage-prefetch-policy best_effort --schedule-conservativeness 0.5
 rc14=$?
-if [ "$rc14" = 6 ]; then
+# rc6 = NCCL/GPU wedge; rc9 = disk/dram gate fail (e.g. foreign L3 leftover). Both are node-level
+# problems that also break v15 -> record the node bad + release so re-queue --excludes it.
+if [ "$rc14" = 6 ] || [ "$rc14" = 9 ]; then
   echo "$node" >> /home/junyanch_google_com/autoresearch/workspace/sgl/researchers/kv-heron-eb9/.bad_nodes
-  echo "[batch2] NCCL/GPU preflight FAIL on $node (rc6) — recorded bad, skipping rest"
+  echo "[batch2] node-level FAIL on $node (rc$rc14) — recorded bad, skipping rest"
   scancel "$HOLDJID"; echo "[batch2] released $HOLDJID (bad node)"; exit 2
 fi
 

@@ -4,7 +4,26 @@ I am researcher **w6** (done-signal: `touch .../manager/.runtime/slots/w6.resear
 Sessions tear down ~every 2 min; a DETACHED racer does the eval work independent of my session.
 Version budget 100; **own versions logged so far: 1** (v3-sjf-aged). Baselines v0_official/v0_tuned don't count.
 
-## ===== LATEST (21:22, 2026-07-04) — READ THIS FIRST =====
+## ===== LATEST (21:33, 2026-07-04) — READ THIS FIRST =====
+- **Own versions LOGGED: 2/100** — v3-sjf-aged 77083ms=1.41x (BEST), v2-sjf 80342ms=1.35x. Headline DONE+durable+pushed.
+- **NEW mechanism implemented + committed + pushed: v7 = HRRN** (highest response ratio next; `schedule_policy=hrrn`
+  + env `SGLANG_HRRN_TOKENS_PER_SEC` default 10000). schedule_policy.py/environ.py/server_args.py, commit 4a1b349b4.
+  Import-verified + unit-tested (orders cached<short<long-waited<fresh-long). Report has a v7 section. Additive (sjf/default paths untouched).
+- **EVAL MECHANISM = session-hold sbatch** (charter: hold one node for the session). `runs/session_eval.sh`
+  runs my queue back-to-back on one node-grab, each retry3x + auto-log W&B, SELF-CLEANS my own /mnt/localssd
+  first + FAST-FAILS if node disk-filled by others, skips already-done versions. Queue order:
+  v5-sjf-aged90-rep (mechanism) -> v1-parallel-l3-io (mechanism) -> v7-hrrn (MECHANISM) -> v6-sjf-aged45 (config).
+  Current job jid in runs/session-sbatch.jid (18301, PENDING).
+- **NEAR-TOTAL CERTIFIED-POOL OUTAGE** (all 6 down): -1/0-0/0-1/0-3 DRAIN (operator-only; 0-0 also NCCL-HW-broken),
+  1-2 & ondem-3 alloc + **disk-FULL-by-others** (ondem-3 1106G, 1-2 459G; my own cache there is ~0, so
+  self-clean can't help — it's others' caches I must NOT touch). Zero usable node. Fully external.
+- **Re-engagement: HOURLY cron 52fe6e30** (checks summaries->log/report/email, resubmits session job if died,
+  session_eval self-handles disk) + resume prompts. session_eval auto-logs on-node.
+- ON RESUME/CRON: `find runs -name summary.json` for NEW vers (v5/v1/v7/v6) -> log to W&B if not auto-logged,
+  update report.md, EMAIL if <77083. If session job not PENDING/RUNNING & versions undone -> resubmit (cmd in cron).
+  NOT done (2/100); do NOT touch w6.researcher-done.
+
+## ===== (21:22, 2026-07-04) earlier =====
 - **Own versions LOGGED: 2/100** — v3-sjf-aged 77083ms=1.41x (BEST), v2-sjf 80342ms=1.35x. Headline DONE+durable.
 - **RESTRUCTURED to charter-compliant SESSION-HOLD sbatch** (charter: "don't re-queue per eval; lock ONE
   node for the session"). Cancelled the 2 separate per-eval jobs (18269/18270). Now ONE --exclusive

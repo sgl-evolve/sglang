@@ -1,5 +1,5 @@
-v1-besteffort	config	-	--hicache-storage-prefetch-policy best_effort
-v2-balanced-r2	mechanism	SGLANG_ENABLE_BALANCED_PREFILL=1	-
-v3-wtselective	config	-	--hicache-write-policy write_through_selective
-v4-lpm	config	-	--schedule-policy lpm
-v5-mixedchunk	config	-	--enable-mixed-chunk
+v1-besteffort	config	-	--hicache-storage-prefetch-policy best_effort --enforce-disable-flashinfer-allreduce-fusion
+v2-balanced-r2	mechanism	SGLANG_ENABLE_BALANCED_PREFILL=1	--enforce-disable-flashinfer-allreduce-fusion
+v3-wtselective	config	-	--hicache-write-policy write_through_selective --enforce-disable-flashinfer-allreduce-fusion
+v4-lpm	config	-	--schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v5-mixedchunk	config	-	--enable-mixed-chunk --enforce-disable-flashinfer-allreduce-fusion

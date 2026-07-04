@@ -591,9 +591,18 @@ Isolating the two new mechanisms (mean TTFT / hit_rate, on best_effort + skip-L3
   (protect the few deep O(L²) prefixes, LRU within bucket) ≠ maximizing hit COUNT**. Pure `costaware`
   (d8192, recency tie-break) remains the optimum; costfreq is dropped.
 
+### v27 — best-config reproduction #3 (best_effort + SJF + costaware d8192)  [mechanism]  ** CONFIRMS BEST (n=3) **
+- **Result:** Mean TTFT **767 ms**, Median 527, **P99 3992** (tightest tail of all runs), hit_rate 0.686,
+  duration 1997 s / 3.52 req/s (keeps up with λ). On-contract (ctx 262144 / mem-frac 0.85 / hicache 96 /
+  tp 8, no silent fallback); lossless by construction.
+- **Best config now n=3: {802, 777, 767} ms → mean ~782, spread ~4%.** 767 is the lowest single run but
+  within run-to-run variance of the SAME config — a robustness confirmation, NOT a new mechanism (not
+  emailed as a new best; that would overclaim a noise-level delta). The 777 ms headline is solid and
+  reproducible; P99 also stable-to-better (3992–5204). Logged W&B (mechanism).
+
 ## STATUS: comprehensive lossless optimum reached for this fixed protocol
-Design space explored end-to-end (config + capacity + disk-tier + eviction + scheduling), 26 logged
-versions (incl. the costfreq negative, which re-confirms cost≠count). Best = best_effort + skip-L3-writes + skip-L3-prefetch + cost-aware eviction (d8192) + SJF
+Design space explored end-to-end (config + capacity + disk-tier + eviction + scheduling), 27 logged
+versions (incl. the costfreq negative re-confirming cost≠count, and the best config reproduced n=3 @ ~782 ms). Best = best_effort + skip-L3-writes + skip-L3-prefetch + cost-aware eviction (d8192) + SJF
 scheduling = **~790 ms mean TTFT, ~138× below v0_tuned, lossless, system keeps up with λ=3.5**. The floor
 is now the unavoidable long-context first-touch recomputes (P99 ~5 s); the only remaining lever is
 prefill/decode overlap (mixed_chunk), declined for a device-KV-pool leak + silent-losslessness risk.

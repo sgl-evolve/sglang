@@ -160,6 +160,12 @@ The overload is queue-dominated; the adaptive-prefetch lever is tapped at ~2580 
 - **Config:** v8 code (adaptive prefetch, cap 3s, occupancy-pressure) **+ `--schedule-policy lpm`**. Commit `cddedf4a8`.
 - **Result: mean TTFT 2496 ms** — beats v8 (2580) by 3.3%, **35× below v0_official**. Lossless: 7037/7037 successful, no fallback. Pure reordering win — throughput 2.8 req/s and hit_rate 0.615 **unchanged** vs v8; e2e 39.7 s, p99 TTFT 19.1 s. Confirms the scheduler is a *real, independent* lever on top of the adaptive-prefetch mechanism.
 - **Best config is now: adaptive prefetch (cap 3s) + LPM scheduling.** Next: push the scheduler further (cost-aware / true-SJF ordering, in-batch-prefix-caching thresholds) since LPM only reorders the small waiting queue.
+
+### v15-lfu-evict — frequency-aware eviction (`--radix-eviction-policy lfu`) — valid, NOT best (11th own version)
+- **Correction to earlier note:** `eviction_strategy` is NOT vestigial for this model. `full_component.py` `drive_eviction` (device) AND `drive_host_eviction` (host) both build their victim heap from `self.cache.eviction_strategy.get_priority(n)`. `evict_policy.py` provides `LFUStrategy` (priority `(hit_count, last_access_time)`) and `SLRUStrategy`. So `--radix-eviction-policy lfu` makes main-KV eviction frequency-aware at **both** tiers — the "keep hot prefixes" mechanism, via an allowed flag.
+- **Config:** v14 (adaptive + LPM) **+ `--radix-eviction-policy lfu`**. Commit `f16eb9b35`.
+- **Result: mean TTFT 2542 ms** (vs best v14 2496 — the 46 ms gap is within this metric's large run-variance). LFU did exactly what the hypothesis predicted on the CACHE side: **hit_rate 0.615→0.622, throughput 2.80→2.88 req/s, e2e 39.7→38.4 s, p99 TTFT 19.1→18.5 s** — all improved. But the **headline mean TTFT did not drop.** Lossless (7037/7037).
+- **Key learning:** the headline is now **scheduling/queue-bound, not recompute-bound** — raising hit_rate improves throughput/balance but not mean TTFT at this operating point. So the remaining headline headroom is on the SCHEDULER/admission surface, not the cache-quality surface. v14 remains headline-best; v15 is the balance-best.
 - Infra: robust workflow = isolated flashinfer cache (`FLASHINFER_WORKSPACE_BASE=$WORK`) +
   `--dist-timeout 5400`. The shared `~/.cache/flashinfer` was corrupted by cross-researcher concurrent
   compiles (hangs + a SIGBUS in CUDA-graph capture); isolation fixed it (loads in ~147 s).

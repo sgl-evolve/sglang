@@ -35,12 +35,20 @@ resumes a drained node (or cleans ondem-3). It auto-runs on recovery. **RECHECK 
      runs/v8-freq-evict50/summary.json v8-freq-evict50 97d6058ec mechanism`  (uv+wandb; W&B needs LOGIN node).
   4. Update `report.md`; email only if it's a NEW BEST (< v4's 1558 ms above the ~24% noise floor).
 
-## v9+ decision tree (see design_v3.md "v8+ plan")
-- v8 beats v4 above ~24% noise → α sweep {20,100,200}; log best.
-- v8 within noise → host-eviction policy isn't the lever; test the BINDING tier: v9 = freq-aware **Mamba**
-  eviction (evict_mamba LRU walk, CLOCK-style bounded second-chance; riskier — verify lossless).
-- both neutral → eviction policy not a TTFT lever at fixed capacity; v4 stands; pivot (scheduler
-  cache-aware admission) or conclude.
+## v9 ALREADY BUILT (commit 407bc9376) — ready to run
+v9 = frequency-aware **Mamba** eviction (CLOCK second-chance in `evict_mamba`), targets the BINDING
+Mamba-capacity tier. Lossless (victim choice only), offline-verified (5 cases: stock-identical when off,
+protects hot, always frees requested, terminates). Toggle **`KVLYNX_MAMBA_FREQ_MAXSKIP`** (0=stock LRU;
+try 8) + `KVLYNX_MAMBA_FREQ_THR` (default 2). Separate from v8's toggle. To run:
+`KVLYNX_MAMBA_FREQ_MAXSKIP=8 bash <EVAL/hold_run> v9-mamba-freq --mamba-full-memory-ratio 1.5 --enforce-disable-flashinfer-allreduce-fusion`.
+
+### Run order when a node frees (eval slots are RARE — broken infra):
+1. **v8** first (host-freq α=50) — safest (heap re-key), guaranteed data even if neutral.
+2. **v9** next (mamba-freq MAXSKIP=8) — higher-leverage (binding tier), offline-verified.
+- If either beats v4 (1558ms) above ~24% noise → sweep its param, log best, email.
+- If both within noise → eviction policy isn't a TTFT lever at fixed capacity; v4 stands as near-optimal;
+  pivot to a different axis (scheduler cache-aware admission) or conclude honestly.
+- VERIFY activation in server.log: `grep 'kv-lynx-4d2 eviction' runs/<ver>/server.log` shows the α / MAXSKIP.
 
 ## Infra reality (why evals are slow) — see memory sgl-eval-infra-ops
 - Cluster severely degraded: **3 of 6 certified nodes DRAINED/dead** (-1, 0-1, 0-3; unrecoverable w/o admin),

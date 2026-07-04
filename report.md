@@ -142,6 +142,9 @@ almost certainly runs a smaller batch (requests stuck in prefetch).
 
 ### Adaptive prefetch — exploration summary (mechanism is well-mapped)
 The load-adaptive prefetch-admission mechanism is the novel win. Best = **v8 (cap 3 s, occupancy pressure): 2580 ms mean TTFT = 34× below v0_official (87615), 42× below v0_tuned**. Levers explored: prefetch policy (best_effort 3237 → adaptive 2580); cap sweep (1 s 2719, 3 s 2580, 6 s 2613 → optimum ~3 s); write policy (write_through essential; selective 6190 starves host); pressure signal (occupancy beats contention for the headline). Lossless throughout. Further gains need a different lever (host-eviction frequency-awareness, or scheduler decode-protection to cut TPOT).
+
+### v11-mixedchunk — INVALID (not logged to curve): --enable-mixed-chunk broke requests
+adaptive + `--enable-mixed-chunk` failed the lossless gate: only **5891/7037 requests succeeded** (~1146 errored, 2630 server errors) — mixed-chunk is incompatible with this hybrid-SSM + HiCache + adaptive setup. NOT a comparable curve point. **BUT it HALVED TPOT (489→238 ms)** — strong evidence the decode-bubble / prefill-decode-interference lever is high-value. Next: a COMPATIBLE decode-protection mechanism (prefill-delayer / schedule-conservativeness, or a scheduler change) to cut TPOT without breaking requests → higher throughput → lower mean TTFT. Code stays at v8-best (mixed-chunk was a launch flag, nothing to revert).
 - Infra: robust workflow = isolated flashinfer cache (`FLASHINFER_WORKSPACE_BASE=$WORK`) +
   `--dist-timeout 5400`. The shared `~/.cache/flashinfer` was corrupted by cross-researcher concurrent
   compiles (hangs + a SIGBUS in CUDA-graph capture); isolation fixed it (loads in ~147 s).

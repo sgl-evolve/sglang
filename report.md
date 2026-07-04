@@ -220,7 +220,11 @@ Ran on a clean exclusive nodeset-0 hold. Two datapoints so far, both **honest ne
 |---|---|---|---|
 | **v4** (champion) | parallel reads(16) + best_effort + write_through | **2013 ms** | — |
 | v11-be-selective | write policy → `write_through_selective` | 2842 ms (+41%) | loses: fewer backups ⇒ lower host hit_rate |
+| v12-be-writeback | write policy → `write_back` | 2917 ms (+45%) | loses: deferred writes don't help TTFT |
 | v15-be-parwrite | **parallel L3 writes** (WRITE_THREADS=8) | 2995 ms (+49%) | **loses: write path is NOT the TTFT bottleneck** |
+
+**All three write-side variants lose** → the write path is exhausted as a lever; v4's default `write_through`
++ parallel-reads + best_effort is optimal. Page-size (v9/v10) and timeout-grace (v13) axes next.
 
 **Key finding:** the write-side levers don't help. v15 is the important one — the offline write microbench
 showed the serial write loop is thread-bound (2.29× faster drain @ 8 threads), but that speedup **does not

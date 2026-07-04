@@ -135,6 +135,7 @@ class CacheAwarePolicy(Enum):
 
     LPM = "lpm"  # longest prefix match
     DFS_WEIGHT = "dfs-weight"  # depth-first search weighting
+    SRPF = "srpf"  # shortest-remaining-prefill-first (true SJF on TTFT)
 
 
 class CacheAgnosticPolicy(Enum):
@@ -199,6 +200,10 @@ class SchedulePolicy:
                 SchedulePolicy._sort_by_longest_prefix(
                     waiting_queue, temporary_deprioritized
                 )
+            elif policy == CacheAwarePolicy.SRPF:
+                SchedulePolicy._sort_by_shortest_remaining_prefill(
+                    waiting_queue, temporary_deprioritized
+                )
             elif policy == CacheAwarePolicy.DFS_WEIGHT:
                 SchedulePolicy._sort_by_dfs_weight(waiting_queue, self.tree_cache)
             else:
@@ -221,7 +226,10 @@ class SchedulePolicy:
                 raise ValueError(f"Unknown CacheAgnostic Policy: {policy=}")
 
     def _determine_active_policy(self, waiting_queue: List[Req]) -> Policy:
-        if self.policy == CacheAwarePolicy.LPM and len(waiting_queue) > 128:
+        if (
+            self.policy in (CacheAwarePolicy.LPM, CacheAwarePolicy.SRPF)
+            and len(waiting_queue) > 128
+        ):
             # Turn off the expensive prefix matching and sorting when the #queue is large.
             return CacheAgnosticPolicy.FCFS
         return self.policy
@@ -300,6 +308,29 @@ class SchedulePolicy:
         waiting_queue.sort(
             key=lambda r: (
                 -r.num_matched_prefix_tokens
+                if r.rid not in temporary_deprioritized
+                else float("inf")
+            )
+        )
+
+    @staticmethod
+    def _sort_by_shortest_remaining_prefill(
+        waiting_queue: List[Req], temporary_deprioritized: Set[int]
+    ) -> None:
+        """Sorts the waiting queue by shortest *remaining* (uncached) prefill first.
+
+        LPM sorts by longest matched prefix (absolute), which is only a proxy for
+        cheapness: a request with a huge input and a huge match can still have MORE
+        uncached prefill than a small request with a small match. Mean TTFT in an
+        overloaded queue is minimised by SJF on the actual first-token work, i.e. the
+        number of tokens that must still be prefilled = (total prompt tokens) -
+        (device+host matched prefix tokens). Serve the smallest-remaining-prefill
+        requests first. In-batch-deduplicated requests are pushed to the back (inf).
+        """
+        waiting_queue.sort(
+            key=lambda r: (
+                (len(r.origin_input_ids) + len(r.output_ids))
+                - r.num_matched_prefix_tokens
                 if r.rid not in temporary_deprioritized
                 else float("inf")
             )

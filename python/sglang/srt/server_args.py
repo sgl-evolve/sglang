@@ -712,6 +712,7 @@ class ServerArgs:
             help="The scheduling policy of the requests.",
             choices=[
                 "lpm",
+                "srpf",
                 "random",
                 "fcfs",
                 "dfs-weight",

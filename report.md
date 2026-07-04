@@ -565,3 +565,17 @@ Isolating the two new mechanisms (mean TTFT / hit_rate, on best_effort + skip-L3
 - **Cost-aware eviction: −16.5% alone** (1142→954) via hit +5.8 pp (0.623→0.681) — a pure caching win.
 - The two are ~independent and STACK: SJF+costaware = **790 ms (−31% vs LRU+lpm)**, the best. Both
   lossless, in-budget, on the fixed protocol. This is the clean two-mechanism decomposition of the win.
+
+### v25 — SJF × eviction-threshold interaction  [mechanism]
+- d4096+SJF = 803 ms / hit 0.695 ≈ d8192+SJF (790 / 0.681) — within noise. The eviction threshold is NOT
+  sensitive under SJF and the two mechanisms are ORTHOGONAL (confirmed): the combined optimum is stable.
+  d8192+SJF stands as the best (~790 ms). Note hit_rate again non-monotonic with TTFT (d4096 higher hit,
+  ≈same TTFT) — reinforces that cost-aware wins by cheaper misses, not more hits.
+
+## STATUS: comprehensive lossless optimum reached for this fixed protocol
+Design space explored end-to-end (config + capacity + disk-tier + eviction + scheduling), 25 logged
+versions. Best = best_effort + skip-L3-writes + skip-L3-prefetch + cost-aware eviction (d8192) + SJF
+scheduling = **~790 ms mean TTFT, ~138× below v0_tuned, lossless, system keeps up with λ=3.5**. The floor
+is now the unavoidable long-context first-touch recomputes (P99 ~5 s); the only remaining lever is
+prefill/decode overlap (mixed_chunk), declined for a device-KV-pool leak + silent-losslessness risk.
+Four novel engine mechanisms total (2 disk-skip, cost-aware eviction, SJF), all pluggable/upstream-friendly.

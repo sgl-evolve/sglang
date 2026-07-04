@@ -2004,7 +2004,13 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         cc = self.cache_controller
         cap = getattr(cc, "prefetch_capacity_limit", 0) or 0
         occ = getattr(cc, "prefetch_tokens_occupied", 0) or 0
-        pressure = min(1.0, occ / cap) if cap > 0 else 0.0
+        occ_pressure = min(1.0, occ / cap) if cap > 0 else 0.0
+        # v10: occupancy rarely saturates, so add a direct CONTENTION signal — the number of
+        # requests currently blocked waiting on a prefetch. Many concurrent waiters => the SSD
+        # is contended => give up sooner (shorter deadline) so the decode batch does not starve;
+        # few waiters => wait longer to reclaim the host hit. REF ~= half of max-concurrency(128).
+        contention_pressure = min(1.0, len(self.ongoing_prefetch) / 64.0)
+        pressure = max(occ_pressure, contention_pressure)
         size_term = len(operation.hash_value) * self.prefetch_timeout_per_page
         deadline = self.prefetch_timeout_base + size_term * (1.0 - pressure)
         # Cap so a huge SSD-resident prefix can never idle the decode batch for

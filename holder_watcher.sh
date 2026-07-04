@@ -33,8 +33,8 @@ while :; do
   NODE=$(squeue -h -j "$JID" -o "%N" 2>/dev/null); [ -z "$NODE" ] && { sleep 10; continue; }
   echo "[holder] job $JID RUNNING on $NODE"
   # Clean MY OWN leftovers first (a freed pool node often still holds prior L3 caches; I may only
-  # delete my own dir, never foreign data). Also kill any stray server. Then measure free disk.
-  srun --jobid="$JID" --overlap -N1 -w "$NODE" bash -c 'pkill -9 -f sglang.launch_server 2>/dev/null; rm -rf /mnt/localssd/onyx-7q2 2>/dev/null; true' 2>/dev/null
+  # delete my own dir, never foreign data or foreign processes). Then measure free disk.
+  srun --jobid="$JID" --overlap -N1 -w "$NODE" bash -c 'rm -rf /mnt/localssd/onyx-7q2 2>/dev/null; true' 2>/dev/null
   # disk/dram health of my exclusive node
   info=$(srun --jobid="$JID" --overlap -N1 -w "$NODE" bash -c "df -BG /mnt/localssd 2>/dev/null|tail -1|awk '{gsub(/G/,\"\",\$4);print \$4}'; free -g 2>/dev/null|awk '/Mem:/{print \$7}'" 2>/dev/null)
   d=$(printf '%s\n' "$info"|sed -n 1p); m=$(printf '%s\n' "$info"|sed -n 2p)

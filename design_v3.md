@@ -82,3 +82,22 @@ decouple: keep full-attn KV on-device even when a leaf's Mamba state is evicted 
 Deep/risky. CONFIRM via control server.log: if the slow baseline ALSO shows GPU~28%, it's a
 structural Mamba-KV imbalance (worth a bold v4); if it fills GPU, v2's fast regime is the cause.
 Cheap alt to probe hit-rate lever: --page-size 32 (finer prefix match; config; uncertain).
+
+## v8+ plan — frequency-aware eviction (built v8; hold-session batch)
+Context (from v6-page32 metrics): GPU KV pool ~72% empty (NOT binding), Mamba pool IS binding,
+host tier full (util 1.0, evict_tokens 612M), host hits = 50% of all hits, disk irrelevant (1.14%).
+
+- **v8 freq-evict (α=50) [BUILT, committed 97d6058ec]**: aged-LFU key `last_access + α·hit_count` on the
+  full-KV device+host eviction heaps (evict/evict_host). Mainly affects the ACTIVE host full-KV eviction
+  (device rarely evicts since KV pool 72% empty). Tests: does protecting hot host prefixes raise host
+  hit-rate → fewer misses → lower TTFT? Lossless (victim order only). Run FIRST in the hold.
+- **Decision tree after v8:**
+  - v8 beats v4 (1558ms) above ~24% noise → α sweep (α∈{20,100,200}) to find sweet spot; log best.
+  - v8 within noise of v4 → host-eviction policy isn't the lever. Then test the BINDING tier:
+    **v9 = freq-aware MAMBA eviction** (evict_mamba LRU walk, line 818): CLOCK-style bounded
+    second-chance — skip (reset_node_mru) an LRU candidate with hit_count≥thr up to a skip budget,
+    evict a colder node instead. Higher-leverage (Mamba is binding) but riskier (LRU-list mutation on
+    critical path) → implement only if v8 shows the mechanism class has ANY signal, and verify lossless.
+  - both neutral → eviction policy is not a TTFT lever at fixed capacity; v4 stands as near-optimal;
+    pivot to a different axis (scheduler cache-aware admission) or conclude.
+- Also worth 1 clean exclusive-node re-run of v4 (best) to tighten the headline vs the fusion/noise caveat.

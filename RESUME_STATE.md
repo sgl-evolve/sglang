@@ -17,7 +17,7 @@ Version budget 100; **own versions logged so far: 1** (v3-sjf-aged). Baselines v
 - **NEAR-TOTAL CERTIFIED-POOL OUTAGE** (all 6 down): -1/0-0/0-1/0-3 DRAIN (operator-only; 0-0 also NCCL-HW-broken),
   1-2 & ondem-3 alloc + **disk-FULL-by-others** (ondem-3 1106G, 1-2 459G; my own cache there is ~0, so
   self-clean can't help — it's others' caches I must NOT touch). Zero usable node. Fully external.
-- **Re-engagement: HOURLY cron 52fe6e30** (checks summaries->log/report/email, resubmits session job if died,
+- **Re-engagement: HOURLY cron 2df2353e (excludes disk-full ondem-3/1-2 + broken 0-0 -> targets drain-recovery nodes -1/0-1/0-3; re-include ondem-3/1-2 if their disk clears)** (checks summaries->log/report/email, resubmits session job if died,
   session_eval self-handles disk) + resume prompts. session_eval auto-logs on-node.
 - ON RESUME/CRON: `find runs -name summary.json` for NEW vers (v5/v1/v7/v6) -> log to W&B if not auto-logged,
   update report.md, EMAIL if <77083. If session job not PENDING/RUNNING & versions undone -> resubmit (cmd in cron).

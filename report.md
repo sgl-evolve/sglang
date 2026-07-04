@@ -240,6 +240,14 @@ is at ~1800 ms (48.7× v0_official). SRPF is the SJF-optimal ordering for mean-T
 remaining big lever is SERVICE-TIME reduction (raise throughput → drain the overloaded queue faster):
 the hybrid-SSM-safe mixed-chunk fix (halves TPOT) — a deep model-executor mechanism, documented frontier.**
 
+**v20-asrpf — aged SRPF (anti-starvation, α=1000) — 1841 ms, WORSE.** Tested whether a wait-time boost
+(`remaining − α·wait`) lowers the mean by cheaply rescuing the starved tail. It does not: aging
+deprioritizes fresh cheap requests, raising the mean (1808→1841) AND the tail (p99 9954→11051). **This
+closes the scheduling axis: plain SRPF (pure SJF) is optimal for this workload; anti-starvation aging is
+counterproductive** (the tail is not a mean-driver under SRPF). Commit b5883c9e6. *(Also: switched the
+launcher to a blocking `flock` — under heavy single-node fleet contention, poll-based `flock -n` never
+won the lock in 101 min; blocking-queue won it in ~4 min.)*
+
 *(Prior best was v14-lpm-sched 2496 ms; historical note below.)*
 
 **(historical)** The load-adaptive prefetch mechanism (give up on a saturated SSD, reclaim cheap host hits) with a 1 s

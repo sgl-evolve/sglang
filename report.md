@@ -1,9 +1,17 @@
 # onyx-7q2 — sglang KV-cache / HiCache evolution report
 
 ## Executive summary (for a skeptical maintainer)
-**Result: mean TTFT 87615 ms → 2013 ms (−97.7%), lossless, on the fixed 122B-A10B / 3-tier-HiCache /
-Mooncake-1:1:1 protocol.** Throughput +85% (1.15→2.13 req/s), out 146.9→272.6 tok/s, p99 TTFT
-270799→~16000 ms.
+**Result: mean TTFT 87615 ms → 2330 ± 243 ms (n=3 reruns, −97.3%; best single run 2013 ms), lossless, on
+the fixed 122B-A10B / 3-tier-HiCache / Mooncake-1:1:1 protocol.** Throughput +85% (1.15→2.13 req/s), out
+146.9→272.6 tok/s, p99 TTFT 270799→~17400 ms.
+
+**Variance is tail-concentrated, not central (n=3 champion reruns):** the *median* TTFT is essentially
+deterministic — **1282 ± 38 ms (CV 2.9%)** — so the typical request reproduces to a few percent. The
+*mean* carries all the run-to-run noise (**2330 ± 243 ms, CV 10.4%**) because it inherits the cold-recompute
+tail (p99 15953/18095/18219 ms across the three runs). This refines the earlier "~30% variance" (that was
+the max point-to-point delta 2013→2603, a range statistic): the true mean CV is ~10%, and it lives entirely
+in the tail. The −97% regime win is ~40× the mean's std — rock-solid; fine per-knob rankings inside the
+best_effort cluster remain within this tail noise.
 
 **Root cause (measured, not assumed):** under HiCache's default `wait_complete` storage-prefetch policy,
 an L3(disk)-hit request blocks in the prefetch-wait state until its *entire* prefetch finishes. On this
@@ -30,13 +38,16 @@ it (lossless — pure perf fusion, identical numerics). Applied to all runs.
 
 **Evolution curve (mean TTFT, own versions):** v1 91721 (regression: wait_complete GPU starvation) →
 v2 4244 (serial+timeout) → v3 2903 (parallel reads+timeout) → **v4 2013 (parallel reads + best_effort =
-CHAMPION vs baseline, −97.7%)**. **14+ versions logged.** (v4's exact config re-run at 2603 ms — see the
-~30% run-to-run variance caveat below; the −97% regime win is robust, fine per-knob rankings are not.)
+CHAMPION vs baseline, −97.7%)**. **16 versions logged.** (v4's exact config re-run 3× → 2013/2603/2374 ms,
+mean 2330 ± 243 — see the run-to-run variance characterization below; the −97% regime win is robust, fine
+per-knob rankings are not.)
 
-**⚠️ Run-to-run variance is large (~30%) — the sweep's fine rankings are within noise.** A reproducibility
-re-run of the exact v4 config (v4r-repeat) gave **2603 ms vs the original 2013 ms** — a ~590 ms (~29%)
-spread on *identical* settings. So the best_effort design-space results all cluster in ~2000–3000 ms
-(v4 2013 / v4r 2603 / page32 2219 / thr8 2588 / lfu 2638 / thr32 2863 / selective 2843 / writeback 2917 /
+**⚠️ Run-to-run variance is tail-concentrated (mean CV ~10%, median CV ~3%) — the sweep's fine rankings are
+within noise.** Three reproducibility runs of the *identical* v4 config gave **2013 / 2603 / 2374 ms**
+(mean 2330 ± 243 ms, CV 10.4%) — but their *medians* were 1309 / 1309 / 1229 ms (CV 2.9%), i.e. the typical
+request is reproducible to a few percent and all the mean's spread comes from the cold-recompute tail. So the
+best_effort design-space results all cluster in ~2000–3000 ms
+(v4 2013 / v4r 2603 / v4r2 2374 / page32 2219 / thr8 2588 / lfu 2638 / thr32 2863 / selective 2843 / writeback 2917 /
 page128 3119) and are **NOT reliably distinguishable from each other at single-run precision** — the
 apparent "v4 wins every axis" is mostly noise, not real per-knob effects. What IS robust (differences far
 larger than the ~30% noise): the **regime** wins — best_effort (~2–2.6 s) ≫ timeout (~4.0–4.2 s) ≫
@@ -324,7 +335,7 @@ by construction (eviction only changes *what* recomputes).
 | v16-be-lfu | eviction LRU → **LFU** (engine change) | 2638 ms, p99 18391 | within noise (see variance caveat) |
 | v17-be-slru | eviction LRU → **SLRU** (engine change) | 2799 ms, p99 19518 | within noise |
 
-**Complete eviction ablation (engine-level, all lossless): LRU (v4 2013 / v4r 2603), LFU (2638), SLRU
+**Complete eviction ablation (engine-level, all lossless): LRU (v4 2013 / v4r 2603 / v4r2 2374; mean 2330 ± 243), LFU (2638), SLRU
 (2799) — all inside the ~30% run-to-run noise band.** Eviction policy has no reliable effect on TTFT for
 this workload, consistent with the p99 tail being genuinely-cold-prefix recompute (first-occurrence
 prefixes never cached) rather than evictable-hot-prefix loss. (Note: `--radix-eviction-policy` is a no-op

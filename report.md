@@ -87,3 +87,20 @@ fairness matter for the manager's fairness-guard. The autonomous orchestrator (p
 v2-balanced-r2 [mechanism], v3-wtselective, v4-lpm, v5-mixedchunk) keeps blocking fairly and will run +
 self-audit + log to W&B the moment it wins node access. v2 mechanism (balanced/loading-bound prefill
 batching) is built, unit-tested, committed, flag-gated (SGLANG_ENABLE_BALANCED_PREFILL).
+
+## RESULTS (autonomous dedicated-node runner; all with --enforce-disable-flashinfer-allreduce-fusion for node stability)
+
+### v1-besteffort  [config, LOSSLESS] — NEW BEST (beats v0_tuned 34x)
+prefetch=best_effort. Mean TTFT **3241.8 ms** (v0_official 87615 → 27.0x; v0_tuned 108824 → 34.4x).
+median 1711 / P99 29465 ms; out 248 tok/s (+69%); req 1.94/s; bench 60min; hit_rate 0.44 (device+host
+only, L3 skipped). FINDING: default wait_complete prefetch blocks requests on slow SSD(L3) reads →
+queue saturates (baseline ~88s is queue-wait). best_effort (serve partial + recompute suffix on GPU) →
+#queue-req 0-6 → ~27-34x lower TTFT. Lossless (recompute = identical KV). This is CONFIG (bottleneck map),
+not novelty; establishes best_effort as the winning regime for mechanism work.
+NOTE: ~28h lost to eval-pool contention/monopolization + dirty freed nodes (GPU zombies/bad disk);
+solved with an autonomous self-correcting dedicated-node pipeline (keeper+runner, 2h TTL bad-node
+exclusion, retry, claim-lock, flashinfer-disable) — see eval_good_node.sh/dedicated_runner.sh/keeper.sh.
+
+### Plan (best_effort winning regime): v2-balanced-r2 (mechanism, wait_complete+balanced — tests my
+loading-bound batching in its target regime), v6-be-balanced (mechanism in winning regime),
+v7-be-lpm, v8-be-mixedchunk, v9-be-wtselective, v10-timeout. Genuine-novelty goal: beat 3241ms with a mechanism.

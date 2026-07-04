@@ -239,6 +239,11 @@ dominates).
 ≈ v2's untuned serial-timeout 4244) can't approach `best_effort` (v4 2013). The *policy* is the lever, not
 its tuning — 0-wait admission + warm multiturn host prefixes beats any bounded-wait-then-recompute scheme.
 Remaining: read-thread ablation (v6=32, v7=8; expect ≈v4 since IO-bench pinned 16 as the NVMe optimum).
+
+| v6-be-thr32 | read-threads 16 → **32** | 2863 ms (+42%) | loses — 32 over-parallelizes NVMe (matches IO-bench) |
+
+v6 confirms the read-thread choice: 32 threads (2863) is worse than v4's 16 (2013), exactly as the offline
+IO microbench predicted (16 = aggregate NVMe optimum; 32→5.5 GB/s < 16→6.1 GB/s). v7 tests 8 (last run).
 read-thread ablation (v6=32/v7=8, expected ≈v4 since IO-bench pinned 16 as optimum). **v4 (2013 ms)
 unbeaten across the entire best_effort design space so far** — the parallel-read mechanism + 0-wait
 admission is the win; every other axis (write-policy, write-parallelism, page-size) is neutral-to-negative.

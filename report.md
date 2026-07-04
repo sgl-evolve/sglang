@@ -166,6 +166,24 @@ The overload is queue-dominated; the adaptive-prefetch lever is tapped at ~2580 
 - **Config:** v14 (adaptive + LPM) **+ `--radix-eviction-policy lfu`**. Commit `f16eb9b35`.
 - **Result: mean TTFT 2542 ms** (vs best v14 2496 — the 46 ms gap is within this metric's large run-variance). LFU did exactly what the hypothesis predicted on the CACHE side: **hit_rate 0.615→0.622, throughput 2.80→2.88 req/s, e2e 39.7→38.4 s, p99 TTFT 19.1→18.5 s** — all improved. But the **headline mean TTFT did not drop.** Lossless (7037/7037).
 - **Key learning:** the headline is now **scheduling/queue-bound, not recompute-bound** — raising hit_rate improves throughput/balance but not mean TTFT at this operating point. So the remaining headline headroom is on the SCHEDULER/admission surface, not the cache-quality surface. v14 remains headline-best; v15 is the balance-best.
+
+### v16-aggr-admit — aggressive admission (`--schedule-conservativeness 0.5`) — valid, NOT best (12th own version)
+- **Hypothesis:** the queue is overloaded; more aggressive admission (lower conservativeness → larger running batch) might drain it faster → lower TTFT.
+- **Result: mean TTFT 2639 ms** (vs best v14 2496) — WORSE. throughput 2.80, hit_rate 0.619 unchanged. Lossless (7037/7037). More aggressive admission does not drain faster (the batch is memory-bound near max-concurrency; being less conservative just adds preemption risk). **Admission conservativeness is not a headline lever; default (1.0) is best.**
+
+### Scheduler mechanism check — LPM is ALREADY cache-tier-aware (no redundant mechanism needed)
+Investigated building a "prioritise host-resident-prefix requests" scheduler mechanism. Reading the LPM sort (`schedule_policy.py`): the sort key is `-r.num_matched_prefix_tokens`, and `num_matched_prefix_tokens = len(prefix_indices)[device] + host_hit_length[host]` — it **excludes** SSD/storage hit length. So LPM already prioritises device+host-resident (zero-prefetch-wait) prefixes and treats SSD-only prefixes as low priority — exactly the tier-aware ordering I intended. **This is why LPM won (2496); no additional scheduler code mechanism has headroom here.**
+
+## Surface map (this run) — headline mean TTFT
+Five levers explored; best = **v14 (adaptive prefetch cap 3s + LPM scheduling) = 2496 ms = 35× v0_official**:
+| surface | lever | verdict |
+|---|---|---|
+| storage prefetch | best_effort→**adaptive** (cap 3s, occupancy-pressure) | **WIN** — fixes SSD-wait starvation (biggest lever) |
+| scheduler policy | fcfs→**lpm** (cache-tier-aware SJF) | **WIN** — cuts residual queue-wait (2580→2496) |
+| eviction policy | lru→lfu | balance-win (hit_rate/thpt/e2e/p99), headline-neutral |
+| decode protection | num-continuous-decode-steps 1/2/4 | trades headline for throughput; 1 (default) best for headline |
+| admission | schedule-conservativeness 0.5/1.0 | 1.0 (default) best; aggressive hurts |
+**Headline is at its floor (~2496) for accessible config/policy levers.** Remaining headroom needs a *service-time* mechanism (reduce per-request prefill+decode), not reordering: the top candidate is a **hybrid-SSM-safe mixed-chunk / decode-bubble reduction** (v11 mixed-chunk halved TPOT 489→238 but broke requests on this Mamba/GDN model — needs a compatible variant in the model executor). That is a deep code mechanism for a future window with fresh context.
 - Infra: robust workflow = isolated flashinfer cache (`FLASHINFER_WORKSPACE_BASE=$WORK`) +
   `--dist-timeout 5400`. The shared `~/.cache/flashinfer` was corrupted by cross-researcher concurrent
   compiles (hangs + a SIGBUS in CUDA-graph capture); isolation fixed it (loads in ~147 s).

@@ -272,6 +272,11 @@ reads; this *avoids* them).
   can't be de-risked offline (needs a live server to confirm losslessness + no preemptions), so it's a
   higher-risk use of a scarce node. This config lever tests the same device-retention hypothesis safely
   first; if it wins, a follow-up code mechanism (smarter eviction using the enlarged pool) is justified.
-- **Verification gate:** lossless (outputs vs v6 — reducing the SSM pool must not change results, only
-  concurrency/eviction) + resolved_args shows mamba 700 + eval exit 0. Runs back-to-back after v12 on
-  the same self-locked node (batch watcher `hold_batch.sh`).
+- **Why lossless (strengthened):** the fixed load caps concurrency at 128, so ~128 mamba SSM slots
+  suffice for active requests; the default 1350 is heavily over-provisioned. 700 (≫128) leaves the active
+  set uncramped → no admission drops, no state eviction → byte-identical outputs, and the reduction
+  itself costs nothing. Floor caveat: mamba slots also back *cached* prefix states (`mamba_value` in
+  `HiMambaRadixCache`), so going too low would force prefix recompute (still lossless, but slower) — 700
+  is a sensible first point with headroom to **sweep lower (e.g. 500/300) as a follow-up** if it helps.
+- **Verification gate:** lossless (outputs vs v6) + resolved_args shows mamba 700 + eval exit 0. Runs
+  back-to-back after v12 on the same self-locked node (batch watcher `hold_batch.sh`).

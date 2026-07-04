@@ -224,7 +224,14 @@ Ran on a clean exclusive nodeset-0 hold. Two datapoints so far, both **honest ne
 | v15-be-parwrite | **parallel L3 writes** (WRITE_THREADS=8) | 2995 ms (+49%) | **loses: write path is NOT the TTFT bottleneck** |
 
 **All three write-side variants lose** → the write path is exhausted as a lever; v4's default `write_through`
-+ parallel-reads + best_effort is optimal. Page-size (v9/v10) and timeout-grace (v13) axes next.
++ parallel-reads + best_effort is optimal.
+
+| v9-be-page128 | page-size 64 → **128** | 3119 ms (+55%) | loses: coarser cache granularity ⇒ lower effective hit_rate |
+
+Page-size 128 (larger) hurts vs v4's default 64. v10 tests 32 (smaller); then timeout-grace (v13),
+read-thread ablation (v6=32/v7=8, expected ≈v4 since IO-bench pinned 16 as optimum). **v4 (2013 ms)
+unbeaten across the entire best_effort design space so far** — the parallel-read mechanism + 0-wait
+admission is the win; every other axis (write-policy, write-parallelism, page-size) is neutral-to-negative.
 
 **Key finding:** the write-side levers don't help. v15 is the important one — the offline write microbench
 showed the serial write loop is thread-bound (2.29× faster drain @ 8 threads), but that speedup **does not

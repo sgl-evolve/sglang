@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from array import array
 
 from sglang.srt.environ import envs
@@ -81,6 +82,13 @@ IN_BATCH_PREFIX_CACHING_DEPRIORITIZE_THRESHOLD = int(
 
 IGNORE_EOS_RESERVE_TOKENS = 1
 
+# Aging coefficient for the SRPF (shortest-remaining-prefill-first) scheduling policy's
+# anti-starvation variant `asrpf`: priority = remaining_prefill_tokens - ALPHA * wait_seconds.
+# Units: tokens per second of waiting. A request that has waited W seconds gets its effective
+# remaining-prefill reduced by ALPHA*W, so long-prefill requests can't be starved indefinitely
+# by a stream of cheap ones. Tunable per version (like the adaptive prefetch cap).
+SRPF_AGING_ALPHA = float(os.environ.get("SGLANG_SRPF_AGING_ALPHA", "1000.0"))
+
 
 def match_prefix_for_req(
     tree_cache: BasePrefixCache,
@@ -136,6 +144,7 @@ class CacheAwarePolicy(Enum):
     LPM = "lpm"  # longest prefix match
     DFS_WEIGHT = "dfs-weight"  # depth-first search weighting
     SRPF = "srpf"  # shortest-remaining-prefill-first (true SJF on TTFT)
+    ASRPF = "asrpf"  # aged SRPF: SJF with wait-time boost to bound the tail
 
 
 class CacheAgnosticPolicy(Enum):
@@ -204,6 +213,10 @@ class SchedulePolicy:
                 SchedulePolicy._sort_by_shortest_remaining_prefill(
                     waiting_queue, temporary_deprioritized
                 )
+            elif policy == CacheAwarePolicy.ASRPF:
+                SchedulePolicy._sort_by_aged_shortest_remaining_prefill(
+                    waiting_queue, temporary_deprioritized
+                )
             elif policy == CacheAwarePolicy.DFS_WEIGHT:
                 SchedulePolicy._sort_by_dfs_weight(waiting_queue, self.tree_cache)
             else:
@@ -227,7 +240,8 @@ class SchedulePolicy:
 
     def _determine_active_policy(self, waiting_queue: List[Req]) -> Policy:
         if (
-            self.policy in (CacheAwarePolicy.LPM, CacheAwarePolicy.SRPF)
+            self.policy
+            in (CacheAwarePolicy.LPM, CacheAwarePolicy.SRPF, CacheAwarePolicy.ASRPF)
             and len(waiting_queue) > 128
         ):
             # Turn off the expensive prefix matching and sorting when the #queue is large.
@@ -335,6 +349,35 @@ class SchedulePolicy:
                 else float("inf")
             )
         )
+
+    @staticmethod
+    def _sort_by_aged_shortest_remaining_prefill(
+        waiting_queue: List[Req], temporary_deprioritized: Set[int]
+    ) -> None:
+        """SRPF with anti-starvation aging.
+
+        Plain SRPF minimises mean TTFT but can starve long-remaining-prefill requests,
+        inflating the tail (p99) — and cross-run data shows the mean is partly tail-driven,
+        so an exploding tail can offset SRPF's mean gain. Here the effective key is
+        `remaining_prefill_tokens - ALPHA * wait_seconds`: a request that has waited longer
+        is boosted toward the front, bounding starvation while keeping the SJF ordering for
+        freshly-arrived requests. `wait_queue_entry_time` is a perf_counter() stamp set when
+        the request enters the waiting queue (scheduler `_add_request_to_queue`).
+        """
+        now = time.perf_counter()
+        alpha = SRPF_AGING_ALPHA
+
+        def key(r):
+            if r.rid in temporary_deprioritized:
+                return float("inf")
+            remaining = (
+                len(r.origin_input_ids) + len(r.output_ids)
+            ) - r.num_matched_prefix_tokens
+            entry = getattr(r.time_stats, "wait_queue_entry_time", 0.0) or 0.0
+            wait = now - entry if entry > 0 else 0.0
+            return remaining - alpha * wait
+
+        waiting_queue.sort(key=key)
 
     @staticmethod
     def _sort_by_dfs_weight(

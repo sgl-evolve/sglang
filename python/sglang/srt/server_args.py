@@ -713,6 +713,7 @@ class ServerArgs:
             choices=[
                 "lpm",
                 "srpf",
+                "asrpf",
                 "random",
                 "fcfs",
                 "dfs-weight",

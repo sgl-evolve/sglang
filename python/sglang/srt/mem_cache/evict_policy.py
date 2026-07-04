@@ -81,6 +81,34 @@ class CostAwareStrategy(EvictionStrategy):
         return (is_deep, node.last_access_time)
 
 
+class CostTieredStrategy(EvictionStrategy):
+    """Finer-grained cost-aware eviction: instead of the binary deep/shallow bucket of
+    CostAwareStrategy (peak at threshold 8192), assign a graded DEPTH TIER so the truly-huge
+    prefixes (LEval/LooGLE 100k+, most O(L^2)-expensive to recompute) are protected MORE than
+    the moderately-long. tier = min(depth // TIER_SIZE, MAX_TIER); evict lowest tier first,
+    LRU within a tier. Same losslessness + bounded parent-walk as CostAwareStrategy.
+    """
+
+    TIER_SIZE = 8192   # tokens per protection tier (aligns with the swept binary peak)
+    MAX_TIER = 4       # cap: tiers 0..4 (>=32768 tokens all top-tier); bounds the walk
+    MAX_WALK = 512
+
+    def get_priority(self, node: TreeNode) -> Tuple[int, float]:
+        depth = 0
+        n = node
+        hops = 0
+        cap = self.TIER_SIZE * self.MAX_TIER
+        while n is not None and getattr(n, "key", None) is not None and hops < self.MAX_WALK:
+            depth += len(n.key)
+            if depth >= cap:
+                break
+            n = n.parent
+            hops += 1
+        tier = min(depth // self.TIER_SIZE, self.MAX_TIER)
+        # min-heap pops smallest first: (low tier=shallow, older) evicted before (high tier=deep)
+        return (tier, node.last_access_time)
+
+
 class SLRUStrategy(EvictionStrategy):
     def __init__(self, protected_threshold: int = 2):
         self.protected_threshold = protected_threshold

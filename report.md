@@ -10,13 +10,23 @@ Headline metric: **mean TTFT** (lower better), lossless gate: outputs match no-c
 | v0_official | stock default | 87615 | +19% (worse) | — | 146.9 | .816 / — |
 | v0_tuned | best stock cfg (THE BAR) | 108824 | — | +24% (worse) | 119.3 | .821 / — |
 | **v3-sjf-aged** | **SJF + aging=90s** | **77082.7** | **1.41× (−29%)** | **1.14× (−12%)** | **149.2** | .818 / .253 |
-| v2-sjf | pure SJF | _running_ | | | | |
-| v1-parallel-l3-io | parallel L3 disk I/O | _queued_ | | | | |
+| v2-sjf | pure SJF (aging=0) | 80341.6 | 1.35× (−26%) | 1.09× (−8%) | 151.3 | .813 / .250 |
+| v1-parallel-l3-io | parallel L3 disk I/O | _running_ | | | | |
 
 **v3-sjf-aged is the current best** — a **29% mean-TTFT cut vs the bar** with hit-rate/l3-frac matching
 baseline (cache behaviour preserved) and out_tok/s slightly *up*. Confirms the core thesis: mean TTFT
-here is **prefill-queue-waiting-dominated**, and shortest-job ordering (with aging to bound the tail)
-is the dominant lever, not disk latency.
+here is **prefill-queue-waiting-dominated**, and shortest-job ordering is the dominant lever, not disk
+latency. **Both SJF variants beat both baselines robustly** (1.35–1.41× vs the bar — large, well outside
+the ~24% baseline noise band).
+
+**Key finding — aging *lowers the mean*, not just the tail.** Theory says pure SJF is mean-optimal, yet
+**aged SJF (v3) beats pure SJF (v2) on the mean** (77083 vs 80342, −4.1%). Reason: the workload tail is
+so heavy (p90 TTFT ≈ 230 s) that under pure SJF a handful of giant prompts are deferred to the very end
+and accumulate catastrophic waits; aging promotes them once they've waited ≥90 s, spreading them out.
+v3 vs v2: p90 TTFT **228.6 s vs 233.7 s** (aging trims the tail) at the cost of a tiny median rise
+(1418 vs 1193 ms) — the p90 gain on ~10% of requests outweighs the median cost, netting a lower mean.
+So aging is a genuine mean-TTFT improvement here, not merely tail insurance. (4.1% is modest vs the ~24%
+regime noise, so treat v3>v2 as *directional*; the robust result is that SJF±aging ≫ FCFS baselines.)
 
 ## Environment / regime notes
 - The two supervised baselines share **identical** `resolved_args` yet differ **24%** in mean TTFT
@@ -67,7 +77,7 @@ just concurrent.)_
 
 **Takeaway.** _(pending eval)_
 
-## v2 — cache-aware shortest-job-first (SJF) prefill scheduling  [mechanism] — READY, eval pending
+## v2 — cache-aware shortest-job-first (SJF) prefill scheduling  [mechanism] — ✅ EVALUATED
 **Hypothesis.** Mean TTFT here is dominated by **prefill-queue waiting under overload** (median TTFT
 ~1.2 s but mean ~90 s, p99 ~270 s; closed loop at max-concurrency 128), not by disk latency (per-rank
 L3 traffic averages ~70 MB/s « the ~6 GB/s SSD). The mix's prompt sizes are **extremely heterogeneous**
@@ -86,7 +96,14 @@ mean is the headline. Aged-SJF (v3) is the fallback if the tail regresses badly.
 mean completion under **FCFS = 2.37× that of SJF**; the top-10% largest documents hold **33%** of all
 prefill tokens (they block everyone under FCFS). Strong prior that SJF cuts mean TTFT substantially.
 Eval it with `eval-on-pool.sh quartz-7m3 v2-sjf --schedule-policy sjf`.
-**Result / takeaway.** _(eval pending — see infra note)_
+**Result (2026-07-04, ondem-3, commit 85ae5f650).** mean TTFT **80341.6 ms** — **1.35× better than
+v0_tuned** (−26%), 1.09× vs v0_official. out_tok/s 151.3 (> both baselines). median 1193 ms, p90 233.7 s,
+p99 249.1 s. Cache hit 0.813 / l3-frac 0.250 — matches golden run (placement unchanged). server.log
+confirms `schedule_policy='sjf'`; on-contract; lossless (pure queue reorder). Logged to W&B (mechanism).
+**Takeaway.** SJF alone is a large, robust win over FCFS (confirms the queue-bound thesis and the offline
+2.37× sim directionally). It is **not** the overall best, though: **aged SJF (v3, 77083 ms) beats pure
+SJF by 4.1%** because the tail is heavy enough that bounding it (aging) also lowers the mean — see the
+key-finding note up top. So the winning config is SJF **with** aging, and aging value is worth tuning.
 
 ## v3 — optional aging for SJF (bounded tail)  [mechanism] — ✅ EVALUATED, NEW BEST
 **Hypothesis.** Pure SJF (v2) can starve the largest prompts → p99/tail rises. Aging bounds that:

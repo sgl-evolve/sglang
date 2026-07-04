@@ -223,6 +223,12 @@ engine code: `SRPF` CacheAwarePolicy in `schedule_policy.py`. hit_rate dipped 0.
 changes reuse) yet TTFT dropped hugely — the SJF win dominates. Ran on 1-2 the instant its disk recovered
 from the ~10h cluster disk outage. Commit 729bac9e0.
 
+**v18-srpf-lfu — SRPF + LFU eviction — marginal new best 1798 ms (nominal).** Hypothesis was that LFU
+would restore the hit_rate that SRPF dipped (0.615→0.583). It did NOT: hit_rate fell further to 0.568,
+yet mean TTFT ticked 1840→1798 and p99 11351→10522. The ~2% is within this metric's run-variance, so I
+log it as the curve's low point but treat SRPF (v17) as the meaningful mechanism and did not re-email a
+within-noise delta. Confirms (again) the regime is scheduling-bound, not hit-rate-bound. Commit 196d2faa1.
+
 *(Prior best was v14-lpm-sched 2496 ms; historical note below.)*
 
 **(historical)** The load-adaptive prefetch mechanism (give up on a saturated SSD, reclaim cheap host hits) with a 1 s

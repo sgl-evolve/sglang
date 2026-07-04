@@ -58,7 +58,7 @@ while IFS=$'\t' read -r ver tag env args _; do
     fi
     touch "$DONE/$ver"
   else
-    if [ "$node_ok" = 0 ]; then log "$ver failed 2x with NO prior success -> FLAKY NODE, exit to release+resubmit"; exit 7; fi
+    if [ "$node_ok" = 0 ]; then log "$ver failed 2x NO prior success -> BAD/FLAKY NODE $(hostname), record+exit"; echo "$(hostname)" >> "$WS/.bad_nodes"; exit 7; fi
     log "$ver failed 2x (version-specific; node was ok) -> mark done, skip"; touch "$DONE/$ver"
     printf '%s\t%s\t%s\t-\t-\tcrash2x\n' "$(date '+%m-%d %H:%M')" "$ver" "$tag" >> "$WS/results.tsv"
   fi

@@ -77,6 +77,16 @@ because host RAM (768 GB) already holds the reused multiturn prefixes and best_e
 That argues the interesting lever here is **GPU+host hit rate / eviction under host pressure**, not the
 storage tier the earlier draft chased.
 
+**Why neither reference mechanism applies to my regime (studied both sources):** Strata's two
+contributions are (1) *GPU-assisted I/O* (decoupled GPU/CPU layouts to fix fragmented transfers) — but
+this hybrid-Mamba model forces `io-backend=direct`, so that kernel is **unavailable**; and (2)
+*cache-aware scheduling* (overlap I/O stalls to move from loading-bound → compute-bound) — but
+`best_effort`'s 0-wait admission **already** makes my runs compute-bound (num_running≈120), so its
+headroom is small. The HiCache blog's data-plane wins (page-first layout, layer-wise overlap) are already
+enabled in my config. So the SOTA offers no untried, well-fitting lever for the *already-best_effort*
+regime — which is why the open question is whether the **storage tier can be made to contribute at all**
+on clean disk (v19), and failing that, whether **host retention** can be improved beyond noise (v18).
+
 ---
 
 Researcher: **onyx-7q2** · branch `evolve/onyx-7q2` · W&B run `sgl-evolve/onyx-7q2`

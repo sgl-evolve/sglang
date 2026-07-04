@@ -1,0 +1,8 @@
+07-04 10:32	v1-besteffort	config	ttft_mean=3241.8ms	2b55ed6bb	logged
+07-04 12:21	v2-balanced-r2	mechanism	ttft_mean=82853.9ms	ab657f707	logged
+07-04 13:24	v6-be-balanced	mechanism	ttft_mean=3023.2ms	ab657f707	logged
+07-04 14:15	v7-be-lpm	config	ttft_mean=2010.3ms	c20ce7367	logged
+07-04 15:07	v8-be-mixedchunk	config	ttft_mean=16180.2ms	1947251ca	logged
+07-04 15:56	v10-timeout	config	ttft_mean=2588.4ms	955a46db0	logged
+07-04 16:56	v14-be-lpm-balanced	mechanism	ttft_mean=2708.6ms	8623eb9f3	logged
+07-04 17:45	v18-to-lpm	config	ttft_mean=2551.2ms	37d31424f	logged

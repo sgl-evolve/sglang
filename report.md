@@ -125,3 +125,9 @@ Next: ratio sweep (v11 R=1.0, v12 R=1.5, v13 R=3.0) to find the balancing optimu
   (v6 +7%) but not with lpm. KEY INSIGHT: two cache-aware schedulers interfere; lpm alone dominates.
 Curve summary (mean TTFT, lower=better): v0_tuned 108824 > v0_official 87615 >> v1 3241 (best_effort, 34x) >
   v6 3023 (best_effort+balanced, mechanism +7%) > v10 2588 (timeout) > v7 2010 (best_effort+lpm, BEST 54x).
+
+### v18-to-lpm [config] 2551.2 ms — best_effort+lpm (v7 2010) STILL BEST.
+Finding: timeout BEATS best_effort ALONE (v10 2588 < v1 3241), but WITH lpm best_effort wins (v7 2010 < v18 2551).
+lpm's high hit rate (0.618) makes indiscriminate disk-waits (timeout) a NET latency cost. => winning config = best_effort+lpm.
+Next (my novelty): LENGTH/COST-AWARE prefetch — wait for disk KV only on long prefixes (recompute O(L^2)-expensive),
+skip on short (cheap recompute). Beats blanket timeout's indiscriminate waiting; distinct from my balanced batching.

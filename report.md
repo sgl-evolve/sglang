@@ -229,6 +229,17 @@ yet mean TTFT ticked 1840→1798 and p99 11351→10522. The ~2% is within this m
 log it as the curve's low point but treat SRPF (v17) as the meaningful mechanism and did not re-email a
 within-noise delta. Confirms (again) the regime is scheduling-bound, not hit-rate-bound. Commit 196d2faa1.
 
+**v19-srpf-cap1 — SRPF + adaptive cap 3s→1s — 1808 ms (tied).** Re-tuned the adaptive prefetch cap under
+the new SRPF regime; 1s vs 3s is indistinguishable (1808 vs 1798), though p99 drifted to its lowest
+(9954). **The cap is not a meaningful lever under SRPF.** Commit baa958c54.
+
+**Plateau under SRPF (~1800 ms):** with SRPF scheduling, every accessible config lever — prefetch cap,
+eviction policy (LFU), admission conservativeness, decode-protection — is now noise-level. The headline
+is at ~1800 ms (48.7× v0_official). SRPF is the SJF-optimal ordering for mean-TTFT, so there is no better
+*scheduling*; and the regime is scheduling/queue-bound, so cache-quality levers don't move it. **The only
+remaining big lever is SERVICE-TIME reduction (raise throughput → drain the overloaded queue faster):
+the hybrid-SSM-safe mixed-chunk fix (halves TPOT) — a deep model-executor mechanism, documented frontier.**
+
 *(Prior best was v14-lpm-sched 2496 ms; historical note below.)*
 
 **(historical)** The load-adaptive prefetch mechanism (give up on a saturated SSD, reclaim cheap host hits) with a 1 s

@@ -4,7 +4,22 @@ I am researcher **w6** (done-signal: `touch .../manager/.runtime/slots/w6.resear
 Sessions tear down ~every 2 min; a DETACHED racer does the eval work independent of my session.
 Version budget 100; **own versions logged so far: 1** (v3-sjf-aged). Baselines v0_official/v0_tuned don't count.
 
-## ===== LATEST (07:07, 2026-07-04) — READ THIS FIRST =====
+## ===== LATEST (08:40, 2026-07-04) — READ THIS FIRST =====
+- **Own versions LOGGED: 2/100** — v3-sjf-aged (77083ms=1.41x BEST), v2-sjf (80342ms=1.35x). Headline DONE.
+- **PIVOTED to sanctioned sbatch fallback** (certified pool freed up ~08:37): held pool was stuck (0-0
+  NCCL-broken then dropped by mgr; 1-2 disk-short), so both refinements now run as `--exclusive` certified
+  sbatch jobs (clean, no collision). Campaign RETIRED (avoid double-run).
+    - **v1-parallel-l3-io**: sbatch jid in runs/v1-sbatch.jid (18235), RUNNING on ondem-3 (SAME certified
+      node as v2/v3 -> comparable). ~2h -> done ~10:40.
+    - **v5-sjf-aged90-rep**: sbatch jid in runs/v5-sbatch.jid (18262), PENDING (waiting for a 2nd certified node).
+- **sbatch does NOT auto-log to W&B** — I MUST log each MANUALLY on completion:
+  `( set -a; . $ROOT/.env; set +a; $D/.venv/bin/python $ROOT/programs/sgl/researcher/.claude/skills/report-sop/scripts/log_wandb.py quartz-7m3 $D/runs/<VER>/summary.json <VER> <commit=bc83a70d9> mechanism )`
+  then read overall/ttft_mean_ms, update report.md table+section, EMAIL if <77083 (new best).
+- Monitor bw... watches runs/{v1-parallel-l3-io,v5-sjf-aged90-rep}/summary.json.
+- To submit another certified sbatch (template): see runs/*-sbatch.jid history; exclude=`certified-nodes.sh --exclude`+`,slurm2-a3nodeset0-0`; env goes INSIDE --wrap before `bash $EVAL`.
+- If certified pool crunches again: fall back to held-pool campaign.sh (dynamic held read, blacklist 0-0, patched racer).
+
+## ===== (07:07) earlier =====
 - **Own versions LOGGED: 2/100** — v3-sjf-aged (77083ms=1.41x, BEST), v2-sjf (80342ms=1.35x). Both to W&B.
   (v1 was clobbered mid-run by my own rm; never completed. Re-queued.)
 - **HEADLINE SECURED**: v3 beats v0_tuned (108824) by 1.41x, LOSSLESS. Mechanism code committed+pushed

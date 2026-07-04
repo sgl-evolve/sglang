@@ -136,7 +136,8 @@ almost certainly runs a smaller batch (requests stuck in prefetch).
   hit_rate 0.597→0.633, throughput 2.63→2.68, TPOT 489→457, e2e 43.1s→41.4s. Unclipping the deadline
   (v5's cap==base flattened it to 1 s) lets the size/pressure term engage → more host-hit reclaim in
   low-backlog windows. The full adaptive form beats the flat-1 s v5.
-- **v9-adaptive-cap6** (mechanism, cap 6s): running — climb the cap further (1s→2719, 3s→2580).
+- **v9-adaptive-cap6** (mechanism, cap 6s): 2613 ms — cap climb PLATEAUED (1s→2719, 3s→2580 best, 6s→2613); v8 (cap 3s) stays the headline best (v9 slightly better throughput/e2e/p99 but +TTFT). Optimum cap ~3s; code restored to 3s.
+- **v10-adaptive-contention** (mechanism): running — occupancy pressure rarely saturates, so add a direct contention signal (len(ongoing_prefetch)/64) to the adaptive deadline: give up sooner when many requests are blocked on prefetch, wait longer when few.
 - Infra: robust workflow = isolated flashinfer cache (`FLASHINFER_WORKSPACE_BASE=$WORK`) +
   `--dist-timeout 5400`. The shared `~/.cache/flashinfer` was corrupted by cross-researcher concurrent
   compiles (hangs + a SIGBUS in CUDA-graph capture); isolation fixed it (loads in ~147 s).

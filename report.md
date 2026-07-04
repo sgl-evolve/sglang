@@ -131,3 +131,6 @@ Finding: timeout BEATS best_effort ALONE (v10 2588 < v1 3241), but WITH lpm best
 lpm's high hit rate (0.618) makes indiscriminate disk-waits (timeout) a NET latency cost. => winning config = best_effort+lpm.
 Next (my novelty): LENGTH/COST-AWARE prefetch — wait for disk KV only on long prefixes (recompute O(L^2)-expensive),
 skip on short (cheap recompute). Beats blanket timeout's indiscriminate waiting; distinct from my balanced batching.
+
+### v20-be-lpm-wtsel [config] 2705.6 ms — NEGATIVE. write_through_selective (thr 2) < default write_through (thr 1, v7 2010).
+Delaying host writes -> host tier populates slower -> fewer host hits -> more recompute. Aggressive write-through best here.

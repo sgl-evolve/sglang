@@ -6,3 +6,4 @@
 07-04 15:56	v10-timeout	config	ttft_mean=2588.4ms	955a46db0	logged
 07-04 16:56	v14-be-lpm-balanced	mechanism	ttft_mean=2708.6ms	8623eb9f3	logged
 07-04 17:45	v18-to-lpm	config	ttft_mean=2551.2ms	37d31424f	logged
+07-04 18:53	v20-be-lpm-wtsel	config	ttft_mean=2705.6ms	e1aa1727a	logged

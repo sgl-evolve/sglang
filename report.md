@@ -607,3 +607,18 @@ scheduling = **~790 ms mean TTFT, ~138× below v0_tuned, lossless, system keeps 
 is now the unavoidable long-context first-touch recomputes (P99 ~5 s); the only remaining lever is
 prefill/decode overlap (mixed_chunk), declined for a device-KV-pool leak + silent-losslessness risk.
 Four novel engine mechanisms total (2 disk-skip, cost-aware eviction, SJF), all pluggable/upstream-friendly.
+
+## Future direction (identified, not implemented — for a maintainer / future run with reliable capacity)
+The boldest remaining *architectural* lever is **lossless compression of the host KV tier**. Rationale:
+churn is real (evict 574M / load-back 444M = ~4.4× reload tax → the 768GB host tier is capacity-binding,
+which is why hit_rate sits at 0.68 not ~1.0). Fitting ~1.5–2× more logical KV in the SAME frozen 768GB via
+a fast lossless codec (FP8 KV has limited dynamic range → compressible) would cut evictions → cut the
+recompute that dominates the floor — a "smarter engine, same budget" win, fully in-contract and lossless.
+**Why NOT done here (honest):** (1) invasive — the host pool uses fixed-slot indexing; variable-size
+compressed blocks need an indirection/allocator layer (real data-structure surgery, high crash risk on this
+hybrid-GDN model, cf. the mixed_chunk device-pool leak); (2) uncertain payoff — decompression on the
+host→device load path (currently overlapped at ~1.1ms) could become a stall, possibly offsetting the churn
+savings; (3) must be validated on a clean certified node with incremental losslessness checks — not
+something to implement blind under contended capacity. Recommended as the next real experiment when a node
+is reliably available. Other minor, lower-value ideas: page-size 128 (32 was neutral), prefill-priority
+scheduling for TTFT (risks throughput→queue). All eviction/scheduling/disk/capacity levers are exhausted.

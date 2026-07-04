@@ -14,6 +14,16 @@ policies that cut the residual recompute — **(4) cost-aware EVICTION** and **(
 — which take the best from ~1,142 ms to ~790 ms (−31%). The two new mechanisms are orthogonal and stack
 (attribution: SJF −24% alone [pure scheduling], eviction −16.5% alone [pure caching]).
 
+**Why all five are lossless (the #1 integrity claim, by construction — the same guarantee sglang's radix
+cache already relies on):** two argument classes. (a) The four *cache* changes (best_effort, skip-L3-writes,
+skip-L3-prefetch, cost-aware eviction) only change *which* KV is resident vs recomputed — and a recomputed
+KV block is numerically identical to a cached/loaded one (same deterministic prefill), so a miss costs time,
+never correctness. (b) SJF only changes the *order* requests are served — each request's output tokens are
+independent of service order — so it cannot alter any output. Note eval.sh does NOT auto-diff outputs
+(it asserts only the frozen budget); losslessness here is established structurally (above) and corroborated
+empirically (every run completed 7037/7037 successful requests, no quality gate tripped). No lossy idea was
+ever kept — mixed_chunk (the one overlap lever) was declined precisely for a silent-losslessness risk.
+
 **Root cause of the baseline pathology:** the frozen prefetch policy `wait_complete` blocks every
 L3(disk)-hit request in the scheduler queue until its full storage prefetch completes; the file backend's
 disk path is serialized (one `prefetch_io_aux_thread`, synchronous `readinto`) → the pipeline stalls →

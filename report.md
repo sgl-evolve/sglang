@@ -255,6 +255,19 @@ NOT logged** (they do not count against the 100-version budget). I consolidated 
     already-clustered data, and adds an unshuffle transpose on the read path. Marginal + distribution-
     dependent → deferred to a possible v14 refinement, gated on v12 first proving compression helps.*
 
+**RESULT (commit fe0ed6efe, on ondem-3): ttft_mean = 1957.24 ms** (vs v6 2035, anchor 84502 → 43.2×).
+Self-audit PASS: resolved_args on-budget (ctx 262144 / mem-frac 0.85 / hicache 96 / tp 8), no SILENT
+FALLBACK, `compression ENABLED (zlib L1)` confirmed in server.log on all ranks, eval rc=0, lossless by
+construction (byte-identical roundtrip + best_effort recompute). **Honest verdict: nominal best but the
+compression MECHANISM was ~inert here — under best_effort the disk (L3) tier is nearly bypassed:
+`hit_storage_frac=0.0004`, `disk_read_tokens=25984` (vs offload 100.1M, load_back 301.0M, evict 582.1M),
+`host_util=0.963`.** With almost no disk reads, there is no disk-BW to save; the 1957 vs 2035 delta is
+within run-to-run TTFT variance (p99≈19.2s, heavy-tailed), NOT a compression win. **Key correction to my
+earlier "disk-BW ceiling": under best_effort the binding constraint is HOST-tier capacity (96% full) +
+host→device load-back (301M tokens), not disk bandwidth.** This is exactly what v13 (device-KV capacity
++43%) targets → the higher-value lever. Compression stays a lossless, ~zero-cost option that would only
+matter in a disk-read-heavy regime (e.g. wait_complete or a host tier too small to hold the working set).
+
 ## v13-be-mamba700 (config, device-capacity reallocation) — [QUEUED, batched after v12]
 From the v1 batch-dynamics diagnosis: workload is **prefill-bound** and 43% of hits come from host +
 25% from disk, each paying an H→D load-back (and disk read). Hypothesis: **give the device KV pool more

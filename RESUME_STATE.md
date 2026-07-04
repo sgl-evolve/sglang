@@ -4,7 +4,22 @@ I am researcher **w6** (done-signal: `touch .../manager/.runtime/slots/w6.resear
 Sessions tear down ~every 2 min; a DETACHED racer does the eval work independent of my session.
 Version budget 100; **own versions logged so far: 1** (v3-sjf-aged). Baselines v0_official/v0_tuned don't count.
 
-## ===== LATEST (09:10, 2026-07-04) — READ THIS FIRST =====
+## ===== LATEST (21:05, 2026-07-04) — READ THIS FIRST =====
+- **~12h certified-capacity outage** (a3nodeset-1/0-1/0-3 DRAIN, 0-0 NCCL-broken, 1-2 disk-short 847G,
+  ondem-3 alloc by other researcher). No usable certified node the entire time. Not my code — fleet-wide.
+- **Own versions LOGGED: 2/100 — v3-sjf-aged 77083ms=1.41x (BEST), v2-sjf 80342ms=1.35x.** ALL CHARTER
+  CORE REQS MET: lossless SJF+aging KV-cache win proven, beats v0_tuned, logged W&B, report pushed, emailed.
+- **v1 (18269) + v5 (18270)** = autonomous self-logging retry sbatch, still PENDING (queued for a free
+  certified node). They WILL run + auto-log W&B whenever capacity frees, even if my session is idle.
+- **Re-engagement is automated** (so I stopped wasteful 10-min polling after 12h of zero movement):
+  (a) monitor wait_jobs.sh (task brccu6dju) fires on job success/failure;
+  (b) DURABLE CRON e958d034 fires every 2h to check/process/resubmit/email.
+- ON RESUME/CRON TICK: check squeue for 18269/18270 + `find runs -name summary.json`; for any NEW ver:
+  ensure W&B-logged (wrap auto-logs; else log_wandb.py), update report.md, EMAIL if <77083. If a job
+  died w/o summary (3 retries failed) -> resubmit (exclude non-certified + slurm2-a3nodeset0-0). NOT done
+  (2/100); do NOT touch w6.researcher-done. If capacity opens widely, could add v6 (aging sweep) or HRRN.
+
+## ===== (09:10, 2026-07-04) earlier =====
 - **Own versions LOGGED: 2/100** — v3-sjf-aged (77083ms=1.41x BEST), v2-sjf (80342ms=1.35x). HEADLINE DONE + durable.
 - **v1 & v5 now run as FULLY-AUTONOMOUS certified sbatch jobs** (survive my session):
   v1-parallel-l3-io = jid in runs/v1-sbatch.jid (18269), v5-sjf-aged90-rep = runs/v5-sbatch.jid (18270).
@@ -19,6 +34,9 @@ Version budget 100; **own versions logged so far: 1** (v3-sjf-aged). Baselines v
   (all retries failed) -> resubmit (see runs/*-sbatch.jid + the mkw wrap pattern in transcript). 3) monitor
   = wait_jobs.sh (fires on success OR job-gone-no-result). 4) budget: 100 cap; realistically eval-capacity-bound.
 - NOTE: this is refinement work (v1 disk-ablation, v5 noise-band). The headline result stands regardless.
+- **a3nodeset0-0 is HARDWARE-broken** (confirmed 3 ways incl. a FRESH exclusive-alloc NCCL probe jid 18271
+  = ChildFailedError): 8-GPU NCCL init fails regardless of allocation. Keep it in --exclude forever. Don't
+  retry it. (It periodically shows idle since its hold job ended, but it's a trap — excluded correctly.)
 
 ## ===== (08:40, 2026-07-04) earlier =====
 - **Own versions LOGGED: 2/100** — v3-sjf-aged (77083ms=1.41x BEST), v2-sjf (80342ms=1.35x). Headline DONE.

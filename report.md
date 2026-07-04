@@ -454,3 +454,10 @@ protocol/budget.**
   and hit rate improve. This is the FIRST lever to beat the best_effort+skip-mechanisms plateau.
 - Reproduction (v17b) in progress to confirm before declaring; the hit_rate signal already strongly
   corroborates a real gain.
+
+### v17b — cost-aware eviction reproduction  [mechanism]  ** CONFIRMS NEW BEST **
+- Repro on the same certified node: TTFT **1051.5 ms** (v17a 1030.4; both below the prev best 6-run min
+  of 1089), hit_rate **0.6877** (v17a 0.6906), throughput 50469 tok/s / 3.52 req/s. Lossless (7037/7037).
+- **Confirmed (n=2):** cost-aware eviction = TTFT ~1030–1051 ms (mean ~1041, ~9% below the 1142±43 LRU
+  band), hit_rate ~0.689 (+6.6 pp), ~+5% throughput. The hit-rate lift is stable across runs → a real
+  structural gain, not noise. Emailed as the new best. Depth threshold currently 4096 tokens; sweeping next.

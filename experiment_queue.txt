@@ -1,2 +1,2 @@
-v4r-repeat|-|--hicache-storage-prefetch-policy best_effort|config
-v17-be-slru|SGLANG_HICACHE_MAMBA_EVICT_POLICY=slru|--hicache-storage-prefetch-policy best_effort|mechanism
+v19-timeout-clean|-|--hicache-storage-prefetch-policy timeout|config
+v18-be-slru|-|--hicache-storage-prefetch-policy best_effort --radix-eviction-policy slru|config

@@ -168,13 +168,31 @@ write-policy (write_through ≈ selective ≈ write_back), and tuned-`timeout` (
 not its tuning is the lever). None beats best_effort; none is distinguishable from another at single-run
 precision.
 
-## Diagnostic finding worth upstreaming: the L3 tier is dead weight on this workload
-Across all runs, the disk tier absorbs the full working set in writes (`backuped_tokens` ≈ 19M tok/rank)
-but serves **0% of hits** (`hit_storage_frac = 0`; device+host tier fractions sum to 1.0). Host RAM
-(768 GB) already holds the reused multiturn prefixes, and best_effort never waits on disk. So on this
-protocol the SSD tier costs write bandwidth for no read benefit — the meaningful lever is **GPU+host hit
-rate and eviction under host pressure** (`host_util ≈ 1.0`, `evict_tokens` ≈ 580M ≫ working set → heavy
-host thrash), not the storage tier.
+## Diagnostic finding: the L3 read tier delivered 0 tokens — but possibly a disk artifact (needs a clean-disk run)
+Across all my runs, the disk tier absorbs writes (`backuped_tokens` ≈ 19M tok/rank) but the per-request
+prefetch log (`HiCache prefetch success ... loaded=N`, the active `UnifiedRadixCache` path) shows
+**`loaded=0` AND `matched=0` and `completed_local=0` for EVERY one of the 11936 (v3) / 13312 (v4) prefetch
+operations** — the storage prefetch loaded literally zero tokens, on every rank (not a cross-rank all_reduce
+MIN artifact). Correspondingly `prefetched_tokens_total` is absent from the metrics and `hit_storage_frac=0`.
+So the SSD **read** tier was completely non-functional; parallelizing reads was moot (nothing was read) —
+independent of the dead-path bug.
+
+**Why loaded=0 — two hypotheses, not yet distinguished:**
+1. **Disk-space artifact (likely):** v4's server.log is **32% write-refusals** (`refusing ... to avoid
+   OOM/ENOSPC`, 17433/54168 lines) — the node's `/mnt/localssd` sat at the 200 GB min_free watermark
+   (foreign leftovers from prior jobs on the shared SSD). If the reusable long-doc prefixes (LooGLE is
+   multi-question-per-doc → its long prefix IS reused across turns, overflows the 768 GB host, and needs
+   L3) couldn't be written/retained, the prefetch finds nothing → loaded=0. On a **clean high-free-disk
+   node** L3 might actually serve that long-context reuse — which is exactly the expensive recompute tail.
+2. **Structurally useless:** L3 only ever caches one-shot cold prefixes that are never re-requested → 0
+   hits regardless of disk or read speed.
+
+**Decisive next eval (v19): `timeout` policy on a clean ≥2.5 TB-free node, then read `loaded=` in the log.**
+If loaded>0 → the storage tier is real and disk-starvation crippled all prior runs (revives the storage
+direction, correctly this time). If loaded=0 even on clean disk → L3 is fundamentally dead here and the
+only lever is **GPU+host hit rate / host eviction** (`host_util ≈ 1.0`, `evict_tokens` ≈ 580M ≫ working
+set → heavy host thrash). Either way it's a real finding. (Caveat on all prior numbers: they were measured
+under disk-refusal pressure, so the storage tier was likely crippled throughout.)
 
 ## Quantitative analysis: hit rate is the lever (and how big a gain is needed)
 Across 11 best_effort-cluster runs, **mean TTFT tracks hit rate: r = −0.85 (r² = 0.72)**, slope

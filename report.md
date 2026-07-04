@@ -63,14 +63,26 @@ ordering the waiting queue by *remaining* prefill work should sharply cut mean T
 **What changed.** `schedule_policy.py`: new `sjf` CacheAgnostic policy (`_sort_by_shortest_job`) sorting
 the waiting queue by `len(input)+len(output) − num_matched_prefix_tokens` ascending (cache-aware; reuses
 the prefix-match already computed on the agnostic path). Agnostic ⇒ immune to LPM's >128-queue FCFS
-fallback. `server_args.py`: `sjf` added to `--schedule-policy` choices (an allowed extra arg). Committed
-on worktree branch `v2-sjf-dev` (1b511b6ff), unit-tested (orders correctly, cache-aware). Stacks on v1.
+fallback. `server_args.py`: `sjf` added to `--schedule-policy` choices (an allowed extra arg).
+On `evolve/quartz-7m3` (**f52eab323**, cherry-picked), unit-tested (orders correctly, cache-aware). Stacks on v1.
 **Lossless.** Reordering only — per-request outputs unchanged; no drops (waiting-timeout abort disabled
 by default, `SGLANG_REQ_WAITING_TIMEOUT=-1`). Trade-off to watch: p99/tail may rise (giants deferred);
-mean is the headline. Aged-SJF is the fallback if the tail regresses badly.
+mean is the headline. Aged-SJF (v3) is the fallback if the tail regresses badly.
 **Offline screen (free, no GPU).** Single-server discrete model over the *real* 1553 document sizes:
 mean completion under **FCFS = 2.37× that of SJF**; the top-10% largest documents hold **33%** of all
 prefill tokens (they block everyone under FCFS). Strong prior that SJF cuts mean TTFT substantially.
+Eval it with `eval-on-pool.sh quartz-7m3 v2-sjf --schedule-policy sjf`.
+**Result / takeaway.** _(eval pending — see infra note)_
+
+## v3 — optional aging for SJF (bounded tail)  [mechanism] — READY, eval pending
+**Hypothesis.** Pure SJF (v2) can starve the largest prompts → p99/tail rises. Aging bounds that:
+a request waiting ≥ `SGLANG_SJF_AGING_SEC` is promoted ahead of the shortest-job ordering (FCFS among
+the aged), recovering the tail while keeping SJF's mean-TTFT gain. Only worth running if v2's p99
+regresses badly.
+**What changed.** `schedule_policy.py` `_sort_by_shortest_job` gains an aging branch; `environ.py` new
+`SGLANG_SJF_AGING_SEC` (`EnvFloat`, default 0 = pure SJF, so v2's behavior is unchanged). On
+`evolve/quartz-7m3` (**f52eab323**), unit-tested (aged reqs promoted FCFS, rest SJF). Lossless (reorder).
+Eval with `--schedule-policy sjf` + env `SGLANG_SJF_AGING_SEC=90` (e.g.).
 **Result / takeaway.** _(eval pending)_
 
 ## Eval-infrastructure note (2026-07-03)
@@ -82,3 +94,16 @@ NCCL communicator 600 s timeout, dirty-node-handoff SERVER_DIED) — all environ
 (check_env passed; other researchers hit the same; my changes reached model-load in earlier attempts).
 A self-healing retry loop (`retry_eval.sh`, disk-short nodes lock-blocked) is persisting until an eval
 serves + completes. Results will be logged once the pool yields a clean run.
+
+**Update (2026-07-04, ~8 h later).** The FS stall passed but was followed by a persistent (~8 h)
+**NCCL-fabric degradation on NEW server starts**: every fresh 122B start freezes at the
+`torch.distributed` init barrier ("Guessing device ID based on global rank … can cause a hang if rank
+to GPU mapping is heterogeneous"), on all three disk-OK nodes, even on verified-clean (GPU 0 MiB)
+handoffs. Ruled out on my side: venv == lockfile; my code runs *after* this barrier; `schedule_policy=sjf`
+is confirmed applied before the freeze; `--disable-custom-all-reduce` does **not** help (same barrier);
+a settle-wait clean-handoff does **not** help. Evals that *started earlier* keep serving, so this is a
+cluster fabric/rank-mapping issue on new starts (shape like the earlier FS stall; expected to recover;
+escalated to the operator). An autonomous detached campaign (`campaign.sh`, blocking-flock racer +
+hang-watchdog + **W&B auto-log on success**) is retrying v2-sjf → v1 → v3 in priority order and will log
+each the instant the fabric recovers. **0 own versions have reached a valid serve yet — purely
+infrastructural; all three mechanisms are implemented, unit-tested, committed, and pushed.**

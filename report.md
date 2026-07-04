@@ -249,6 +249,10 @@ GPU-assisted I/O, storage prefetch. Assessment for THIS regime:
 - **v5** = best combo of the above.
 - Note: decode is the throughput limiter (batch ~120, ~300 tok/s of a 122B-A10B MoE); recompute's harm
   is via *competition* with decode (fixed by mixed_chunk), not its volume — so eviction tuning is low value.
+  **[OVERTURNED by later results — see exec summary: mixed_chunk crashes here (unusable), so recompute is
+  NOT hidden behind decode; recompute VOLUME then dominates TTFT and recompute-COST-aware eviction
+  (`costaware` d8192) is a −16.5% headline win, not low value. This early note assumed mixed_chunk would
+  work.]**
 
 ## Plan (post-v1)
 Base policy = don't-block-on-L3 (timeout/best_effort). The disk tier is skipped; ~42% of prefill is

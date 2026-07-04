@@ -48,4 +48,8 @@ while IFS=$'\t' read -r ver rest; do
   # shellcheck disable=SC2086
   run_ver "$ver" $rest
 done < "$QUEUE"
-echo "[holdwatch] queue drained $(date '+%H:%M:%S'); hold $JID kept alive for more (scancel when done)"
+# Good citizenship: the queue is drained (v26/v27 are the last planned bets — headline design space
+# is exhausted), so RELEASE the exclusive 8-GPU node back to the oversubscribed pool immediately
+# instead of squatting it idle. If more versions are ever queued later, re-submit a fresh hold.
+echo "[holdwatch] queue drained $(date '+%H:%M:%S'); releasing hold $JID back to the pool"
+scancel "$JID" 2>/dev/null || true

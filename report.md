@@ -242,8 +242,15 @@ Remaining: read-thread ablation (v6=32, v7=8; expect ≈v4 since IO-bench pinned
 
 | v6-be-thr32 | read-threads 16 → **32** | 2863 ms (+42%) | loses — 32 over-parallelizes NVMe (matches IO-bench) |
 
-v6 confirms the read-thread choice: 32 threads (2863) is worse than v4's 16 (2013), exactly as the offline
-IO microbench predicted (16 = aggregate NVMe optimum; 32→5.5 GB/s < 16→6.1 GB/s). v7 tests 8 (last run).
+| v7-be-thr8 | read-threads 16 → **8** | 2588 ms (+29%) | loses — 8 under-parallelizes NVMe |
+
+**Read-thread count is concave around v4's 16**: 8→2588, **16→2013 (v4)**, 32→2863 — matches the offline
+IO microbench (16 = aggregate NVMe optimum) exactly. This completes the full best_effort design-space
+sweep. **CONCLUSION: v4 (parallel-reads@16 + best_effort + write_through + page64) is unbeaten across
+every axis** — write-policy, write-parallelism, page-size, prefetch-policy, and read-thread-count are all
+neutral-to-negative. The −97.7% win is the *combination* of the parallel-L3-read engine mechanism (v3)
+and best_effort 0-wait admission (v4); no config knob improves on it. Next frontier: the cold-recompute
+p99 tail via an engine change the config sweep can't reach — frequency-aware (LFU) cache eviction (v16).
 read-thread ablation (v6=32/v7=8, expected ≈v4 since IO-bench pinned 16 as optimum). **v4 (2013 ms)
 unbeaten across the entire best_effort design space so far** — the parallel-read mechanism + 0-wait
 admission is the win; every other axis (write-policy, write-parallelism, page-size) is neutral-to-negative.

@@ -531,3 +531,16 @@ Negatives mapped: mamba→KV realloc (neutral, host-capacity-bound), parallel-L3
 - **Cumulative vs v0_tuned bar (108.8 s): ~138× lower TTFT.** Three stacked novel lossless mechanisms:
   best_effort+skip-L3 (recompute > slow disk), cost-aware eviction (protect expensive prefixes),
   SJF cost-aware scheduling (drain cheap-first, fix FCFS-under-load).
+
+### v24 — SJF+LRU (mechanism attribution)  [mechanism]
+Isolating the two new mechanisms (mean TTFT / hit_rate, on best_effort + skip-L3):
+| eviction \ scheduler | lpm (→FCFS under load) | SJF |
+|---|---|---|
+| LRU   | 1142 / 0.623 (prev best) | **869 / 0.617** (v24) |
+| costaware d8192 | 954 / 0.681 | **790 / 0.681** (BEST) |
+
+- **SJF is the larger single lever: −24% alone** (1142→869) with hit UNCHANGED (0.617≈LRU) — a pure
+  scheduling win (fixing FCFS-under-load), orthogonal to caching.
+- **Cost-aware eviction: −16.5% alone** (1142→954) via hit +5.8 pp (0.623→0.681) — a pure caching win.
+- The two are ~independent and STACK: SJF+costaware = **790 ms (−31% vs LRU+lpm)**, the best. Both
+  lossless, in-budget, on the fixed protocol. This is the clean two-mechanism decomposition of the win.

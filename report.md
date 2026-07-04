@@ -609,16 +609,19 @@ prefill/decode overlap (mixed_chunk), declined for a device-KV-pool leak + silen
 Four novel engine mechanisms total (2 disk-skip, cost-aware eviction, SJF), all pluggable/upstream-friendly.
 
 ## Future direction (identified, not implemented — for a maintainer / future run with reliable capacity)
-The boldest remaining *architectural* lever is **lossless compression of the host KV tier**. Rationale:
-churn is real (evict 574M / load-back 444M = ~4.4× reload tax → the 768GB host tier is capacity-binding,
-which is why hit_rate sits at 0.68 not ~1.0). Fitting ~1.5–2× more logical KV in the SAME frozen 768GB via
-a fast lossless codec (FP8 KV has limited dynamic range → compressible) would cut evictions → cut the
-recompute that dominates the floor — a "smarter engine, same budget" win, fully in-contract and lossless.
-**Why NOT done here (honest):** (1) invasive — the host pool uses fixed-slot indexing; variable-size
-compressed blocks need an indirection/allocator layer (real data-structure surgery, high crash risk on this
-hybrid-GDN model, cf. the mixed_chunk device-pool leak); (2) uncertain payoff — decompression on the
-host→device load path (currently overlapped at ~1.1ms) could become a stall, possibly offsetting the churn
-savings; (3) must be validated on a clean certified node with incremental losslessness checks — not
-something to implement blind under contended capacity. Recommended as the next real experiment when a node
-is reliably available. Other minor, lower-value ideas: page-size 128 (32 was neutral), prefill-priority
-scheduling for TTFT (risks throughput→queue). All eviction/scheduling/disk/capacity levers are exhausted.
+Churn is real and capacity IS the binding constraint (evict 574M / load-back 444M = ~4.4× reload tax → the
+768GB host tier can't hold the working set, which is why hit_rate sits at 0.68 not ~1.0). The tempting
+"bolder" lever is **host-KV-tier compression** to fit more logical KV in the same frozen 768GB. **But under
+the LOSSLESS mandate this lever is fundamentally capped, and here's the key insight:** FP8 (e4m3) KV from a
+trained model is fairly high-entropy (~7–8 bits/value), so a *lossless* codec realistically yields only
+~1.1–1.2× — a small capacity gain that a decompression-on-load step (the host→device path is currently
+overlapped at ~1.1ms; adding decode risks turning it into a stall) would likely erase → net-neutral/negative.
+This is precisely **why the KV-compression literature uses LOSSY methods (quantization, low-rank, token
+eviction)** — which the charter forbids. So the correct *lossless* response to capacity pressure is NOT
+compressing bytes but **keeping the RIGHT bytes — i.e. recompute-cost-aware eviction (this work's win)**.
+That closes the capacity lever honestly: cost-aware eviction is the lossless-optimal capacity mechanism.
+(If ever pursued, host compression would also need an indirection/allocator over the pool's fixed-slot
+indexing — invasive, high crash-risk on this hybrid-GDN model, cf. the mixed_chunk device-pool leak — and
+validation on a clean node; not worth it given the ~1.1× lossless ceiling.) Remaining minor ideas are
+lower-value: page-size 128 (32 was neutral), prefill-priority scheduling (risks throughput→queue).
+**All eviction/scheduling/disk/capacity levers are exhausted for a lossless, in-budget win in this regime.**

@@ -264,3 +264,10 @@ rebalance (v3/v4, validated config) → 56× TTFT, throughput near offered λ, G
 config ranking is within the ~24% baseline noise. int8-mamba (2× capacity) is the only above-noise
 lever left but is LOSSY (disqualified by the lossless bar unless output-equivalence is proven).
 Running the fusion-matched control (scandir-ON + fusion-off) to isolate the scandir mechanism.
+
+### int8-mamba — DEAD END (incompatible with the frozen protocol)
+`--enable-int8-mamba-checkpoint` (2× Mamba capacity, the only above-noise lever left) raises
+`ValueError: not supported together with --enable-hierarchical-cache`. HiCache is frozen, so int8-mamba
+can't be used. With `no_buffer` (needs page_size=1, frozen at 64) and the ratio ceiling (v4@1.5) also
+ruled out, the **Mamba-capacity lever is definitively exhausted**; v4 (56×) is the near-optimal lossless
+result. Running the fusion-matched control (scandir-ON + fusion-off) to isolate the v2 scandir mechanism.

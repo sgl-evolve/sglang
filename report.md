@@ -406,3 +406,30 @@ is a budget increase, not an algorithm. Legitimate levers = the tunable policy f
 (prefetch/write/io-backend/mem-layout/page-size), non-forbidden flags (schedule, eviction,
 **max-mamba-cache-size**, mamba-full-memory-ratio), and NEW engine mechanisms. The only in-budget
 *capacity* move is reallocating the frozen GPU pool (mamba↔KV) — shown neutral above.
+
+### v16 — parallel L3 disk reads (16-thread pool in HiCacheFile) + wait_complete  [mechanism]  ** NEGATIVE (aborted early; clear signal) — re-confirms skip-prefetch **
+- **Hypothesis:** the L3 disk (NVMe) is slow because sglang reads it SERIALLY (queue-depth 1); a standalone
+  bench showed **~4× speedup** at 8–16 threads (64KB–1MB pages). If parallelized, the disk tier (1800 GB)
+  could hold the full ~19M working set → hit ~100% → beat best_effort's 38% recompute. Patch: a 16-thread
+  ThreadPoolExecutor in `HiCacheFile.batch_get` (reads target disjoint host buffers → lossless). Committed
+  438ba2e02; verified live ("HiCacheFile: page IO parallelism = 16 thread(s)").
+- **Result (aborted at turn ~800/7037, decisive):** with wait_complete (the policy that actually USES the
+  disk), caching is *worse* than best_effort — prefill `#cached-token` is **~0** almost everywhere (vs
+  best_effort's 0.62 device+host hit) and throughput is **~3× slower** (~50 vs ~150 turns/min).
+- **Why (the real lesson):** turning the storage-prefetch path ON (wait_complete) **churns/evicts the
+  frozen 96 GB host cache** to stage L3 loads — destroying the device+host radix hits that best_effort
+  relies on — *and* blocks on them. Parallel reads make the disk 4× faster but the bottleneck is cache
+  **churn + blocking**, not read bandwidth, so 4× buys nothing. This directly **re-confirms the
+  skip-prefetch mechanism (v6)**: not touching the L3 tier under best_effort is optimal. The disk tier is
+  not worth using for this workload/budget even with a parallel backend.
+- **Ops note:** aborting a wait_complete run mid-flight left a D-state/OOM-stuck server zombie (in-flight
+  parallel disk IO) — don't abort disk-heavy runs; let them finish. The collision guard auto-skips the
+  wedged node until it self-reaps.
+
+## DIRECTIONS EXHAUSTED (v15 capacity, v16 disk-tier)
+Both remaining avenues to cut the ~38% recompute are now closed with evidence: (1) in-budget capacity
+realloc (mamba→KV, v15) is neutral — the residual is bound by the frozen+saturated 96 GB host tier, not
+the device pool; (2) using the L3 disk tier (v16), even with a 4× parallel backend, caches worse and
+slower than recompute because the prefetch path churns the frozen cache. **best_effort + skip-writes +
+skip-prefetch + lpm remains the lossless optimum (~1.1 s TTFT, ~95× below the tuned bar) for this fixed
+protocol/budget.**

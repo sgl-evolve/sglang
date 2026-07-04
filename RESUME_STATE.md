@@ -4,7 +4,28 @@ I am researcher **w6** (done-signal: `touch .../manager/.runtime/slots/w6.resear
 Sessions tear down ~every 2 min; a DETACHED racer does the eval work independent of my session.
 Version budget 100; **own versions logged so far: 1** (v3-sjf-aged). Baselines v0_official/v0_tuned don't count.
 
-## ===== LATEST (06:25, 2026-07-04) — READ THIS FIRST =====
+## ===== LATEST (07:07, 2026-07-04) — READ THIS FIRST =====
+- **Own versions LOGGED: 2/100** — v3-sjf-aged (77083ms=1.41x, BEST), v2-sjf (80342ms=1.35x). Both to W&B.
+  (v1 was clobbered mid-run by my own rm; never completed. Re-queued.)
+- **HEADLINE SECURED**: v3 beats v0_tuned (108824) by 1.41x, LOSSLESS. Mechanism code committed+pushed
+  (hicache_storage.py, schedule_policy.py, environ.py, server_args.py). report.md committed.
+- **EVAL BLOCKED on infra (not my code)**: manager's held pool rotated to a BAD pair for me =
+  {a3nodeset0-0 = NCCL-BROKEN (8-GPU NCCL init OOMs on healthy free GPUs, 6+ fails), a3nodeset1-2 =
+  disk-short 847G<1800}. Other researchers ARE serving fine on a3nodeset-0 (2664G) + ondem-3 -> fabric
+  is HEALTHY cluster-wide; just a bad held-pool draw. c3nodeset-0 driver dead.
+- **STANDING MECHANISM**: detached campaign.sh (PID varies, PPID=1), plan=[v5-sjf-aged90-rep (repeat best
+  -> noise band/credibility), v1-parallel-l3-io (disk ablation)]. Now reads held/ DYNAMICALLY each round,
+  MIN_FREE_G=1800 (matches eval.sh), BLACKLIST="slurm2-a3nodeset0-0", patched racer (teardown-hang fixed).
+  Currently WAITING ("no disk-OK held nodes; wait 60s"); auto-runs+auto-logs when manager rotates in a
+  good held node. Relaunch if dead: `setsid env BLACKLIST="slurm2-a3nodeset0-0" bash $D/campaign.sh > $D/runs/campaign.log 2>&1 </dev/null & disown`
+- ON RESUME: 1) `find $D/runs -name summary.json` — if v5/v1 NEW, check wandb-<ver>.log "logged" (else log
+  manually), read overall/ttft_mean_ms, update report.md, EMAIL if <77083 (new best). 2) campaign alive?
+  relaunch if dead. 3) If still blocked long: consider sanctioned FALLBACK = queued certified sbatch
+  (eval-on-pool.sh auto-does it when NO held nodes; or submit directly, excluding a3nodeset0-0). 4) If lots
+  of eval capacity opens: HRRN (Highest Response Ratio Next) is a candidate stronger scheduler (smooth
+  anti-starvation vs binary aging) — implement in schedule_policy.py. But noise ~24% limits fine gains.
+
+## ===== (06:25) earlier =====
 - **Own versions logged: 3/100** — v3-sjf-aged (77083ms, BEST), v2-sjf (80342ms), v1-parallel-l3-io (running).
 - **RESULTS**: v3 (SJF+aging90) 77083 = 1.41x vs v0_tuned = BEST. v2 (pure SJF) 80342 = 1.35x.
   KEY FINDING: **aging LOWERS the mean** (v3<v2 by 4.1%) by bounding the heavy tail (p90~230s); it's not

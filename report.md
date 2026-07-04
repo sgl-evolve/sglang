@@ -208,11 +208,22 @@ Comparing mean vs p99 TTFT across all runs reveals a **mean↔tail tradeoff on t
 
 ## STATUS (live)
 
-**Bottom line (current):** best result is **`v14-lpm-sched`: mean TTFT 2496 ms — 35× below v0_official
-(87615), 44× below v0_tuned** = my novel adaptive storage-prefetch mechanism (cap 3s, occupancy-pressure)
-**+ LPM cache-aware scheduling**. Lossless (7037/7037, no fallback). 10 own versions logged. Two
-independent levers proven: (1) adaptive prefetch fixes the SSD-wait starvation pathology; (2) SJF-like
-cache-aware scheduling cuts the residual queue-wait. Historical note below (earlier best was v8=2580 ms).
+**Bottom line (current):** best result is **`v17-srpf-sched`: mean TTFT 1840 ms — 47.6× below v0_official
+(87615), 59× below v0_tuned** = my novel adaptive storage-prefetch mechanism (cap 3s) **+ SRPF
+(shortest-remaining-prefill-first) scheduling**. Lossless (7037/7037, no fallback). 13 own versions logged.
+
+**v17 — SRPF (NEW novel scheduling mechanism), the biggest single scheduling win.** Stock LPM sorts the
+waiting queue by *longest matched prefix* (absolute) — only a proxy for cheapness. True SJF for mean-TTFT
+sorts by *shortest remaining uncached prefill* = `(prompt_tokens) − (device+host matched)`. Under this
+wide prompt-length mix these diverge sharply, so SRPF serves genuinely-cheap requests first. Result:
+**2496 → 1840 ms (−26%), and p99 TTFT 19132 → 11351 (−41%)** — improved mean AND tail simultaneously.
+This DISPROVED my prior tail-starvation hypothesis (I'd predicted SRPF would inflate the tail; instead
+it shrank it — cheap requests clear fast, freeing capacity that also drains the expensive tail). New
+engine code: `SRPF` CacheAwarePolicy in `schedule_policy.py`. hit_rate dipped 0.615→0.583 (SRPF's order
+changes reuse) yet TTFT dropped hugely — the SJF win dominates. Ran on 1-2 the instant its disk recovered
+from the ~10h cluster disk outage. Commit 729bac9e0.
+
+*(Prior best was v14-lpm-sched 2496 ms; historical note below.)*
 
 **(historical)** The load-adaptive prefetch mechanism (give up on a saturated SSD, reclaim cheap host hits) with a 1 s
 cap wins on every axis. It's the novel mechanism the program targets.

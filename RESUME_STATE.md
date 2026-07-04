@@ -12,6 +12,15 @@ Last updated: 2026-07-04 ~19:35. Researcher: **kv-lynx-4d2**, branch `evolve/kv-
   (`_EVICT_FREQ_ALPHA`, `_evict_key`, applied to evict()/evict_host() heap keys). Lossless (victim order
   only; α=0 == stock LRU). Toggled by env **`KVLYNX_EVICT_FREQ_ALPHA`** (v8 uses **50**).
 
+## ⚠️ INFRA BROKEN (2026-07-04 21:35) — entire certified pool unusable for eval
+No certified node currently has the required ≥1.8 TB free `/mnt/localssd`:
+- `-1`, `0-1`, `0-3` = **drained** (operator-only resume); `0-0` = **drained + bad-GPU**;
+- `1-2` = **bad-disk** (846 G); `ondem-3` = **idle but disk cluttered** (1106 G of other users'
+  abandoned June data — shagarw/rqiang/root dirs — which I CANNOT delete: skill says only rm your own).
+v8 (jid **18303**) is queued `--exclude`-ing all bad nodes → pends **ReqNodeNotAvail** until an operator
+resumes a drained node (or cleans ondem-3). It auto-runs on recovery. **RECHECK on resume:** if
+`ondem-3` disk clears to ≥1.8 TB, resubmit without excluding it; if a drained node resumes, v8 runs itself.
+
 ## PENDING ACTION — log v8 when its eval finishes
 - v8 eval is a self-contained slurm job: **`squeue -n eval-v8-kvlynx`** (jid saved in `.v8_sbatch_jid`).
   It runs `eval.sh kv-lynx-4d2 v8-freq-evict50 --mamba-full-memory-ratio 1.5

@@ -214,7 +214,23 @@ aggregate throughput peaks at **16 threads/rank (~5840 MB/s)**; 8→5384, 32→5
 frontier lever** (v6/v7/v8 deprioritized). Frontier search focuses on the orthogonal axes: prefetch
 grace-window (v13), write-policy (v11 selective / v12 write_back), page-size (v9/v10).
 
-## v15 — parallel L3 *writes*  [mechanism, queued, code+test landed]
+## Sweep results (best_effort design space) — v4 stays champion
+Ran on a clean exclusive nodeset-0 hold. Two datapoints so far, both **honest negatives vs v4 (2013 ms)**:
+| version | change vs v4 | mean TTFT | verdict |
+|---|---|---|---|
+| **v4** (champion) | parallel reads(16) + best_effort + write_through | **2013 ms** | — |
+| v11-be-selective | write policy → `write_through_selective` | 2842 ms (+41%) | loses: fewer backups ⇒ lower host hit_rate |
+| v15-be-parwrite | **parallel L3 writes** (WRITE_THREADS=8) | 2995 ms (+49%) | **loses: write path is NOT the TTFT bottleneck** |
+
+**Key finding:** the write-side levers don't help. v15 is the important one — the offline write microbench
+showed the serial write loop is thread-bound (2.29× faster drain @ 8 threads), but that speedup **does not
+translate to lower TTFT**. In the best_effort regime TTFT is dominated by the *read/prefetch* critical path
+(cold-miss recompute); L3 writes happen off that path, so draining them faster doesn't move TTFT, and the
+extra write threads add mild decode contention (tpot 493→649). This cleanly confirms the **read-side**
+parallelization (v3/v4) was the real lever, not a generic "parallelize all IO" effect. Remaining queued:
+v12 (write_back), v9/v10 (page-size), v13 (grace-timeout), v6/v7 (read-thread ablation 32/8).
+
+## v15 — parallel L3 *writes*  [mechanism — MEASURED: negative (2995 ms), v4 unbeaten]
 **Symmetric extension of the v3 read win.** The L3 *read* path was serial single-thread until v3
 parallelized `batch_get`; the L3 *write* path (`write_through` of every admitted page) was still a
 serial per-page loop in `HiCacheFile.batch_set` → `set()`, competing with the read/prefetch path for the

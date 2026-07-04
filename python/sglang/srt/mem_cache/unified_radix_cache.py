@@ -373,6 +373,9 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self.prefetch_timeout_base = 1.0
         self.prefetch_timeout_per_page = 0.25
         self.hicache_storage_pass_prefix_keys = False
+        # Length/cost-aware prefetch gate (tokens); 0 disables. See environ.py.
+        self.prefetch_cost_gate = envs.SGLANG_PREFETCH_COST_GATE.get()
+        self.prefetch_cost_gate_max_s = envs.SGLANG_PREFETCH_COST_GATE_MAX_S.get()
 
         self.reset()
         logger.info(f"Init Unified RadixTree with components {self.tree_components}")
@@ -1971,8 +1974,19 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         )
 
     def can_terminate_prefetch(self, operation: PrefetchOperation) -> bool:
-        if self.prefetch_stop_policy == "best_effort":
-            return True
+        policy = self.prefetch_stop_policy
+        # Length/cost-aware gate on best_effort: bounded-WAIT for LONG prefixes (O(L^2)-
+        # expensive to recompute) but terminate SHORT prefixes now. The wait is a SHORT
+        # FIXED cap (page-cache-hot disk reads finish fast; slow reads fall through to
+        # recompute) -- NOT the per-page timeout, which would saturate the queue.
+        gated_cap = None
+        if policy == "best_effort":
+            if self.prefetch_cost_gate > 0 and (
+                len(operation.hash_value) * self.page_size >= self.prefetch_cost_gate
+            ):
+                gated_cap = self.prefetch_cost_gate_max_s
+            else:
+                return True
 
         if len(operation.hash_value) == 0:
             completed = False
@@ -1981,9 +1995,13 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 operation.completed_tokens == len(operation.hash_value) * self.page_size
             )
 
-        if self.prefetch_stop_policy == "wait_complete":
+        if gated_cap is not None:
+            can_terminate = completed or (
+                time.monotonic() - operation.start_time > gated_cap
+            )
+        elif policy == "wait_complete":
             can_terminate = completed
-        elif self.prefetch_stop_policy == "timeout":
+        elif policy == "timeout":
             can_terminate = completed or self._prefetch_timeout_check_linear_func(
                 operation
             )

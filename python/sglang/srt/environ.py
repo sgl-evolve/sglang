@@ -367,6 +367,20 @@ class Envs:
     SGLANG_ENABLE_BALANCED_PREFILL = EnvBool(False)
     SGLANG_BALANCED_PREFILL_RATIO = EnvFloat(2.0)
     SGLANG_BALANCED_PREFILL_MAX_DEFER = EnvInt(8)
+    # Length/cost-aware storage-prefetch gate (kv-flint-2c research). Only active when
+    # hicache_storage_prefetch_policy == best_effort. For each in-flight L3 prefetch,
+    # if the prefetched-prefix size (tokens) >= SGLANG_PREFETCH_COST_GATE, treat it as a
+    # bounded WAIT (like the timeout policy) instead of terminating immediately: long
+    # prefixes are O(L^2)-expensive to recompute on GPU, so a bounded disk wait beats
+    # recompute; short prefixes (< gate) still terminate immediately (cheap recompute,
+    # avoids saturating the queue). 0 disables (pure best_effort). Lossless (only changes
+    # whether we wait for already-issued disk KV vs recompute the suffix). The wait is a
+    # SHORT FIXED cap (SGLANG_PREFETCH_COST_GATE_MAX_S), NOT the per-page timeout: KV was
+    # just offloaded to disk and is usually still OS-page-cache-hot, so a tiny wait captures
+    # those fast reads while genuinely-slow reads fall through to recompute (keeps the queue
+    # drained, unlike the blanket timeout policy which waits base+0.25s/page ~ tens of s).
+    SGLANG_PREFETCH_COST_GATE = EnvInt(0)
+    SGLANG_PREFETCH_COST_GATE_MAX_S = EnvFloat(0.3)
     SGLANG_KILLPG_ON_SCHEDULER_EXCEPTION = EnvBool(False)
     SGLANG_PREFILL_DELAYER_MAX_DELAY_PASSES = EnvInt(None)
     SGLANG_PREFILL_DELAYER_TOKEN_USAGE_LOW_WATERMARK = EnvFloat(None)

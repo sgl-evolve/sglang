@@ -515,3 +515,19 @@ Two novel, lossless engine mechanisms compound on the fixed protocol:
    first, LRU within. A further **−16.5%** mean TTFT (1142→~954 ms), +5.8 pp hit, +5% throughput.
 Negatives mapped: mamba→KV realloc (neutral, host-capacity-bound), parallel-L3-reads+wait_complete
 (worse, churns frozen cache), costtiered (worse, over-protects). All results lossless & reproduced.
+
+### v23/v23b — SJF cost-aware scheduler + cost-aware eviction  [mechanism]  ** MAJOR NEW BEST **
+- **Discovery:** sglang's `lpm` scheduler reverts to **FCFS once the waiting queue > 128**
+  (`schedule_policy._determine_active_policy`) — exactly our saturated regime — so under load the
+  scheduler is NOT cost-aware. New `sjf` CacheAgnostic policy (`--schedule-policy sjf`): sort the waiting
+  queue by ascending UNCACHED prefill work `len(prompt)+len(output)−num_matched_prefix_tokens` (uses the
+  cheaply-populated match count → cost-aware at ANY queue size, no FCFS fallback). Serve cheap requests
+  first → queue drains faster → lower latency for all (Little's law). Lossless: service ORDER only.
+- **Result (n=2, on top of cost-aware eviction d8192):** Mean TTFT **802 / 777 ms (~790)** vs LRU+lpm
+  1142 → **−31%**; vs costaware+lpm 954 → −17%. Median ~522. **P99 4884/5204 vs 7665 → −35% (tail ALSO
+  improves — no starvation; 7037/7037 completed).** throughput ~50461 tok/s / 3.52 req/s (≈ offered λ 3.5
+  → the system now KEEPS UP with load). hit_rate 0.681 unchanged vs costaware → the SJF gain is purely
+  scheduling, not caching. Lossless, in-budget, frozen budget asserted.
+- **Cumulative vs v0_tuned bar (108.8 s): ~138× lower TTFT.** Three stacked novel lossless mechanisms:
+  best_effort+skip-L3 (recompute > slow disk), cost-aware eviction (protect expensive prefixes),
+  SJF cost-aware scheduling (drain cheap-first, fix FCFS-under-load).

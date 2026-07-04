@@ -138,3 +138,10 @@ Delaying host writes -> host tier populates slower -> fewer host hits -> more re
 ### v21-be-lpm-wb [config] 2819.1 ms — NEGATIVE. write_back (write only on eviction) < write_through default.
 Confirms host tier must populate EAGERLY (write_through thr=1) to serve host hits; deferred writes -> more recompute.
 Write-policy exploration complete: write_through(default,v7 2010) > wtsel(2705) > write_back(2819). All non-default HURT.
+
+### v23-be-lpm-cgate1k [MECHANISM: length/cost-aware prefetch gate, gate=1024tok cap=0.3s] 2212.0 ms.
+vs v7 be+lpm (no wait) 2010 -> +10% WORSE, but MUCH better than blanket timeout+lpm (v18 2551): selective bounded
+waiting hurts less than indiscriminate waiting, but still loses to pure best_effort. FINDING: the saturated regime is
+QUEUE-bound not recompute-cost-bound -> disk is NEVER worth waiting for (even for long O(L^2) prefixes, even a 0.3s
+page-cache-hot wait), because any wait backs up the queue. Re-confirms best_effort (skip all disk, recompute) optimal.
+Sweep continues: v24 gate=4096 (fewer prefixes wait -> should approach but not beat v7), v25 cap=0.8s.

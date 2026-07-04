@@ -36,6 +36,9 @@ node_ok=0
 while IFS=$'\t' read -r ver tag env args _; do
   [ -z "${ver:-}" ] && continue; case "$ver" in \#*) continue;; esac
   [ -f "$DONE/$ver" ] && { log "skip $ver (done)"; continue; }
+  mkdir -p "$WS/.claim"; exec 210>"$WS/.claim/$ver.lock"
+  if ! flock -n 210; then log "skip $ver (claimed by another runner)"; exec 210>&-; continue; fi
+  [ -f "$DONE/$ver" ] && { log "skip $ver (done after claim)"; flock -u 210; exec 210>&-; continue; }
   ENVKV=""; [ "$env" != "-" ] && ENVKV="$env"
   EARGS=(); [ "$args" != "-" ] && read -r -a EARGS <<<"$args"
   ok=0
@@ -62,5 +65,6 @@ while IFS=$'\t' read -r ver tag env args _; do
     log "$ver failed 2x (version-specific; node was ok) -> mark done, skip"; touch "$DONE/$ver"
     printf '%s\t%s\t%s\t-\t-\tcrash2x\n' "$(date '+%m-%d %H:%M')" "$ver" "$tag" >> "$WS/results.tsv"
   fi
+  flock -u 210 2>/dev/null; exec 210>&- 2>/dev/null
 done < "$PLAN"
 log "==== dedicated runner: plan exhausted ===="

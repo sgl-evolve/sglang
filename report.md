@@ -337,3 +337,19 @@ lever can remove (chunked-prefill size is frozen; recompute is exact/lossless). 
 the scheduler/prefill path, not KV tiering. Compression + device-capacity are kept as lossless,
 in-budget options that would matter in a *different* regime (wait_complete, or host too small to hold the
 working set) but are inert here.
+
+## Round 2 — prefill-scheduling config probes (v14/v15) [QUEUED, pre-registered]
+The plateau is prefill-compute-bound and the *mean* is p99-tail-driven (long cold prefills). Before
+concluding the scheduler path is also flat, probe the ALLOWED (non-forbidden), lossless, in-budget
+prefill-scheduling knobs I hadn't tried (only `schedule-policy lpm`, negative, was tried before):
+- **v14-be-cons0.5** = v6 + `--schedule-conservativeness 0.5` (default 1.0). Lower = more aggressive
+  prefill admission → less queue build-up (the v12/v13 runs showed ~51 queued reqs) → hypothesis: lower
+  TTFT, *if* it doesn't trigger retractions (watch server.log for retraction warnings — retraction =
+  recompute = worse). Lossless (scheduling order, same compute).
+- **v15-be-mixchunk** = v6 + `--enable-mixed-chunk` (mix prefill+decode tokens in one batch → better GPU
+  overlap; only force-disabled for diffusion LLMs, so active here). Hypothesis: better goodput may lower
+  TTFT; risk it slightly slows individual prefills. Lossless (batch composition, same math).
+- Both compression OFF, single-lever vs v6, batched on one self-locked node (`hold_batch2.sh`), L3 wiped
+  between. Verify each via launch_cmd/server.log (flags not in curated resolved_args). **Prediction:**
+  likely small/neutral given the compute-bound plateau — but this is the last unprobed in-budget lever;
+  a null result firmly closes the scheduler-config path, a win would reopen it.

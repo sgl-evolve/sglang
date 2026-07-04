@@ -134,3 +134,7 @@ skip on short (cheap recompute). Beats blanket timeout's indiscriminate waiting;
 
 ### v20-be-lpm-wtsel [config] 2705.6 ms — NEGATIVE. write_through_selective (thr 2) < default write_through (thr 1, v7 2010).
 Delaying host writes -> host tier populates slower -> fewer host hits -> more recompute. Aggressive write-through best here.
+
+### v21-be-lpm-wb [config] 2819.1 ms — NEGATIVE. write_back (write only on eviction) < write_through default.
+Confirms host tier must populate EAGERLY (write_through thr=1) to serve host hits; deferred writes -> more recompute.
+Write-policy exploration complete: write_through(default,v7 2010) > wtsel(2705) > write_back(2819). All non-default HURT.

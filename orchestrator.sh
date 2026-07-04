@@ -16,7 +16,7 @@ LOGW=$PROG/.claude/skills/report-sop/scripts/log_wandb.py
 LAUNCH=$WS/eval_good_node.sh
 PLAN=$WS/plan.tsv
 OLOG=/tmp/kvflint_logs/orchestrator.log
-DONEDIR=/tmp/kvflint_logs/orch_done; mkdir -p "$DONEDIR" /tmp/kvflint_logs
+DONEDIR="$WS/.done"; mkdir -p "$DONEDIR" "$WS/.claim" /tmp/kvflint_logs
 export NBARGE="${NBARGE:-2}"
 exec 9>/tmp/kvflint_logs/orch.lock
 flock -n 9 || { echo "orchestrator already running; exit"; exit 0; }
@@ -49,6 +49,9 @@ while IFS=$'\t' read -r ver tag env args _rest; do
   [ -z "${ver:-}" ] && continue
   case "$ver" in \#*) continue;; esac
   if [ -f "$DONEDIR/$ver" ]; then log "skip $ver (already done)"; continue; fi
+  exec 210>"$WS/.claim/$ver.lock"
+  if ! flock -n 210; then log "skip $ver (claimed by dedicated/other runner)"; exec 210>&-; continue; fi
+  [ -f "$DONEDIR/$ver" ] && { log "skip $ver (done after claim)"; flock -u 210; exec 210>&-; continue; }
   log "==== VERSION $ver  tag=$tag  env=$env  args=$args ===="
   ENVKV=""; [ "$env" != "-" ] && ENVKV="$env"
   EARGS=(); [ "$args" != "-" ] && read -r -a EARGS <<<"$args"
@@ -76,5 +79,6 @@ while IFS=$'\t' read -r ver tag env args _rest; do
     printf '%s\t%s\t%s\t-\t-\trc=%s\n' "$(date '+%m-%d %H:%M')" "$ver" "$tag" "$rc" >> "$WS/results.tsv"
   fi
   touch "$DONEDIR/$ver"
+  flock -u 210 2>/dev/null; exec 210>&- 2>/dev/null
 done < "$PLAN"
 log "==== plan exhausted; orchestrator idle (append to plan.tsv + relaunch to continue) ===="

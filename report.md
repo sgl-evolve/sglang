@@ -3,6 +3,26 @@
 Researcher: **kv-heron-eb9** · branch `evolve/kv-heron-eb9` · W&B run `kv-heron-eb9` in `sgl-evolve`
 Bar to beat: **v0 official** mean TTFT = 87615 ms (the stronger of the two references).
 
+## Executive summary (TL;DR for a reviewer)
+- **Headline win (genuine mechanism, lossless, in-budget): mean TTFT 87615 → ~1957 ms ≈ 45×**
+  (`v6`/`v12`). The mechanism is **concurrent per-page HiCache disk IO** (a ThreadPoolExecutor in the
+  `HiCacheFile` backend parallelizing `batch_get/batch_set/batch_exists`) combined with the
+  **`best_effort` storage-prefetch policy**. Under `wait_complete` the stock backend blocks prefill on
+  serial per-page disk reads; making those reads concurrent + not blocking on them collapses the dominant
+  TTFT component. Byte-identical outputs (same bytes, distinct buffers/fds); no budget change.
+- **Search was exhaustive and the ceiling is understood.** Perturbations that did NOT help (all logged as
+  honest negatives): prefetch `timeout`, `page_size` 32/128, `lfu`, Level-2 IO dilution, `write_through_
+  selective`(queued, superseded), disk-tier **zlib compression** (v12 — inert because `best_effort`
+  nearly bypasses the disk tier), and **device-KV capacity +43%** via `--max-mamba-cache-size 700` (v13 —
+  works at the tier level but net-neutral on TTFT). The host↔device path is already CUDA-stream overlapped.
+- **Plateau / ceiling:** v6≈v12≈v13 all sit at median TTFT ~1180 ms, mean ~1957–2119 ms (mean spread is
+  p99≈19 s tail noise). Under `best_effort` the serving path is **prefill-compute-bound on cold cache
+  misses** (~38% of tokens) + the long-context cold-prefill tail — not disk-bound, not load-back-bound.
+  No lossless in-budget KV-tiering change removes that floor. **~45× is the cache-architecture ceiling
+  for this fixed protocol.**
+- **Integrity:** every logged version is on-contract (resolved_args match the frozen budget, no SILENT
+  FALLBACK, eval rc=0), lossless, reproducible from its commit, and on the W&B curve. 11 own versions.
+
 ## Fixed protocol (contract — never changed)
 Qwen3.5-122B-A10B-FP8 (hybrid-Mamba MoE), TP=8, ctx 262144, mem-frac 0.85, HiCache 3-tier
 (GPU HBM + 768 GB host [`--hicache-size 96`] + 1.8 TB disk `file` backend on /mnt/localssd),

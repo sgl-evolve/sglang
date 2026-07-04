@@ -153,17 +153,26 @@ adaptive + `--num-continuous-decode-steps 2` (compatible, 7037/7037): mean TTFT 
 `num-continuous-decode-steps` sweep: 1(v8) 2580 < 2(v12) 2595 < 4(v13) 2613 on the HEADLINE — more decode-protection trades mean-TTFT for throughput/e2e (prefills wait longer → higher TTFT). So for the headline, no extra protection (v8) is best. **Headline firmly plateaued at ~2580 ms across all levers explored (prefetch policy, cap, write policy, pressure signal, decode-protection).**
 
 ### Next directions (for continued evolution toward the budget)
-The overload is queue-dominated; the adaptive-prefetch lever is tapped at ~2580 ms. Breaking the plateau needs a bigger mechanism: (a) a COMPATIBLE decode-bubble reduction (mixed-chunk halved TPOT but broke requests — needs a hybrid-SSM-safe variant); (b) frequency-aware HOST eviction (keep hot prefixes in host → higher host-hit rate → less recompute); (c) in-flight prefetch coalescing (dedup concurrent SSD reads). All are code mechanisms in `UnifiedRadixCache`/scheduler. Robust workflow (isolated flashinfer cache `FLASHINFER_WORKSPACE_BASE=$WORK` + `--dist-timeout 5400`) is in place for fast, reliable evals.
+The overload is queue-dominated; the adaptive-prefetch lever is tapped at ~2580 ms. Breaking the plateau needs a bigger mechanism: (a) a COMPATIBLE decode-bubble reduction (mixed-chunk halved TPOT but broke requests — needs a hybrid-SSM-safe variant); (b) frequency-aware HOST eviction (keep hot prefixes in host → higher host-hit rate → less recompute); (c) in-flight prefetch coalescing (dedup concurrent SSD reads); (d) **the SCHEDULER — cache/cost-aware ordering of the waiting queue (pursued in v14).** All are code mechanisms in `UnifiedRadixCache`/scheduler. Robust workflow (isolated flashinfer cache `FLASHINFER_WORKSPACE_BASE=$WORK` + `--dist-timeout 5400`) is in place for fast, reliable evals.
+
+### v14-lpm-sched — SCHEDULER lever: LPM cache-aware scheduling (config) — NEW BEST ✅ (10th own version)
+- **Hypothesis:** the plateau is a *cache*-side plateau; the *scheduler* is untouched (`schedule_policy='fcfs'`). Under this overload mean TTFT = queue-wait; classic result: **serving cheap jobs first minimises mean wait (SJF).** `--schedule-policy lpm` orders the waiting queue by longest-prefix-match → cache-rich (cheap-prefill) requests go first. Key: `--max-concurrency 128` keeps the *waiting* queue small (<128), so LPM's `len(queue)>128 → FCFS` fallback never trips — LPM actually engages.
+- **Config:** v8 code (adaptive prefetch, cap 3s, occupancy-pressure) **+ `--schedule-policy lpm`**. Commit `cddedf4a8`.
+- **Result: mean TTFT 2496 ms** — beats v8 (2580) by 3.3%, **35× below v0_official**. Lossless: 7037/7037 successful, no fallback. Pure reordering win — throughput 2.8 req/s and hit_rate 0.615 **unchanged** vs v8; e2e 39.7 s, p99 TTFT 19.1 s. Confirms the scheduler is a *real, independent* lever on top of the adaptive-prefetch mechanism.
+- **Best config is now: adaptive prefetch (cap 3s) + LPM scheduling.** Next: push the scheduler further (cost-aware / true-SJF ordering, in-batch-prefix-caching thresholds) since LPM only reorders the small waiting queue.
 - Infra: robust workflow = isolated flashinfer cache (`FLASHINFER_WORKSPACE_BASE=$WORK`) +
   `--dist-timeout 5400`. The shared `~/.cache/flashinfer` was corrupted by cross-researcher concurrent
   compiles (hangs + a SIGBUS in CUDA-graph capture); isolation fixed it (loads in ~147 s).
 
 ## STATUS (live)
 
-**Bottom line:** best result is **`v5-adaptive-1s` (MECHANISM, commit `8402c5904`): mean TTFT 2719 ms —
-32× lower than v0_official (87615) and 16% below the best config (best_effort 3237)** — while ALSO
-best on p99 TTFT (16827), throughput (2.63 req/s, +55% vs best_effort), e2e (43 s), and TPOT (489).
-The load-adaptive prefetch mechanism (give up on a saturated SSD, reclaim cheap host hits) with a 1 s
+**Bottom line (current):** best result is **`v14-lpm-sched`: mean TTFT 2496 ms — 35× below v0_official
+(87615), 44× below v0_tuned** = my novel adaptive storage-prefetch mechanism (cap 3s, occupancy-pressure)
+**+ LPM cache-aware scheduling**. Lossless (7037/7037, no fallback). 10 own versions logged. Two
+independent levers proven: (1) adaptive prefetch fixes the SSD-wait starvation pathology; (2) SJF-like
+cache-aware scheduling cuts the residual queue-wait. Historical note below (earlier best was v8=2580 ms).
+
+**(historical)** The load-adaptive prefetch mechanism (give up on a saturated SSD, reclaim cheap host hits) with a 1 s
 cap wins on every axis. It's the novel mechanism the program targets.
 
 ### v5-adaptive-1s — RESULT (mechanism, commit `8402c5904`, on-contract, lossless, rc=0) — NEW BEST

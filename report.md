@@ -320,7 +320,21 @@ is unverifiable within the contract. Unlocking it needs deep hybrid-SSM-safe mod
 output-correctness harness** — a large future effort, not a within-contract accessible change.
 **Delivered: two novel mechanisms (adaptive storage-prefetch + SRPF scheduling), 87615 → ~1798 ms, lossless.**
 
-*(Prior best was v14-lpm-sched 2496 ms; historical note below.)*
+### v25-srpf-page32 (18th) + COMPLETE axis map
+**v25-srpf-page32 — SRPF + page-size 32 — 1901 ms, WORSE.** Layout-granularity axis: finer pages gave *lower*
+hit_rate (0.58→0.545), lower throughput (2.8→2.6), higher TTFT — smaller pages add overhead/fragmentation and
+shrink transfers; default page-size 64 is near-optimal. Commit 118b37de4.
+
+Every accessible lossless axis is now mapped; best config = adaptive prefetch (cap 3s) + SRPF, page 64, direct/
+page_first_direct, write_through, lru, default admission/decode:
+- prefetch: adaptive WINS (vs best_effort/wait_complete/timeout; cap 3s; occupancy-pressure).
+- scheduler: srpf WINS (vs fcfs/lpm 2496/asrpf 1841/dfs-weight; refinements noise — small waiting queue).
+- eviction lfu, admission 0.5, decode-steps 2/4, in-batch-prefix off, page-size 32 → all neutral or worse.
+- io-backend kernel / page_first → INCOMPATIBLE (MambaPoolHost forces page_first_direct+direct).
+- transfer-overlap built-in; balanced-batching low-EV (adaptive l3≈0 removes slow-load stalls).
+**18 own versions; definitive floor ~1798 ms = 48.7× v0_official. Only untapped lever = mixed-chunk (off-limits:
+non-lossless + unverifiable).** *(This window eval throughput was crippled by a >10 h fleet-wide /mnt/localssd
+saturation < the 1.8 TB gate — runs completed only in rare disk windows.)*
 
 *(Prior best was v14-lpm-sched 2496 ms; historical note below.)*
 

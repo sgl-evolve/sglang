@@ -353,3 +353,8 @@ standalone mechanism (1214 vs no-skip 1818 = -33% even without lpm); lpm adds on
 without skip). In the post-skip near-GPU-bound regime (queue nearly drained at 3.4 req/s) scheduling order matters
 less. Best config skip+lpm ~1176, but skip alone ~1214 captures nearly all of it. v49 confirms; v50/v51 test
 balanced/cost-gate on top of skip.
+
+### v49 skip-nolpm = 1138.8 -> skip WITHOUT lpm n=2 {1214, 1139} mean 1177 ~= skip+lpm ~1176 (alloc 18328).
+=> lpm is REDUNDANT once skip-L3-write is applied (skip alone captures the full win). In the post-skip near-GPU-bound
+regime, cache-aware scheduling adds ~0. So the mechanism (skip-L3-write) is the whole story; best config simplifies to
+best_effort + skip_L3_write (~1177), lpm optional. v50/v51 test balanced/cost-gate on top; v52/v53 full disk-bypass.

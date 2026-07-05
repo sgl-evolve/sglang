@@ -227,3 +227,7 @@ be-alone {2586,2782} mean 2684, ranges overlap). FINAL same-node(-0) ranking: be
 be+balanced 2767 < be+cost-gate ~2550. Only lpm helps (~8.5%); my two mechanisms neutral-to-slightly-negative.
 Next: v39/v40 page-size layout (last genuinely-different lever); if neutral, implement skip-L3-disk-write (bottleneck-
 motivated: disk is write-only waste under best_effort -> 252M offload tokens for l3_hit=0; skipping is lossless).
+
+### v39-be-page128 [config, layout] 3121.4 ms — NEGATIVE. page_size 128 > page64 (be-alone {2586,2782}) by ~16%.
+Larger page -> coarser prefix-match granularity -> lower hit rate -> more recompute; the fewer/bigger-transfer
+efficiency gain does NOT compensate. Layout page-size is the wrong direction. (v40 page256 expected worse still.)

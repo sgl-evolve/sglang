@@ -380,3 +380,8 @@ n=2 alloc-18328: full-bypass {1094.5, 1094.0} (spread 0.5ms!) < skip-write-only 
 (a further reliable ~7%). Both LOSSLESS (best_effort reads/writes disk for 0 served tokens; l3_hit=0). Best config =
 best_effort [+lpm, optional] + SKIP_L3_WRITE + SKIP_L3_PREFETCH. Upstream: under a never-read storage tier, skip BOTH
 its writes AND its prefetch issue -- the latter also stops it evicting useful host KV for a buffer it discards. EMAILED.
+
+### v54 skip-prefetch-ONLY = 1289.3 (alloc 18332) — prefetch-skip is a STANDALONE win too.
+Rough decomposition (18328/18332 refs): no-skip ~1818 > skip-prefetch-only ~1289 (-29%) > skip-write-only ~1176
+(-35%) > full-bypass ~1094 (-40%). Both mechanisms help alone and COMPOSE (write-skip the bigger, prefetch-skip
+adds on top). v56 (no-skip on 18332) pins the exact same-alloc baseline; v55 repeats prefetch-only; v57 full-bypass.

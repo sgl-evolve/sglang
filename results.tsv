@@ -11,3 +11,4 @@
 07-04 20:09	v23-be-lpm-cgate1k	mechanism	ttft_mean=2212.0ms	a89ed660e	logged
 07-04 20:58	v24-be-lpm-cgate4k	mechanism	ttft_mean=1837.9ms	a0b978c38	logged
 07-04 23:07	v26-be-dfsweight	config	ttft_mean=2636.0ms	400d76cbf	logged
+07-05 00:04	v28-be-lpm-cgate4k-rpt	mechanism	ttft_mean=2586.4ms	ad6d55905	logged

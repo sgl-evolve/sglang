@@ -162,3 +162,13 @@ MUST CONFIRM (repeat, given ~24% baseline variance) + refine sweet spot (gate 20
 ### v26-be-dfsweight [config] 2636.0 ms — NEGATIVE. dfs-weight < lpm (v7 2010), despite dfs-weight NOT reverting to
 fcfs at queue>128. Implies: under best_effort the queue rarely exceeds 128 (so lpm rarely reverts anyway), AND/OR
 dfs-weight's DFS-order co-scheduling is simply worse than lpm's longest-prefix-match for this workload. lpm stays best.
+
+### *** RETRACTION + VARIANCE FINDING (v28) ***
+v28-be-lpm-cgate4k-rpt = 2586.4 ms = EXACT REPEAT of v24 (same env/args, gate=4096) which was 1837.9 ms.
+A ~40% swing for the SAME config => v24's 1837.9 was a FAVORABLE-VARIANCE OUTLIER, not a real win. RETRACT the
+"v24 cost-gate mechanism win" (correction emailed). The eval has LARGE run-to-run / node-to-node variance (~35-40%),
+so ANY two single-run results in the ~2000-2600 ms band are statistically indistinguishable. Earlier fine-grained
+rankings (be+lpm 2010 vs timeout+lpm 2551 vs cost-gate vs write-policy) are largely WITHIN the noise floor -- do NOT
+over-interpret. Confound: v24 ran on ondem-3, v28 on -0 (different nodes) -> node effects may contribute.
+ROBUST (large, reproducible): default wait_complete prefetch (~87615 ms baseline) -> best_effort+lpm (~2000-2600 ms)
+is a ~35-45x reduction. That is the real finding. Pivot: same-node (-0) REPEATS to get error bars, no single-run claims.

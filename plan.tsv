@@ -27,3 +27,7 @@ v29-be-lpm-cgate8k	mechanism	SGLANG_PREFETCH_COST_GATE=8192	--hicache-storage-pr
 v30-be-lpm-cgate2k	mechanism	SGLANG_PREFETCH_COST_GATE=2048	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
 v31-be-lpm-cgate4k-cap5	mechanism	SGLANG_PREFETCH_COST_GATE=4096 SGLANG_PREFETCH_COST_GATE_MAX_S=0.5	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
 v32-be-lpm-cgate6k	mechanism	SGLANG_PREFETCH_COST_GATE=6144	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v33-be-lpm-ctrlA	config	-	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v34-be-only-ctrlA	config	-	--hicache-storage-prefetch-policy best_effort --enforce-disable-flashinfer-allreduce-fusion
+v35-be-lpm-ctrlB	config	-	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v36-be-only-ctrlB	config	-	--hicache-storage-prefetch-policy best_effort --enforce-disable-flashinfer-allreduce-fusion

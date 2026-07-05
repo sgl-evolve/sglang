@@ -16,7 +16,7 @@ WORK=$ROOT/workspace/sgl/researchers/$NAME
 POST="${POST:-$WORK/post_eval.sh}"
 FUSION="--enforce-disable-flashinfer-allreduce-fusion"
 V1REF=2dda8247a
-MIN_GB=1850; POLL=30; BLACKLIST="${BLACKLIST:-slurm2-a3nodeset0-2 slurm2-a3nodeset0-0}"
+MIN_GB=1850; POLL=10; FLOCK_W="${FLOCK_W:-200}"; BLACKLIST="${BLACKLIST:-slurm2-a3nodeset0-2 slurm2-a3nodeset0-0}"
 SEQSPEC="${SEQSPEC:?set SEQSPEC}"
 
 held(){ for f in "$RT"/held/*; do [ -e "$f" ] && basename "$f"; done; }
@@ -61,7 +61,7 @@ while :; do
     jid=$(cat "$RT/held/$node" 2>/dev/null) || continue
     squeue -h -j "$jid" >/dev/null 2>&1 || continue
     exec 200>"$RT/locks/$node.lock"
-    flock -w 8 200 || { exec 200>&-; continue; }
+    flock -w "$FLOCK_W" 200 || { exec 200>&-; continue; }
     gb=$(freegb "$jid" "$node"); gb=${gb:-0}
     if ! [[ "$gb" =~ ^[0-9]+$ ]] || (( gb < MIN_GB )); then flock -u 200; exec 200>&-; continue; fi
     echo "[batch2] HELD GOT $node (${gb}G) @ $(date +%H:%M:%S)"

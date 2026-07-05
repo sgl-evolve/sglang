@@ -173,6 +173,9 @@ plus completing the mechanism curve (v2-wc, v3-wc).
 | **v1-parallel-io** | mech | **60,745** | 255,154 | 170.8 | 0.77 | 0.15 | parallel L3 I/O, wait_complete: **−31% vs official** |
 | v3-wc | mech | 92,956 | 280,154 | 138.2 | 0.82 | 0.26 | +read-priority+aux-threads: WORSE than v1 (contention) |
 | **be-lpm** | config | **2,014** | 17,704 | 323.1 | 0.61 | 0.00 | **CHAMPION −98%**; best_effort + cache-aware `lpm` scheduling: **−20% & lower p99 vs plain best_effort** |
+| be-lpm-aggr | config | 2,011 | 20,077 | 323.5 | 0.61 | 0.00 | be-lpm + `schedule-conservativeness 0.3` (aggressive admit): TIED w/ be-lpm (noise; no retractions) |
+| be-lpm-consv | config | 2,078 | 18,855 | 333.1 | 0.60 | 0.00 | be-lpm + `conservativeness 2.0`: slightly WORSE — knob is not a lever |
+| be-dfs | config | 2,149 | 18,506 | 315.4 | 0.60 | 0.00 | best_effort + `dfs-weight` schedule: WORSE than `lpm` — lpm is the best policy |
 | v1b-besteffort | config | 2,529 | 21,356 | 288.8 | 0.55 | 0.00 | best_effort, default fcfs schedule: −97% |
 | be-lpm-timeout | mech | 2,751 | 22,499 | – | 0.60 | 0.00 | timeout+lpm: WORSE than be-lpm (bounded L3 wait re-adds latency, still l3=0) |
 | be-writeback | config | 2,796 | 11,328 | 198.9 | – | – | best_effort+write_back ≈ plain best_effort |
@@ -206,8 +209,11 @@ plus completing the mechanism curve (v2-wc, v3-wc).
    order/group requests that share a radix prefix) cuts mean TTFT a further **2,529→2,014 ms (−20%)**,
    raises radix hit-rate 0.55→0.61, AND lowers p99 21.4→17.7 s. Mechanism: `lpm` batches same-prefix
    requests so the device/host radix prefix is reused before eviction (multiturn locality) — pure
-   scheduling, fully lossless, l3 still 0. A *bounded-wait* variant (be-lpm-timeout) is worse (2,751 ms):
-   re-adding L3 waits only hurts, reconfirming L3 is unusable here.
+   scheduling, fully lossless, l3 still 0. **A full sweep confirms `lpm` is the best policy and pins
+   the frontier:** `dfs-weight` is worse (2,149 ms); the `schedule-conservativeness` admission knob is
+   *not* a lever (0.3→2,011 ≈ 1.0→2,014 < 2.0→2,078, no retractions at 0.3, mem only ~38% used); and a
+   *bounded-wait* variant (be-lpm-timeout) is worse (2,751 ms) — re-adding L3 waits only hurts,
+   reconfirming L3 is unusable here. The config/policy space is exhausted at be-lpm.
 
 6. **Takeaway:** for this overloaded 3-tier workload the two biggest levers are both in the
    *scheduler/admission* path — (a) don't block admission on slow L3 (`best_effort`, −97%), then

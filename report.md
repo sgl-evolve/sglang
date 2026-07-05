@@ -176,3 +176,11 @@ is a ~35-45x reduction. That is the real finding. Pivot: same-node (-0) REPEATS 
 ### v29-be-lpm-cgate8k [mechanism] 2519.2 ms. On node -0: cost-gate variants cluster ~2500-2600 (v28 gate4k 2586,
 v29 gate8k 2519) -- ALL worse than v7 be+lpm 2010 (which ran on ondem-3). Node confound is now the prime suspect.
 Decisive test = be+lpm NO-gate on -0 (v33): if ~2500 -> node -0 slower (gate neutral); if ~2010 -> gate hurts.
+
+### *** v33-be-lpm-ctrlA (be+lpm NO gate, on -0) = 2539.8 ms — DECISIVE ***
+On node -0: be+lpm NO-gate (v33 2539.8) ~= be+lpm+gate (v28 2586, v29 2519) -> COST-GATE IS NEUTRAL (no effect).
+And be+lpm on -0 (2540) >> be+lpm on ondem-3 (v7 2010, v24 gate 1837.9) -> NODE -0 is ~25-30% SLOWER than ondem-3.
+=> The ~40% "variance" is largely a NODE CONFOUND. Cross-node single-run comparisons are dominated by a ~25-30%
+per-node speed effect; ALL my earlier fine-grained rankings are unreliable. Robust finding UNCHANGED: best_effort+lpm
+(~2000-2600 ms, node-dependent) vs wait_complete baseline (87615 ms) = ~35-45x. Remaining repeats v34/v36 (be-alone
+on -0) vs v33/v35 (be+lpm on -0) = clean same-node test of whether lpm's benefit is real above noise.

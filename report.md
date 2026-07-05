@@ -193,3 +193,8 @@ slow node, v7 on fast ondem-3). On -0 ALL configs cluster ~2520-2586: be+lpm 254
 HONEST CONCLUSION FORMING: the ONE robust, reproducible lever is prefetch_policy=best_effort (skip synchronous
 slow-disk prefetch that saturates the queue) -> ~35-45x over the wait_complete baseline (far beyond the ~25-30%
 node variance). lpm / cost-gate / timeout / write-policy are all within node+run noise. Confirming with v35/v36 (n=2).
+
+### INTEGRITY: v24-be-lpm-cgate4k RETRACTED in W&B (2026-07-05)
+The 1837.9 ms was a single-run favorable-variance outlier (node ondem-3); exact repeat v28 (node -0) = 2586.4 ms.
+Cost-gate is NEUTRAL (same-node controls v33/v28/v29). Correction already emailed. Point kept on curve but flagged
+retracted so it is not read as a real best. My reproducible best-config = best_effort (+lpm, ~5% borderline).

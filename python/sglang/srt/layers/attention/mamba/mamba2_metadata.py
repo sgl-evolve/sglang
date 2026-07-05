@@ -240,6 +240,30 @@ class Mamba2Metadata(ForwardMetadata):
             has_initial_states = (
                 has_initial_states & mamba_track_mask[: has_initial_states.shape[0]]
             )
+        # --- drift-3e7 hybrid-SSM mixed-chunk fix (see ForwardBatch.mix_running_count) ---
+        # In ForwardMode.MIXED, scheduler.mix_with_running appends `running_bs` running-decode
+        # reqs (each folded as extend_len=1) AFTER the real prefills, so the counts above lump
+        # them into num_prefills -> num_decodes collapses to 0, and mamba.py's decode path plus
+        # the recurrent-state write-back (hybrid_linear_attn_backend) are skipped, corrupting
+        # those reqs' conv/ssm state (the --enable-mixed-chunk request failures on this Mamba
+        # model). Re-attribute the trailing `mix_running_count` entries from prefill to decode
+        # so the kernel routes them through the recurrent decode path. Gated on is_mixed() + a
+        # positive count -> byte-identical to today for every normal EXTEND batch.
+        mix_running_count = getattr(forward_batch, "mix_running_count", None)
+        if (
+            forward_batch.forward_mode.is_mixed()
+            and mix_running_count is not None
+            and 0 < mix_running_count < num_prefills
+        ):
+            num_prefills = num_prefills - mix_running_count
+            num_prefill_tokens = num_prefill_tokens - mix_running_count  # 1 token each
+            num_decodes = mix_running_count
+            # Per-prefill-entry tensors must match the shrunk prefill count; the folded
+            # decodes are the trailing entries, handled by the decode path.
+            has_initial_states = has_initial_states[:num_prefills]
+            if extend_seq_lens_cpu is not None:
+                extend_seq_lens_cpu = extend_seq_lens_cpu[:num_prefills]
+
         prep_initial_states = torch.any(has_initial_states[:num_prefills]).item()
 
         query_start_loc = forward_metadata.query_start_loc[: num_prefills + 1]

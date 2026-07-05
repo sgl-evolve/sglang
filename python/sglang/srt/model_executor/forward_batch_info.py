@@ -355,6 +355,12 @@ class ForwardBatch(ForwardBatchDeepSeekMHAMixin):
     mamba_track_mask: Optional[torch.Tensor] = None  # shape: [b], bool
     # The seqlens to track mamba state if masked, prefill only.
     mamba_track_seqlens: Optional[torch.Tensor] = None  # shape: [b], int64
+    # drift-3e7 mixed-chunk fix: in ForwardMode.MIXED, scheduler.mix_with_running folds
+    # this many running DECODE requests into the extend batch (as extend_len=1 entries
+    # appended AFTER the real prefills). Carried so Mamba2Metadata.prepare_mixed can
+    # re-attribute them from the prefill count to the decode count (== running_bs).
+    # None for every non-mixed batch -> zero effect on normal EXTEND/DECODE.
+    mix_running_count: Optional[int] = None
     # Deferred mamba init ops: COW pairs and clear indices (performed on forward stream)
     mamba_cow_src_indices: Optional[torch.Tensor] = None
     mamba_cow_dst_indices: Optional[torch.Tensor] = None
@@ -688,6 +694,16 @@ class ForwardBatch(ForwardBatchDeepSeekMHAMixin):
             mamba_track_indices=batch.mamba_track_indices,
             mamba_track_mask=batch.mamba_track_mask,
             mamba_track_seqlens=batch.mamba_track_seqlens,
+            # drift-3e7 mixed-chunk fix: count of folded running-decode reqs (== running_bs);
+            # only populated for genuine MIXED batches, else None (no effect elsewhere).
+            mix_running_count=(
+                len(batch.mix_running_indices)
+                if (
+                    batch.forward_mode.is_mixed()
+                    and batch.mix_running_indices is not None
+                )
+                else None
+            ),
             mamba_cow_src_indices=batch.mamba_cow_src_indices,
             mamba_cow_dst_indices=batch.mamba_cow_dst_indices,
             mamba_clear_indices=batch.mamba_clear_indices,

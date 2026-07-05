@@ -42,10 +42,13 @@ run_seq(){  # $1=node $2=holdjid — run ONLY v16 (the critical mechanism) into 
   echo "[poolw] wiping my L3 /mnt/localssd/$NAME on $node"
   srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "rm -rf /mnt/localssd/$NAME/* 2>/dev/null; true" 2>/dev/null
   echo "[poolw] === running v16-be-spf on $node (pool hold $jid) ==="
-  srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" v16-be-spf \
+  # BOUNDED (timeout 2700s=45min): a real run is ~35min; if the server hangs (e.g. detokenizer stall
+  # seen once), the timeout kills it rather than wedging the shared node indefinitely. Best-effort
+  # server cleanup after, so a hung instance doesn't linger on the pool node.
+  timeout 2700 srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" v16-be-spf \
     --enforce-disable-flashinfer-allreduce-fusion --hicache-storage-prefetch-policy best_effort --schedule-policy spf
   echo "[poolw] v16-be-spf rc=$?"
-  srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "rm -rf /mnt/localssd/$NAME/* 2>/dev/null; true" 2>/dev/null
+  srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "pkill -9 -f 'sglang.launch_server.*$NAME' 2>/dev/null; rm -rf /mnt/localssd/$NAME/* 2>/dev/null; true" 2>/dev/null
 }
 
 echo "[poolw] starting; cycle=${CYCLE}s; gate=1800G disk / 1300G RAM; disk-short cooldown=${COOLDOWN:-300}s"

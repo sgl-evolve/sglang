@@ -336,6 +336,28 @@ page_first_direct, write_through, lru, default admission/decode:
 non-lossless + unverifiable).** *(This window eval throughput was crippled by a >10 h fleet-wide /mnt/localssd
 saturation < the 1.8 TB gate — runs completed only in rare disk windows.)*
 
+## Mixed-chunk frontier — diagnosis (code study, no GPU needed) narrowing where the fix lives
+The one remaining lever is service-time via mixed-chunk (v11 halved TPOT 489→238 but broke ~2630 reqs on this
+Mamba/GDN model). Investigated the code path to localize the corruption for a future window:
+- `schedule_batch.py::mix_with_running` sets `ForwardMode.MIXED` and folds the running **decode** requests into
+  the prefill batch as **`extend_len=1` extends** (running decode tokens live in `future_map`; `mix_running_indices`
+  set). So MIXED = one extend batch mixing long prefills + 1-token decodes.
+- `mamba2_metadata.py::Mamba2Metadata.prepare` builds the Mamba chunked-scan metadata over `num_prefills`
+  (= len(extend_seq_lens), which in MIXED includes the decode-as-extend reqs): `query_start_loc[:num_prefills+1]`,
+  `seq_idx`, `has_initial_states = extend_prefix_lens>0` (further masked by `mamba_track_mask`),
+  `prep_initial_states = any(has_initial_states[:num_prefills])`.
+- **Root-cause area:** the decode-folded-as-extend requests are mid-generation (context_len>0 → has_initial_states
+  True), so their **recurrent conv/ssm state must be loaded as the scan's initial state** and their **updated state
+  written back via the Mamba *track* machinery** (`track_conv_indices`, `track_ssm_h_src/dst`, `track_ssm_final_*`,
+  `mamba_track_interval` — the same interval that gates page_size). The corruption is almost certainly in how the
+  chunked-scan kernels (`causal_conv1d_triton.py`, the SSM scan) + the track write-back handle the **mixed
+  extend-length** batch (long prefills interleaved with `extend_len=1` decodes) — i.e. state indexing / initial-state
+  load / final-state track write-back for the 1-token entries.
+- **Verdict:** genuinely deep Triton-kernel + state-tracking work; **fix must be paired with an output-correctness
+  harness** (run greedy w/ vs w/o mixed-chunk on sample prompts on ANY a3 node — not disk-gated — and diff outputs)
+  because the fixed eval measures latency/completion, not correctness. A future window starts here: `mamba2_metadata.py`
+  + `mamba/causal_conv1d_triton.py` + the ssm scan, focusing on the `extend_len=1` (decode) entries in MIXED mode.
+
 *(Prior best was v14-lpm-sched 2496 ms; historical note below.)*
 
 **(historical)** The load-adaptive prefetch mechanism (give up on a saturated SSD, reclaim cheap host hits) with a 1 s

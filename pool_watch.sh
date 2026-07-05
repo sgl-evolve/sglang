@@ -57,38 +57,40 @@ while :; do
   tick=$((tick + 1))
   for node in $(held_nodes); do
     jid=$(cat "$RT/held/$node" 2>/dev/null) || continue
-    # BLOCKING flock (-w): wait IN the kernel lock queue and acquire the instant the current holder
-    # releases — this beats every non-blocking poller (eval-on-pool.sh uses `flock -n` on a 30s loop),
-    # so I win the handoff on a heavily-contended node. Re-loop every BLOCKW seconds to re-evaluate.
     now_tick=$((tick * CYCLE))
+    # NON-BLOCKING flock -n so I poll BOTH pool nodes each cycle (1-2 AND ondem-3): whichever becomes
+    # genuinely available first (flock-free + disk>=1800 + GPUs idle) wins. GPU-idle gate is essential
+    # because a peer's custom session may use a node WITHOUT taking the flock. Disk-short nodes go on a
+    # cooldown so I don't srun-probe them every cycle.
     exec 200>"$RT/locks/$node.lock"
-    if flock -w "${BLOCKW:-120}" 200; then
+    if flock -n 200; then
+      if [ -n "${cooldown_until[$node]:-}" ] && [ "$now_tick" -lt "${cooldown_until[$node]}" ]; then
+        flock -u 200; exec 200>&-; continue   # disk-short cooldown — skip probe
+      fi
       if ! squeue -h -j "$jid" >/dev/null 2>&1; then
         flock -u 200; exec 200>&-; echo "[poolw] $node hold $jid dead — skip"; continue
       fi
       read -r diskg ramg < <(probe "$node" "$jid")
+      if [ "${diskg:-0}" -lt 1800 ]; then
+        cooldown_until[$node]=$((now_tick + COOLDOWN))
+        flock -u 200; exec 200>&-
+        echo "[poolw] $node disk-short (${diskg:-?}G) — cooldown ${COOLDOWN}s"; continue
+      fi
       gmem=$(gpu_max_mem "$node" "$jid")
-      echo "[poolw] ACQUIRED-LOCK $node: disk=${diskg:-?}G ram=${ramg:-?}G gpu_max=${gmem:-?}MiB (hold $jid)"
-      # GPU-IDLE gate: a peer's custom session may use this node WITHOUT taking the flock, so the flock
-      # alone doesn't guarantee exclusivity. Only run if GPUs are genuinely idle (<2000 MiB used) — this
-      # avoids colliding with (and being pkill'd by) a peer's concurrent server, and avoids thrashing a
-      # node someone is actively using. Require a valid reading (empty = probe failed → treat as busy).
-      if [ "${diskg:-0}" -ge 1800 ] && [ "${ramg:-0}" -ge 1300 ] && [ -n "${gmem:-}" ] && [ "${gmem:-999999}" -lt 2000 ]; then
-        echo "[poolw] acquired $node (GPUs idle) — running v16"
+      echo "[poolw] $node: disk=${diskg:-?}G ram=${ramg:-?}G gpu_max=${gmem:-?}MiB (hold $jid)"
+      if [ "${ramg:-0}" -ge 1300 ] && [ -n "${gmem:-}" ] && [ "${gmem:-999999}" -lt 2000 ]; then
+        echo "[poolw] acquired $node (disk OK + GPUs idle) — running v16"
         run_seq "$node" "$jid"
         flock -u 200; exec 200>&-
         echo "[poolw] DONE on $node"; ran=1; break
       else
-        # not cleanly free (disk-short, or a peer is using the GPUs) — release and re-block, waiting
-        # for a genuinely idle window so my eval doesn't collide.
         flock -u 200; exec 200>&-
-        echo "[poolw] release $node (disk=${diskg:-?}G ram=${ramg:-?}G gpu=${gmem:-?}MiB not-clean) — re-block"
-        sleep 5
+        echo "[poolw] release $node (ram=${ramg:-?}G gpu=${gmem:-?}MiB busy) — retry"
       fi
     else
-      exec 200>&-   # timed out waiting — re-loop (re-evaluate held_nodes, re-block)
+      exec 200>&-   # another holder — try next node / next cycle
     fi
   done
   [ "$ran" = 1 ] && { echo "[poolw] sequence complete — exiting watcher"; break; }
-  sleep 1   # the real wait is the blocking flock -w above; re-block almost immediately on timeout
+  sleep "${CYCLE:-10}"   # poll period for the non-blocking flock -n sweep of both pool nodes
 done

@@ -417,3 +417,8 @@ more small host hits (hit 0.622->0.638, throughput 3.44->3.47, median 581->570) 
 tail, so the headline MEAN is unchanged. Honest negative on the mean; nuance = it trades GPU recompute for H<->D +
 tail with no net mean gain. (Full-bypass on 18333 ~1131 vs 18328/18332 ~1095 = allocation variance.) Best stays
 full-bypass ~1095-1131.
+
+### v61-fb-wtsel (full-bypass + write_through_selective, new alloc 18336-on-0) = 1403.0 ms [prelim]
+Above full-bypass ~1095-1131 -> write_through_selective (less-eager device->host offload) appears to HURT even under
+full-bypass (lower host population -> lower hit rate -> more recompute; consistent with v20 negative). Need v62
+same-alloc control to confirm. Default write_through (eager) remains best.

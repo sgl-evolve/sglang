@@ -172,3 +172,7 @@ rankings (be+lpm 2010 vs timeout+lpm 2551 vs cost-gate vs write-policy) are larg
 over-interpret. Confound: v24 ran on ondem-3, v28 on -0 (different nodes) -> node effects may contribute.
 ROBUST (large, reproducible): default wait_complete prefetch (~87615 ms baseline) -> best_effort+lpm (~2000-2600 ms)
 is a ~35-45x reduction. That is the real finding. Pivot: same-node (-0) REPEATS to get error bars, no single-run claims.
+
+### v29-be-lpm-cgate8k [mechanism] 2519.2 ms. On node -0: cost-gate variants cluster ~2500-2600 (v28 gate4k 2586,
+v29 gate8k 2519) -- ALL worse than v7 be+lpm 2010 (which ran on ondem-3). Node confound is now the prime suspect.
+Decisive test = be+lpm NO-gate on -0 (v33): if ~2500 -> node -0 slower (gate neutral); if ~2010 -> gate hurts.

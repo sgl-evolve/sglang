@@ -4,16 +4,19 @@
 file L3, Mooncake 1:1:1 mix (1553 convs), lambda=3.5, max-conc 128. Headline: mean TTFT (lower better).
 Baselines: v0_official (wait_complete stock) 87615 ms; **v0_tuned 108824 ms (the bar)**.
 
-## HEADLINE (best config): best_effort + lpm + SKIP_L3_WRITE = ~1167 ms  (~93x < v0_tuned)
-Two config wins (best_effort prefetch, then lpm) plus ONE genuine engine MECHANISM win of mine:
-**under best_effort the L3 disk tier is WRITE-ONLY (measured hit_storage_frac = 0.0 -- disk is never read), yet the
-engine still offloads ~252M tokens host->disk. That write path is pure waste that contends with the essential
-host<->device load_back for PCIe/CPU/host-pool. Skipping it (SGLANG_SKIP_L3_WRITE, a self-guarded early-return in
-UnifiedRadixCache.write_backup_storage, active only under best_effort) is LOSSLESS and lifts throughput 2.55->3.40
-req/s (+33%, ~=lambda so the queue stops growing), host hit-rate 0.52->0.62, and HALVES mean TTFT.** Same-node (-0)
-n=3: skip {1147,1176,1177} mean 1167 (tight ~2.5%) vs no-skip {1833,2375,2540} (noisy) -> every skip run < every
-no-skip run, reproducible -48%..-53%. Upstream one-liner: **do not offload KV to a storage tier you are configured
-never to read.** (Contrast the RETRACTED v24 below: I only claim this because it reproduced n>=3 on the same node.)
+## HEADLINE (best config): best_effort + SKIP_L3_WRITE + SKIP_L3_PREFETCH = ~1094 ms  (~99x < v0_tuned)
+Two config wins (best_effort prefetch, then lpm) plus TWO genuine composing engine MECHANISM wins of mine that
+**fully bypass the L3 disk tier under best_effort, where it is never read (measured hit_storage_frac = 0.0):**
+ 1) **SKIP_L3_WRITE** -- stop offloading KV host->disk (~252M tokens of write-only waste contending with the
+    essential host<->device load_back). ~2x alone: throughput 2.55->3.40 req/s, host hit 0.52->0.62, TTFT halves.
+ 2) **SKIP_L3_PREFETCH** -- stop even ISSUING the disk prefetch (under best_effort it completes 0 tokens yet allocates
+    a host buffer and EVICTS useful host KV to make room, then discards it -> host-tier churn). Adds ~7% (hit
+    0.616->0.622, p99 10244->7736).
+Both are one-line self-guarded early-returns in UnifiedRadixCache (write_backup_storage / prefetch_from_storage),
+env-gated, LOSSLESS. Same-allocation n=2, three NON-OVERLAPPING tiers: full-bypass {1094.5,1094.0} (0.5ms spread!)
+< skip-write-only {1176,1177} < no-skip {1833,1803}. Upstream one-liner: **under a storage tier you never read, skip
+BOTH its writes AND its prefetch issue.** (Contrast the RETRACTED v24 below: claims made only after n>=2 same-
+allocation confirmation with non-overlapping ranges.) [lpm becomes redundant once skip is applied: skip-nolpm ~= skip+lpm.]
 
 ## The dominant enabling win: prefetch_policy = best_effort  (~35-45x < v0_tuned)
 The stock HiCache default `wait_complete` SYNCHRONOUSLY waits for slow L3 (disk) prefetches before admitting a

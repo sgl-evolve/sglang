@@ -307,3 +307,10 @@ served token). MECHANISM (my own, from bottleneck analysis): under best_effort t
 Skipping it (SGLANG_SKIP_L3_WRITE, self-guarded to best_effort) frees those -> throughput 2.55->3.40 req/s (+33%,
 ~=lambda 3.5 so the queue stops growing) + host hit_rate 0.52->0.62 -> TTFT halves. Upstream takeaway: don't offload
 KV to a tier you never read. EMAILED. Further rigor: v45/v47 (no-skip) + v46 (skip) extend to n>=3 same-node.
+
+### v45-be-lpm-noskip-n2 (no-skip be+lpm, -0) = 1833.3 ms — widens same-node no-skip spread.
+no-skip be+lpm on -0 now {1833, 2375, 2540} mean 2249 (~31% run-to-run spread -- LARGER than the ~7-8% I estimated
+from n=2; same-node variance across ALLOCATIONS/time is bigger). BUT the skip-L3-write win still HOLDS cleanly:
+SKIP {1147, 1176} is below EVERY no-skip run (max skip 1176 < min no-skip 1833) -> non-overlapping -> robust
+-36%(vs best no-skip 1833) to -53%(vs mean 2457). Honest note: report the skip win as ">=36% and reproducible",
+skip is tight (~1161) while no-skip is noisy (1833-2540). v46 (skip n=3) + v47 (no-skip n=4) extend this.

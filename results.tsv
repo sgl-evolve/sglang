@@ -30,3 +30,4 @@
 07-05 14:33	v49-be-skip-nolpm-B	mechanism	ttft_mean=1138.8ms	71db3b444	logged
 07-05 15:15	v50-skip-balanced	mechanism	ttft_mean=1249.6ms	fb0fc67eb	logged
 07-05 15:56	v51-skip-cgate4k	mechanism	ttft_mean=1160.1ms	eb39f34e6	logged
+07-05 16:37	v52-skip-both-A	mechanism	ttft_mean=1094.5ms	5c3ebc427	logged

@@ -365,3 +365,8 @@ My balanced-batching mechanism does not help in ANY regime tested (queue-bound O
 ### v51 skip+cgate = 1160.1 ~= skip+lpm ~1176 (alloc 18328) -> cost-gate NEUTRAL on top of skip too.
 Nothing stacks meaningfully on skip-L3-write: skip+lpm 1176, skip-nolpm 1177, skip+balanced 1250, skip+cgate 1160.
 skip-L3-write is the whole win. v52/v53 test the last companion: full disk-bypass (skip-write + skip-prefetch).
+
+### v52-skip-both-A (FULL DISK-BYPASS: skip-write + skip-prefetch, be+lpm, alloc 18328) = 1094.5 ms — CANDIDATE
+vs skip-write-only ~1176 (v44/v46 same alloc) -> -7%: my skip-L3-prefetch companion ADDS value on top of skip-write
+(avoids the host-tier churn/eviction from the immediately-cancelled disk prefetch under best_effort). ~99x < v0_tuned.
+LOSSLESS (disk neither read nor written under best_effort). n=1 -> v53 confirms before claiming (v24 lesson).

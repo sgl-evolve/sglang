@@ -55,7 +55,7 @@ from email.mime.text import MIMEText
 sumf,ver,commit,stf=sys.argv[1:5]
 d=json.load(open(sumf)); p=d.get("panel",d.get("mix",{}))
 t=p.get("overall/ttft_mean_ms") or p.get("mix_overview/ttft_mean_ms")
-TUNED=108824.27; OFFICIAL=87615.4; CHAMP=2013.53   # current champion (be-lpm); email only on a true new best
+TUNED=108824.27; OFFICIAL=87615.4; CHAMP=1519.37   # current champion (be-lpm); email only on a true new best
 if t is None: print("no ttft; skip email"); sys.exit()
 lines=[f"{k} = {p[k]}" for k in ["overall/ttft_mean_ms","mix_latency/ttft_p90_ms","mix_latency/ttft_p99_ms","overall/out_tok_s","overall/hit_rate","overall/l3_hit_frac","mix_latency/tpot_mean_ms"] if k in p]
 if t < CHAMP:

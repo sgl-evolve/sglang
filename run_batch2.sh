@@ -63,7 +63,12 @@ while :; do
     exec 200>"$RT/locks/$node.lock"
     flock -w "$FLOCK_W" 200 || { exec 200>&-; continue; }
     gb=$(freegb "$jid" "$node"); gb=${gb:-0}
-    if ! [[ "$gb" =~ ^[0-9]+$ ]] || (( gb < MIN_GB )); then flock -u 200; exec 200>&-; continue; fi
+    # disk-self-heal: if gate fails, remove MY OWN orphaned L3 (never others') and recheck
+    if [[ "$gb" =~ ^[0-9]+$ ]] && (( gb < MIN_GB )); then
+      timeout 60 srun --jobid="$jid" --overlap -N1 -w "$node" rm -rf "/mnt/localssd/$NAME" 2>/dev/null
+      gb=$(freegb "$jid" "$node"); gb=${gb:-0}
+    fi
+    if ! [[ "$gb" =~ ^[0-9]+$ ]] || (( gb < MIN_GB )); then echo "[batch2] $node disk ${gb}G<$MIN_GB (after self-clean) -> skip @ $(date +%H:%M:%S)"; flock -u 200; exec 200>&-; continue; fi
     echo "[batch2] HELD GOT $node (${gb}G) @ $(date +%H:%M:%S)"
     run_on "$jid" "$node"
     flock -u 200; exec 200>&-

@@ -310,9 +310,10 @@ class SchedulePolicy:
         """
         waiting_queue.sort(
             key=lambda r: (
-                (len(r.origin_input_ids) - r.num_matched_prefix_tokens)
+                (-r.num_matched_prefix_tokens,
+                 len(r.origin_input_ids) - r.num_matched_prefix_tokens)
                 if r.rid not in temporary_deprioritized
-                else float("inf")
+                else (float("inf"), float("inf"))
             )
         )
 

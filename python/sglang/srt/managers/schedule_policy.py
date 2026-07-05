@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 import os
 import random
+import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 from enum import Enum, auto
@@ -144,6 +145,23 @@ class CacheAgnosticPolicy(Enum):
     LOF = "lof"  # longest output first
     RANDOM = "random"
     ROUTING_KEY = "routing-key"  # prioritize by routing key frequency in running batch
+    SPF = "spf"  # shortest prefill first (aged) — minimize mean TTFT, bounded starvation
+
+
+# [kv-heron-eb9] Aged shortest-prefill-first (SPF) scheduling.
+# Order the waiting queue by ascending *uncached* prefill length so short prompts are admitted
+# ahead of long ones. Shortest-job-first is provably optimal for mean flow/wait time, which is
+# exactly the eval's headline (mean TTFT): under FCFS a single long-context prefill (LEval/LooGLE
+# prompts run to 10^5 tokens) blocks every short request queued behind it, inflating the TTFT
+# tail. SPF cuts that tail. It is LOSSLESS by construction — it only reorders the waiting queue,
+# so the same requests run and produce the same outputs; only admission order (hence latency)
+# changes. Pure SJF can starve the longest request, so we add an aging credit that grows with
+# time waited: after _SPF_STARVATION_BOUND_S the oldest request's credit exceeds any possible
+# prefill length, guaranteeing it reaches the queue front — this bounds worst-case wait well
+# under any client timeout, so no request is ever delayed into a truncated/aborted (lossy) reply.
+_SPF_STARVATION_BOUND_S = 15.0  # oldest waiting req is guaranteed to win within this many seconds
+_SPF_MAX_EXTEND = 262144  # ctx budget; age credit must exceed this to guarantee a win
+_SPF_AGE_RATE = _SPF_MAX_EXTEND / _SPF_STARVATION_BOUND_S  # tokens of aging credit per second
 
 
 class SchedulePolicy:
@@ -214,6 +232,12 @@ class SchedulePolicy:
                 )
             elif policy == CacheAgnosticPolicy.RANDOM:
                 SchedulePolicy._sort_randomly(waiting_queue)
+            elif policy == CacheAgnosticPolicy.SPF:
+                SchedulePolicy._sort_by_shortest_prefill(
+                    waiting_queue,
+                    self.enable_priority_scheduling,
+                    self.priority_sign,
+                )
             elif policy == CacheAgnosticPolicy.ROUTING_KEY:
                 if running_batch is not None:
                     SchedulePolicy._sort_by_routing_key(waiting_queue, running_batch)
@@ -343,6 +367,41 @@ class SchedulePolicy:
             )
         else:
             waiting_queue.sort(key=lambda x: -x.sampling_params.max_new_tokens)
+
+    @staticmethod
+    def _sort_by_shortest_prefill(
+        waiting_queue: List[Req],
+        enable_priority_scheduling: bool,
+        priority_sign: int,
+    ) -> None:
+        """Aged shortest-prefill-first (see module note near CacheAgnosticPolicy.SPF).
+
+        Sort key = uncached_prefill_len - _SPF_AGE_RATE * seconds_waited (ascending):
+        short prompts go first (SJF-optimal for mean TTFT), and the aging term guarantees any
+        request reaches the front within ~_SPF_STARVATION_BOUND_S so nothing starves. The
+        uncached length uses num_matched_prefix_tokens (populated in calc_priority for
+        cache-agnostic policies when the radix supports fast match) so cache-hit prompts are
+        correctly treated as cheap; it falls back to full prompt length when unavailable.
+        Reorder-only ⇒ lossless (same requests, same outputs)."""
+        now = time.perf_counter()
+
+        def spf_key(r: Req) -> float:
+            matched = getattr(r, "num_matched_prefix_tokens", 0) or 0
+            extend = len(r.origin_input_ids) - matched
+            if extend < 0:
+                extend = 0
+            entry = getattr(
+                getattr(r, "time_stats", None), "wait_queue_entry_time", None
+            )
+            waited = (now - entry) if entry is not None else 0.0
+            if waited < 0:
+                waited = 0.0
+            return extend - _SPF_AGE_RATE * waited
+
+        if enable_priority_scheduling:
+            waiting_queue.sort(key=lambda r: (r.priority * priority_sign, spf_key(r)))
+        else:
+            waiting_queue.sort(key=spf_key)
 
     @staticmethod
     def _sort_randomly(waiting_queue: List[Req]) -> None:

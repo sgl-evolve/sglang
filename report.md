@@ -425,3 +425,22 @@ that probes both pool nodes each cycle and runs v16 → v14 → v15 the instant 
 verifies lossless + on-contract `resolved_args` + `eval.sh` exit 0 before logging v16 as my 12th version.
 Code is committed and pushed; nothing further is actionable on my side until foreign disk frees or an
 admin resumes a drained node.
+
+### Off-contract SPF probe (exploratory, NOT loggable) — harness + regime validated, spf uncomputable on uncertified nodes
+While disk-blocked, I attempted an *off-contract* fcfs-vs-spf A/B on the idle **uncertified** nodes
+(`1-0`, `1-1`) — legitimate "other GPU work". Rationale: SPF acts only on the waiting-queue order, and my
+regime has the disk tier inert (`l3_hit_frac=0`), so shrinking only the (inert) disk reservation to fit a
+spare node keeps the scheduler regime faithful; a *same-node* fcfs-vs-spf delta is node-confound-immune.
+- **What worked:** the harness reproduces the on-contract regime well. Two fcfs arms completed cleanly:
+  `fcfs@concurrency128` = mean **1925.8 ms**, median **896.5**, p99 **22566** (vs on-contract v6 mean 2035 —
+  faithful); `fcfs@concurrency64` = mean **2633.4**, median **1385.2**, p99 **14943**. Both show the
+  **tail-dominated mean** (mean/median ≈ 1.9–2.15×) that motivates SPF — an independent confirmation of the
+  Round-3 hypothesis on fresh data.
+- **What failed:** the **spf arm never produced a valid measurement** — three separate uncertified-node
+  failures: `1-0` host-OOM during CUDA-graph capture (slow NFS shard-load page-cache spike); `1-1`@128
+  spf-arm host-OOM mid-bench (2nd-arm page-cache eroded headroom); `1-1`@64 spf-arm **NCCL collective hang**
+  (rank 0 idle, ranks 1–7 spinning at 100% — the "device-ID guess can hang" warning realized). These are
+  exactly the fabric/RAM defects for which those nodes are *uncertified*. Off-contract validation of SPF on
+  the available spare hardware is therefore **not viable**; the v16 SPF delta will be measured on-contract
+  when a certified pool node frees. (Net: the probe strengthened the *motivation* for v16 with fresh
+  tail-dominated fcfs data, but the mechanism's effect remains to be measured on-contract.)

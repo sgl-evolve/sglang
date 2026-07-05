@@ -33,7 +33,9 @@ MIX=/rmeng_data/junyanch-data/datasets/mooncake_mix_v1.jsonl
 PORT=30055
 ABROOT="$WORK/runs/_spf_ab"; mkdir -p "$ABROOT"
 NPROMPTS="${NPROMPTS:-800}"
-echo "[ab] node=$(hostname) commit=$(git -C "$WORK" rev-parse --short HEAD) nprompts=$NPROMPTS"
+MAXCON="${MAXCON:-64}"   # reduced from contract's 128 to cap peak host-KV so the 2nd (spf) arm
+                        # doesn't OOM after the 1st arm's residual page cache eats RAM headroom.
+echo "[ab] node=$(hostname) commit=$(git -C "$WORK" rev-parse --short HEAD) nprompts=$NPROMPTS maxcon=$MAXCON"
 
 wipe(){ rm -rf "$SSD" 2>/dev/null; mkdir -p "$SSD"; }
 
@@ -59,6 +61,7 @@ run_policy(){  # $1 = fcfs|spf
     --hicache-storage-backend file --hicache-storage-backend-extra-config "{\"file_path\":\"$SSD\",\"max_size\":\"200G\",\"min_free_space\":\"20G\"}"
     --page-size 64 --hicache-io-backend direct --hicache-mem-layout page_first_direct
     --hicache-write-policy write_through --hicache-storage-prefetch-policy best_effort
+    --enforce-disable-flashinfer-allreduce-fusion
     --schedule-policy "$pol"
     --enable-metrics --enable-cache-report --port "$PORT")
   printf '%q ' "${LAUNCH[@]}" > "$OUT/launch_cmd.txt"; echo >> "$OUT/launch_cmd.txt"
@@ -78,7 +81,7 @@ run_policy(){  # $1 = fcfs|spf
   echo "[ab] === bench policy=$pol nprompts=$NPROMPTS ==="
   python3 benchmark/hicache/bench_serving.py --backend sglang --model "$MODEL" \
     --dataset-name loogle --dataset-path "$MIX" --enable-multiturn --disable-shuffle \
-    --request-rate 3.5 --max-concurrency 128 --num-prompts "$NPROMPTS" --port "$PORT" \
+    --request-rate 3.5 --max-concurrency "$MAXCON" --num-prompts "$NPROMPTS" --port "$PORT" \
     --output-file "$OUT/mix_result.json" 2>&1 | tee "$OUT/mix.txt"
   kill $SRV 2>/dev/null; sleep 5; pkill -9 -f "sglang.launch_server" 2>/dev/null; sleep 3; wipe
 }

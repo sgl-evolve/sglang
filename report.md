@@ -176,6 +176,8 @@ plus completing the mechanism curve (v2-wc, v3-wc).
 | be-lpm-aggr | config | 2,011 | 20,077 | 323.5 | 0.61 | 0.00 | be-lpm + `schedule-conservativeness 0.3` (aggressive admit): TIED w/ be-lpm (noise; no retractions) |
 | be-lpm-consv | config | 2,078 | 18,855 | 333.1 | 0.60 | 0.00 | be-lpm + `conservativeness 2.0`: slightly WORSE — knob is not a lever |
 | be-dfs | config | 2,149 | 18,506 | 315.4 | 0.60 | 0.00 | best_effort + `dfs-weight` schedule: WORSE than `lpm` — lpm is the best policy |
+| be-lpm-slru | config | 2,063 | 18,173 | – | 0.592 | 0.00 | be-lpm + `--radix-eviction-policy slru`: WORSE than LRU (hit 0.592<0.61) |
+| be-lpm-lfu | config | 2,118 | 18,024 | – | 0.579 | 0.00 | be-lpm + `--radix-eviction-policy lfu`: WORST eviction (hit 0.579) — frequency hurts recency-driven multiturn reuse |
 | v1b-besteffort | config | 2,529 | 21,356 | 288.8 | 0.55 | 0.00 | best_effort, default fcfs schedule: −97% |
 | be-lpm-timeout | mech | 2,751 | 22,499 | – | 0.60 | 0.00 | timeout+lpm: WORSE than be-lpm (bounded L3 wait re-adds latency, still l3=0) |
 | be-writeback | config | 2,796 | 11,328 | 198.9 | – | – | best_effort+write_back ≈ plain best_effort |
@@ -215,11 +217,21 @@ plus completing the mechanism curve (v2-wc, v3-wc).
    *bounded-wait* variant (be-lpm-timeout) is worse (2,751 ms) — re-adding L3 waits only hurts,
    reconfirming L3 is unusable here. The config/policy space is exhausted at be-lpm.
 
-6. **Takeaway:** for this overloaded 3-tier workload the two biggest levers are both in the
+6. **The radix *eviction* policy confirms be-lpm's default (LRU) is optimal.** Tested the hypothesis
+   that reuse-frequency-aware eviction would protect hot multiturn prefixes and cut the 39% host-miss:
+   it **backfires**. `--radix-eviction-policy`: **lru 2,014 ms (hit 0.61) > slru 2,063 (0.592) > lfu
+   2,118 (0.579)**. Adding a frequency component *lowers* hit-rate because reuse here is recency-driven
+   (turn N+1 reuses turn N's just-touched prefix); LFU keeps stale-but-frequent prefixes and evicts the
+   recent ones. Honest negative — LRU wins. Host hit-rate is thus **capacity-bound at ~0.61** (768 GB
+   host thrashed by 1553 concurrent convs; `hicache-size` is fixed by the eval), not policy-fixable.
+
+7. **Takeaway:** for this overloaded 3-tier workload the two biggest levers are both in the
    *scheduler/admission* path — (a) don't block admission on slow L3 (`best_effort`, −97%), then
-   (b) order admitted requests cache-awarely (`lpm`, another −20%) — not L3 I/O speed. The engine
-   win (v1 parallel I/O) matters only when you must use L3. A production system should combine
-   `best_effort` + `lpm` with v1's faster L3 backup path (v1 also cuts disk-read/eviction volume).
+   (b) order admitted requests cache-awarely (`lpm`, another −20%) — not L3 I/O speed, write policy,
+   admission conservativeness, or eviction policy (all swept, none beat the be-lpm defaults). The
+   engine win (v1 parallel I/O) matters only when you must use L3. **be-lpm (best_effort + lpm + lru)
+   is the validated frontier: 2,014 ms mean TTFT, −98% vs v0_tuned, fully lossless.** A production
+   system should combine `best_effort` + `lpm` with v1's faster L3 backup path.
 
 Global eval condition: all my versions pass `--enforce-disable-flashinfer-allreduce-fusion`
 (the auto-enabled fusion hangs CUDA-graph capture with hicache on this cluster; lossless,

@@ -231,3 +231,7 @@ motivated: disk is write-only waste under best_effort -> 252M offload tokens for
 ### v39-be-page128 [config, layout] 3121.4 ms — NEGATIVE. page_size 128 > page64 (be-alone {2586,2782}) by ~16%.
 Larger page -> coarser prefix-match granularity -> lower hit rate -> more recompute; the fewer/bigger-transfer
 efficiency gain does NOT compensate. Layout page-size is the wrong direction. (v40 page256 expected worse still.)
+
+### v40-be-page256 [config, layout] 3333.0 ms — NEGATIVE. Page-size sweep MONOTONIC: page64 ~2684 < page128 3121 <
+page256 3333. Larger page consistently hurts (coarser prefix-match -> lower hit rate -> more recompute). Layout
+page-size is a confirmed wrong direction; keep the default page64. Next: skip-L3-write mechanism (v43/v44).

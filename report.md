@@ -505,3 +505,38 @@ loads fast → no wedge, with the contract (default 600 s dist-timeout) untouche
 - **Plan:** launch the moment a certified node frees; compare vs `v0_official` (wait_complete)
   and `v2cfg-besteffort` (the no-wait ceiling). Tag `mechanism`.
 - **Lossless:** recompute yields identical tokens.
+
+## v19-wip — mixed-chunk fix IMPLEMENTED + output-correctness harness in flight (2026-07-05)
+The documented frontier is now built (commits `4c9c644`, harness commit follows). Re-reading the
+CURRENT code closed the loop on the root cause and made the fix **metadata-only**, not the deep
+Triton work the earlier diagnosis feared:
+- **Confirmed from code:** `MambaMixer2.forward` (`mamba/mamba.py:499-755`) routes tokens *purely*
+  by `metadata.num_prefills / num_decodes / num_prefill_tokens`: it `torch.split`s the varlen input
+  into `[num_prefill_tokens, num_decode_tokens]`, runs the first slice through the chunked-scan
+  prefill path and the last `num_decodes` tokens through the recurrent decode path with
+  `state_indices_tensor[num_prefills:num_prefills+num_decodes]`. **The kernel already handles mixed
+  batches correctly** — it was simply being fed `num_decodes=0`. In `ForwardMode.MIXED`,
+  `mix_with_running` appends the running decodes (each `extend_len=1`) *after* the prefills, so
+  `prepare_mixed` counts them in `num_prefills` → `num_decodes = batch_size − num_prefills = 0` →
+  decode path + state write-back skipped → folded decodes mis-run as fresh prefills (zero initial
+  state) → conv/ssm corruption = the v11 `--enable-mixed-chunk` request failures.
+- **Fix (metadata-only, gated):** carry `mix_running_count = len(mix_running_indices) == running_bs`
+  onto `ForwardBatch` (set in `init_new` only for `is_mixed()` batches). In `prepare_mixed`, when
+  present, re-attribute the trailing `R` entries from prefill to decode: `num_prefills−=R`,
+  `num_prefill_tokens−=R` (1 tok each), `num_decodes=R`, and slice `has_initial_states` /
+  `extend_seq_lens_cpu` to the shrunk prefill count so the per-prefill tensors stay shape-consistent
+  (`mamba.py:597` `torch.where(has_initial_states_p, ssm_state[state_indices_tensor_p], 0)`). Strictly
+  gated on `forward_mode.is_mixed()` and `0<R<num_prefills` → **byte-identical to today for every
+  normal EXTEND batch** (protects the delivered best config). Files: `forward_batch_info.py` (field +
+  init_new), `mamba2_metadata.py::prepare_mixed`.
+- **Verification (job 18337, node 1-1, disk-independent so immune to the 1.8T eval-pool gate):**
+  `harness/mixedchunk_correctness.sbatch` launches the 122B twice (mixed-chunk OFF then ON), greedy;
+  each server runs prompts sequentially (mix inactive → canonical reference) and concurrently (mix
+  active). `mixedchunk_compare.py` verdict = **zero request failures** AND mix-active divergence **no
+  worse than the concurrency-only FP control** (isolates real corruption from benign batch-variance).
+  Env-gated `MIXCHUNK-TRACE` confirms MIXED batches actually formed (else the test is inconclusive).
+- **Status:** NOT a curve point yet. Gates before logging v19: (1) harness verdict LOSSLESS + MIXED
+  fired; (2) a normal-EXTEND no-regression check (the fix touches shared `prepare_mixed`); (3) full
+  fixed-protocol eval on a certified ≥1.8 TB node = `--enable-mixed-chunk` added to the v18 best
+  (adaptive prefetch + srpf). If lossless, expected win = higher throughput (v11 halved TPOT) →
+  shorter queue → lower mean TTFT in this queue-dominated regime.

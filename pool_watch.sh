@@ -35,6 +35,13 @@ gpu_max_mem(){  # $1=node $2=holdjid -> max GPU MiB used across the 8 GPUs (or "
     'nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | sort -rn | head -1' 2>/dev/null | tr -dc 0-9
 }
 
+fresh_check(){  # $1=node $2=holdjid -> "gpuMiB procN" ; empty/timeout => treat as not-fresh.
+  # A node is "truly fresh" only if GPUs are idle AND no sglang.launch_server procs linger. A node I
+  # previously wedged (D-state procs) fails this OR times out the srun -> skipped (won't re-hang there).
+  timeout 60 srun --jobid="$2" --overlap -N1 -w "$1" bash -c \
+    'g=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | sort -rn | head -1); p=$(pgrep -f sglang.launch_server 2>/dev/null | wc -l); echo ${g:-999999} ${p:-9}' 2>/dev/null
+}
+
 run_seq(){  # $1=node $2=holdjid — run ONLY v16 (the critical mechanism) into this acquired hold.
   # Rationale: the pool is chaotically shared with a peer whose custom session doesn't take the flock,
   # so (a) hold the contended node ~40min not ~2h (fairer), and (b) get the ONE key result cleanly.
@@ -79,16 +86,18 @@ while :; do
         flock -u 200; exec 200>&-
         echo "[poolw] $node disk-short (${diskg:-?}G) — cooldown ${COOLDOWN}s"; continue
       fi
-      gmem=$(gpu_max_mem "$node" "$jid")
-      echo "[poolw] $node: disk=${diskg:-?}G ram=${ramg:-?}G gpu_max=${gmem:-?}MiB (hold $jid)"
-      if [ "${ramg:-0}" -ge 1300 ] && [ -n "${gmem:-}" ] && [ "${gmem:-999999}" -lt 2000 ]; then
-        echo "[poolw] acquired $node (disk OK + GPUs idle) — running v16"
+      read -r gmem gprocs < <(fresh_check "$node" "$jid")
+      echo "[poolw] $node: disk=${diskg:-?}G ram=${ramg:-?}G gpu_max=${gmem:-?}MiB sglang_procs=${gprocs:-?} (hold $jid)"
+      # TRULY-FRESH gate: GPUs idle (<2GB) AND no lingering sglang procs (a node I previously wedged
+      # keeps D-state procs and fails this / times out -> skipped, so I never re-hang on a damaged node).
+      if [ "${ramg:-0}" -ge 1300 ] && [ -n "${gmem:-}" ] && [ "${gmem:-999999}" -lt 2000 ] && [ "${gprocs:-9}" -eq 0 ]; then
+        echo "[poolw] acquired $node (disk OK + GPUs idle + no lingering procs = truly fresh) — running v16"
         run_seq "$node" "$jid"
         flock -u 200; exec 200>&-
         echo "[poolw] DONE on $node"; ran=1; break
       else
         flock -u 200; exec 200>&-
-        echo "[poolw] release $node (ram=${ramg:-?}G gpu=${gmem:-?}MiB busy) — retry"
+        echo "[poolw] release $node (ram=${ramg:-?}G gpu=${gmem:-?}MiB procs=${gprocs:-?} not-fresh) — retry"
       fi
     else
       exec 200>&-   # another holder — try next node / next cycle

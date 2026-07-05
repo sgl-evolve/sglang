@@ -190,12 +190,26 @@ until the eval runs. No overclaim.
 
 ## v8 — genuine cache-aware SJF (subtract the radix-matched prefix)  [mechanism] — QUEUED
 **Hypothesis.** v2/v3 (and v7) order by **total** prefill length because the cached-prefix term is inert
-(Correction up top). But this mix is heavily multi-turn (ShareGPT conversations replayed turn-by-turn):
-a late turn has a **large total length** (whole history) yet a **tiny uncached extension** (only the new
-turn needs prefill — the history is already in the radix/host/L3 cache). Total-length SJF wrongly treats
-such a request as "large" and defers it, when it is actually **cheap**. Ordering by *true remaining
-(uncached) prefill work* should schedule these cheap-but-long requests first, cutting mean TTFT further —
-and it is the most **KV-cache-native** version of the mechanism (the schedule reacts to cache residency).
+(Correction up top). But this mix is heavily multi-turn: a late turn has a **large total length** (whole
+history) yet a **tiny uncached extension** (only the new turn needs prefill — the history is already in
+the radix/host cache). Total-length SJF wrongly treats such a request as "large" and defers it, when it is
+actually **cheap**. Ordering by *true remaining (uncached) prefill work* should schedule these cheap-but-
+long requests first, cutting mean TTFT further — the most **KV-cache-native** version of the mechanism.
+
+**Dataset evidence (measured, `mooncake_mix_v1.jsonl` + v3 `server.log`; strong prior that v8 ≠ v3).**
+- The mix is **1553 documents → 7037 requests** (`enable_multiturn=True`, mean **4.6 questions/doc**, up
+  to 61). **78% of all requests are turn≥2 follow-ups** on an already-seen doc. Docs are ~12k tokens
+  (49.5k chars); a follow-up question is ~40 tokens (161 chars) → a follow-up's **uncached extension is
+  ~300× smaller than its total length**.
+- The v3 golden run confirms the reuse is real: **cache hit = 0.816** (device 31% / host 43% / storage
+  25%). `num_matched_prefix_tokens` = device+host match — so v8 will see the large cached doc-prefix on
+  those 78% of requests and treat them as the ~40-token jobs they actually are.
+- Because **every record is large-doc format** (no tiny single-turn chats), total-length SJF (v3) barely
+  differentiates requests (all look ~doc-sized ⇒ near-FCFS); v8 collapses 78% of them to ~40 tokens ⇒
+  large reordering headroom. Expensive turn-1 doc prefills (22%) are correctly deprioritized. Net mean
+  TTFT should drop. (Caveat: v8 costs one `match_prefix` per waiting req per pass — the eval measures
+  whether the reorder gain outweighs it; also num_matched excludes the storage-tier 25%, so residency
+  still counts partly as remaining — directionally conservative.)
 **What changed.** `environ.py`: new `SGLANG_SJF_CACHE_AWARE` (`EnvBool`, default **False** ⇒ v2/v3
 byte-identical). `schedule_policy.py` `calc_priority`: when the flag is set and policy ∈ {sjf, hrrn},
 run `match_prefix_for_req` for every waiting request (the same read-only radix match the LPM cache-aware

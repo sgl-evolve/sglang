@@ -296,10 +296,21 @@ class SchedulePolicy:
     def _sort_by_longest_prefix(
         waiting_queue: List[Req], temporary_deprioritized: Set[int]
     ) -> None:
-        """Sorts the waiting queue based on the longest prefix match."""
+        """Sorts the waiting queue by LEAST REMAINING PREFILL WORK first (quill-7m3 mechanism).
+
+        Baseline `lpm` sorts by -num_matched_prefix_tokens (most-cached first), ignoring total
+        prompt length: it will front-load a request with a huge uncached suffix over one that is
+        nearly free to prefill. The eval headline metric is MEAN TTFT, and prefill load here is
+        heavy-tailed, so shortest-remaining-work-first (a classic mean-wait minimizer) should help.
+
+        `uncached = len(origin_input_ids) - num_matched_prefix_tokens` is a UNIFIED key: it rewards
+        cache hits (more matched -> less uncached, so cache-locality is preserved) AND short prompts
+        (SJF). Sorting ascending by it prefills the cheapest requests first -> lower mean TTFT.
+        Lossless: reordering the queue changes only latency, never any request's output/KV.
+        """
         waiting_queue.sort(
             key=lambda r: (
-                -r.num_matched_prefix_tokens
+                (len(r.origin_input_ids) - r.num_matched_prefix_tokens)
                 if r.rid not in temporary_deprioritized
                 else float("inf")
             )

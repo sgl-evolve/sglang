@@ -174,6 +174,7 @@ plus completing the mechanism curve (v2-wc, v3-wc).
 | v3-wc | mech | 92,956 | 280,154 | 138.2 | 0.82 | 0.26 | +read-priority+aux-threads: WORSE than v1 (contention) |
 | **be-sjf-cost** | mech | **1,519** | **9,012** | 341.9 | 0.596 | 0.00 | **CHAMPION −98.6%**; FLOP-weighted SJF (`uncached*total`): −3% over be-sjf (better prefill-cost estimate) |
 | **be-sjf** | mech | **1,565** | **8,998** | 333.6 | 0.597 | 0.00 | SJF prefill scheduling (least-remaining-work-first): **−22% mean & −49% p99 vs be-lpm** — novel code mechanism |
+| be-sjf-blend | mech | 1,698 | 9,491 | – | 0.600 | 0.00 | lpm-primary + SJF-secondary tiebreak: better than lpm, WORSE than pure/cost SJF — **SJF must be PRIMARY** |
 | be-lpm | config | 2,014 | 17,704 | 323.1 | 0.61 | 0.00 | best_effort + cache-aware `lpm` scheduling: −20% & lower p99 vs plain best_effort (prior champion) |
 | be-lpm-aggr | config | 2,011 | 20,077 | 323.5 | 0.61 | 0.00 | be-lpm + `schedule-conservativeness 0.3` (aggressive admit): TIED w/ be-lpm (noise; no retractions) |
 | be-lpm-consv | config | 2,078 | 18,855 | 333.1 | 0.60 | 0.00 | be-lpm + `conservativeness 2.0`: slightly WORSE — knob is not a lever |

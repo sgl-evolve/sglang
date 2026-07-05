@@ -248,6 +248,29 @@ counterproductive** (the tail is not a mean-driver under SRPF). Commit b5883c9e6
 launcher to a blocking `flock` — under heavy single-node fleet contention, poll-based `flock -n` never
 won the lock in 101 min; blocking-queue won it in ~4 min.)*
 
+**v21-srpf-wb — SRPF + write_back — INVALID (not logged).** Hypothesis: since adaptive makes SSD
+read-useless (l3_hit_frac=0), lazy `write_back` (defer SSD writes to eviction) might cut wasteful eager
+write_through IO → higher throughput. Result: the run **broke** — only 1267/7037 requests successful (no
+clean server-side signature, same failure class as v11 mixed-chunk). **write_back is not viable; write_through
+is required for correctness** (write_through_selective v7 also degraded). Write-policy axis exhausted.
+
+## CAMPAIGN SUMMARY — losslessly-safe accessible design space fully explored; robust plateau at ~1800 ms
+Headline mean TTFT: **v0_official 87615 → 1798 ms (best, v18 SRPF+;) = 48.7× / 59× v0_tuned.** 16 valid own
+versions. Two novel engine mechanisms delivered:
+1. **Adaptive storage-prefetch** (`--hicache-storage-prefetch-policy adaptive`, cap≈1–3s, occupancy-pressure):
+   fixes the frozen `wait_complete` SSD-wait→decode-starvation pathology. 87615 → ~2580 ms.
+2. **SRPF scheduling** (`--schedule-policy srpf`, new CacheAwarePolicy): true shortest-remaining-prefill-first
+   SJF (vs LPM's longest-matched proxy). ~2580 → ~1798 ms; improved mean AND tail.
+**Every other accessible lever is tapped or non-viable:** eviction LFU (balance-only, headline-neutral);
+admission conservativeness (neutral); decode-protection (trades headline for throughput); adaptive cap
+(neutral under SRPF); scheduling LPM/ASRPF (both worse than SRPF); write_back/selective (break/degrade —
+write_through required); pressure=contention (v10, worse). **Off-limits:** mixed-chunk (halves TPOT but
+corrupts Mamba state → non-lossless, and the eval can't verify output correctness); forbidden args
+(model/tp/ctx/mem-frac/hicache-size/backend/chunked-prefill). The regime is queue-bound; SRPF is SJF-optimal
+for mean-TTFT, so ~1800 ms is the floor for lossless accessible changes. Further gains require a
+hybrid-SSM-safe service-time mechanism (deep model-executor work + an output-correctness harness) — the
+documented frontier for a future window.
+
 *(Prior best was v14-lpm-sched 2496 ms; historical note below.)*
 
 **(historical)** The load-adaptive prefetch mechanism (give up on a saturated SSD, reclaim cheap host hits) with a 1 s

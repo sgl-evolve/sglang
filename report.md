@@ -370,3 +370,10 @@ skip-L3-write is the whole win. v52/v53 test the last companion: full disk-bypas
 vs skip-write-only ~1176 (v44/v46 same alloc) -> -7%: my skip-L3-prefetch companion ADDS value on top of skip-write
 (avoids the host-tier churn/eviction from the immediately-cancelled disk prefetch under best_effort). ~99x < v0_tuned.
 LOSSLESS (disk neither read nor written under best_effort). n=1 -> v53 confirms before claiming (v24 lesson).
+
+### *** CONFIRMED REFINED BEST: FULL DISK-BYPASS (skip-write + skip-prefetch) ~1094 ms (~99x < v0_tuned) ***
+n=2 alloc-18328: full-bypass {1094.5, 1094.0} (spread 0.5ms!) < skip-write-only {1176,1177} < no-skip {1833,1803}
+-- three non-overlapping tiers, same allocation. My TWO mechanisms compose: skip-L3-write (the ~2x) + skip-L3-prefetch
+(a further reliable ~7%). Both LOSSLESS (best_effort reads/writes disk for 0 served tokens; l3_hit=0). Best config =
+best_effort [+lpm, optional] + SKIP_L3_WRITE + SKIP_L3_PREFETCH. Upstream: under a never-read storage tier, skip BOTH
+its writes AND its prefetch issue -- the latter also stops it evicting useful host KV for a buffer it discards. EMAILED.

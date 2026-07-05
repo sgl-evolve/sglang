@@ -287,3 +287,13 @@ efficiency gain does NOT compensate. Layout page-size is the wrong direction. (v
 ### v40-be-page256 [config, layout] 3333.0 ms — NEGATIVE. Page-size sweep MONOTONIC: page64 ~2684 < page128 3121 <
 page256 3333. Larger page consistently hurts (coarser prefix-match -> lower hit rate -> more recompute). Layout
 page-size is a confirmed wrong direction; keep the default page64. Next: skip-L3-write mechanism (v43/v44).
+
+### *** v43-be-lpm-skipL3-A [MECHANISM] 1147.4 ms — STRONG CANDIDATE WIN (SAME-NODE -0, -53% vs be+lpm) ***
+be+lpm+SKIP_L3_WRITE (v43) vs be+lpm (v33/v35 {2540,2375} mean 2457) — ALL on node -0 (no node confound):
+ ttft_mean 1147 vs 2375 (-52%) | throughput 3.40 vs 2.55 req/s (+33%, ~= lambda 3.5 -> queue stops growing!) |
+ hit_rate 0.620 vs 0.519 | ttft_p99 9511 vs 17791 | tpot 240 vs 548 | offload_tokens NONE(skipped) vs 252M.
+LOSSLESS: hit_storage_frac=0.0 in BOTH (disk never read under best_effort) -> skipping its writes changes no served
+token. MECHANISM: the host->disk offload (252M tokens) is write-only waste under best_effort; it competes for
+PCIe/CPU/host-pool with the essential H<->D load_back. Removing it frees those -> +33% throughput + higher host-hit
+rate -> -53% TTFT. ~95x < v0_tuned. NOT EMAILED YET — confirming n>=2 same-node on a 2nd node (v44-v47) per the v24
+variance lesson before claiming a new best.

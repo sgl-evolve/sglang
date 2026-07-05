@@ -21,3 +21,4 @@
 07-05 06:51	v38-be-bal-ctrlB	mechanism	ttft_mean=2788.8ms	ca9b30f8e	logged
 07-05 07:59	v39-be-page128	config	ttft_mean=3121.4ms	05d346425	logged
 07-05 09:05	v40-be-page256	config	ttft_mean=3333.0ms	4e37a7445	logged
+07-05 09:46	v43-be-lpm-skipL3-A	mechanism	ttft_mean=1147.4ms	9dd820cba	logged

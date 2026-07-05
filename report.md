@@ -271,6 +271,20 @@ for mean-TTFT, so ~1800 ms is the floor for lossless accessible changes. Further
 hybrid-SSM-safe service-time mechanism (deep model-executor work + an output-correctness harness) — the
 documented frontier for a future window.
 
+**v22-srpf-noibpc — SRPF + in-batch-prefix-caching disabled (`IN_BATCH_PREFIX_CACHING_CHECK_THRESHOLD=-1`
+via env) — 1805 ms, neutral.** Discovered env vars DO propagate through the srun chain (same path as
+`FLASHINFER_WORKSPACE_BASE`), unlocking `SGLANG_*`/`IN_BATCH_*` knobs beyond CLI args. But disabling the
+in-batch dedup deprioritization is noise (1805 vs 1808) — because the **waiting queue is small**
+(`--max-concurrency 128`, part of the eval contract), so any scheduling refinement beyond SRPF's core SJF
+ordering has almost nothing to reorder. Commit f9b5fc9ed.
+
+**Plateau is robust across ALL accessible axes (CLI + env-var).** Root reason: the regime is queue-bound,
+SRPF is SJF-optimal for mean-TTFT, and the small waiting queue leaves no room for further scheduling gains.
+The only untapped lever is throughput/service-time (mixed-chunk), which is off-limits (non-lossless on this
+Mamba model + the eval can't verify output correctness). **Lossless accessible floor = ~1798 ms (48.7×).**
+Not spamming the disk-constrained shared fleet with further noise-level variants; the loop stays open for a
+genuinely-new mechanism or an output-correctness harness (documented frontier).
+
 *(Prior best was v14-lpm-sched 2496 ms; historical note below.)*
 
 **(historical)** The load-adaptive prefetch mechanism (give up on a saturated SSD, reclaim cheap host hits) with a 1 s

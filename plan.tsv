@@ -48,3 +48,5 @@ v50-skip-balanced	mechanism	SGLANG_SKIP_L3_WRITE=1 SGLANG_ENABLE_BALANCED_PREFIL
 v51-skip-cgate4k	mechanism	SGLANG_SKIP_L3_WRITE=1 SGLANG_PREFETCH_COST_GATE=4096	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
 v52-skip-both-A	mechanism	SGLANG_SKIP_L3_WRITE=1 SGLANG_SKIP_L3_PREFETCH=1	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
 v53-skip-both-B	mechanism	SGLANG_SKIP_L3_WRITE=1 SGLANG_SKIP_L3_PREFETCH=1	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v54-skip-pf-only-A	mechanism	SGLANG_SKIP_L3_PREFETCH=1	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v55-skip-pf-only-B	mechanism	SGLANG_SKIP_L3_PREFETCH=1	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion

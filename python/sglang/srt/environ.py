@@ -346,6 +346,13 @@ class Envs:
     # many seconds is promoted ahead of the shortest-job ordering (FCFS among the
     # aged), bounding tail starvation of large prompts. 0 = pure SJF (no aging).
     SGLANG_SJF_AGING_SEC = EnvFloat(0.0)
+    # SJF/HRRN cache-aware ordering: when True, run a radix prefix match for every waiting
+    # request at schedule time so the "remaining prefill tokens" key subtracts the already-cached
+    # prefix (num_matched_prefix_tokens), instead of using the full sequence length. Off by default
+    # because base_prefix_cache.supports_fast_match_prefix() is False, so the cached-prefix term is
+    # otherwise inert (0) and sjf/hrrn order by TOTAL length. Adds one match_prefix per waiting req
+    # per pass (same cost the LPM cache-aware policy already pays). [quartz-7m3] mechanism.
+    SGLANG_SJF_CACHE_AWARE = EnvBool(False)
     # HRRN scheduler (schedule_policy=hrrn): prefill throughput (tokens/sec) used to convert a
     # request's remaining prefill tokens into a service time, for the response ratio
     # R = 1 + wait_sec * rate / remaining_tokens. Higher = wait matters more (stronger anti-starvation).

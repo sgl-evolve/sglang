@@ -6,13 +6,23 @@ Headline metric: **mean TTFT** (lower better), lossless gate: outputs match no-c
 
 ## TL;DR
 **Mean TTFT here is prefill-queue-waiting-dominated** (median ~1.4 s but mean ~90 s, prompts 0–190 K
-tokens). Reordering the prefill waiting queue **shortest-job-first** — cache-aware, with light **aging**
-to bound the heavy tail — cuts mean TTFT to **77 083 ms, a 1.41× improvement over the v0_tuned bar**
-(108 824 ms; and 1.14× over v0_official 87 615). Pure reorder ⇒ **lossless** (outputs unchanged, no drops,
-cache-tier fractions identical to baseline). This is the headline result (best = **v3-sjf-aged**). Aging
-is a real mean improvement (not just tail insurance): v3 (77 083) < pure-SJF v2 (80 342). Disk-I/O
+tokens). Reordering the prefill waiting queue **shortest-job-first** (by prefill length), with light
+**aging** to bound the heavy tail — cuts mean TTFT to **77 083 ms, a 1.41× improvement over the v0_tuned
+bar** (108 824 ms; and 1.14× over v0_official 87 615). Pure reorder ⇒ **lossless** (outputs unchanged, no
+drops, cache-tier fractions identical to baseline). This is the headline result (best = **v3-sjf-aged**).
+Aging is a real mean improvement (not just tail insurance): v3 (77 083) < pure-SJF v2 (80 342). Disk-I/O
 parallelism (v1) and a v3-repeat (noise band) were queued but blocked by a transient certified-pool
 capacity crunch (see infra note).
+
+> **Correction & follow-up (2026-07-05).** Static-analysis audit of the schedule path found that the
+> `− num_matched_prefix_tokens` (cached-prefix) term in the SJF/HRRN sort key was **inert** as-run:
+> `num_matched_prefix_tokens` is only populated when `tree_cache.supports_fast_match_prefix()` is True,
+> which is **False everywhere** (only the base class defines it), and the field defaults to 0. So **v2/v3
+> as measured ordered by *total* prefill length, not cached-remaining** — the 1.35×/1.41× wins are real
+> but come from total-length SJF. This does **not** change any measured number, only the mechanism
+> description (corrected throughout below). It also motivates **v8 — genuine cache-aware SJF** (new env
+> `SGLANG_SJF_CACHE_AWARE` forces the per-request match), a clean A/B vs v3 that should help on the
+> multi-turn ShareGPT portion where a late turn has huge total length but a tiny *uncached* extension.
 
 ### Ablation ladder (each version adds one mechanism)
 `SGLANG_HICACHE_FILE_BACKEND_IO_THREADS` defaults to **4**, so the parallel-L3-I/O code path (v1) is
@@ -29,6 +39,8 @@ mechanism: **v0** (stock: FCFS + serial L3 I/O) → **v1** (FCFS + *parallel* L3
 | v2-sjf | pure SJF (aging=0) | 80341.6 | 1.35× (−26%) | 1.09× (−8%) | 151.3 | .813 / .250 |
 | v1-parallel-l3-io | parallel L3 disk I/O | _infra-blocked (queued)_ | | | | |
 | v5-sjf-aged90-rep | v3 repeat (noise band) | _infra-blocked (queued)_ | | | | |
+| v7-hrrn | HRRN (smooth anti-starvation) | _queued_ | | | | |
+| v8-sjf-ca-aged90 | genuine cache-aware SJF + aging | _queued_ | | | | |
 
 **v3-sjf-aged is the current best** — a **29% mean-TTFT cut vs the bar** with hit-rate/l3-frac matching
 baseline (cache behaviour preserved) and out_tok/s slightly *up*. Confirms the core thesis: mean TTFT
@@ -94,7 +106,7 @@ just concurrent.)_
 
 **Takeaway.** _(pending eval)_
 
-## v2 — cache-aware shortest-job-first (SJF) prefill scheduling  [mechanism] — ✅ EVALUATED
+## v2 — shortest-job-first (SJF) prefill scheduling  [mechanism] — ✅ EVALUATED
 **Hypothesis.** Mean TTFT here is dominated by **prefill-queue waiting under overload** (median TTFT
 ~1.2 s but mean ~90 s, p99 ~270 s; closed loop at max-concurrency 128), not by disk latency (per-rank
 L3 traffic averages ~70 MB/s « the ~6 GB/s SSD). The mix's prompt sizes are **extremely heterogeneous**
@@ -102,10 +114,11 @@ L3 traffic averages ~70 MB/s « the ~6 GB/s SSD). The mix's prompt sizes are **e
 short chats wait behind long-document prefills. **Shortest-job-first is mean-response-time optimal**, so
 ordering the waiting queue by *remaining* prefill work should sharply cut mean TTFT.
 **What changed.** `schedule_policy.py`: new `sjf` CacheAgnostic policy (`_sort_by_shortest_job`) sorting
-the waiting queue by `len(input)+len(output) − num_matched_prefix_tokens` ascending (cache-aware; reuses
-the prefix-match already computed on the agnostic path). Agnostic ⇒ immune to LPM's >128-queue FCFS
-fallback. `server_args.py`: `sjf` added to `--schedule-policy` choices (an allowed extra arg).
-On `evolve/quartz-7m3` (**f52eab323**, cherry-picked), unit-tested (orders correctly, cache-aware). Stacks on v1.
+the waiting queue by `len(input)+len(output) − num_matched_prefix_tokens` ascending. **As-run the cached
+term is 0** (see Correction up top: `supports_fast_match_prefix()` is False, so the match is never done
+for cache-agnostic policies), so this orders by **total prefill length**. Agnostic ⇒ immune to LPM's
+>128-queue FCFS fallback. `server_args.py`: `sjf` added to `--schedule-policy` choices (an allowed extra arg).
+On `evolve/quartz-7m3` (**f52eab323**, cherry-picked), unit-tested (orders shortest-first). Stacks on v1.
 **Lossless.** Reordering only — per-request outputs unchanged; no drops (waiting-timeout abort disabled
 by default, `SGLANG_REQ_WAITING_TIMEOUT=-1`). Trade-off to watch: p99/tail may rise (giants deferred);
 mean is the headline. Aged-SJF (v3) is the fallback if the tail regresses badly.
@@ -154,7 +167,8 @@ is promoted exactly when it has waited long enough relative to its size — boun
 hard threshold. HRRN is the classic mean-response-time-competitive, starvation-free policy; plausibly ≥
 SJF+aging on mean TTFT while being smoother/more robust.
 **What changed.** `schedule_policy.py`: new `hrrn` CacheAgnostic policy (`_sort_by_hrrn`) sorting by
-`-(1 + wait_sec·rate/remaining_tokens)` (cache-aware `remaining`; fully-cached ⇒ served first).
+`-(1 + wait_sec·rate/remaining_tokens)` where `remaining` uses the same key as SJF (so as-run it is
+total prefill length — see Correction up top; the cached term is inert unless `SGLANG_SJF_CACHE_AWARE`).
 `environ.py`: `SGLANG_HRRN_TOKENS_PER_SEC` (prefill-throughput knob for the token→time conversion,
 default 10000). `server_args.py`: `hrrn` added to `--schedule-policy` choices. Unit-tested: orders
 cached → short → long-that-waited → fresh-long (correct). Additive — the sjf/default paths are byte-
@@ -173,6 +187,30 @@ the opposite of the real v2 vs v3 result — the real system is closed-loop@128 
 So the sim only established the parameter-free property; HRRN's real mean-TTFT vs v3 is genuinely unknown
 until the eval runs. No overclaim.
 **Result / takeaway.** _(eval pending — certified-capacity blocked; runs in the session-hold job)_
+
+## v8 — genuine cache-aware SJF (subtract the radix-matched prefix)  [mechanism] — QUEUED
+**Hypothesis.** v2/v3 (and v7) order by **total** prefill length because the cached-prefix term is inert
+(Correction up top). But this mix is heavily multi-turn (ShareGPT conversations replayed turn-by-turn):
+a late turn has a **large total length** (whole history) yet a **tiny uncached extension** (only the new
+turn needs prefill — the history is already in the radix/host/L3 cache). Total-length SJF wrongly treats
+such a request as "large" and defers it, when it is actually **cheap**. Ordering by *true remaining
+(uncached) prefill work* should schedule these cheap-but-long requests first, cutting mean TTFT further —
+and it is the most **KV-cache-native** version of the mechanism (the schedule reacts to cache residency).
+**What changed.** `environ.py`: new `SGLANG_SJF_CACHE_AWARE` (`EnvBool`, default **False** ⇒ v2/v3
+byte-identical). `schedule_policy.py` `calc_priority`: when the flag is set and policy ∈ {sjf, hrrn},
+run `match_prefix_for_req` for every waiting request (the same read-only radix match the LPM cache-aware
+policy already performs via `_compute_prefix_matches`) so `num_matched_prefix_tokens` is populated and the
+sort key becomes true uncached-remaining. `match_prefix` is a pure lookup (`include_req=False`; no
+lock_ref, no tree mutation) and is recomputed at actual scheduling, so this is side-effect-free.
+**Cost.** One `match_prefix` per waiting request per schedule pass (bounded by concurrency 128). This is
+the exact cost `supports_fast_match_prefix()=False` was avoiding; the eval measures whether better
+ordering outweighs it.
+**Lossless.** Reordering only — outputs unchanged, no drops (waiting-timeout abort disabled).
+**Verification (no GPU).** py_compile + import OK; env override True/False verified; unit test: a 50k-token
+conv with 48k cached (2k uncached) sorts **ahead** of a fresh 8k prompt (total-length SJF would sort it
+last) — cache-aware ordering confirmed. **Eval queued** as `v8-sjf-ca-aged90` = `--schedule-policy sjf` +
+`SGLANG_SJF_AGING_SEC=90` + `SGLANG_SJF_CACHE_AWARE=1` (only the cache-aware term differs from v3 → clean A/B).
+**Result / takeaway.** _(eval pending — runs in the held-pool racer session job)_
 
 ## Eval-infrastructure note (2026-07-03)
 The shared a3 pool was severely degraded this session: a cluster-wide networked-FS stall (all

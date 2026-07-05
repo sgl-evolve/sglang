@@ -179,9 +179,17 @@ class SchedulePolicy:
         # set it in _compute_prefix_matches; do the same full match for
         # cache-agnostic policies when the radix supports it, so the load
         # snapshot has it. Skip on decode (never prefills).
+        #
+        # [quartz-7m3] SGLANG_SJF_CACHE_AWARE forces the same per-request match for sjf/hrrn even
+        # when supports_fast_match_prefix() is False (its default everywhere), so the shortest-job /
+        # response-ratio key subtracts the already-cached prefix instead of ordering by TOTAL length.
+        want_ca_sjf = (
+            envs.SGLANG_SJF_CACHE_AWARE.get()
+            and policy in (CacheAgnosticPolicy.SJF, CacheAgnosticPolicy.HRRN)
+        )
         if (
             not isinstance(policy, CacheAwarePolicy)
-            and self.tree_cache.supports_fast_match_prefix()
+            and (self.tree_cache.supports_fast_match_prefix() or want_ca_sjf)
             and get_global_server_args().disaggregation_mode != "decode"
         ):
             for r in waiting_queue:

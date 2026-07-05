@@ -394,6 +394,13 @@ class Envs:
     # Skipping the issue entirely under best_effort is LOSSLESS (no disk token was going to be served) and
     # avoids that churn. Self-guarded: only skips when policy==best_effort.
     SGLANG_SKIP_L3_PREFETCH = EnvBool(False)
+    # Host->device load-back threshold in tokens (kv-flint-2c research). A cached prefix with fewer
+    # than this many host-hit tokens is NOT loaded from host but RECOMPUTED on GPU instead
+    # (unified_radix_cache.load_back). Default 10 (the stock hardcoded value). In the post-disk-bypass
+    # regime the GPU prefill is the bottleneck while H<->D has headroom, so LOWERING this shifts small
+    # host hits off the GPU (load instead of recompute) -> may raise throughput toward lambda. Lossless
+    # (load_back returns the exact same KV recompute would produce). -1 = keep the built-in default.
+    SGLANG_LOAD_BACK_THRESHOLD = EnvInt(-1)
     SGLANG_KILLPG_ON_SCHEDULER_EXCEPTION = EnvBool(False)
     SGLANG_PREFILL_DELAYER_MAX_DELAY_PASSES = EnvInt(None)
     SGLANG_PREFILL_DELAYER_TOKEN_USAGE_LOW_WATERMARK = EnvFloat(None)

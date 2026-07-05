@@ -548,6 +548,9 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             1 if server_args.hicache_write_policy == "write_through" else 2
         )
         self.load_back_threshold = 10
+        _lbt = envs.SGLANG_LOAD_BACK_THRESHOLD.get()
+        if _lbt >= 0:  # research override; -1 keeps the built-in default
+            self.load_back_threshold = _lbt
         self.prefetch_stop_policy = server_args.hicache_storage_prefetch_policy
 
         if storage_backend is not None:

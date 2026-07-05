@@ -285,6 +285,25 @@ Mamba model + the eval can't verify output correctness). **Lossless accessible f
 Not spamming the disk-constrained shared fleet with further noise-level variants; the loop stays open for a
 genuinely-new mechanism or an output-correctness harness (documented frontier).
 
+**v24-kernel-io — SRPF + kernel IO backend + page_first layout — INVALID (not logged).** Pursued a bolder
+*transfer/layout mechanism* (charter scope: "GPU-assisted IO, transfer kernels", "layout"): `--hicache-io-backend
+kernel --hicache-mem-layout page_first` (both non-forbidden/tunable; kernel needs page_first or it silently
+reverts to direct). Server **fails to start**: `MambaPoolHost only supports layout='page_first_direct'`. So on
+this hybrid-SSM model the Mamba host pool **hard-requires page_first_direct → forces io-backend=direct**. The
+kernel/GPU-assisted-IO transfer path and page_first layout are **closed for this model** — layout+io-backend are
+effectively fixed. Killed fast to free the node.
+
+## Throughput/bubble levers explored (Strata direction) — accessible ones closed
+Revisited the charter's bolder direction (raise throughput → drain the overloaded queue, losslessly):
+- **Transfer-compute overlap:** already built-in — the cache controller uses separate `write_stream`/`load_stream`
+  + layer-wise load events (`cache_controller.py`). No headroom to add.
+- **Chunked prefill:** already interleaves prefill/decode (`chunked-prefill-size` frozen at 6144). Decode-bubble
+  reduction beyond it = mixed-chunk (off-limits: corrupts Mamba state, non-lossless).
+- **Kernel/GPU-assisted IO + page_first layout (v24):** incompatible (MambaPoolHost requires page_first_direct).
+- **Remaining bold lever = Strata balanced/bundled batching** (compose batches to balance per-layer work → fewer
+  bubbles): a deep scheduler batch-formation *code* mechanism, untried, lossless-by-construction (reorders/bundles,
+  doesn't change computation). This is the documented frontier — best done with fresh context + eval iteration.
+
 *(Prior best was v14-lpm-sched 2496 ms; historical note below.)*
 
 **(historical)** The load-adaptive prefetch mechanism (give up on a saturated SSD, reclaim cheap host hits) with a 1 s

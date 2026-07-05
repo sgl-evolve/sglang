@@ -30,23 +30,22 @@ probe(){  # $1=node $2=holdjid -> "diskG ramG"
     'd=$(df --output=avail -BG /mnt/localssd 2>/dev/null | tail -1 | tr -dc 0-9); m=$(awk "/MemAvailable/{print int(\$2/1024/1024)}" /proc/meminfo); echo ${d:-0} ${m:-0}' 2>/dev/null
 }
 
-run_seq(){  # $1=node $2=holdjid — run my version list into this acquired pool hold
+gpu_max_mem(){  # $1=node $2=holdjid -> max GPU MiB used across the 8 GPUs (or "" on failure)
+  timeout 60 srun --jobid="$2" --overlap -N1 -w "$1" bash -c \
+    'nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | sort -rn | head -1' 2>/dev/null | tr -dc 0-9
+}
+
+run_seq(){  # $1=node $2=holdjid — run ONLY v16 (the critical mechanism) into this acquired hold.
+  # Rationale: the pool is chaotically shared with a peer whose custom session doesn't take the flock,
+  # so (a) hold the contended node ~40min not ~2h (fairer), and (b) get the ONE key result cleanly.
   local node="$1" jid="$2"
   echo "[poolw] wiping my L3 /mnt/localssd/$NAME on $node"
   srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "rm -rf /mnt/localssd/$NAME/* 2>/dev/null; true" 2>/dev/null
-  local ver args
-  for spec in \
-    "v16-be-spf|--hicache-storage-prefetch-policy best_effort --schedule-policy spf" \
-    "v14-be-cons0.5|--hicache-storage-prefetch-policy best_effort --schedule-conservativeness 0.5" \
-    "v15-be-mixchunk|--hicache-storage-prefetch-policy best_effort --enable-mixed-chunk"; do
-    ver="${spec%%|*}"; args="${spec#*|}"
-    echo "[poolw] === running $ver on $node (pool hold $jid) ==="
-    srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" "$ver" \
-      --enforce-disable-flashinfer-allreduce-fusion $args
-    echo "[poolw] $ver rc=$?"
-    # re-wipe between versions so a prior version's on-disk format can't poison the next
-    srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "rm -rf /mnt/localssd/$NAME/* 2>/dev/null; true" 2>/dev/null
-  done
+  echo "[poolw] === running v16-be-spf on $node (pool hold $jid) ==="
+  srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" v16-be-spf \
+    --enforce-disable-flashinfer-allreduce-fusion --hicache-storage-prefetch-policy best_effort --schedule-policy spf
+  echo "[poolw] v16-be-spf rc=$?"
+  srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "rm -rf /mnt/localssd/$NAME/* 2>/dev/null; true" 2>/dev/null
 }
 
 echo "[poolw] starting; cycle=${CYCLE}s; gate=1800G disk / 1300G RAM; disk-short cooldown=${COOLDOWN:-300}s"
@@ -68,17 +67,22 @@ while :; do
         flock -u 200; exec 200>&-; echo "[poolw] $node hold $jid dead — skip"; continue
       fi
       read -r diskg ramg < <(probe "$node" "$jid")
-      echo "[poolw] ACQUIRED-LOCK $node: disk=${diskg:-?}G ram=${ramg:-?}G (hold $jid)"
-      if [ "${diskg:-0}" -ge 1800 ] && [ "${ramg:-0}" -ge 1300 ]; then
-        echo "[poolw] acquired $node — running my version sequence"
+      gmem=$(gpu_max_mem "$node" "$jid")
+      echo "[poolw] ACQUIRED-LOCK $node: disk=${diskg:-?}G ram=${ramg:-?}G gpu_max=${gmem:-?}MiB (hold $jid)"
+      # GPU-IDLE gate: a peer's custom session may use this node WITHOUT taking the flock, so the flock
+      # alone doesn't guarantee exclusivity. Only run if GPUs are genuinely idle (<2000 MiB used) — this
+      # avoids colliding with (and being pkill'd by) a peer's concurrent server, and avoids thrashing a
+      # node someone is actively using. Require a valid reading (empty = probe failed → treat as busy).
+      if [ "${diskg:-0}" -ge 1800 ] && [ "${ramg:-0}" -ge 1300 ] && [ -n "${gmem:-}" ] && [ "${gmem:-999999}" -lt 2000 ]; then
+        echo "[poolw] acquired $node (GPUs idle) — running v16"
         run_seq "$node" "$jid"
         flock -u 200; exec 200>&-
         echo "[poolw] DONE on $node"; ran=1; break
       else
-        # disk-short at the moment I got the lock — release and immediately re-block (another
-        # researcher may have just written L3; it should clear when their eval's trap cleans up).
+        # not cleanly free (disk-short, or a peer is using the GPUs) — release and re-block, waiting
+        # for a genuinely idle window so my eval doesn't collide.
         flock -u 200; exec 200>&-
-        echo "[poolw] release $node (disk/ram ${diskg:-?}G/${ramg:-?}G) — re-block"
+        echo "[poolw] release $node (disk=${diskg:-?}G ram=${ramg:-?}G gpu=${gmem:-?}MiB not-clean) — re-block"
         sleep 5
       fi
     else

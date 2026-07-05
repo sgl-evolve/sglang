@@ -376,6 +376,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # Length/cost-aware prefetch gate (tokens); 0 disables. See environ.py.
         self.prefetch_cost_gate = envs.SGLANG_PREFETCH_COST_GATE.get()
         self.prefetch_cost_gate_max_s = envs.SGLANG_PREFETCH_COST_GATE_MAX_S.get()
+        # Skip host->disk offload when disk is write-only (best_effort). See environ.py.
+        self.skip_l3_write = envs.SGLANG_SKIP_L3_WRITE.get()
 
         self.reset()
         logger.info(f"Init Unified RadixTree with components {self.tree_components}")
@@ -1828,6 +1830,10 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             self.write_backup(node)
 
     def write_backup_storage(self, node: UnifiedTreeNode) -> None:
+        # Skip host->disk offload when the disk tier is write-only (best_effort never reads L3),
+        # so persisting is pure wasted BW. Self-guarded to best_effort to stay lossless.
+        if self.skip_l3_write and self.prefetch_stop_policy == "best_effort":
+            return
         if (
             not self.enable_storage
             or self.cache_controller is None

@@ -381,6 +381,12 @@ class Envs:
     # drained, unlike the blanket timeout policy which waits base+0.25s/page ~ tens of s).
     SGLANG_PREFETCH_COST_GATE = EnvInt(0)
     SGLANG_PREFETCH_COST_GATE_MAX_S = EnvFloat(0.3)
+    # Skip host->disk (L3) offload writes when the disk tier is never read (kv-flint-2c research).
+    # Under prefetch_policy=best_effort the L3 disk is write-only (measured l3_hit_frac=0) -- every
+    # offload to disk is pure wasted PCIe/CPU/disk-BW that competes with the H<->D load_back and prefill
+    # recompute path. Skipping it is LOSSLESS in that regime (disk is never read back, so hit rate is
+    # unchanged) and frees those resources. Self-guarded: only skips when policy==best_effort.
+    SGLANG_SKIP_L3_WRITE = EnvBool(False)
     SGLANG_KILLPG_ON_SCHEDULER_EXCEPTION = EnvBool(False)
     SGLANG_PREFILL_DELAYER_MAX_DELAY_PASSES = EnvInt(None)
     SGLANG_PREFILL_DELAYER_TOKEN_USAGE_LOW_WATERMARK = EnvFloat(None)

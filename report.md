@@ -172,7 +172,8 @@ plus completing the mechanism curve (v2-wc, v3-wc).
 | v0_tuned | base | 108,824 | 322,801 | 119.3 | 0.82 | 0.26 | **bar to beat** |
 | **v1-parallel-io** | mech | **60,745** | 255,154 | 170.8 | 0.77 | 0.15 | parallel L3 I/O, wait_complete: **−31% vs official** |
 | v3-wc | mech | 92,956 | 280,154 | 138.2 | 0.82 | 0.26 | +read-priority+aux-threads: WORSE than v1 (contention) |
-| **be-sjf** | mech | **1,565** | **8,998** | 333.6 | 0.597 | 0.00 | **CHAMPION −98.6%**; SJF prefill scheduling (least-remaining-work-first): **−22% mean & −49% p99 vs be-lpm** — novel code mechanism |
+| **be-sjf-cost** | mech | **1,519** | **9,012** | 341.9 | 0.596 | 0.00 | **CHAMPION −98.6%**; FLOP-weighted SJF (`uncached*total`): −3% over be-sjf (better prefill-cost estimate) |
+| **be-sjf** | mech | **1,565** | **8,998** | 333.6 | 0.597 | 0.00 | SJF prefill scheduling (least-remaining-work-first): **−22% mean & −49% p99 vs be-lpm** — novel code mechanism |
 | be-lpm | config | 2,014 | 17,704 | 323.1 | 0.61 | 0.00 | best_effort + cache-aware `lpm` scheduling: −20% & lower p99 vs plain best_effort (prior champion) |
 | be-lpm-aggr | config | 2,011 | 20,077 | 323.5 | 0.61 | 0.00 | be-lpm + `schedule-conservativeness 0.3` (aggressive admit): TIED w/ be-lpm (noise; no retractions) |
 | be-lpm-consv | config | 2,078 | 18,855 | 333.1 | 0.60 | 0.00 | be-lpm + `conservativeness 2.0`: slightly WORSE — knob is not a lever |
@@ -240,17 +241,20 @@ plus completing the mechanism curve (v2-wc, v3-wc).
    — exactly the p99 collapse we see. `lpm` front-loaded big-but-cached requests; SJF fixes that. It
    costs only ~0.01 hit-rate (0.61→0.597) — a worthwhile trade. This is the one mechanism that improves
    the *champion* regime (unlike v1 parallel-I/O, which only helps the L3-bound `wait_complete` regime).
+   **Refinement (be-sjf-cost, final champion, 1,519 ms):** sorting by estimated prefill FLOPs
+   `uncached*total` instead of raw uncached token count shaves a further ~3% (each uncached token attends
+   over ~total context, so `U*total` better ranks true cost) — a small, expected gain at the noise margin.
 
 8. **Takeaway:** for this overloaded 3-tier workload every win is in the *scheduler/admission* path,
    not the storage engine: (a) don't block admission on slow L3 (`best_effort`, −97%), (b) then order
    the prefill queue by least-remaining-work (**SJF, −22% more & p99 halved**). Six config dimensions
    were swept and none beat the be-lpm defaults (prefetch best_effort≫timeout≫wait_complete; schedule
    lpm>fcfs>dfs-weight; write≈; conservativeness 1.0≈0.3<2.0; eviction lru>slru>lfu; io_backend
-   direct>kernel) — the improvement had to come from a code change to the queue ordering. **be-sjf
-   (best_effort + SJF prefill order + lru + direct) is the final frontier: 1,565 ms mean TTFT, −98.6%
-   vs v0_tuned, p99 8,998 ms, fully lossless.** The novel engine change (v1 parallel L3 I/O) remains the
-   best lever for the L3-bound regime. Residual TTFT is now compute-bound (recompute of ~40% host-miss
-   prefixes; host hit capacity-bound at ~0.6) — the remaining gap needs more host capacity, not policy.
+   direct>kernel) — the improvement had to come from a code change to the queue ordering. **be-sjf-cost
+   (best_effort + FLOP-weighted SJF prefill order + lru + direct) is the final frontier: 1,519 ms mean
+   TTFT, −98.6% vs v0_tuned, p99 9,012 ms, fully lossless.** The novel engine change (v1 parallel L3 I/O)
+   remains the best lever for the L3-bound regime. Residual TTFT is now compute-bound (recompute of ~40%
+   host-miss prefixes; host hit capacity-bound at ~0.6) — the remaining gap needs more host capacity, not policy.
 
 Global eval condition: all my versions pass `--enforce-disable-flashinfer-allreduce-fusion`
 (the auto-enabled fusion hangs CUDA-graph capture with hicache on this cluster; lossless,

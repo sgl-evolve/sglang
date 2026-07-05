@@ -303,18 +303,17 @@ class SchedulePolicy:
         nearly free to prefill. The eval headline metric is MEAN TTFT, and prefill load here is
         heavy-tailed, so shortest-remaining-work-first (a classic mean-wait minimizer) should help.
 
-        This variant (be-sjf-cost) sorts by an estimate of actual prefill FLOPs, not just uncached
-        token count: prefilling U uncached tokens on top of M cached tokens costs ~U*(M+U) because each
-        of the U new tokens attends over the growing context (~ up to total length). So the key is
-        `uncached * total = (len - matched) * len`, which more accurately front-loads the truly-cheapest
-        prefills (short OR heavily-cached) than pure token-count SJF. Lossless: reorder only.
+        `uncached = len(origin_input_ids) - num_matched_prefix_tokens` is a UNIFIED key: it rewards
+        cache hits (more matched -> less uncached, so cache-locality is preserved) AND short prompts
+        (SJF). Sorting ascending by it prefills the cheapest requests first -> lower mean TTFT.
+        Lossless: reordering the queue changes only latency, never any request's output/KV.
         """
         waiting_queue.sort(
             key=lambda r: (
-                ((len(r.origin_input_ids) - r.num_matched_prefix_tokens)
-                 * len(r.origin_input_ids))
+                (-r.num_matched_prefix_tokens,
+                 len(r.origin_input_ids) - r.num_matched_prefix_tokens)
                 if r.rid not in temporary_deprioritized
-                else float("inf")
+                else (float("inf"), float("inf"))
             )
         )
 

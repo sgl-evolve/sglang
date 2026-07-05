@@ -2417,6 +2417,12 @@ class ScheduleBatch(ScheduleBatchDisaggregationDecodeMixin):
         # TODO (lianmin): Revisit this. It should be seq_len - 1
         self.extend_logprob_start_lens.extend([0] * running_bs)
         self.is_prefill_only = False
+        # drift-3e7 harness trace: positively confirm MIXED batches actually form so the
+        # mixed-chunk output-correctness test is valid (a no-op unless the env is set).
+        import os
+
+        if os.environ.get("SGLANG_DRIFT_MIXCHUNK_TRACE"):
+            logger.info(f"[MIXCHUNK-TRACE] mix_with_running fired: running_bs={running_bs}")
 
     def new_tokens_required_next_decode(
         self, selected_indices: Optional[List[int]] = None

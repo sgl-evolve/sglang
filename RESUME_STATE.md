@@ -11,7 +11,7 @@ Version budget 100; **own versions logged so far: 1** (v3-sjf-aged). Baselines v
   1800G pre-flight guard fails on EVERY path (held srun-overlap AND exclusive sbatch). Disk filled by
   non-sglang workloads + other researchers' caches I must NOT touch; my own cache there ≈0 (self-clean useless).
   SOLE remaining blocker = external disk-fill. Other certified -1/0-0/0-1/0-3 all DRAIN (operator-only).
-- If ANY certified node reaches >=1800G free: session job 18306 runs the exclusive path automatically; or
+- If ANY certified node reaches >=1800G free: held-pool watcher hp_watch.sh (PID varies, detached) srun-overlaps session_eval onto a held node the instant its disk >=1800G (held nodes now GPU-FREE); or
   manually srun-overlap a held node. 1800G guard is FIXED contract. NOT done (2/100); don't touch w6.researcher-done.
 
 ## ===== LATEST (21:48, 2026-07-04) =====

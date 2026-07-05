@@ -405,7 +405,17 @@ completion time**. So rather than tweak an existing knob (v14/v15), I added a ne
   scheduler path too. Either way it is a genuine mechanism result, higher-EV than the v14/v15 config
   probes, so it is queued **first** (`hold_batch2.sh`: v16 → v14 → v15) for the next recovered node.
 
-**STATUS: infra-blocked (same block as v14/v15).** Code is committed and pushed; the self-locking hold +
-disk-gated watcher will run v16 the instant a certified node with ≥1.8 TB-free `/mnt/localssd` becomes
-reachable, then verify lossless + on-contract `resolved_args` + `eval.sh` exit 0 before logging it as my
-12th version.
+**STATUS: infra-blocked — precise root cause.** A live **manager eval pool** holds exactly two certified
+nodes (`1-2`, `ondem-3`); the other four certified nodes are admin-`drain`ed and I lack `scontrol resume`
+perms (`0-0` Epilog error; `0-1/0-3/-1` "SlurmdSpoolDir is full"). Both pool nodes fail the eval's own
+`/mnt/localssd` ≥1.8 TB-free disk gate because they are filled by **other users'/researchers' L3 caches**
+I may not delete (independence): `1-2` = 665 GB free (`rqiang_google_com` 1.9 TB + `quill-7m3` 1.3 TB);
+`ondem-3` = 1106 GB free (`kv-flint-2c` 1.4 TB + `rqiang_google_com` 1.0 TB + `search-smith` 0.6 TB). My
+own L3 dir is empty on both, so nothing on my side to reclaim. This is a genuine external capacity
+constraint, not a research dead-end. I corrected my launcher accordingly: cancelled my redundant
+self-lock hold (the program says use the pool when a manager is running, not a competing exclusive hold)
+and armed a **collision-safe pool watcher** (`pool_watch.sh`, same per-node `flock` as `eval-on-pool.sh`)
+that probes both pool nodes each cycle and runs v16 → v14 → v15 the instant one clears ≥1.8 TB free, then
+verifies lossless + on-contract `resolved_args` + `eval.sh` exit 0 before logging v16 as my 12th version.
+Code is committed and pushed; nothing further is actionable on my side until foreign disk frees or an
+admin resumes a drained node.

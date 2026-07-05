@@ -212,3 +212,12 @@ Within the be-alone range {v34 2586, v36 2782}. So balanced batching does NOT he
 in this regime. The only real wins are CONFIG: best_effort (huge) + lpm (~8.5%). Honest: the regime is GPU-prefill-
 bound once best_effort drains the queue, so scheduling/batching/gate tweaks can't add much -- the remaining lever is
 cheaper prefill (frozen/lossy) or better caching (eviction/admission = off-limits for independence). v38 confirms n=2.
+
+### BOTTLENECK ANALYSIS (v35 metrics, be+lpm on -0) — why mechanisms are neutral
+throughput 2.55 req/s (< lambda 3.5 => still saturated, queue grows) | hit_rate 0.52 (~48% miss=recompute) |
+hit tiers: device 59% / host 41% / DISK 0% | host_util 0.998 (FULL) | offload 252M tokens (written to disk, NEVER
+read: l3_hit 0) | mean TTFT 2375 but median 1135, p99 17791 => MEAN IS TAIL-DOMINATED.
+Interpretation: once best_effort drains the queue, the system is PREFILL-RECOMPUTE-bound AND host-capacity-bound
+(host full -> churn -> disk -> skipped -> recompute). Levers that don't reduce recompute (scheduling/batching/gate/
+layout) can't move the throughput floor -> that's why lpm gives only ~8.5% and balanced/cost-gate give ~0. Reducing
+the 48% miss needs better caching (eviction/admission = off-limits for independence) or cheaper prefill (frozen/lossy).

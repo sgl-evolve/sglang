@@ -5,14 +5,19 @@ Bar to beat: **v0_tuned** (mean TTFT 108824 ms). Reference/context: v0_official 
 Headline metric: **mean TTFT** (lower better), lossless gate: outputs match no-cache.
 
 ## TL;DR
-**Mean TTFT here is prefill-queue-waiting-dominated** (median ~1.4 s but mean ~90 s, prompts 0–190 K
-tokens). Reordering the prefill waiting queue **shortest-job-first** (by prefill length), with light
-**aging** to bound the heavy tail — cuts mean TTFT to **77 083 ms, a 1.41× improvement over the v0_tuned
-bar** (108 824 ms; and 1.14× over v0_official 87 615). Pure reorder ⇒ **lossless** (outputs unchanged, no
-drops, cache-tier fractions identical to baseline). This is the headline result (best = **v3-sjf-aged**).
-Aging is a real mean improvement (not just tail insurance): v3 (77 083) < pure-SJF v2 (80 342). Disk-I/O
-parallelism (v1) and a v3-repeat (noise band) were queued but blocked by a transient certified-pool
-capacity crunch (see infra note).
+**Mean TTFT here is prefill-queue-waiting-dominated** (median ~1 s but mean ~90 s, prompts 0–190 K
+tokens). Reordering the prefill waiting queue by **true uncached (cache-aware) remaining prefill work**,
+shortest-first with light **aging** to bound the tail, cuts mean TTFT to **65 321 ms — a 1.67× improvement
+over the v0_tuned bar** (108 824 ms; and 1.34× over v0_official 87 615). This is the headline result
+(best = **v8-sjf-ca-aged90**). Pure reorder ⇒ **lossless** (each request's output is invariant to schedule
+order — the KV cache returns bit-identical KV to recompute; completed=7037, no drops).
+
+**Why cache-aware wins big here:** the mix is **78% multi-turn follow-ups** on already-cached documents
+(7037 requests / 1553 docs; doc ~12 K tokens, new question ~40 tokens). Ordering by *total* length
+(v3, 77 083) misjudges those cheap follow-ups as ~12 K-token jobs; ordering by *uncached* length (v8)
+schedules them first — median TTFT drops to **988 ms** (v3 1418), p99 to **234.8 s** (v3 249.9), out_tok/s
+up to **174** (v3 149). The ladder: v0_tuned 108 824 → total-length SJF+aging (v3) 77 083 → cache-aware
+SJF+aging (v8) **65 321**. (Aging also lowers the mean, not just the tail: v3 77 083 < pure-SJF v2 80 342.)
 
 > **Correction & follow-up (2026-07-05).** Static-analysis audit of the schedule path found that the
 > `− num_matched_prefix_tokens` (cached-prefix) term in the SJF/HRRN sort key was **inert** as-run:
@@ -35,12 +40,12 @@ mechanism: **v0** (stock: FCFS + serial L3 I/O) → **v1** (FCFS + *parallel* L3
 |-----|-----------|---------------:|:-----------:|:--------------:|----------:|---------:|
 | v0_official | stock default | 87615 | +19% (worse) | — | 146.9 | .816 / — |
 | v0_tuned | best stock cfg (THE BAR) | 108824 | — | +24% (worse) | 119.3 | .821 / — |
-| **v3-sjf-aged** | **SJF + aging=90s** | **77082.7** | **1.41× (−29%)** | **1.14× (−12%)** | **149.2** | .818 / .253 |
-| v2-sjf | pure SJF (aging=0) | 80341.6 | 1.35× (−26%) | 1.09× (−8%) | 151.3 | .813 / .250 |
+| **v8-sjf-ca-aged90** | **genuine cache-aware SJF + aging=90s** | **65321.4** | **1.67× (−40%)** | **1.34× (−25%)** | **174.4** | .779 / .170 |
+| v3-sjf-aged | SJF(total-len) + aging=90s | 77082.7 | 1.41× (−29%) | 1.14× (−12%) | 149.2 | .818 / .253 |
+| v2-sjf | pure SJF(total-len, aging=0) | 80341.6 | 1.35× (−26%) | 1.09× (−8%) | 151.3 | .813 / .250 |
 | v1-parallel-l3-io | parallel L3 disk I/O | _infra-blocked (queued)_ | | | | |
 | v5-sjf-aged90-rep | v3 repeat (noise band) | _infra-blocked (queued)_ | | | | |
 | v7-hrrn | HRRN (smooth anti-starvation) | _queued_ | | | | |
-| v8-sjf-ca-aged90 | genuine cache-aware SJF + aging | _queued_ | | | | |
 
 **v3-sjf-aged is the current best** — a **29% mean-TTFT cut vs the bar** with hit-rate/l3-frac matching
 baseline (cache behaviour preserved) and out_tok/s slightly *up*. Confirms the core thesis: mean TTFT
@@ -188,7 +193,7 @@ So the sim only established the parameter-free property; HRRN's real mean-TTFT v
 until the eval runs. No overclaim.
 **Result / takeaway.** _(eval pending — certified-capacity blocked; runs in the session-hold job)_
 
-## v8 — genuine cache-aware SJF (subtract the radix-matched prefix)  [mechanism] — QUEUED
+## v8 — genuine cache-aware SJF (subtract the radix-matched prefix)  [mechanism] — ✅ EVALUATED, NEW BEST
 **Hypothesis.** v2/v3 (and v7) order by **total** prefill length because the cached-prefix term is inert
 (Correction up top). But this mix is heavily multi-turn: a late turn has a **large total length** (whole
 history) yet a **tiny uncached extension** (only the new turn needs prefill — the history is already in
@@ -222,9 +227,28 @@ ordering outweighs it.
 **Lossless.** Reordering only — outputs unchanged, no drops (waiting-timeout abort disabled).
 **Verification (no GPU).** py_compile + import OK; env override True/False verified; unit test: a 50k-token
 conv with 48k cached (2k uncached) sorts **ahead** of a fresh 8k prompt (total-length SJF would sort it
-last) — cache-aware ordering confirmed. **Eval queued** as `v8-sjf-ca-aged90` = `--schedule-policy sjf` +
-`SGLANG_SJF_AGING_SEC=90` + `SGLANG_SJF_CACHE_AWARE=1` (only the cache-aware term differs from v3 → clean A/B).
-**Result / takeaway.** _(eval pending — runs in the held-pool racer session job)_
+last) — cache-aware ordering confirmed. Eval'd as `v8-sjf-ca-aged90` = `--schedule-policy sjf` +
+`SGLANG_SJF_AGING_SEC=90` + `SGLANG_SJF_CACHE_AWARE=1` (only the cache-aware term differs from v3 → clean A/B);
+both env vars verified live in the running server process.
+**Result (2026-07-05, slurm2-a3nodeset1-2, commit 6ada4acb5).** mean TTFT **65321.4 ms** — **1.67× better
+than v0_tuned** (108824, −40%), **1.34× vs v0_official** (87615, −25%), and **15.3% better than v3** (77083,
+the prior best) — a large, clean A/B win (only the cache-aware term differs). **median TTFT 987.7 ms**
+(v3 1418 — cheap follow-ups now scheduled first), **p90 200.2 s / p99 234.8 s** (v3 228.6/249.9 — tail also
+improved), out_tok/s **174.4** (v3 149.2), completed **7037/7037** (no drops), duration 5161 s.
+**Cache dynamics (measured).** hit_rate **0.779** (device 0.333 / host 0.497 / storage 0.170), host_util
+0.996; disk-read **13.2 M** tokens (v3 ~20.7 M). So cache-aware ordering *reduces* storage I/O — it groups
+same-doc turns so hot docs stay resident on device/host. Hit rate is slightly below v3 (0.818) because the
+reorder changes eviction timing, but the scheduling gain dominates decisively.
+**Lossless.** Pure queue reorder — each request's output is invariant to schedule order (the KV cache is
+transparent: a hit returns bit-identical KV to recompute), waiting-timeout aborts disabled, completed=7037
+with no drops. Lossless by construction (same as v2/v3). Logged to W&B (tag `mechanism`).
+**Takeaway.** **The single biggest lever found — cache-aware SJF is the new best (1.67× vs the bar).** It
+directly exploits KV-cache residency in the schedule: on a workload that is 78% cached multi-turn
+follow-ups, ordering by *uncached* remaining work (not total length) schedules the near-free follow-ups
+first, cutting mean **and** median **and** p99 TTFT while raising throughput and *lowering* disk I/O. This
+is the most KV-cache-native version of the mechanism and validates the correction/hypothesis chain
+(v3 total-length was leaving the follow-up value on the table). Next: cache-aware HRRN (v9), and confirm
+via a repeat.
 
 ## Eval-infrastructure note (2026-07-03)
 The shared a3 pool was severely degraded this session: a cluster-wide networked-FS stall (all

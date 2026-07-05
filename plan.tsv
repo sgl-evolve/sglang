@@ -42,3 +42,5 @@ v44-be-lpm-skipL3-B	mechanism	SGLANG_SKIP_L3_WRITE=1	--hicache-storage-prefetch-
 v45-be-lpm-noskip-n2	config	-	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
 v46-be-lpm-skipL3-C	mechanism	SGLANG_SKIP_L3_WRITE=1	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
 v47-be-lpm-noskip-n2b	config	-	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v48-be-skip-nolpm-A	mechanism	SGLANG_SKIP_L3_WRITE=1	--hicache-storage-prefetch-policy best_effort --enforce-disable-flashinfer-allreduce-fusion
+v49-be-skip-nolpm-B	mechanism	SGLANG_SKIP_L3_WRITE=1	--hicache-storage-prefetch-policy best_effort --enforce-disable-flashinfer-allreduce-fusion

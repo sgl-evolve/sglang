@@ -25,3 +25,4 @@
 07-05 10:53	v44-be-lpm-skipL3-B	mechanism	ttft_mean=1175.6ms	0ec5446c1	logged
 07-05 11:43	v45-be-lpm-noskip-n2	config	ttft_mean=1833.3ms	2f2df9baf	logged
 07-05 12:24	v46-be-lpm-skipL3-C	mechanism	ttft_mean=1176.9ms	a1ec3b162	logged
+07-05 13:13	v47-be-lpm-noskip-n2b	config	ttft_mean=1803.2ms	ca4e07fcc	logged

@@ -337,3 +337,12 @@ vs no-skip {1833, 2375, 2540} (noisy). skip is both LOWER and far more STABLE (r
 consistent runs). Win robust: every skip run < every no-skip run. Best config = best_effort+lpm+skip_L3_write ~1167ms
 (~93x < v0_tuned). Hill-climb next: v48/v49 isolate skip w/o lpm; v50/v51 re-test balanced/cost-gate +skip (regime
 shifted queue-bound -> near-GPU-bound at 3.4 req/s, so overlap/gate mechanisms may now help where they were neutral).
+
+### v47 no-skip = 1803 -> ALLOCATION-LEVEL variance refinement (tightest control)
+Node -0 ran TWO allocations: job 18297 (~2457 no-skip+lpm: v33 2540, v35 2375) and job 18328 (~1818: v45 1833,
+v47 1803) -- a ~26% speed difference for the SAME physical node across allocations (thermal/co-tenant/disk-state
+between allocations). So control WITHIN an allocation. skip-L3-write win holds within BOTH:
+  18297: skip v43 1147 vs no-skip {2540,2375} -> -53%
+  18328: skip {v44 1176, v46 1177} vs no-skip {v45 1833, v47 1803} -> -35%
+=> reproducible -35%..-53% within-allocation (the cleanest possible comparison). On the current allocation 18328 the
+baselines are: no-skip+lpm ~1818, skip+lpm ~1176 -> use these to read v48-v51 (all on 18328).

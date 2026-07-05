@@ -4,7 +4,18 @@
 file L3, Mooncake 1:1:1 mix (1553 convs), lambda=3.5, max-conc 128. Headline: mean TTFT (lower better).
 Baselines: v0_official (wait_complete stock) 87615 ms; **v0_tuned 108824 ms (the bar)**.
 
-## The one robust, reproducible win: prefetch_policy = best_effort  (~35-45x < v0_tuned)
+## HEADLINE (best config): best_effort + lpm + SKIP_L3_WRITE = ~1167 ms  (~93x < v0_tuned)
+Two config wins (best_effort prefetch, then lpm) plus ONE genuine engine MECHANISM win of mine:
+**under best_effort the L3 disk tier is WRITE-ONLY (measured hit_storage_frac = 0.0 -- disk is never read), yet the
+engine still offloads ~252M tokens host->disk. That write path is pure waste that contends with the essential
+host<->device load_back for PCIe/CPU/host-pool. Skipping it (SGLANG_SKIP_L3_WRITE, a self-guarded early-return in
+UnifiedRadixCache.write_backup_storage, active only under best_effort) is LOSSLESS and lifts throughput 2.55->3.40
+req/s (+33%, ~=lambda so the queue stops growing), host hit-rate 0.52->0.62, and HALVES mean TTFT.** Same-node (-0)
+n=3: skip {1147,1176,1177} mean 1167 (tight ~2.5%) vs no-skip {1833,2375,2540} (noisy) -> every skip run < every
+no-skip run, reproducible -48%..-53%. Upstream one-liner: **do not offload KV to a storage tier you are configured
+never to read.** (Contrast the RETRACTED v24 below: I only claim this because it reproduced n>=3 on the same node.)
+
+## The dominant enabling win: prefetch_policy = best_effort  (~35-45x < v0_tuned)
 The stock HiCache default `wait_complete` SYNCHRONOUSLY waits for slow L3 (disk) prefetches before admitting a
 request. In this saturated regime (throughput < lambda) that wait backs up the waiting queue, so mean TTFT is
 dominated by queue time (baseline ~87-109 s). Switching to `--hicache-storage-prefetch-policy best_effort` (skip the
@@ -44,10 +55,16 @@ Cutting the recompute would require better caching (eviction/admission) or cheap
 off-limits to stay an independent replicate, the latter is frozen by the contract (chunk size) or lossy (mixed_chunk).
 
 ## Bottom line for a maintainer
-best_effort (huge, robust) + lpm (~8.5%) is the reproducible frontier for the lossless, non-eviction levers explored.
-The single most valuable, upstream-ready takeaway: **for HiCache under queue-saturating load, best_effort prefetch
-beats the wait_complete default by ~35-45x** -- and cache-aware scheduling should not silently revert to fcfs exactly
-when the queue is largest. Every number here is traceable to a commit + W&B point; negatives kept; one outlier retracted.
+Reproducible frontier (lossless, non-eviction): **best_effort + lpm + skip_L3_write ~1167 ms (~93x < v0_tuned)**.
+Three upstream-ready takeaways, in order of impact: (1) for HiCache under queue-saturating load, **best_effort
+prefetch beats the wait_complete default by ~35-45x** (don't synchronously block admission on slow-disk reads);
+(2) **don't offload KV to a storage tier you never read** -- under best_effort the disk is write-only, and skipping
+those writes frees the transfer path for a further ~2x (my SKIP_L3_WRITE mechanism); (3) cache-aware scheduling
+(lpm) should not silently revert to fcfs exactly when the queue is largest (~8.5%). NEUTRAL in this regime: my
+balanced-batching and cost-gate mechanisms, dfs-weight, write-policy. NEGATIVE: mixed_chunk, larger page-size.
+METHODOLOGY: node-to-node variance ~25-30% even on --exclusive nodes; require same-node n>=2 vs a same-node control
+before claiming (I retracted one single-run "59x" outlier that was a node confound). Every number traces to a commit
++ W&B point; all negatives kept on the curve.
 
 ---
 # kv-flint-2c — sglang HiCache KV-cache research log

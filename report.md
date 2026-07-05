@@ -374,3 +374,38 @@ v6/v12/v13's ≥1.98 TB-free runs → non-comparable → refused (a non-contract
 A best-effort hold with the disk gate remains queued to catch a node whose disk recovers (foreign
 teardown / reboot). **This does not affect the headline result: v6/v12 (~1957 ms, 45×) and the
 compute-bound ceiling are fully established from on-contract, logged runs.**
+
+## Round 3 — SPF scheduler *mechanism* (v16) [CODED + QUEUED, pre-registered]
+Rounds 1–2 exhaust the KV-*tiering* levers and localize the remaining upside to the **scheduler /
+prefill path**: mean TTFT is dominated by the long-context prefill tail (LEval/LooGLE prompts run to
+~10⁵ tokens), and the eval's headline is the **mean**. Under the default `fcfs`, a single long prefill
+admitted ahead of many short ones blocks the whole queue → the classic head-of-line problem. The
+textbook fix for *mean* flow/wait time is **shortest-job-first, which is provably optimal for mean
+completion time**. So rather than tweak an existing knob (v14/v15), I added a new engine policy.
+
+- **v16-be-spf** = v6 + `--schedule-policy spf` — a **new scheduling policy I implemented**
+  (`CacheAgnosticPolicy.SPF` in `schedule_policy.py`; commit `f7e93acb0`). It orders the waiting queue
+  by ascending **uncached** prefill length (`len(origin_input_ids) − num_matched_prefix_tokens`, so
+  cache-hit prompts are correctly treated as cheap), admitting short prompts first.
+- **Lossless by construction:** it only *reorders the waiting queue* — the same requests run and produce
+  the same tokens; only admission order (hence latency) changes. No recompute, no drops.
+- **Starvation-bounded (so lossless even adversarially):** pure SJF can starve the longest request on a
+  large trace → a client-timeout could truncate a reply (lossy). The key subtracts an aging credit
+  `_SPF_AGE_RATE · seconds_waited`; after ~15 s the oldest request's credit exceeds any possible prefill
+  length, guaranteeing it reaches the front. Worst-case extra wait is bounded far under any client
+  timeout → no reply is ever truncated. (Unit-tested: short-first ordering, cache-hit cheapness, and the
+  >15 s promotion property all verified offline before consuming an eval slot.)
+- **Contract:** `--schedule-policy` is an ALLOWED (non-forbidden) flag; `spf` is a new *value* (added to
+  the argparse choices + enum), i.e. new engine code, not a config flip of an existing policy. Default
+  stays `fcfs`, so nothing else changes. Compression OFF, single-lever vs v6.
+- **Prediction:** if there is real queue pressure from the long-context tail (v12/v13 showed ~51 queued
+  reqs), SPF should lower **mean** TTFT below v6's ~2000 ms while possibly raising the p99 of the few
+  longest prompts (acceptable — mean is the headline, and aging caps their wait). If the serving path is
+  so compute-saturated that order barely matters, expect neutral — which would firmly close the
+  scheduler path too. Either way it is a genuine mechanism result, higher-EV than the v14/v15 config
+  probes, so it is queued **first** (`hold_batch2.sh`: v16 → v14 → v15) for the next recovered node.
+
+**STATUS: infra-blocked (same block as v14/v15).** Code is committed and pushed; the self-locking hold +
+disk-gated watcher will run v16 the instant a certified node with ≥1.8 TB-free `/mnt/localssd` becomes
+reachable, then verify lossless + on-contract `resolved_args` + `eval.sh` exit 0 before logging it as my
+12th version.

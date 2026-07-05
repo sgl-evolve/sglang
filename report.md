@@ -361,3 +361,7 @@ best_effort + skip_L3_write (~1177), lpm optional. v50/v51 test balanced/cost-ga
 
 ### v50 skip+balanced = 1249.6 vs skip+lpm ~1176 (alloc 18328) -> balanced NEUTRAL/slightly-negative even post-skip.
 My balanced-batching mechanism does not help in ANY regime tested (queue-bound OR near-GPU-bound). Confirmed dead.
+
+### v51 skip+cgate = 1160.1 ~= skip+lpm ~1176 (alloc 18328) -> cost-gate NEUTRAL on top of skip too.
+Nothing stacks meaningfully on skip-L3-write: skip+lpm 1176, skip-nolpm 1177, skip+balanced 1250, skip+cgate 1160.
+skip-L3-write is the whole win. v52/v53 test the last companion: full disk-bypass (skip-write + skip-prefetch).

@@ -58,33 +58,33 @@ while :; do
   tick=$((tick + 1))
   for node in $(held_nodes); do
     jid=$(cat "$RT/held/$node" 2>/dev/null) || continue
-    # FLOCK-FIRST and PURELY LOCAL (no squeue per cycle → poll fast with zero slurmctld load).
-    # Only after WINNING the flock do we verify the hold is alive + gate on disk/ram (rare path).
+    # BLOCKING flock (-w): wait IN the kernel lock queue and acquire the instant the current holder
+    # releases — this beats every non-blocking poller (eval-on-pool.sh uses `flock -n` on a 30s loop),
+    # so I win the handoff on a heavily-contended node. Re-loop every BLOCKW seconds to re-evaluate.
     now_tick=$((tick * CYCLE))
     exec 200>"$RT/locks/$node.lock"
-    if flock -n 200; then
-      if [ -n "${cooldown_until[$node]:-}" ] && [ "$now_tick" -lt "${cooldown_until[$node]}" ]; then
-        flock -u 200; exec 200>&-; continue   # still disk-short (cooldown) — release fast, no srun
-      fi
+    if flock -w "${BLOCKW:-120}" 200; then
       if ! squeue -h -j "$jid" >/dev/null 2>&1; then
         flock -u 200; exec 200>&-; echo "[poolw] $node hold $jid dead — skip"; continue
       fi
       read -r diskg ramg < <(probe "$node" "$jid")
-      echo "[poolw] LOCKED $node: disk=${diskg:-?}G ram=${ramg:-?}G (hold $jid)"
+      echo "[poolw] ACQUIRED-LOCK $node: disk=${diskg:-?}G ram=${ramg:-?}G (hold $jid)"
       if [ "${diskg:-0}" -ge 1800 ] && [ "${ramg:-0}" -ge 1300 ]; then
         echo "[poolw] acquired $node — running my version sequence"
         run_seq "$node" "$jid"
         flock -u 200; exec 200>&-
         echo "[poolw] DONE on $node"; ran=1; break
       else
-        cooldown_until[$node]=$((now_tick + COOLDOWN))
+        # disk-short at the moment I got the lock — release and immediately re-block (another
+        # researcher may have just written L3; it should clear when their eval's trap cleans up).
         flock -u 200; exec 200>&-
-        echo "[poolw] release $node (disk/ram ${diskg:-?}G/${ramg:-?}G) — cooldown ${COOLDOWN}s"
+        echo "[poolw] release $node (disk/ram ${diskg:-?}G/${ramg:-?}G) — re-block"
+        sleep 5
       fi
     else
-      exec 200>&-   # another researcher holds it — retry next cycle (tight)
+      exec 200>&-   # timed out waiting — re-loop (re-evaluate held_nodes, re-block)
     fi
   done
   [ "$ran" = 1 ] && { echo "[poolw] sequence complete — exiting watcher"; break; }
-  sleep "$CYCLE"
+  sleep 1   # the real wait is the blocking flock -w above; re-block almost immediately on timeout
 done

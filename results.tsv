@@ -14,3 +14,4 @@
 07-05 00:04	v28-be-lpm-cgate4k-rpt	mechanism	ttft_mean=2586.4ms	ad6d55905	logged
 07-05 01:02	v29-be-lpm-cgate8k	mechanism	ttft_mean=2519.2ms	e547ebf58	logged
 07-05 02:00	v33-be-lpm-ctrlA	config	ttft_mean=2539.8ms	d0ae33dd3	logged
+07-05 02:58	v34-be-only-ctrlA	config	ttft_mean=2586.1ms	ecb86d925	logged

@@ -184,3 +184,12 @@ And be+lpm on -0 (2540) >> be+lpm on ondem-3 (v7 2010, v24 gate 1837.9) -> NODE 
 per-node speed effect; ALL my earlier fine-grained rankings are unreliable. Robust finding UNCHANGED: best_effort+lpm
 (~2000-2600 ms, node-dependent) vs wait_complete baseline (87615 ms) = ~35-45x. Remaining repeats v34/v36 (be-alone
 on -0) vs v33/v35 (be+lpm on -0) = clean same-node test of whether lpm's benefit is real above noise.
+
+### *** v34-be-only-ctrlA (be-alone, on -0) = 2586.1 ms — lpm's benefit REFUTED as node confound ***
+SAME-NODE (-0): be+lpm (v33 2539.8) vs be-alone/fcfs (v34 2586.1) = ~2% apart = WITHIN NOISE. lpm does NOT
+meaningfully help! My earlier "lpm +38%" (v1 be-alone 3241 -> v7 be+lpm 2010) was ALSO a node confound (v1 on a
+slow node, v7 on fast ondem-3). On -0 ALL configs cluster ~2520-2586: be+lpm 2540, be-alone 2586, +gate4k 2586,
++gate8k 2519 -> on a fixed node, best_effort perf is ~CONSTANT regardless of scheduling/cost-gate/timeout.
+HONEST CONCLUSION FORMING: the ONE robust, reproducible lever is prefetch_policy=best_effort (skip synchronous
+slow-disk prefetch that saturates the queue) -> ~35-45x over the wait_complete baseline (far beyond the ~25-30%
+node variance). lpm / cost-gate / timeout / write-policy are all within node+run noise. Confirming with v35/v36 (n=2).

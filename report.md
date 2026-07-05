@@ -346,3 +346,10 @@ between allocations). So control WITHIN an allocation. skip-L3-write win holds w
   18328: skip {v44 1176, v46 1177} vs no-skip {v45 1833, v47 1803} -> -35%
 => reproducible -35%..-53% within-allocation (the cleanest possible comparison). On the current allocation 18328 the
 baselines are: no-skip+lpm ~1818, skip+lpm ~1176 -> use these to read v48-v51 (all on 18328).
+
+### v48-be-skip-nolpm-A (best_effort + skip_L3_write, NO lpm, on 18328) = 1214.1 ms
+On allocation 18328: no-skip+lpm ~1818, skip+lpm ~1176, skip+NO-lpm 1214. => skip-L3-write is the DOMINANT
+standalone mechanism (1214 vs no-skip 1818 = -33% even without lpm); lpm adds only ~3% ON TOP of skip (vs ~8.5%
+without skip). In the post-skip near-GPU-bound regime (queue nearly drained at 3.4 req/s) scheduling order matters
+less. Best config skip+lpm ~1176, but skip alone ~1214 captures nearly all of it. v49 confirms; v50/v51 test
+balanced/cost-gate on top of skip.

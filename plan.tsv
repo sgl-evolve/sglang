@@ -55,3 +55,5 @@ v57-skip-both-ctrlN2	mechanism	SGLANG_SKIP_L3_WRITE=1 SGLANG_SKIP_L3_PREFETCH=1	
 v58-fb-lbt1	mechanism	SGLANG_SKIP_L3_WRITE=1 SGLANG_SKIP_L3_PREFETCH=1 SGLANG_LOAD_BACK_THRESHOLD=1	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
 v59-fb-lbt4	mechanism	SGLANG_SKIP_L3_WRITE=1 SGLANG_SKIP_L3_PREFETCH=1 SGLANG_LOAD_BACK_THRESHOLD=4	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
 v60-fb-ctrl	mechanism	SGLANG_SKIP_L3_WRITE=1 SGLANG_SKIP_L3_PREFETCH=1	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion
+v61-fb-wtsel	mechanism	SGLANG_SKIP_L3_WRITE=1 SGLANG_SKIP_L3_PREFETCH=1	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --hicache-write-policy write_through_selective --enforce-disable-flashinfer-allreduce-fusion
+v62-fb-ctrl2	mechanism	SGLANG_SKIP_L3_WRITE=1 SGLANG_SKIP_L3_PREFETCH=1	--hicache-storage-prefetch-policy best_effort --schedule-policy lpm --enforce-disable-flashinfer-allreduce-fusion

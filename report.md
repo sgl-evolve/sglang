@@ -176,6 +176,7 @@ plus completing the mechanism curve (v2-wc, v3-wc).
 | be-lpm-aggr | config | 2,011 | 20,077 | 323.5 | 0.61 | 0.00 | be-lpm + `schedule-conservativeness 0.3` (aggressive admit): TIED w/ be-lpm (noise; no retractions) |
 | be-lpm-consv | config | 2,078 | 18,855 | 333.1 | 0.60 | 0.00 | be-lpm + `conservativeness 2.0`: slightly WORSE — knob is not a lever |
 | be-dfs | config | 2,149 | 18,506 | 315.4 | 0.60 | 0.00 | best_effort + `dfs-weight` schedule: WORSE than `lpm` — lpm is the best policy |
+| be-lpm-kernel | config | 2,075 | 17,593 | 334.1 | 0.598 | 0.00 | be-lpm + `--hicache-io-backend kernel`: WORSE than `direct` (hit 0.598<0.61) — direct transfer is optimal |
 | be-lpm-slru | config | 2,063 | 18,173 | – | 0.592 | 0.00 | be-lpm + `--radix-eviction-policy slru`: WORSE than LRU (hit 0.592<0.61) |
 | be-lpm-lfu | config | 2,118 | 18,024 | – | 0.579 | 0.00 | be-lpm + `--radix-eviction-policy lfu`: WORST eviction (hit 0.579) — frequency hurts recency-driven multiturn reuse |
 | v1b-besteffort | config | 2,529 | 21,356 | 288.8 | 0.55 | 0.00 | best_effort, default fcfs schedule: −97% |
@@ -227,11 +228,14 @@ plus completing the mechanism curve (v2-wc, v3-wc).
 
 7. **Takeaway:** for this overloaded 3-tier workload the two biggest levers are both in the
    *scheduler/admission* path — (a) don't block admission on slow L3 (`best_effort`, −97%), then
-   (b) order admitted requests cache-awarely (`lpm`, another −20%) — not L3 I/O speed, write policy,
-   admission conservativeness, or eviction policy (all swept, none beat the be-lpm defaults). The
-   engine win (v1 parallel I/O) matters only when you must use L3. **be-lpm (best_effort + lpm + lru)
-   is the validated frontier: 2,014 ms mean TTFT, −98% vs v0_tuned, fully lossless.** A production
-   system should combine `best_effort` + `lpm` with v1's faster L3 backup path.
+   (b) order admitted requests cache-awarely (`lpm`, another −20%). **Six tunable dimensions were
+   swept and none beats the be-lpm defaults:** prefetch policy (best_effort ≫ timeout ≫ wait_complete),
+   schedule policy (lpm > fcfs > dfs-weight), write policy (write_through ≈ others), admission
+   conservativeness (1.0 ≈ 0.3 < 2.0), eviction policy (lru > slru > lfu), and host-transfer io_backend
+   (direct > kernel). The engine win (v1 parallel I/O) matters only when you must use L3.
+   **be-lpm (best_effort + lpm + lru + direct) is the validated frontier: 2,014 ms mean TTFT, −98% vs
+   v0_tuned, fully lossless.** Residual TTFT is compute-bound (recompute of the ~39% host-miss prefixes,
+   itself capacity-bound at hit≈0.61) — not addressable by any lossless policy/engine knob available here.
 
 Global eval condition: all my versions pass `--enforce-disable-flashinfer-allreduce-fusion`
 (the auto-enabled fusion hangs CUDA-graph capture with hicache on this cluster; lossless,

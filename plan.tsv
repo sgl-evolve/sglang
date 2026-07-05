@@ -33,3 +33,5 @@ v35-be-lpm-ctrlB	config	-	--hicache-storage-prefetch-policy best_effort --schedu
 v36-be-only-ctrlB	config	-	--hicache-storage-prefetch-policy best_effort --enforce-disable-flashinfer-allreduce-fusion
 v37-be-bal-ctrlA	mechanism	SGLANG_ENABLE_BALANCED_PREFILL=1	--hicache-storage-prefetch-policy best_effort --enforce-disable-flashinfer-allreduce-fusion
 v38-be-bal-ctrlB	mechanism	SGLANG_ENABLE_BALANCED_PREFILL=1	--hicache-storage-prefetch-policy best_effort --enforce-disable-flashinfer-allreduce-fusion
+v39-be-page128	config	-	--hicache-storage-prefetch-policy best_effort --page-size 128 --enforce-disable-flashinfer-allreduce-fusion
+v40-be-page256	config	-	--hicache-storage-prefetch-policy best_effort --page-size 256 --enforce-disable-flashinfer-allreduce-fusion

@@ -198,3 +198,10 @@ node variance). lpm / cost-gate / timeout / write-policy are all within node+run
 The 1837.9 ms was a single-run favorable-variance outlier (node ondem-3); exact repeat v28 (node -0) = 2586.4 ms.
 Cost-gate is NEUTRAL (same-node controls v33/v28/v29). Correction already emailed. Point kept on curve but flagged
 retracted so it is not read as a real best. My reproducible best-config = best_effort (+lpm, ~5% borderline).
+
+### SAME-NODE(-0) n=2 CONTROLLED RESULT — lpm's benefit is REAL but MODEST (~8.5%)
+be+lpm: {v33 2539.8, v35 2375.0} mean 2457.4  |  be-alone/fcfs: {v34 2586.1, v36 2782.4} mean 2684.3
+Ranges DON'T overlap (be+lpm max 2540 < be-alone min 2586) -> lpm reliably beats fcfs by ~8.5% on the SAME node.
+So lpm IS a genuine (modest) win on top of best_effort -- but the cross-node "lpm +38%" (v1 vs v7) was inflated ~4x
+by the node confound. Same-node run-to-run spread ~7% (both configs). Cost-gate remains NEUTRAL (v28/v29 in the
+be+lpm band). Honest ranking on a fixed node: best_effort (huge, ~35-45x) >> +lpm (~8.5%) > +cost-gate/dfs/write (0).

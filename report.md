@@ -221,3 +221,9 @@ Interpretation: once best_effort drains the queue, the system is PREFILL-RECOMPU
 (host full -> churn -> disk -> skipped -> recompute). Levers that don't reduce recompute (scheduling/batching/gate/
 layout) can't move the throughput floor -> that's why lpm gives only ~8.5% and balanced/cost-gate give ~0. Reducing
 the 48% miss needs better caching (eviction/admission = off-limits for independence) or cheaper prefill (frozen/lossy).
+
+### v38-be-bal-ctrlB = 2788.8 ms -> balanced n=2 {2746, 2789} mean 2767 CONFIRMED NEUTRAL (slightly negative vs
+be-alone {2586,2782} mean 2684, ranges overlap). FINAL same-node(-0) ranking: be+lpm 2457 < be-alone 2684 <
+be+balanced 2767 < be+cost-gate ~2550. Only lpm helps (~8.5%); my two mechanisms neutral-to-slightly-negative.
+Next: v39/v40 page-size layout (last genuinely-different lever); if neutral, implement skip-L3-disk-write (bottleneck-
+motivated: disk is write-only waste under best_effort -> 252M offload tokens for l3_hit=0; skipping is lossless).

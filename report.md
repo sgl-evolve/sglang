@@ -405,3 +405,8 @@ full-bypass 1096.4 (-57%). STRIKING: full-bypass n=3 across TWO allocations = {1
 source; the system becomes purely GPU-prefill-bound (stable across allocations). So full disk-bypass both HALVES mean
 TTFT and STABILIZES it. Final best: best_effort + skip_L3_write + skip_L3_prefetch = ~1095 ms (~99x < v0_tuned),
 n=3 allocation-invariant. Both mechanisms are large standalone wins (skip-write -35%, skip-prefetch -48%) that compose.
+
+### v58-fb-lbt1 (full-bypass + load_back_threshold=1, alloc 18333) = 1146.2 ms [prelim]
+lbt=1 raises hit 0.622->0.638, throughput 3.44->3.47, median 581->570 (loads more small host hits, less recompute)
+BUT mean not improved (1146; tail-dominated -- extra load_back may worsen tail). CROSS-ALLOC vs full-bypass ~1095;
+need v60 (full-bypass control on 18333) to judge same-alloc. v59=lbt4.

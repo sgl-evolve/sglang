@@ -300,9 +300,27 @@ Revisited the charter's bolder direction (raise throughput → drain the overloa
 - **Chunked prefill:** already interleaves prefill/decode (`chunked-prefill-size` frozen at 6144). Decode-bubble
   reduction beyond it = mixed-chunk (off-limits: corrupts Mamba state, non-lossless).
 - **Kernel/GPU-assisted IO + page_first layout (v24):** incompatible (MambaPoolHost requires page_first_direct).
-- **Remaining bold lever = Strata balanced/bundled batching** (compose batches to balance per-layer work → fewer
-  bubbles): a deep scheduler batch-formation *code* mechanism, untried, lossless-by-construction (reorders/bundles,
-  doesn't change computation). This is the documented frontier — best done with fresh context + eval iteration.
+- **Strata balanced/bundled batching — analyzed, LOW-EV under this config (not pursued).** Strata's balanced
+  batching primarily removes *slow-load stalls* (one request loading a large KV chunk from a slow tier stalls the
+  whole batch). But my winning **adaptive policy sets `l3_hit_frac≈0` — it deliberately abandons SSD loads**; the
+  only remaining loads are host→GPU, which are fast and already stream-overlapped (separate `load_stream` + layer
+  events). So there are essentially no slow-load stalls left to balance — the mechanism that adaptive uses to win
+  (skip the SSD wait) also removes the very stalls balanced-batching would target. Deep code for ~no gain here.
+
+## FINAL conclusion — lossless accessible floor is ~1798 ms (48.7× v0_official)
+Both directions are now exhausted for lossless, on-contract, accessible changes:
+- **Latency/scheduling** (queue-wait): SRPF is SJF-optimal; the small waiting queue (max-concurrency 128, fixed)
+  leaves no further scheduling headroom. Plateaued.
+- **Throughput/bubbles** (drain rate): transfer-compute overlap + chunked prefill are built-in; kernel/GPU-assisted
+  IO and page_first layout are incompatible with the hybrid-SSM MambaPoolHost; balanced-batching is moot because
+  adaptive already eliminates slow-load stalls; higher hit_rate doesn't move a scheduling-bound headline.
+The **only** remaining lever is raw service-time via **mixed-chunk** (halves TPOT) — off-limits: it corrupts
+Mamba state (non-lossless), and the fixed eval measures completion+latency, not output correctness, so losslessness
+is unverifiable within the contract. Unlocking it needs deep hybrid-SSM-safe model-executor work **plus an
+output-correctness harness** — a large future effort, not a within-contract accessible change.
+**Delivered: two novel mechanisms (adaptive storage-prefetch + SRPF scheduling), 87615 → ~1798 ms, lossless.**
+
+*(Prior best was v14-lpm-sched 2496 ms; historical note below.)*
 
 *(Prior best was v14-lpm-sched 2496 ms; historical note below.)*
 

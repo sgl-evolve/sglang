@@ -358,3 +358,6 @@ balanced/cost-gate on top of skip.
 => lpm is REDUNDANT once skip-L3-write is applied (skip alone captures the full win). In the post-skip near-GPU-bound
 regime, cache-aware scheduling adds ~0. So the mechanism (skip-L3-write) is the whole story; best config simplifies to
 best_effort + skip_L3_write (~1177), lpm optional. v50/v51 test balanced/cost-gate on top; v52/v53 full disk-bypass.
+
+### v50 skip+balanced = 1249.6 vs skip+lpm ~1176 (alloc 18328) -> balanced NEUTRAL/slightly-negative even post-skip.
+My balanced-batching mechanism does not help in ANY regime tested (queue-bound OR near-GPU-bound). Confirmed dead.

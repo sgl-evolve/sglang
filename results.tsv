@@ -17,3 +17,4 @@
 07-05 02:58	v34-be-only-ctrlA	config	ttft_mean=2586.1ms	ecb86d925	logged
 07-05 03:52	v35-be-lpm-ctrlB	config	ttft_mean=2375.0ms	1d4e20d4c	logged
 07-05 04:48	v36-be-only-ctrlB	config	ttft_mean=2782.4ms	fa0322f9e	logged
+07-05 05:50	v37-be-bal-ctrlA	mechanism	ttft_mean=2746.0ms	1648b0133	logged

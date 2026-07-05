@@ -205,3 +205,10 @@ Ranges DON'T overlap (be+lpm max 2540 < be-alone min 2586) -> lpm reliably beats
 So lpm IS a genuine (modest) win on top of best_effort -- but the cross-node "lpm +38%" (v1 vs v7) was inflated ~4x
 by the node confound. Same-node run-to-run spread ~7% (both configs). Cost-gate remains NEUTRAL (v28/v29 in the
 be+lpm band). Honest ranking on a fixed node: best_effort (huge, ~35-45x) >> +lpm (~8.5%) > +cost-gate/dfs/write (0).
+
+### v37-be-bal-ctrlA (best_effort + my balanced-batching mechanism, on -0) = 2746.0 ms — NEUTRAL
+Within the be-alone range {v34 2586, v36 2782}. So balanced batching does NOT help on the same node; my earlier
+"+7%" (v6 cross-node) was a node confound too. BOTH my novel mechanisms (balanced batching, cost-gate) are NEUTRAL
+in this regime. The only real wins are CONFIG: best_effort (huge) + lpm (~8.5%). Honest: the regime is GPU-prefill-
+bound once best_effort drains the queue, so scheduling/batching/gate tweaks can't add much -- the remaining lever is
+cheaper prefill (frozen/lossy) or better caching (eviction/admission = off-limits for independence). v38 confirms n=2.

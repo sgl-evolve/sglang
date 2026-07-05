@@ -394,3 +394,11 @@ Clean SAME-ALLOCATION decomposition, two allocations:
 COMPOSE (full-bypass best on both). The absolute ms is allocation-dependent (~40% between allocations) but the
 RELATIVE within-allocation wins are robust and consistent. Confirms: fully bypassing the never-read disk tier
 (skip both write + prefetch) is the win; each half helps alone, together best.
+
+### *** v57 full-bypass (18332) = 1096.4 -> FULL-BYPASS IS ALLOCATION-INVARIANT ***
+Complete 18332 (slow alloc) same-alloc decomposition: no-skip 2529.6 > skip-prefetch-only {1289,1350} (-48%) >
+full-bypass 1096.4 (-57%). STRIKING: full-bypass n=3 across TWO allocations = {1094.5, 1094.0, 1096.4} spread 2.4ms
+(0.2%!) even though no-skip swings 1818(fast)<->2530(slow). => the skip mechanisms REMOVE the disk-contention variance
+source; the system becomes purely GPU-prefill-bound (stable across allocations). So full disk-bypass both HALVES mean
+TTFT and STABILIZES it. Final best: best_effort + skip_L3_write + skip_L3_prefetch = ~1095 ms (~99x < v0_tuned),
+n=3 allocation-invariant. Both mechanisms are large standalone wins (skip-write -35%, skip-prefetch -48%) that compose.

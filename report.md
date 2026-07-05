@@ -410,3 +410,10 @@ n=3 allocation-invariant. Both mechanisms are large standalone wins (skip-write 
 lbt=1 raises hit 0.622->0.638, throughput 3.44->3.47, median 581->570 (loads more small host hits, less recompute)
 BUT mean not improved (1146; tail-dominated -- extra load_back may worsen tail). CROSS-ALLOC vs full-bypass ~1095;
 need v60 (full-bypass control on 18333) to judge same-alloc. v59=lbt4.
+
+### load_back_threshold VERDICT (full-bypass base, same alloc 18333) = NEUTRAL on mean.
+lbt=1 (v58) 1146.2 | lbt=4 (v59) 1126.4 | default lbt=10 (v60) 1131.4 -- all within ~2% (noise). Lowering lbt loads
+more small host hits (hit 0.622->0.638, throughput 3.44->3.47, median 581->570) BUT the extra load_back worsens the
+tail, so the headline MEAN is unchanged. Honest negative on the mean; nuance = it trades GPU recompute for H<->D +
+tail with no net mean gain. (Full-bypass on 18333 ~1131 vs 18328/18332 ~1095 = allocation variance.) Best stays
+full-bypass ~1095-1131.

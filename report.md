@@ -355,7 +355,7 @@ Mamba/GDN model). Investigated the code path to localize the corruption for a fu
   load / final-state track write-back for the 1-token entries.
 - **Verdict:** genuinely deep Triton-kernel + state-tracking work; **fix must be paired with an output-correctness
   harness** (run greedy w/ vs w/o mixed-chunk on sample prompts on ANY a3 node — not disk-gated — and diff outputs)
-  because the fixed eval measures latency/completion, not correctness. A future window starts here: `mamba2_metadata.py`
+  because the fixed eval measures latency/completion, not correctness. A future window starts here: `mamba2_metadata.py` **Repro-node enabler (verified this window):** `slurm2-a3nodeset1-1` has 8 HEALTHY GPUs but is disk-full (eval-useless) — ideal for the non-eval mixed-chunk repro (good citizenship: uses eval-useless capacity). Repro recipe: launch 122B (rewarm_cache.sh flags) + `--enable-mixed-chunk` + minimal L3, run bench_serving with small `--num-prompts` at moderate concurrency to trigger MIXED batches; confirm request failures vs a no-mixed-chunk reference (greedy → diff outputs). ondem-1 wouldn't spin up in time.
   + `mamba/causal_conv1d_triton.py` + the ssm scan, focusing on the `extend_len=1` (decode) entries in MIXED mode.
 
 *(Prior best was v14-lpm-sched 2496 ms; historical note below.)*

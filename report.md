@@ -314,3 +314,9 @@ from n=2; same-node variance across ALLOCATIONS/time is bigger). BUT the skip-L3
 SKIP {1147, 1176} is below EVERY no-skip run (max skip 1176 < min no-skip 1833) -> non-overlapping -> robust
 -36%(vs best no-skip 1833) to -53%(vs mean 2457). Honest note: report the skip win as ">=36% and reproducible",
 skip is tight (~1161) while no-skip is noisy (1833-2540). v46 (skip n=3) + v47 (no-skip n=4) extend this.
+
+### v46-be-lpm-skipL3-C = 1176.9 -> skip-L3-write n=3 {1147.4, 1175.6, 1176.9} mean 1167, TIGHT (~2.5% spread).
+vs no-skip {1833, 2375, 2540} (noisy). skip is both LOWER and far more STABLE (removing disk-write IO contention ->
+consistent runs). Win robust: every skip run < every no-skip run. Best config = best_effort+lpm+skip_L3_write ~1167ms
+(~93x < v0_tuned). Hill-climb next: v48/v49 isolate skip w/o lpm; v50/v51 re-test balanced/cost-gate +skip (regime
+shifted queue-bound -> near-GPU-bound at 3.4 req/s, so overlap/gate mechanisms may now help where they were neutral).

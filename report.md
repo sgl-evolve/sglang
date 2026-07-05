@@ -398,12 +398,18 @@ completion time**. So rather than tweak an existing knob (v14/v15), I added a ne
 - **Contract:** `--schedule-policy` is an ALLOWED (non-forbidden) flag; `spf` is a new *value* (added to
   the argparse choices + enum), i.e. new engine code, not a config flip of an existing policy. Default
   stays `fcfs`, so nothing else changes. Compression OFF, single-lever vs v6.
-- **Prediction:** if there is real queue pressure from the long-context tail (v12/v13 showed ~51 queued
-  reqs), SPF should lower **mean** TTFT below v6's ~2000 ms while possibly raising the p99 of the few
-  longest prompts (acceptable — mean is the headline, and aging caps their wait). If the serving path is
-  so compute-saturated that order barely matters, expect neutral — which would firmly close the
-  scheduler path too. Either way it is a genuine mechanism result, higher-EV than the v14/v15 config
-  probes, so it is queued **first** (`hold_batch2.sh`: v16 → v14 → v15) for the next recovered node.
+- **The opportunity, quantified from v6's own on-contract numbers** (`runs/v6-be-pario/summary.json`):
+  `ttft_median = 1206 ms` ≪ `ttft_mean = 2035 ms` ≪ `ttft_p99 = 17852 ms`. The mean sits ~1.7× above the
+  median purely because a small tail of long-context prefills drags it up — the textbook signature of
+  head-of-line blocking under `fcfs`, and precisely what SJF removes. (v12/v13 also showed ~51 queued
+  reqs, so the pressure is real, not hypothetical.)
+- **Falsifiable prediction:** SPF should move **mean** TTFT from ~2035 ms *toward the median floor
+  ~1206 ms* (best case ≈ median → ~73× vs the 87 615 ms baseline, up from 43×), while the p99 of the few
+  longest prompts may rise (acceptable — mean is the headline and aging caps their wait to ~15 s over
+  fcfs). A null result (mean unchanged) would mean the serving path is so compute-saturated that
+  admission order barely matters, firmly closing the scheduler path too. Median and p99 shifts will
+  distinguish the two. Either way it is a genuine mechanism result, higher-EV than the v14/v15 config
+  probes, so it is queued **first** (`pool_watch.sh`: v16 → v14 → v15) for the next recovered node.
 
 **STATUS: infra-blocked — precise root cause.** A live **manager eval pool** holds exactly two certified
 nodes (`1-2`, `ondem-3`); the other four certified nodes are admin-`drain`ed and I lack `scontrol resume`

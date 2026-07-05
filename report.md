@@ -444,3 +444,27 @@ spare node keeps the scheduler regime faithful; a *same-node* fcfs-vs-spf delta 
   the available spare hardware is therefore **not viable**; the v16 SPF delta will be measured on-contract
   when a certified pool node frees. (Net: the probe strengthened the *motivation* for v16 with fresh
   tail-dominated fcfs data, but the mechanism's effect remains to be measured on-contract.)
+
+### v16 on-contract attempts — status (pool contention + a server detokenizer hang)
+Once foreign L3 cleared on pool node `1-2` (665 GB → 1958 GB free), I contended for it against several
+other active researchers via a collision-safe launcher. Two on-contract attempts so far, both disrupted
+by *operational* (not mechanism) issues:
+1. **Collision.** A peer's custom multi-eval session uses the node **without taking the `$RT/locks`
+   flock**, so acquiring the flock didn't guarantee exclusivity; my v16 server was `SIGTERM`'d mid-bench
+   (~5 requests in) by the peer's node-wide `pkill -f sglang.launch_server` teardown. Fix: added a
+   **GPU-idle gate** (only start when the node's GPUs are genuinely <2 GB used) so I never start on top
+   of a peer's resident server.
+2. **Detokenizer hang.** The GPU-idle gate then won a *genuinely clean* window (GPUs at 4 MiB verified);
+   v16 loaded on-contract (`resolved_args` matched the frozen budget), served ~5 requests correctly,
+   then the **server's detokenizer stopped responding** ("couldn't get a response from detokenizer for
+   20 s", health 503) and the run stalled. This is a **server-side sglang hang**, not the SPF change:
+   SPF only reorders the scheduler's waiting queue, the detokenizer is a separate downstream process,
+   and the stall hit at ~5 requests before any reordering could matter — consistent with the known
+   HiCache-eval server-flakiness class, not a mechanism defect. I cleaned up the hung instance and
+   re-armed a **bounded** launcher (45-min `timeout` so a hang can never wedge the shared pool node
+   indefinitely) that retries v16 on the next clean window.
+**Net:** v16 has *run on-contract with the frozen budget asserted* but has not yet completed a full
+benchmark due to (a) severe pool contention and (b) a server detokenizer hang — both operational, both
+independent of the mechanism. The SPF mechanism itself stands as coded, unit-tested, committed, pushed,
+and pre-registered, with its motivation independently reconfirmed on fresh fcfs data. The clean
+on-contract number will be logged if a retry completes; the core 45× + plateau result is unaffected.

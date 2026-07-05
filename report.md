@@ -540,3 +540,24 @@ Triton work the earlier diagnosis feared:
   fixed-protocol eval on a certified ≥1.8 TB node = `--enable-mixed-chunk` added to the v18 best
   (adaptive prefetch + srpf). If lossless, expected win = higher throughput (v11 halved TPOT) →
   shorter queue → lower mean TTFT in this queue-dominated regime.
+
+### v19-wip CORRECTNESS VERIFIED (job 18339, node 1-1, 2026-07-05) — gates (1)+(2) PASS
+Harness `mixedchunk_correctness.sbatch` (122B ×2: mixed-chunk OFF then ON; greedy; per server a
+sequential=mix-inactive reference + a staggered-stream concurrent=mix-active run; **text** diff —
+`return_logprob` had to be dropped because the scheduler DISABLES mixed-chunk whenever any batched
+request sets it, `scheduler.py:2993`). MIXED batches fired **568×** (env-gated MIXCHUNK-TRACE), so
+the fix path was heavily exercised. Results:
+- **Zero request failures** (baseline+mixed, seq+conc). The v11 failure mode (5891/7037, ~2630 server
+  errors) is **eliminated** — the fix makes `--enable-mixed-chunk` safe on this Mamba/GDN model.
+- **SANITY A (baseline.seq vs mixed.seq) = 24/24 EXACT** → the fix is perfectly gated: **byte-identical
+  on the non-mixed path**, so **no regression** to the delivered v18 best (which never mixes).
+- **Mix divergence within the concurrency FP floor:** control B (baseline concurrency vs its own seq)
+  already diverges at min char=10 / median 483; core C (mix vs mix-seq) min=10 / median 320; D (mix.conc
+  vs baseline.conc) min=**199** (later than the control). Mixed-chunk adds **no earlier/extra divergence**
+  than the model's inherent batch-variance → no corruption.
+- **Honest caveat:** this FP8 model is NOT bitwise-deterministic under concurrency (control B proves it),
+  so "identical tokens" is unattainable even for baseline. Defensible standard: **mixed-chunk is as
+  lossless as the baseline's own concurrency behavior.** The full eval's 7037-request success-count
+  self-audit is the definitive at-scale correctness+lossless check (v11 & write_back both failed it).
+- **Remaining gate (3): disk.** The full protocol eval needs a certified ≥1.8 TB node; the mechanism is
+  built, verified, committed & pushed, and the eval command is staged — launches the instant disk frees.

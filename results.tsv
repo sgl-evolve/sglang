@@ -22,3 +22,4 @@
 07-05 07:59	v39-be-page128	config	ttft_mean=3121.4ms	05d346425	logged
 07-05 09:05	v40-be-page256	config	ttft_mean=3333.0ms	4e37a7445	logged
 07-05 09:46	v43-be-lpm-skipL3-A	mechanism	ttft_mean=1147.4ms	9dd820cba	logged
+07-05 10:53	v44-be-lpm-skipL3-B	mechanism	ttft_mean=1175.6ms	0ec5446c1	logged

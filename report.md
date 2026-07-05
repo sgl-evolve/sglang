@@ -297,3 +297,13 @@ token. MECHANISM: the host->disk offload (252M tokens) is write-only waste under
 PCIe/CPU/host-pool with the essential H<->D load_back. Removing it frees those -> +33% throughput + higher host-hit
 rate -> -53% TTFT. ~95x < v0_tuned. NOT EMAILED YET — confirming n>=2 same-node on a 2nd node (v44-v47) per the v24
 variance lesson before claiming a new best.
+
+### *** CONFIRMED NEW BEST: best_effort+lpm+SKIP_L3_WRITE ~1161 ms (n=2 same-node -0) — MECHANISM WIN ***
+SKIP-L3-WRITE {v43 1147.4, v44 1175.6} mean 1161 (spread 2.4%) vs no-skip be+lpm {v33 2539.8, v35 2375.0} mean 2457
+-- ALL on node -0 -> reproducible -53%, non-overlapping by ~2x, NOT an outlier (unlike retracted v24). ~94x < v0_tuned.
+LOSSLESS (hit_storage_frac=0.0 in every run: disk is never read under best_effort, so skipping its writes changes no
+served token). MECHANISM (my own, from bottleneck analysis): under best_effort the L3 disk tier is WRITE-ONLY; the
+252M-token host->disk offload is pure waste competing with the essential H<->D load_back for PCIe/CPU/host-pool.
+Skipping it (SGLANG_SKIP_L3_WRITE, self-guarded to best_effort) frees those -> throughput 2.55->3.40 req/s (+33%,
+~=lambda 3.5 so the queue stops growing) + host hit_rate 0.52->0.62 -> TTFT halves. Upstream takeaway: don't offload
+KV to a tier you never read. EMAILED. Further rigor: v45/v47 (no-skip) + v46 (skip) extend to n>=3 same-node.

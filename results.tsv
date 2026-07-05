@@ -33,3 +33,5 @@
 07-05 16:37	v52-skip-both-A	mechanism	ttft_mean=1094.5ms	5c3ebc427	logged
 07-05 17:17	v53-skip-both-B	mechanism	ttft_mean=1094.0ms	4c6fd27c5	logged
 07-05 18:01	v54-skip-pf-only-A	mechanism	ttft_mean=1289.3ms	7ca947c9e	logged
+07-05 18:42	v55-skip-pf-only-B	mechanism	ttft_mean=1349.5ms	cb0fdc542	logged
+07-05 19:40	v56-noskip-ctrlN2	config	ttft_mean=2529.6ms	cb0fdc542	logged

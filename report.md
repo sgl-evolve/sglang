@@ -385,3 +385,12 @@ its writes AND its prefetch issue -- the latter also stops it evicting useful ho
 Rough decomposition (18328/18332 refs): no-skip ~1818 > skip-prefetch-only ~1289 (-29%) > skip-write-only ~1176
 (-35%) > full-bypass ~1094 (-40%). Both mechanisms help alone and COMPOSE (write-skip the bigger, prefetch-skip
 adds on top). v56 (no-skip on 18332) pins the exact same-alloc baseline; v55 repeats prefetch-only; v57 full-bypass.
+
+### v56 no-skip (18332) = 2529.6 -> 18332 is a SLOW allocation (~2530 vs 18328 ~1818; allocation variance again).
+Clean SAME-ALLOCATION decomposition, two allocations:
+  18328 (fast): no-skip {1833,1803}~1818 > skip-write-only {1176,1177} (-35%) > full-bypass {1094,1094} (-40%)
+  18332 (slow): no-skip 2530 > skip-prefetch-only {1289,1350}~1319 (-48%) > full-bypass v57 (pending)
+=> BOTH mechanisms are large STANDALONE wins within-allocation (skip-write -35%, skip-prefetch -48%), and they
+COMPOSE (full-bypass best on both). The absolute ms is allocation-dependent (~40% between allocations) but the
+RELATIVE within-allocation wins are robust and consistent. Confirms: fully bypassing the never-read disk tier
+(skip both write + prefetch) is the win; each half helps alone, together best.

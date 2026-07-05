@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 import os
 import random
+import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 from enum import Enum, auto
@@ -296,14 +297,36 @@ class SchedulePolicy:
     def _sort_by_longest_prefix(
         waiting_queue: List[Req], temporary_deprioritized: Set[int]
     ) -> None:
-        """Sorts the waiting queue based on the longest prefix match."""
-        waiting_queue.sort(
-            key=lambda r: (
-                -r.num_matched_prefix_tokens
-                if r.rid not in temporary_deprioritized
-                else float("inf")
-            )
-        )
+        """Sorts the waiting queue by LEAST REMAINING PREFILL WORK first (quill-7m3 mechanism).
+
+        Baseline `lpm` sorts by -num_matched_prefix_tokens (most-cached first), ignoring total
+        prompt length: it will front-load a request with a huge uncached suffix over one that is
+        nearly free to prefill. The eval headline metric is MEAN TTFT, and prefill load here is
+        heavy-tailed, so shortest-remaining-work-first (a classic mean-wait minimizer) should help.
+
+        This variant (be-sjf-age) = FLOP-weighted SJF (`uncached*total`) PLUS anti-starvation aging.
+        Pure SJF minimizes mean wait but can starve the longest requests -> a fat p99 tail (observed:
+        a reproduction spiked to mean 2466 / p99 30194). Fix with a scale-free tiered key:
+          tier 0 (front): requests that have waited > AGE_THRESHOLD_S, ordered longest-wait-first
+                          -> caps the tail near the threshold;
+          tier 1:         everyone else by FLOP-weighted SJF (uncached*total, cheapest first);
+          tier 2 (last):  in-batch-deprioritized requests.
+        Keeps SJF's mean/median win while bounding starvation. Lossless (reorder only; no output change).
+        """
+        AGE_THRESHOLD_S = 8.0
+        now = time.perf_counter()
+
+        def _sjf_age_key(r):
+            if r.rid in temporary_deprioritized:
+                return (2, 0.0)
+            e = getattr(getattr(r, "time_stats", None), "wait_queue_entry_time", 0.0) or 0.0
+            wait = (now - e) if e > 0.0 else 0.0
+            if wait > AGE_THRESHOLD_S:
+                return (0, -wait)
+            uncached = len(r.origin_input_ids) - r.num_matched_prefix_tokens
+            return (1, float(uncached * len(r.origin_input_ids)))
+
+        waiting_queue.sort(key=_sjf_age_key)
 
     @staticmethod
     def _sort_by_dfs_weight(

@@ -1,3 +1,55 @@
+# EXECUTIVE SUMMARY — kv-flint-2c (independent sglang HiCache researcher)
+
+**Protocol (fixed):** Qwen3.5-122B-A10B-FP8, TP8, ctx 262144, mem-frac 0.85, hicache 96 (768GB host) + 1.8TB
+file L3, Mooncake 1:1:1 mix (1553 convs), lambda=3.5, max-conc 128. Headline: mean TTFT (lower better).
+Baselines: v0_official (wait_complete stock) 87615 ms; **v0_tuned 108824 ms (the bar)**.
+
+## The one robust, reproducible win: prefetch_policy = best_effort  (~35-45x < v0_tuned)
+The stock HiCache default `wait_complete` SYNCHRONOUSLY waits for slow L3 (disk) prefetches before admitting a
+request. In this saturated regime (throughput < lambda) that wait backs up the waiting queue, so mean TTFT is
+dominated by queue time (baseline ~87-109 s). Switching to `--hicache-storage-prefetch-policy best_effort` (skip the
+disk read, recompute the missing suffix on GPU, keep the queue drained) collapses mean TTFT to ~2.0-2.8 s
+= a ~35-45x reduction. This is a CONFIG change (no code), lossless (recompute reproduces the same KV), and by far
+the dominant effect. Everything else is second-order.
+
+## A modest, real config win on top: schedule_policy = lpm  (~8.5%, same-node n=2)
+Cache-aware `lpm` ordering helps ONLY because best_effort keeps the waiting queue small (<128): stock lpm reverts to
+fcfs once the queue exceeds 128 (schedule_policy.py::_determine_active_policy), which is why it is worthless under the
+queue-saturating wait_complete default but useful under best_effort. Same-node (node -0) n=2: be+lpm {2540,2375}
+mean 2457 vs be-alone {2586,2782} mean 2684 -> ~8.5%, non-overlapping ranges. Best config = best_effort + lpm.
+
+## CRITICAL METHODOLOGY FINDING: eval variance is large; control for the NODE.
+Even on `--exclusive` certified nodes, NODE-TO-NODE variance is ~25-30% (same config best_effort+lpm: ~2010 ms on
+ondem-3 vs ~2457 ms on -0) and same-node run-to-run is ~7-8%. So any two SINGLE-RUN results within ~30% on DIFFERENT
+nodes are statistically meaningless. I initially reported a "59x new best" (v24, cost-gate=4096, 1837.9 ms) and a
+"lpm +38%" -- BOTH were node confounds. Controlled same-node repeats corrected them (v24 retracted in W&B + email;
+lpm's true effect is ~8.5%). RULE: never claim a mechanism win from single cross-node runs; require n>=2 same-node
+vs a same-node control; only effects >~30% (or same-node effects clearly >~8%) are real.
+
+## Everything else is neutral or negative (honestly logged, kept on the curve)
+NEUTRAL (my two novel engine mechanisms -- do NOT help in this regime):
+ - Balanced/loading-bound prefill batching (SGLANG_ENABLE_BALANCED_PREFILL): same-node {2746,2789} ~= be-alone.
+ - Length/cost-aware prefetch gate (SGLANG_PREFETCH_COST_GATE): same-node {2586,2519} ~= no-gate.
+NEUTRAL config: dfs-weight scheduling; write_through_selective / write_back (default write_through is best).
+NEGATIVE config: mixed_chunk (16180 ms, fragments prefill); page-size 128/256 (monotonically worse than 64 --
+ coarser prefix-match lowers hit rate). timeout prefetch beats best_effort ALONE but loses once lpm is added.
+
+## Why the mechanisms are neutral -- the bottleneck (v35 metrics, be+lpm on -0)
+throughput 2.55 req/s (< lambda 3.5 -> still saturated) | hit_rate 0.52 (~48% miss = GPU recompute) | hit tiers
+device 59% / host 41% / DISK 0% | host_util 0.998 (FULL) | 252M tokens offloaded to disk that are NEVER read back
+(l3_hit=0) | mean TTFT tail-dominated (median 1135, p99 17791). Once best_effort drains the queue the system is
+PREFILL-RECOMPUTE-bound and HOST-CAPACITY-bound. Levers that don't cut the 48% recompute (scheduling, batching,
+prefetch-gate, layout, write-policy) cannot move the throughput floor -- which is exactly what the data shows.
+Cutting the recompute would require better caching (eviction/admission) or cheaper prefill -- the former I hold
+off-limits to stay an independent replicate, the latter is frozen by the contract (chunk size) or lossy (mixed_chunk).
+
+## Bottom line for a maintainer
+best_effort (huge, robust) + lpm (~8.5%) is the reproducible frontier for the lossless, non-eviction levers explored.
+The single most valuable, upstream-ready takeaway: **for HiCache under queue-saturating load, best_effort prefetch
+beats the wait_complete default by ~35-45x** -- and cache-aware scheduling should not silently revert to fcfs exactly
+when the queue is largest. Every number here is traceable to a commit + W&B point; negatives kept; one outlier retracted.
+
+---
 # kv-flint-2c — sglang HiCache KV-cache research log
 
 Independent researcher. Branch `evolve/kv-flint-2c`. W&B run `kv-flint-2c` in `sgl-evolve`.

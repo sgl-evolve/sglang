@@ -4,12 +4,18 @@ Researcher: **kv-heron-eb9** · branch `evolve/kv-heron-eb9` · W&B run `kv-hero
 Bar to beat: **v0 official** mean TTFT = 87615 ms (the stronger of the two references).
 
 ## Executive summary (TL;DR for a reviewer)
-- **Headline win (genuine mechanism, lossless, in-budget): mean TTFT 87615 → ~1957 ms ≈ 45×**
-  (`v6`/`v12`). The mechanism is **concurrent per-page HiCache disk IO** (a ThreadPoolExecutor in the
-  `HiCacheFile` backend parallelizing `batch_get/batch_set/batch_exists`) combined with the
-  **`best_effort` storage-prefetch policy**. Under `wait_complete` the stock backend blocks prefill on
-  serial per-page disk reads; making those reads concurrent + not blocking on them collapses the dominant
-  TTFT component. Byte-identical outputs (same bytes, distinct buffers/fds); no budget change.
+- **Headline win (genuine mechanism, lossless, in-budget): mean TTFT 87615 → ~2000 ms ≈ 43–45×.**
+  The mechanism is **concurrent per-page HiCache disk IO** (a ThreadPoolExecutor in the `HiCacheFile`
+  backend parallelizing `batch_get/batch_set/batch_exists`) combined with the **`best_effort`
+  storage-prefetch policy**. Under `wait_complete` the stock backend blocks prefill on serial per-page
+  disk reads; making those reads concurrent + not blocking on them collapses the dominant TTFT component.
+  Byte-identical outputs (same bytes, distinct buffers/fds); no budget change. On-contract runs: v6=2035 ms
+  (node 1-2), v12=1957 ms (ondem-3) → both ≈ 43–45× vs the 87.6 s baseline.
+- **Measurement-integrity caveat (important):** a3 nodes are **not** timing-interchangeable (~25–30%
+  between-node TTFT spread — an environment fact, not a code effect). So *cross-node* TTFT deltas below
+  ~2× are not trustworthy. My trustworthy comparisons are **same-node A/B** (e.g. v6 vs v13, both node 1-2)
+  and **large regime jumps** (baseline 87.6 s → best_effort+concurrent-IO ~2 s). The 43–45× headline is
+  a large regime jump vs a fixed baseline, so it is robust to the node confound.
 - **Search was exhaustive and the ceiling is understood.** Perturbations that did NOT help (all logged as
   honest negatives): prefetch `timeout`, `page_size` 32/128, `lfu`, Level-2 IO dilution, `write_through_
   selective`(queued, superseded), disk-tier **zlib compression** (v12 — inert because `best_effort`
@@ -324,10 +330,14 @@ max_running 140 ≥ load concurrency 128 → no admission drops / no state evict
 retention) and `load_back_tokens` 301M→**259M** (fewer host→device transfers). **But end-to-end TTFT did
 not improve** (mean nominally worse, driven by the p99≈19.5s tail; median ~flat 1197 vs 1178).
 
-### ★ Plateau conclusion (v6 ≈ v12 ≈ v13, evidence-grounded)
-Three back-to-back-ish points now bracket the same operating point: **median TTFT ≈ 1178–1197 ms**, mean
-≈ 1957–2119 ms, hit ≈ 0.61–0.63, all with p99 ≈ 19–19.5 s. The **median is essentially invariant**; the
-mean differences are tail-driven run-to-run variance, not lever effects. Both new levers behaved exactly
+### ★ Plateau conclusion (evidence-grounded; same-node-controlled)
+Three points bracket the same operating point: **median TTFT ≈ 1178–1197 ms**, mean ≈ 1957–2119 ms, hit
+≈ 0.61–0.63, all with p99 ≈ 19–19.5 s. **The cleanest control is same-node: v6 (2035 ms) and v13
+(2119 ms) BOTH ran on node 1-2** — so adding device-KV +43% (v13) did NOT help there (slightly worse),
+a trustworthy same-node A/B. v12 (1957 ms) ran on a *different* node (ondem-3), so its lower mean vs v6
+is confounded by the ~25–30% node-speed spread and is **not** evidence that compression helped (the tier
+breakdown independently showed compression was inert — disk bypassed). Median is essentially invariant
+across all three; mean differences are node-speed + tail variance, not lever effects. Both new levers behaved exactly
 as designed at the tier level (compression compresses; mamba→KV retains more on device) yet **neither
 moved end-to-end TTFT**, because under best_effort the serving path is **not disk-bound and not
 device-load-back-bound** (load_back mean ≈ 1.4 ms) — it is dominated by **prefill compute on cache

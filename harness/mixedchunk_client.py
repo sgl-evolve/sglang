@@ -64,7 +64,13 @@ def build_prompts():
 
 
 def gen(port, prompt, max_new_tokens, timeout=1200):
-    """One greedy /generate call. Returns (ok, out_ids, out_logprobs, err)."""
+    """One greedy /generate call. Returns (ok, out_text, completion_tokens, err).
+
+    IMPORTANT: does NOT set return_logprob -- the scheduler DISABLES mixed-chunk when any
+    request in the batch has return_logprob set (scheduler.py: "TODO: support return_logprob
+    + mixed chunked prefill"). bench_serving (the eval) also omits it, so this mirrors the
+    eval. Greedy => identical text iff identical tokens = the eval's losslessness notion.
+    """
     req = {
         "text": prompt,
         "sampling_params": {
@@ -73,8 +79,6 @@ def gen(port, prompt, max_new_tokens, timeout=1200):
             "top_p": 1.0,
             "max_new_tokens": max_new_tokens,
         },
-        "return_logprob": True,
-        "logprob_start_len": 0,
     }
     data = json.dumps(req).encode()
     r = urllib.request.Request(
@@ -86,34 +90,54 @@ def gen(port, prompt, max_new_tokens, timeout=1200):
         with urllib.request.urlopen(r, timeout=timeout) as resp:
             obj = json.loads(resp.read().decode())
     except Exception as e:  # HTTP 500, timeout, connection reset = a request failure
-        return (False, [], [], f"{type(e).__name__}: {str(e)[:200]}")
+        return (False, "", None, f"{type(e).__name__}: {str(e)[:200]}")
     mi = obj.get("meta_info", {}) or {}
-    otl = mi.get("output_token_logprobs") or []
-    out_ids = [t[1] for t in otl]
-    out_lps = [t[0] for t in otl]
-    if not out_ids:  # no tokens produced = failure
-        return (False, [], [], f"empty output (finish={mi.get('finish_reason')})")
-    return (True, out_ids, out_lps, None)
+    text = obj.get("text", "")
+    ctoks = mi.get("completion_tokens")
+    if not text:  # no tokens produced = failure
+        return (False, "", ctoks, f"empty output (finish={mi.get('finish_reason')})")
+    return (True, text, ctoks, None)
 
 
-def run(port, tag, max_new_tokens):
+def run(port, tag, max_new_tokens, arrival_delay=0.4, stream_rounds=3):
     prompts = build_prompts()
+    # Interleave long/short so a long prompt is mid-(chunked)-prefill while short prompts
+    # are decoding -> maximises prefill/decode overlap once arrivals are staggered.
+    order = []
+    longs = [i for i in range(len(prompts)) if i < 8]
+    shorts = [i for i in range(len(prompts)) if i >= 8]
+    li = si = 0
+    while li < len(longs) or si < len(shorts):
+        if li < len(longs):
+            order.append(longs[li]); li += 1
+        for _ in range(2):
+            if si < len(shorts):
+                order.append(shorts[si]); si += 1
+
     # --- sequential reference (mix inactive) ---
     seq = []
     t0 = time.time()
     for i, p in enumerate(prompts):
-        ok, ids, lps, err = gen(port, p, max_new_tokens)
-        seq.append({"id": i, "ok": ok, "out_ids": ids, "out_lps": lps, "err": err})
+        ok, text, ctoks, err = gen(port, p, max_new_tokens)
+        seq.append({"id": i, "ok": ok, "out_text": text, "ctoks": ctoks, "err": err})
     t_seq = time.time() - t0
-    # --- concurrent (mix active) ---
+
+    # --- concurrent STREAM (mix active): staggered Poisson-like arrivals, like the eval's
+    # continuous load, so new prefills constantly overlap running decodes -> MIXED batches.
+    # Multiple rounds keep a sustained in-flight population; we compare each unique prompt's
+    # FIRST completed result against its sequential reference.
     conc = [None] * len(prompts)
     t0 = time.time()
-    with ThreadPoolExecutor(max_workers=len(prompts)) as ex:
-        futs = {ex.submit(gen, port, p, max_new_tokens): i for i, p in enumerate(prompts)}
-        for fut in futs:
-            i = futs[fut]
-            ok, ids, lps, err = fut.result()
-            conc[i] = {"id": i, "ok": ok, "out_ids": ids, "out_lps": lps, "err": err}
+    with ThreadPoolExecutor(max_workers=len(prompts) * stream_rounds + 4) as ex:
+        futmap = []
+        for _rnd in range(stream_rounds):
+            for i in order:
+                futmap.append((ex.submit(gen, port, prompts[i], max_new_tokens), i))
+                time.sleep(arrival_delay)  # stagger arrivals -> overlap
+        for fut, i in futmap:
+            ok, text, ctoks, err = fut.result()
+            if conc[i] is None or (not conc[i]["ok"] and ok):
+                conc[i] = {"id": i, "ok": ok, "out_text": text, "ctoks": ctoks, "err": err}
     t_conc = time.time() - t0
     return {
         "tag": tag,

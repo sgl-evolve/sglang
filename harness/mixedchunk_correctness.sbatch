@@ -27,7 +27,8 @@ export SGLANG_DRIFT_MIXCHUNK_TRACE=1   # confirm MIXED batches actually form (te
 
 MODEL=Qwen/Qwen3.5-122B-A10B-FP8
 OUT="$WORK/runs/_mixchunk_correctness"; mkdir -p "$OUT"
-CTX=65536; CHUNK=2048; MNT=256
+CTX=65536; CHUNK=512; MNT=256   # small chunk -> long prefills span many steps -> more
+                                # prefill-while-decoding overlap -> reliably triggers MIXED batches
 
 echo ">>> mixed-chunk correctness harness on $(hostname) at $(date +%T)"
 
@@ -66,7 +67,7 @@ python3 harness/mixedchunk_client.py --port 31402 --tag mixed --max-new-tokens "
 killsrv "$PID"
 
 # ---------- confirm MIXED batches fired ----------
-NMIX=$(grep -c "MIXCHUNK-TRACE" "$OUT/server_mixed.log" 2>/dev/null || echo 0)
+NMIX=$(grep -c "MIXCHUNK-TRACE" "$OUT/server_mixed.log" 2>/dev/null); NMIX=${NMIX:-0}
 echo ">>> MIXED batches formed (mix_with_running fired): $NMIX times"
 if [ "$NMIX" -eq 0 ]; then
   echo ">>> WARNING: no MIXED batches formed -> correctness test is INCONCLUSIVE (raise concurrency / lower chunk size)"

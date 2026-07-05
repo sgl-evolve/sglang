@@ -13,10 +13,13 @@ Two config wins (best_effort prefetch, then lpm) plus TWO genuine composing engi
     a host buffer and EVICTS useful host KV to make room, then discards it -> host-tier churn). Adds ~7% (hit
     0.616->0.622, p99 10244->7736).
 Both are one-line self-guarded early-returns in UnifiedRadixCache (write_backup_storage / prefetch_from_storage),
-env-gated, LOSSLESS. Same-allocation n=2, three NON-OVERLAPPING tiers: full-bypass {1094.5,1094.0} (0.5ms spread!)
-< skip-write-only {1176,1177} < no-skip {1833,1803}. Upstream one-liner: **under a storage tier you never read, skip
-BOTH its writes AND its prefetch issue.** (Contrast the RETRACTED v24 below: claims made only after n>=2 same-
-allocation confirmation with non-overlapping ranges.) [lpm becomes redundant once skip is applied: skip-nolpm ~= skip+lpm.]
+env-gated, LOSSLESS. **Full-bypass is n=3 ALLOCATION-INVARIANT: {1094.5, 1094.0, 1096.4} across two allocations
+(spread 2.4ms = 0.2%) even though the no-skip baseline swings 1818(fast)<->2530(slow)** -- the mechanisms remove the
+disk-contention variance source, leaving a stable GPU-prefill-bound system. Same-allocation decompositions (both
+mechanisms are large standalone wins that compose): 18328 no-skip 1818 > skip-write 1176 (-35%) > full 1094 (-40%);
+18332 no-skip 2530 > skip-prefetch 1319 (-48%) > full 1096 (-57%). Upstream one-liner: **under a storage tier you
+never read, skip BOTH its writes AND its prefetch issue.** (Contrast the RETRACTED v24 below: claims made only after
+n>=2 same-allocation confirmation with non-overlapping ranges.) [lpm becomes redundant once skip is applied.]
 
 ## The dominant enabling win: prefetch_policy = best_effort  (~35-45x < v0_tuned)
 The stock HiCache default `wait_complete` SYNCHRONOUSLY waits for slow L3 (disk) prefetches before admitting a

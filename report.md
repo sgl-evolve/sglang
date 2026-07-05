@@ -174,6 +174,8 @@ plus completing the mechanism curve (v2-wc, v3-wc).
 | v3-wc | mech | 92,956 | 280,154 | 138.2 | 0.82 | 0.26 | +read-priority+aux-threads: WORSE than v1 (contention) |
 | **be-sjf-cost** | mech | **1,519** | **9,012** | 341.9 | 0.596 | 0.00 | **CHAMPION −98.6%**; FLOP-weighted SJF (`uncached*total`): −3% over be-sjf (better prefill-cost estimate) |
 | **be-sjf** | mech | **1,565** | **8,998** | 333.6 | 0.597 | 0.00 | SJF prefill scheduling (least-remaining-work-first): **−22% mean & −49% p99 vs be-lpm** — novel code mechanism |
+| be-sjf-cost-rep | mech | 2,466 | 30,194 | 328 | – | – | REPRODUCTION of be-sjf-cost: **median 1,395 (matches!) but mean/p99 spiked** — SJF tail-variance (see caveat) |
+| be-sjf-mixedchunk | mech | — | — | — | — | — | be-sjf-cost + `--enable-mixed-chunk`: server CRASHES at startup (exit 4) — incompatible w/ hybrid-mamba+hicache |
 | be-sjf-blend | mech | 1,698 | 9,491 | – | 0.600 | 0.00 | lpm-primary + SJF-secondary tiebreak: better than lpm, WORSE than pure/cost SJF — **SJF must be PRIMARY** |
 | be-lpm | config | 2,014 | 17,704 | 323.1 | 0.61 | 0.00 | best_effort + cache-aware `lpm` scheduling: −20% & lower p99 vs plain best_effort (prior champion) |
 | be-lpm-aggr | config | 2,011 | 20,077 | 323.5 | 0.61 | 0.00 | be-lpm + `schedule-conservativeness 0.3` (aggressive admit): TIED w/ be-lpm (noise; no retractions) |
@@ -256,6 +258,22 @@ plus completing the mechanism curve (v2-wc, v3-wc).
    TTFT, −98.6% vs v0_tuned, p99 9,012 ms, fully lossless.** The novel engine change (v1 parallel L3 I/O)
    remains the best lever for the L3-bound regime. Residual TTFT is now compute-bound (recompute of ~40%
    host-miss prefixes; host hit capacity-bound at ~0.6) — the remaining gap needs more host capacity, not policy.
+
+### Reproducibility & caveats (honest)
+- **SJF's median is robust; its mean/p99 have real run-to-run variance.** A reproduction of the champion
+  (`be-sjf-cost-rep`, identical ref+args) landed at **median 1,395 ms — matching the champion** — but its
+  **mean spiked to 2,466 ms with p99 30,194** (vs be-sjf-cost 1,519 / 9,012). Two clean SJF runs (be-sjf
+  1,565/8,998; be-sjf-cost 1,519/9,012) plus this one tail-heavy run. Cause is the classic **SJF tradeoff**:
+  aggressively ordering by least-remaining-work can occasionally **starve the longest requests** → a fat
+  tail → inflated mean; likely compounded by transient contention on the *shared* held eval node (multiple
+  researchers `srun --overlap` the same node). So the honest claim is: **SJF robustly cuts median + typical
+  mean TTFT (~1,400 median, ~1,500 mean best-case, −25% vs be-lpm) but adds tail-risk** — a production use
+  should pair it with anti-starvation aging to cap the tail. The *dimension-level* ordering
+  (SJF < lpm < best_effort < baseline; gaps of 25–75%+) is robust across runs; small gaps (be-sjf-cost
+  1,519 vs be-sjf 1,565) are within noise. Even the tail-heavy 2,466 is −97.7% vs v0_tuned.
+- **Config sweeps (best_effort/lpm/eviction/etc.) are single-run each**; their large gaps are trustworthy,
+  but treat sub-5% differences as noise.
+- `--enable-mixed-chunk` **crashes the server at startup (exit 4)** with this hybrid-mamba + hicache build.
 
 Global eval condition: all my versions pass `--enforce-disable-flashinfer-allreduce-fusion`
 (the auto-enabled fusion hangs CUDA-graph capture with hicache on this cluster; lossless,

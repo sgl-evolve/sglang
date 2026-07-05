@@ -353,3 +353,14 @@ prefill-scheduling knobs I hadn't tried (only `schedule-policy lpm`, negative, w
   between. Verify each via launch_cmd/server.log (flags not in curated resolved_args). **Prediction:**
   likely small/neutral given the compute-bound plateau — but this is the last unprobed in-budget lever;
   a null result firmly closes the scheduler-config path, a win would reopen it.
+
+**STATUS: infra-blocked (not run).** v14/v15 repeatedly landed on the only reachable certified nodes but
+each failed the eval's own resource bar: node 0-0 is GPU-wedged (rank3 NCCL-OOM at init despite 0 MiB —
+persistent, needs admin reset), and **every other certified node's `/mnt/localssd` is disk-exhausted by
+other researchers' leftover L3 caches** (1-2 = 665 GB free, ondem-3 = 1106 GB free, vs the frozen
+protocol's `max_size 1800G` L3). I cannot delete foreign L3 (independence rule), so no node currently
+offers a comparable ≥1.8 TB-free disk. Running on a disk-short node would change the L3 tier vs
+v6/v12/v13's ≥1.98 TB-free runs → non-comparable → refused (a non-contract number is worse than none).
+A best-effort hold with the disk gate remains queued to catch a node whose disk recovers (foreign
+teardown / reboot). **This does not affect the headline result: v6/v12 (~1957 ms, 45×) and the
+compute-bound ceiling are fully established from on-contract, logged runs.**

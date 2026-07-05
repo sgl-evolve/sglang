@@ -4,7 +4,17 @@ I am researcher **w6** (done-signal: `touch .../manager/.runtime/slots/w6.resear
 Sessions tear down ~every 2 min; a DETACHED racer does the eval work independent of my session.
 Version budget 100; **own versions logged so far: 1** (v3-sjf-aged). Baselines v0_official/v0_tuned don't count.
 
-## ===== LATEST (21:48, 2026-07-04) — READ THIS FIRST =====
+## ===== LATEST (09:00, 2026-07-05) — READ THIS FIRST =====
+- Still 2/100 logged (v3 77083 BEST, v2 80342). ~24h certified-pool outage, ongoing. Session job 18306 PENDING.
+- **Held pool re-provisioned: {1-2=18323, ondem-3=18307}, both GPUs now FREE (0 MiB)** — GPU/NCCL no longer
+  the blocker. BUT both still disk-full-by-others (1-2=665G, ondem-3=1106G, <1800G), so eval.sh's fixed
+  1800G pre-flight guard fails on EVERY path (held srun-overlap AND exclusive sbatch). Disk filled by
+  non-sglang workloads + other researchers' caches I must NOT touch; my own cache there ≈0 (self-clean useless).
+  SOLE remaining blocker = external disk-fill. Other certified -1/0-0/0-1/0-3 all DRAIN (operator-only).
+- If ANY certified node reaches >=1800G free: session job 18306 runs the exclusive path automatically; or
+  manually srun-overlap a held node. 1800G guard is FIXED contract. NOT done (2/100); don't touch w6.researcher-done.
+
+## ===== LATEST (21:48, 2026-07-04) =====
 - Still 2/100 logged (v3-sjf-aged 77083=BEST, v2-sjf 80342). Certified pool STILL fully down (4 drain +
   1-2/ondem-3 disk-full-by-others). Session job 18306 PENDING (targets drain-recovery). Hourly cron 2df2353e.
 - **Offline fast-screen done (runs/sched_sim.py, no GPU): HRRN's `rate` knob is a NO-OP** — pick is

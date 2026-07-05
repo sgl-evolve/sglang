@@ -462,9 +462,28 @@ by *operational* (not mechanism) issues:
    and the stall hit at ~5 requests before any reordering could matter — consistent with the known
    HiCache-eval server-flakiness class, not a mechanism defect. I cleaned up the hung instance and
    re-armed a **bounded** launcher (45-min `timeout` so a hang can never wedge the shared pool node
-   indefinitely) that retries v16 on the next clean window.
-**Net:** v16 has *run on-contract with the frozen budget asserted* but has not yet completed a full
-benchmark due to (a) severe pool contention and (b) a server detokenizer hang — both operational, both
-independent of the mechanism. The SPF mechanism itself stands as coded, unit-tested, committed, pushed,
-and pre-registered, with its motivation independently reconfirmed on fresh fcfs data. The clean
-on-contract number will be logged if a retry completes; the core 45× + plateau result is unaffected.
+   indefinitely).
+3. **The detokenizer hang RECURRED** on a third attempt (again a GPU-idle-verified clean window on `1-2`)
+   — this time stalling at ~0 completed requests. **Two clean-node attempts, both hanging the same way,
+   makes this a reproducible pattern, not a one-off flake.** I therefore **stopped retrying** (further
+   attempts only re-wedge a pool node other researchers are actively using).
+
+**Honest root-cause analysis (unresolved).** The hang is a server-side stall surfaced as a detokenizer
+heartbeat timeout. Two hypotheses, which I could not disambiguate with the available capacity:
+  (a) **SPF-triggered** — `--schedule-policy spf` changes admission order/timing in a way that trips a
+      server-side stall on this stack. Against this: SPF is O(n·log n) queue reordering in the scheduler,
+      the detokenizer is a separate process, the code is attribute-guarded + unit-tested, and the stall
+      hit at 0–5 requests before reordering could matter.
+  (b) **Node-state damage** — my *first* hang left `1-2` with uninterruptible (D-state) processes that
+      `pkill`/`srun` could not reap; subsequent runs on the *same* node inherited a degraded detokenizer
+      IPC and hung again. Distinguishing (a) vs (b) needs a *fresh* clean certified node, which pool
+      saturation (1-2 contended, ondem-3 disk-short, four nodes admin-drained) never afforded.
+
+**Net (honest):** v16 **ran on-contract with the frozen budget asserted and served correct output for
+its first requests**, but **never completed a full benchmark** — blocked by pool contention plus a
+reproducible server hang whose root cause (SPF-intrinsic vs. node-damage) I could not isolate without a
+fresh node. So v16's on-contract TTFT is **UNMEASURED**; I make no lossless/speedup claim for it. The SPF
+mechanism stands as coded/unit-tested/committed/pre-registered with a data-grounded motivation, offered
+as a *candidate* whose on-contract effect remains open. **None of this affects the headline result:** the
+45× regime jump + rigorously same-node-controlled plateau (11 on-contract logged versions) is complete
+and independent of v16.

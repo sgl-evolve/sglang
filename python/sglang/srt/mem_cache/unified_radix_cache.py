@@ -378,6 +378,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self.prefetch_cost_gate_max_s = envs.SGLANG_PREFETCH_COST_GATE_MAX_S.get()
         # Skip host->disk offload when disk is write-only (best_effort). See environ.py.
         self.skip_l3_write = envs.SGLANG_SKIP_L3_WRITE.get()
+        # Skip the disk prefetch issue when disk is never read (best_effort). See environ.py.
+        self.skip_l3_prefetch = envs.SGLANG_SKIP_L3_PREFETCH.get()
 
         self.reset()
         logger.info(f"Init Unified RadixTree with components {self.tree_components}")
@@ -1888,6 +1890,10 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         prefix_keys: Optional[list[str]] = None,
     ) -> None:
         if not self.enable_storage or self.cache_controller is None:
+            return
+        # Under best_effort the disk prefetch completes ~0 tokens (l3_hit=0) but still allocates/evicts host
+        # memory for a buffer it immediately discards -> pure host-tier churn. Skip the issue: lossless here.
+        if self.skip_l3_prefetch and self.prefetch_stop_policy == "best_effort":
             return
 
         extra_key = last_host_node.key.extra_key if last_host_node.key else None

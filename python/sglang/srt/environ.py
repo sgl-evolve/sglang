@@ -387,6 +387,13 @@ class Envs:
     # recompute path. Skipping it is LOSSLESS in that regime (disk is never read back, so hit rate is
     # unchanged) and frees those resources. Self-guarded: only skips when policy==best_effort.
     SGLANG_SKIP_L3_WRITE = EnvBool(False)
+    # Skip the L3 disk PREFETCH ISSUE when disk is never read (kv-flint-2c research). Companion to
+    # SGLANG_SKIP_L3_WRITE. Under best_effort the prefetch is terminated immediately (measured l3_hit_frac=0,
+    # i.e. it completes ~0 disk tokens), yet prefetch_from_storage still allocates a host buffer and can EVICT
+    # useful host KV to make room -- churning the host tier for zero benefit and lowering the host hit rate.
+    # Skipping the issue entirely under best_effort is LOSSLESS (no disk token was going to be served) and
+    # avoids that churn. Self-guarded: only skips when policy==best_effort.
+    SGLANG_SKIP_L3_PREFETCH = EnvBool(False)
     SGLANG_KILLPG_ON_SCHEDULER_EXCEPTION = EnvBool(False)
     SGLANG_PREFILL_DELAYER_MAX_DELAY_PASSES = EnvInt(None)
     SGLANG_PREFILL_DELAYER_TOKEN_USAGE_LOW_WATERMARK = EnvFloat(None)

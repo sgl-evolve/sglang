@@ -543,3 +543,8 @@ value; testing the BINDING case empirically proves binding HURTS (tail), not hel
 Any cap below the client 128-concurrency forces a server-side queue -> tail grows monotonically as the cap tightens.
 Non-binding default is OPTIMAL. Empirically confirms max_running_requests can't help (only hurt) here. (Worthwhile
 empirical test: proved the trade-off vs just reasoning it.) Best stays ~889 (non-binding). v74 = control baseline.
+
+### max_running_requests batch COMPLETE (empirical, best base): 96->6043, 112->3293, default(non-binding)->956.9.
+Binding cap < client-128 monotonically worse (server-side queue tail). Non-binding default OPTIMAL. Honest negative
+for the binding direction; best stays ~889 (non-binding). Now testing the last untested knob: schedule_conservativeness
+(prefill-admission aggressiveness) -- empirical, not reasoned.

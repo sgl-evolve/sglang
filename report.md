@@ -293,3 +293,28 @@ can't be used. With `no_buffer` (needs page_size=1, frozen at 64) and the ratio 
 ruled out, the **Mamba-capacity lever is definitively exhausted**; v4 (56×) is the near-optimal lossless
 result. The v6-page32 run additionally shows the L3 disk tier is near-irrelevant here (1.14% of hits),
 so the remaining disk-tier config levers are expected ~neutral — v4 stands as the near-optimal point.
+
+## 2026-07-06 — REOPENED: active-path Mamba eviction (dormant-path trap corrected)
+After the multi-day certified-pool outage recovered, I re-examined the eviction axis and found the
+prior "levers exhausted" conclusion had a blind spot. My unlogged v8 (host-freq) and v9 (mamba-freq)
+mechanisms were written in `hi_mamba_radix_cache.py::HiMambaRadixCache` — but that class is **DORMANT**
+for this model. `registry.py` routes `enable_hierarchical_cache AND is_hybrid_ssm` to
+`_create_unified_radix_cache` → **`UnifiedRadixCache`** is the active cache. Proof: my activation log
+line never printed in server.log. So v8/v9 never ran; they must not be logged as mechanisms.
+
+**v9 (dormant → stock re-baseline):** mean TTFT **1696 ms**, median 1028, p99 12910, hit_rate 0.55
+(device 47.6% / host 51.0% / storage 1.3%), req_thpt 3.32. This reproduces v4 (1558 ms) within the
+~24% run-to-run noise → confirms the harness is stable post-outage and the ~1.6 s bar holds.
+
+**Why eviction is NOT exhausted:** the binding tier is Mamba capacity, and `MambaComponent.drive_eviction`
+(active path) is **strict LRU** — it does NOT consult `--radix-eviction-policy` (that knob is a no-op for
+the Mamba tier). Nodes carry a live `hit_count` (incremented on match), so frequency-aware victim choice
+is possible and untested here.
+
+**v10-umamba-clock (NEW mechanism, committed 64a07eddc):** CLOCK / second-chance Mamba eviction in the
+active `MambaComponent.drive_eviction`. Frequently-reused Mamba states (hit_count ≥ THR) get a bounded
+number of skips before eviction; a colder node is evicted instead. Env-gated `KVLYNX_MAMBA_CLOCK_MAXSKIP`
+(0 = stock LRU, lossless default), `KVLYNX_MAMBA_CLOCK_THR` (default 2). Lossless (victim order only;
+skipped node stays cached, evicted seq recomputes identically); bounded skips guarantee termination.
+Offline-verified 10/10 (verify_clock_evict.py). Running at MAXSKIP=8 vs the 1696 ms stock bar; a real
+win requires beating it beyond the ~24% noise (i.e. < ~1290 ms) or a clear hit_rate lift.

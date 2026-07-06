@@ -25,6 +25,28 @@ All my runs use `--enforce-disable-flashinfer-allreduce-fusion` (this venv's fus
 it's a comm opt that can only *slow* things, so my wins are if anything *conservative* vs a fusion-on
 baseline). Every version completed 7037/7037 requests clean.
 
+**After the two wins, the workload is compute+reuse bound — a comprehensive, honest negative sweep (details in
+the per-version sections) found no further lossless TTFT lever.** All experiments run on the VERIFIED-ACTIVE
+cache class `UnifiedRadixCache` (the hybrid-SSM + HiCache model routes here; `HiMambaRadixCache` is DORMANT — an
+early eviction mechanism there never executed; caught via a startup activation-log *before* logging, then
+re-implemented on the live path). Each lever characterized as neutral/inapplicable, mechanism understood:
+- **Eviction order** — frequency/CLOCK second-chance on the binding Mamba tier (MAXSKIP 8 & 32 / THR 1 & 2):
+  hit_rate DEAD FLAT ~0.55 → stock LRU already near-optimal (v10, v12; `mechanism`).
+- **Cache-aware scheduling** — `--schedule-policy lpm`: mean TTFT flat; device-hit +13% but no TTFT gain
+  (device↔host hit-latency gap tiny vs prefill) (v11; `config`).
+- **Prefetch policy** — `best_effort`: flat; prefetch-wait is not a bubble (storage tier ~irrelevant) (v13).
+- **Compute overlap** — `--enable-two-batch-overlap`: architecturally incompatible (EP-only) (v14).
+- **Prefill/decode balance** — `--enable-mixed-chunk`: TTFT 3.1× WORSE (prefill↔decode tradeoff: throughput
+  3.52 & hit_rate 0.582 rise, first-token delayed) → **stock is already TTFT-optimal on this axis** (v15).
+- **Ruled out via metrics (no eval):** admission (write-through already hit-gated), disk L3 (written but
+  short-reuse → rarely read), preemption (zero events; concurrency-capped at 128), algorithmic (cache ops
+  sub-ms; GPU-prefill-bound), device pool (36% median use = burst headroom; `hicache_ratio` frozen).
+**Root cause of the residual ~1.7 s / ~53–56× wall:** hit_rate ~0.55 is the workload's *intrinsic reuse rate*
+(resident cache ≈ 9.6 M tokens vs a ~100 M-token stream; ~45% of requests are first-occurrence cold prefixes),
+and mean TTFT is the genuine long-context prefill compute of those cold misses under a full batch — no lossless
+policy can manufacture absent reuse or cut prefill FLOPs. **Recommendation: upstream the two wins (especially the
+scandir O(N)→O(1) fix — a pure correctness/scaling bug); the policy knobs are not levers for this workload.**
+
 ## Baselines (provided; logged, not re-run)
 | version | mean TTFT | median TTFT | p90 | p99 | hit_rate | L3 hit frac | host_util | out tok/s |
 |---|---|---|---|---|---|---|---|---|

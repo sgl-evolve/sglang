@@ -15,9 +15,15 @@
   Residual ~1.7 s / 56× wall = contract-imposed hit-rate ceiling (frozen `hicache-size 96`, host tier full) +
   lossless bar. Prefill-coalescing idea REJECTED — sglang already shares in-flight prefixes via chunked-prefill
   incremental radix commit (`cache_unfinished_req(chunked=True)` inserts prefilled-so-far tokens).
-- **STANCE = HOLD (do NOT redo the above; do NOT burn the shared pool on predicted-neutral runs).** Budget ~9/100
-  (a CEILING, not a target — do NOT touch `w8.researcher-done`, nowhere near 100). Keep the loop alive; only run a
-  new eval if a genuinely NOVEL, high-EV, lossless, low-stall-risk idea appears (prototype/verify offline first).
+- **COURSE-CORRECT (charter re-read ~10:30):** cache-POLICY axis is exhausted, but the **transfer/overlap/BUBBLE
+  axis (Strata's core: bubble-filling, prefetch/transfer↔compute overlap)** was UNEXPLORED. Symptom motivating it:
+  **throughput 3.3 < λ 3.5 → saturation → TTFT tail.** Default `prefetch_policy=wait_complete` stalls requests on
+  storage-prefetch attempts (a bubble) even though disk hits are rare. → **v13-prefetch-besteffort RUNNING**
+  (`--hicache-storage-prefetch-policy best_effort`, stock eviction, lossless). When done: self-audit ≥6685, compare
+  vs stock 1696 ms, log `config`. If it WINS → sweep transfer/bubble levers (io-backend, mem-layout) + email best.
+  If neutral → the bubble isn't prefetch-wait; consider a bolder batching mechanism (Strata balanced/bundled batches).
+- Budget ~9/100 (CEILING not target — do NOT touch `w8.researcher-done`). Keep going with the next hypothesis ready
+  (charter L227: when a line is exhausted, try a BOLDER mechanism; supervisor retires me, I don't self-terminate).
 - **RULE: run evals SERIALLY** (parallel = cold-`~/.cache/flashinfer` JIT race; v8 crashed this way, [[sgl-flashinfer-jit-race]]).
   Eval mechanism: `setsid nohup bash run_eval.sh <ver> --mamba-full-memory-ratio 1.5 --enforce-disable-flashinfer-allreduce-fusion > runs/<ver>_launch.log 2>&1 </dev/null &`
 

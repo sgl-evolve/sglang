@@ -411,3 +411,16 @@ before eviction); items spilled to disk are not reused again. The only tunable r
 256) is reasoned-negative (prefetching sub-threshold prefixes costs a wait-load > their cheap recompute), and
 `prefetch_policy` is frozen. So the disk's large capacity cannot raise hit_rate for THIS workload — there is no
 late reuse to capture. This independently reconfirms the reuse-bound ceiling across ALL tiers (device, host, disk).
+
+## Transfer/overlap (bubble) axis — reopened after charter re-read
+The cache-policy conclusion holds, but the charter's flagship direction (Strata: fewer pipeline bubbles,
+transfer↔compute overlap) was untested. Motivating symptom: throughput 3.32 < λ 3.5 (mild saturation).
+
+**v13-prefetch-besteffort (`--hicache-storage-prefetch-policy best_effort`) — NEUTRAL:** mean TTFT **1685 ms**
+(stock 1696), median 976 (1028), p99 11859 (12910), throughput 3.38 (3.32), hit_rate 0.530 (storage-hit frac
+drops 0.017→0.004 — best_effort doesn't block on prefetch, so it forgoes the few storage hits). Net wash:
+the prefetch-WAIT was not a meaningful bubble (storage tier is ~irrelevant, so waiting on it costs little and
+skipping it saves little). Lossless (prefetch policy). Logged W&B `config`. My TTFT is now stable within ~5%
+across eviction/scheduling/prefetch policies → strongly policy-insensitive (compute+reuse bound).
+Next (bolder, per charter L227): two-batch-overlap (`--enable-two-batch-overlap`) — the direct compute-overlap
+bubble-filling lever — v14.

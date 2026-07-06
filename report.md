@@ -498,3 +498,15 @@ TTFT headline.** Logged W&B `config` (kept negative). Lossless (batching only). 
    this axis offers no lossless TTFT win. The throughput/hit_rate headroom mixed_chunk unlocks is inseparable from
    its TTFT cost (fundamental tradeoff), so it can't be captured for the TTFT headline.
 This closes the prefill/decode scheduling axis too. v4 (~53–56×) remains the lossless TTFT optimum.
+
+**v16-wt-selective (`--hicache-write-policy write_through_selective`) — NEGATIVE, closes the admission axis.**
+Prior-art study (HiCache blog) flagged write-through-selective ("back up only hot spots via hit-count") as the
+one untested admission lever; I tested it rather than predict it. Result: mean TTFT **2042 ms** (stock 1696,
++20%), **hit_rate 0.378 (stock 0.55, −31%)**, throughput 2.96 (3.32), device-hit-frac 0.69 (0.48). Raising the
+host-backup threshold 1→2 (skip once-hit prefixes) HURTS badly: the workload has substantial "hit-once, reused
+again later" traffic, and dropping those from host collapses hit_rate. Insight: **stock write_through
+(threshold=1) is the admission OPTIMUM** — it caches prefixes that have shown reuse (hit ≥1) but not one-shots;
+being more selective (v16) misses second-uses (worse), and being less selective (eager/threshold=0) would
+pollute the full host tier with one-shots (worse). Logged W&B `config`. Lossless. This also confirms hit_rate IS
+sensitive to what's on host (it can drop to 0.38), so the flat-at-0.55 result under eviction reordering is
+genuinely the reuse ceiling given aggressive-but-not-polluting admission — not an artifact of an insensitive metric.

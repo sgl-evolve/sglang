@@ -576,4 +576,24 @@ comparable) eval and is blocklisted. Hardened `smart-eval.sh` this session: **GP
 (win the lock the instant it releases instead of losing sub-poll races), **rc=3 blocklist-retry**. The only
 other certified node (ondem-3) is flock-managed (genuinely exclusive when free); smart-eval waits for it and
 will run v19 there. Mixed-chunk itself is correctness-verified and, on an exclusive node, fits (v18 margin +
-mixed-chunk's small overhead). Contention/capacity — not the mechanism — is the blocker.
+mixed-chunk's small overhead) -- CONFIRMED by the throughput scan below. Contention/capacity — not the mechanism — is the blocker.
+
+### Throughput scan (job 18344, node 1-1, non-eval fast-scan) — VIABILITY + at-scale correctness CONFIRMED
+While the certified pool stayed monopolized by quartz-7m3 (parallel campaign on BOTH nodes: v7 on 1-2 flock-less,
+v9-hrrn-ca on ondem-3 flock-held), I ran a mixed-chunk throughput scan on the idle exclusive node 1-1 (full GPU
+config: ctx 262144, mem-frac 0.85, hicache 96, page 64, srpf+lfu; disk L3 omitted so it runs on the disk-full node
+-- GPU-memory identical to the eval). bench_serving (loogle mix, lambda=3.5, max-conc 128, 250 convs -> 1281 turn-reqs),
+mixed OFF then ON:
+- **Viability (key result):** mixed-ON allocated max_mamba_cache_size=1350, ssm 23.75GB, avail_gpu 8.23GB --
+  BYTE-IDENTICAL to mixed-OFF and to v18. => mixed-chunk has ZERO extra static GPU cost; the v19 eval OOM
+  (total_rest_memory=-0.19GB) was 100% quartz's concurrent GPU usage (contention), not the mechanism. v19 WILL
+  load+run on an exclusive certified node.
+- **At-scale correctness:** mixed-ON = 1281/1281 successful, 3680 MIXED batches fired, zero failures (6x the
+  correctness harness's mix count). The v11 failure mode is definitively eliminated at realistic load.
+- **Throughput/TTFT:** OFF 3.48 req/s, 377.9 tok/s, mean TTFT 669.8ms; ON 3.48 req/s, 378.2 tok/s, 673.6ms --
+  IDENTICAL. BUT this config is NOT overloaded (throughput == lambda, spare capacity), so it cannot reveal the
+  max-throughput delta that drives a win in the eval's queue-dominated (overloaded, throughput<lambda) regime.
+- **Takeaway:** v19 is de-risked (loads + lossless at scale). Whether it BEATS 1798ms depends on whether mixed-chunk
+  raises throughput in the OVERLOADED regime -- TBD by the eval (or a saturation proxy). Caveat: if the eval is
+  SSD-I/O-bound, a compute optimization like mixed-chunk may be headline-neutral (like LFU); if compute/queue-bound
+  (plausible since adaptive-prefetch abandons the SSD, l3_hit~0), it should help.

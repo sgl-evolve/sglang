@@ -450,3 +450,14 @@ slightly outpacing the 128-concurrent completion rate, held back client-side by 
 server bubble). The p99 tail is therefore GENUINE long-context prefill compute under a full batch, which is
 irreducible without losing tokens or capacity. No preemption/admission lever exists to exploit. This is the final
 angle; the KV-cache subsystem is confirmed at its lossless optimum for this fixed protocol (v4, ~53–56×).
+
+**GPU-saturation profiling (server.log gen-throughput + token-usage, v9) — confirms compute-bound.**
+gen throughput median 299 tok/s (max 6315, p90 1039), with 15.4% of steps near-zero-decode. Those are NOT idle
+bubbles — they are prefill-heavy steps (GPU busy on a prefill chunk, little decode output); the GPU is doing
+useful work (prefill or decode) essentially every step. The high peak (6315 tok/s) shows decode runs fast when
+scheduled; the low-decode steps are the inherent prefill/decode alternation of non-mixed chunked prefill (the
+only fix, `enable_mixed_chunk`, is off-by-default and risks the radix-commit path → not a safe lever here).
+Token-usage median 0.36 / p90 0.62 / max 0.90 of the device KV pool: burst headroom that IS needed for
+long-context peaks (0.90), and the device-cache cap (`hicache_ratio`) is frozen — so the underused-average device
+pool is not an exploitable lever. Together these directly support the compute+reuse-bound conclusion: no idle GPU
+to reclaim, no free capacity to safely exploit. v4 (~53–56×) is the lossless optimum.

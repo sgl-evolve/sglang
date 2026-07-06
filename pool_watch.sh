@@ -42,20 +42,24 @@ fresh_check(){  # $1=node $2=holdjid -> "gpuMiB procN" ; empty/timeout => treat 
     'g=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | sort -rn | head -1); p=$(pgrep -f sglang.launch_server 2>/dev/null | wc -l); echo ${g:-999999} ${p:-9}' 2>/dev/null
 }
 
-run_seq(){  # $1=node $2=holdjid — run ONLY v16 (the critical mechanism) into this acquired hold.
-  # Rationale: the pool is chaotically shared with a peer whose custom session doesn't take the flock,
-  # so (a) hold the contended node ~40min not ~2h (fairer), and (b) get the ONE key result cleanly.
-  local node="$1" jid="$2"
-  echo "[poolw] wiping my L3 /mnt/localssd/$NAME on $node"
-  srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "rm -rf /mnt/localssd/$NAME/* 2>/dev/null; true" 2>/dev/null
-  echo "[poolw] === running v16-be-spf on $node (pool hold $jid) ==="
-  # BOUNDED (timeout 2700s=45min): a real run is ~35min; if the server hangs (e.g. detokenizer stall
-  # seen once), the timeout kills it rather than wedging the shared node indefinitely. Best-effort
-  # server cleanup after, so a hung instance doesn't linger on the pool node.
-  timeout 2700 srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" v16-be-spf \
-    --enforce-disable-flashinfer-allreduce-fusion --hicache-storage-prefetch-policy best_effort --schedule-policy spf
-  echo "[poolw] v16-be-spf rc=$?"
-  srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "pkill -9 -f 'sglang.launch_server.*$NAME' 2>/dev/null; rm -rf /mnt/localssd/$NAME/* 2>/dev/null; true" 2>/dev/null
+run_seq(){  # $1=node $2=holdjid — run the pre-registered CONFIG probes v14 then v15 into this hold.
+  # v16 (--schedule-policy spf) is a CONFIRMED NEGATIVE (reliably hangs the server, 3 clean-node reps) —
+  # dropped, never retried. v14/v15 do NOT change schedule-policy, so they won't hit the SPF hang; they
+  # close the pre-registered scheduler-config path with real on-contract data. Each bounded by timeout so
+  # a general server flake can't wedge the shared node; best-effort cleanup after each.
+  local node="$1" jid="$2" ver args
+  for spec in \
+    "v14-be-cons0.5|--hicache-storage-prefetch-policy best_effort --schedule-conservativeness 0.5" \
+    "v15-be-mixchunk|--hicache-storage-prefetch-policy best_effort --enable-mixed-chunk"; do
+    ver="${spec%%|*}"; args="${spec#*|}"
+    [ -f "runs/$ver/summary.json" ] && { echo "[poolw] $ver already done — skip"; continue; }
+    echo "[poolw] wiping my L3 on $node; === running $ver ==="
+    srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "rm -rf /mnt/localssd/$NAME/* 2>/dev/null; true" 2>/dev/null
+    timeout 2700 srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" "$ver" \
+      --enforce-disable-flashinfer-allreduce-fusion $args
+    echo "[poolw] $ver rc=$?"
+    srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "pkill -9 -f 'sglang.launch_server.*$NAME' 2>/dev/null; rm -rf /mnt/localssd/$NAME/* 2>/dev/null; true" 2>/dev/null
+  done
 }
 
 echo "[poolw] starting; cycle=${CYCLE}s; gate=1800G disk / 1300G RAM; disk-short cooldown=${COOLDOWN:-300}s"
@@ -99,11 +103,11 @@ while :; do
       fi
       echo "[poolw] $node: disk=${diskg:-?}G ram=${ramg:-?}G gpu_max=${gmem:-?}MiB procs=${gprocs:-?} idle_streak=${idle_count[$node]:-0}/$IDLE_STREAK (hold $jid)"
       if [ "${ramg:-0}" -ge 1300 ] && [ "${idle_count[$node]:-0}" -ge "$IDLE_STREAK" ]; then
-        echo "[poolw] acquired $node (disk OK + sustained GPU-idle = peer done) — running v16"
+        echo "[poolw] acquired $node (disk OK + sustained GPU-idle = peer done) — running config probes"
         run_seq "$node" "$jid"
         idle_count[$node]=0
         flock -u 200; exec 200>&-
-        echo "[poolw] DONE on $node"; ran=1; break
+        echo "[poolw] released $node after probe attempt"
       else
         flock -u 200; exec 200>&-
         echo "[poolw] release $node (ram=${ramg:-?}G gpu=${gmem:-?}MiB idle_streak=${idle_count[$node]:-0}) — retry"
@@ -112,6 +116,10 @@ while :; do
       exec 200>&-   # another holder — try next node / next cycle
     fi
   done
-  [ "$ran" = 1 ] && { echo "[poolw] sequence complete — exiting watcher"; break; }
+  # Exit only when BOTH config probes have real summaries; otherwise keep polling to retry the missing
+  # one on a later clean window (v14/v15 don't hang like spf, so retrying is safe).
+  if [ -f runs/v14-be-cons0.5/summary.json ] && [ -f runs/v15-be-mixchunk/summary.json ]; then
+    echo "[poolw] both config probes complete — exiting watcher"; break
+  fi
   sleep "${CYCLE:-10}"   # poll period for the non-blocking flock -n sweep of both pool nodes
 done

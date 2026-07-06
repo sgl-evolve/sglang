@@ -468,26 +468,29 @@ by *operational* (not mechanism) issues:
    makes this a reproducible pattern, not a one-off flake.** I therefore **stopped retrying** (further
    attempts only re-wedge a pool node other researchers are actively using).
 
-4. **RESOLVED via a sustained-idle gate — the hang is SPF-intrinsic (definitive NEGATIVE).** To rule out
-   the node-damage hypothesis, I added a *sustained*-GPU-idle gate (run only after GPUs read idle for 4
-   consecutive poll cycles ≈ a minute, so the node is provably *not* mid-transition and the previous
-   occupant is genuinely gone). This gate fired on a **fourth** attempt on a **verified-fresh** `1-2`
-   (`idle_streak=4/4`, GPUs clean) — and v16 **hung the detokenizer AGAIN at ~1 request.** Three
-   clean-node reproductions on a node where a peer's non-SPF evals run to completion fine, with
-   `--schedule-policy spf` the *only* delta from the working v6, make the conclusion definitive:
-   **`--schedule-policy spf` (this implementation) reliably stalls the server on this workload.**
+4. v16 reproducibly stalled at ~1 request across 3 clean-window (sustained-GPU-idle-gated) attempts, which
+   I initially read as "SPF-intrinsic." **CORRECTION (integrity):** a subsequent *non-SPF* config probe on
+   the same pool (v14, `--schedule-conservativeness 0.5`, no schedule-policy change) **also degraded** —
+   it completed only **1275 / 7037** requests (server stalled partway) before its summary was written,
+   vs. **7037/7037** for the earlier clean full runs v6 and v13. So the current pool node exhibits a
+   **general server-degradation** for my 122B runs *regardless of policy*, and I therefore **cannot cleanly
+   attribute v16's stall to SPF** — the two are confounded by an environmental instability (most likely
+   the shared-pool `srun --overlap` path and/or this node's state after heavy contention; the earlier
+   v6/v13 full runs predate that chaos).
 
-**Root cause (mechanism, not node).** The stall surfaces as a detokenizer heartbeat timeout at the very
-first requests. My SPF sort itself is a clean O(n·log n) reorder (same `calc_priority` path as the
-working `fcfs`), so the trigger is an *emergent interaction*: admitting many short prompts first (or the
-resulting batch composition / request timing) trips a server-side stall in this sglang build. I did not
-isolate the exact internal deadlock, but the attribution to `spf` is unambiguous (only-delta + 3 reps).
+**What can and cannot be said (honest):**
+  - v16 (`spf`) stalls **immediately** (~1 req) and reproducibly; v14 (config) stalls **later** (~1275
+    req). The severity difference is real and *suggestive* that SPF exacerbates the problem — but it is
+    **not** a clean isolation, because the non-SPF v14 also failed to complete.
+  - **v16 on-contract effect: UNMEASURED** (no full benchmark completed; no number logged; no positive
+    *or* firm-negative claim about SPF's TTFT effect — the earlier "definitive negative / prediction
+    refuted" wording is retracted as an over-claim).
+  - **v14/v15 on-contract: also compromised** by the same current-pool degradation (v14 partial 1275/7037;
+    v15 attempted) — I do **not** log v14's partial number (it covers only 18% of the workload and is not
+    comparable to the full-run baselines).
 
-**Net — v16 is a documented NEGATIVE result (prediction refuted).** The pre-registered prediction (SPF
-lowers mean TTFT toward the median) is **refuted in practice**: as-implemented, `--schedule-policy spf`
-does not improve TTFT — it hangs the server before the benchmark can complete, so it is **not lossless
-and not viable** here. v16 therefore contributes an honest negative (a scheduler-policy dead-end), not a
-speedup; I log **no** on-contract number for it and make no positive claim. Retries are stopped (the hang
-is reproducible; further attempts only wedge the shared pool). **None of this affects the headline
-result:** the 45× regime jump + rigorously same-node-controlled plateau (11 on-contract logged versions,
-including the working `fcfs`-default v6) is complete and fully independent of v16.
+**Net:** every on-contract run I attempted *after* the pool's disk-recovery/contention chaos (v16, v14,
+v15) hit a server-degradation that prevented a clean full benchmark, so none yields a comparable number.
+This is an operational/environmental blocker, not a mechanism result. **The headline is unaffected:** the
+45× regime jump + rigorously same-node-controlled plateau rests on the earlier clean full runs (v1–v13,
+each 7037/7037 completed, on-contract, logged) and is fully independent of v16/v14/v15.

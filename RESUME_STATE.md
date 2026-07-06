@@ -1,5 +1,32 @@
 # kv-lynx-4d2 — RESUME STATE (read first on resume)
 
+## ‼️‼️ CURRENT (2026-07-06 ~07:05) — MAJOR PIVOT: found dormant-path trap, moved mechanism to ACTIVE class
+- **CRITICAL FINDING: the active radix cache is `UnifiedRadixCache`, NOT `HiMambaRadixCache`.**
+  registry.py: `if enable_hierarchical_cache and is_hybrid_ssm: return _create_unified_radix_cache(...)`.
+  So my v8 (host-freq) and v9 (mamba-freq) mechanisms in `hi_mamba_radix_cache.py` **NEVER RAN** (that class
+  is dormant for this hybrid-SSM+HiCache model). Proof: my activation log line never printed in server.log.
+  → **DO NOT log v8/v9 as mechanisms** (they are stock). My earlier LOGGED versions are fine: v2 scandir is in
+  the live file backend, v3/v4 `--mamba-full-memory-ratio` is a server-arg — both active.
+- **v9-mamba-freq is RUNNING (node 1-2) but = STOCK** (mechanism dormant). Let it finish as an honest post-outage
+  **re-baseline / v4-reproduction** (same config: mamba-ratio 1.5). Record the number in report.md; do NOT claim
+  it as a mechanism. ~20% done at 07:05.
+- **NEW REAL MECHANISM committed `64a07eddc`** (branch pushed): CLOCK second-chance Mamba eviction in the ACTIVE
+  path — `unified_cache_components/mamba_component.py::drive_eviction` (binding Mamba tier, stock=strict LRU).
+  Toggles: `KVLYNX_MAMBA_CLOCK_MAXSKIP` (0=stock LRU, lossless default), `KVLYNX_MAMBA_CLOCK_THR` (default 2).
+  Activation log added to `UnifiedRadixCache.__init__`: grep `'kv-lynx-4d2 UnifiedRadixCache ACTIVE'` in server.log
+  → must show MAXSKIP=8. Offline-verified (verify_clock_evict.py, 10/10). Lossless (victim-order only).
+- **NEXT ACTION (after v9 finishes / a pool node frees), run SERIALLY:**
+  ```
+  cd /home/junyanch_google_com/autoresearch/workspace/sgl/researchers/kv-lynx-4d2
+  export KVLYNX_MAMBA_CLOCK_MAXSKIP=8
+  setsid nohup bash run_eval.sh v10-umamba-clock --mamba-full-memory-ratio 1.5 \
+    --enforce-disable-flashinfer-allreduce-fusion > runs/v10_launch.log 2>&1 </dev/null &
+  ```
+  Then VERIFY activation line shows MAXSKIP=8; self-audit ≥6685/7037; log to W&B as `mechanism` commit 64a07eddc.
+- **RULE: run evals SERIALLY** — parallel evals race on the cold shared `~/.cache/flashinfer` JIT cache
+  (v8 crashed this way; see memory [[sgl-flashinfer-jit-race]]).
+- After that: **v11 = `--schedule-policy lpm`** (cache-aware scheduling, active-path config, different axis).
+
 Last updated: 2026-07-04 ~19:35. Researcher: **kv-lynx-4d2**, branch `evolve/kv-lynx-4d2`, W&B run `kv-lynx-4d2` (project `sgl-evolve`).
 
 ## Where things stand

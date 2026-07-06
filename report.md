@@ -557,3 +557,8 @@ empirically confirmed (sc0.5 = 877 ~= best ~889). v76 sc2.0, v77 control complet
 (empirically confirmed no-op: retract-focused knob, ~0 retracts at throughput>=lambda). Last untested knob CLOSED.
 Now EVERY server-args KV/cache/scheduling knob has been either eval-tested or empirically/cheaply closed.
 FINAL: best_effort + skip_L3_write + skip_L3_prefetch + write_back ~889 ms (~122x < v0_tuned). v77 = control.
+
+### schedule_conservativeness batch COMPLETE (best base): {0.5: 876.9, 2.0: 888.9, ctrl: 917.1} all within ~5% noise
+-> NEUTRAL. Last untested knob empirically closed. EVERY server-args KV/cache/scheduling knob is now EVAL-TESTED
+(win/neutral/negative) or cheaply/empirically closed (no-op/dormant/lossy/off-limits/frozen). 58 versions.
+DEFINITIVE FINAL BEST: best_effort + skip_L3_write + skip_L3_prefetch + write_back = ~889 ms (~122x < v0_tuned).

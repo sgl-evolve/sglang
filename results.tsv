@@ -55,3 +55,4 @@
 07-06 09:08	v74-best-mrr-ctrl	config	ttft_mean=956.9ms	ab3011457	logged
 07-06 09:49	v75-best-sc0.5	config	ttft_mean=876.9ms	e9193dc90	logged
 07-06 10:30	v76-best-sc2.0	config	ttft_mean=888.9ms	c5548ddf5	logged
+07-06 11:10	v77-best-sc-ctrl	config	ttft_mean=917.1ms	98464f16e	logged

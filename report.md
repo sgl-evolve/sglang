@@ -306,6 +306,13 @@ Revisited the charter's bolder direction (raise throughput → drain the overloa
   only remaining loads are host→GPU, which are fast and already stream-overlapped (separate `load_stream` + layer
   events). So there are essentially no slow-load stalls left to balance — the mechanism that adaptive uses to win
   (skip the SSD wait) also removes the very stalls balanced-batching would target. Deep code for ~no gain here.
+- **Two-batch-overlap (TBO, `--enable-two-batch-overlap`) — checked, INACCESSIBLE for this config.** TBO overlaps two
+  micro-batches to hide MoE all-to-all (expert-parallel) communication behind compute. server_args hard-requires
+  `moe_a2a_backend != 'none'` (raises `ValueError` otherwise). The frozen setup is pure **TP=8, ep_size=1,
+  moe_a2a_backend='none'** — there is no all-to-all comm to overlap (TP uses all-reduce, already handled). Enabling TBO
+  would require switching the MoE to expert parallelism, a major departure from the contract's single-node TP=8 setup
+  that adds communication pure-TP never incurs, with uncertain net throughput benefit. Not an accessible, in-contract,
+  lossless lever. (Also checked `enable_single_batch_overlap` — same EP-oriented family.)
 
 ## FINAL conclusion — lossless accessible floor is ~1798 ms (48.7× v0_official)
 Both directions are now exhausted for lossless, on-contract, accessible changes:

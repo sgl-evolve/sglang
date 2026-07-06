@@ -339,3 +339,25 @@ this does NOT lower mean TTFT because the device↔host hit-latency gap is small
 that dominates the 45% of MISSING requests. `schedule_policy='lpm'` confirmed in server_args. Logged
 W&B as `config`. Conclusion: the scheduling axis is not a mean-TTFT lever here either — mean TTFT is
 bounded by prefill throughput at the hit-rate ceiling, not by request ordering.
+
+**v12-clock-thr1 RESULT (THR=1, MAXSKIP=32 — aggressive) — NEUTRAL, eviction axis CLOSED:**
+mean TTFT **1753 ms** (stock 1696), hit_rate **0.5494** (stock 0.550) — DEAD FLAT even under aggressive
+protection (any once-hit Mamba node protected, up to 32 skips/evict). Activation confirmed (MAXSKIP=32
+THR=1). Logged W&B as `mechanism`. This is the definitive eviction-axis closer: v10 (THR=2/skip8) and
+v12 (THR=1/skip32) both leave hit_rate pinned at ~0.55 → **eviction ORDER is not a lever for this
+workload**; stock LRU is already near-optimal.
+
+## CONCLUSION (2026-07-06): lossless optimum reached across all accessible axes
+Four axes explored on the CORRECT active `UnifiedRadixCache` path:
+1. **Storage/query-path** → WON: scandir O(N)→O(1) hit-query fix (v2, novel mechanism, 36×).
+2. **GPU-mem capacity rebalance** → WON + MAXED: `--mamba-full-memory-ratio 1.5` (v3/v4, 56×; 1.6 worse).
+3. **Eviction order** → NEUTRAL (v10, v12): CLOCK/frequency second-chance on the binding Mamba tier leaves
+   hit_rate flat at 0.55 at every setting. Closed.
+4. **Scheduling** → NEUTRAL (v11 lpm): reorders for prefix reuse (device-hit +13%) but mean TTFT unchanged.
+The residual bottleneck is a **contract-imposed hit-rate ceiling (~0.55)** set by the frozen host cache size
+(`hicache-size 96` = 768 GB, full) plus the lossless bar (int8/2× Mamba is lossy + HiCache-incompatible).
+Mean TTFT (~1.7 s) is bounded by prefill compute for the ~45% of MISSING requests at that ceiling — a
+kernel/capacity wall, not a cache-policy wall. **v4 (56×) stands as the near-optimal lossless result.**
+The only remaining lossless idea that could beat the capacity ceiling is **cross-request in-flight prefill
+coalescing** (dedup prefill of a shared UNcached prefix computed concurrently by multiple requests) — a
+larger/riskier scheduler-path build; investigating feasibility before committing an eval slot.

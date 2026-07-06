@@ -513,3 +513,16 @@ needs more host CAPACITY (frozen by contract), not a smarter eviction policy -- 
 (e.g. recompute-cost-aware) would NOT help in this full-bypass+write_back regime (it could only help a queue/capacity-
 slack regime). My independence-driven avoidance of custom eviction cost nothing here. DEFINITIVE FINAL: best_effort +
 skip_L3_write + skip_L3_prefetch + write_back = ~889 ms (~122x < v0_tuned); every accessible independent lever tested.
+
+### DUE-DILIGENCE CLOSURE (scanned all server_args KV/cache/scheduling knobs; "never stop" diligence):
+- max_prefill_tokens: real bound = max(value, context_length=262144) -> can't lower -> NO-OP for tail.
+- enable_int8_mamba_checkpoint (~2x cached-prefix capacity): int8 QUANTIZATION of cached mamba states = LOSSY; eval
+  has no quality/lossless gate to verify -> violates "lossless above all" -> OFF-LIMITS (won't claim a lossy win).
+  (This was the only capacity-increasing lever, and it's lossy -> the capacity-bound floor stays inaccessible losslessly.)
+- mamba_radix_cache_strategy: only affects the DORMANT mamba_radix_cache.py path, NOT my active UnifiedRadixCache -> no effect.
+- linear_attn_backend / schedule_conservativeness / max_running_requests: compute-kernel / scheduling / batch-capacity
+  knobs -> out-of-scope or borderline-scheduling trade-offs, not lossless KV-cache levers.
+CONCLUSION: every accessible independent, lossless KV-cache lever is exhausted (tested win/neutral/negative, or no-op/
+lossy/dormant/off-limits). FINAL BEST = best_effort + skip_L3_write + skip_L3_prefetch + write_back ~889 ms (~122x <
+v0_tuned), 4 composing wins (2 novel engine mechanisms + 2 config). Recompute floor is host-capacity-bound (frozen);
+the only capacity lever (int8-mamba) is lossy. Program complete & thorough.

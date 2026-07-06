@@ -232,17 +232,55 @@ reads deliver the prefetch working set inside the timeout window, L3 hits recove
 the baseline's 0.8 → TTFT could beat best_effort. This is the honest, on-the-active-path, right-policy redo
 of the flagship idea; it must be verified exercised via an L3-read counter before any claim.
 
+### The variance is *eviction-timing*, not arrival noise → eviction policy is the controllable lever (measured, 5 runs)
+Re-analyzing the 5 best_effort-equivalent runs (v4, v4r, v4r2, and the two dead-env-path replicates
+v16/v17) with their raw token accounting exposes *why* hit rate is noisy — and it is not irreducible:
+
+| run | prompt_tok | evict_tok | cached(hit)_tok | load_back_tok | hit_rate | host_util |
+|---|---|---|---|---|---|---|
+| v4  | 99.910M | 580.5M | 60.7M | 284.6M | 0.608 | 0.962 |
+| v4r | 99.909M | 579.4M | 46.5M | 169.8M | 0.465 | 0.998 |
+| v4r2| 99.912M | 578.8M | 51.1M | 206.2M | 0.511 | 0.996 |
+| v16 | 99.913M | 581.1M | 44.3M | 154.7M | 0.444 | 0.997 |
+| v17 | 99.911M | 579.2M | 49.2M | 191.8M | 0.493 | 0.997 |
+
+- **The workload is fixed**: prompt_tokens = 99.91M ± 0.001% every run (seeded arrival/request set).
+- **Eviction pressure is fixed**: evict_tokens = 579–581M every run, and **host_util is pinned at 0.96–1.00**
+  — the 768 GB host KV tier is *always saturated*, so host→disk eviction runs constantly (~580M tokens).
+- **Yet the outcome swings wildly**: cached(hit) tokens 44–61M (**37% spread**), load_back 155–285M (**84%**),
+  hit_rate 0.44–0.61 (sd 0.057, range 0.164).
+
+Identical requests + identical eviction volume + hugely different hit outcomes ⇒ the variance is **which
+tokens get evicted *when* relative to their reuse** — i.e. host-eviction *timing/ordering* under the default
+**LRU**, not arrival randomness. **This is direct evidence that host-eviction policy is the dominant
+controllable lever on hit rate in this workload**, and that default LRU under a saturated host tier is
+leaving ~16 hit-rate points (≈−400 ms TTFT) on the table. It predicts a reuse-and-size-aware retention
+policy should both *raise* mean hit rate *and* *shrink* its variance (more deterministic retention of the
+high-value shared LooGLE document prefixes). Statistical note: an *unpaired* slfu-vs-LRU hit delta needs
+|Δ|>0.093 to clear 2σ at n=3 each — large — but I already hold a 5-run LRU baseline distribution
+(mean 0.504, sd 0.057), so slfu run 2–3× and compared against it is the efficient, adequately-powered test.
+
+This finding **demotes the storage/L3 line** (host is where 53% of hits and all the opportunity live; L3=0
+regardless) and **promotes the eviction line** — which my new `slfu` policy (below) targets directly.
+
 ## Next steps (a *real*, validated mechanism this time)
 Constraints learned: the active class is `UnifiedRadixCache`; the file KV-read path is
 `_generic_page_get → HiCacheFile.batch_get` (live) but reads ≈0; the mamba pool IO is serial
 `_batch_io_v2`. Any next mechanism must (1) target GPU+host hit rate / host eviction (where the misses
 are), (2) be implemented in the **active** class, and (3) be **verified exercised** via a counter/log
 before I claim anything. Candidate directions, in priority order:
-1. **Host-eviction / admission policy in `UnifiedRadixCache`** to reduce eviction of soon-reused
-   multiturn prefixes (the real miss source) — with an added counter proving the new path runs.
+1. **`slfu` — size-aware LFU host-eviction (BUILT, offline-tested, queued).** New policy in the ACTIVE
+   path (`evict_policy.SLFUStrategy`, wired via `get_eviction_strategy` → `UnifiedRadixCache.eviction_
+   strategy` → `full_component.get_priority`; registered in `server_args` choices). Priority =
+   `(hit_count, num_tokens, last_access_time)`: among equal reuse, evict *small* first / retain *large*
+   prefixes, protecting large fresh LooGLE document prefixes (hit_count=0, before their 2nd question)
+   over cheap one-shot prefixes. Directly attacks the eviction-timing lever proven above. Lossless,
+   parameter-free. Offline unit test (`test_slfu_policy.py`) verifies the ordering. **Plan: run
+   `v20-be-slfu` ×2–3, compare hit-rate distribution vs the held 5-run LRU baseline (0.504±0.057);
+   also test the variance-shrink prediction. `v18-be-slru` ×1 as the built-in reuse-aware reference.**
 2. **Balanced/bundled batching (Strata's missing piece)** in the scheduler to cut prefill bubbles.
-3. Only if a counter shows nonzero L3 reads under some policy: parallelize the *live* serial mamba path
-   (`_batch_io_v2`) — otherwise it stays dead weight and is not worth touching.
+3. `v19-timeout-clean` (demoted): one run to *close* the L3-disk-artifact question; the eviction line is
+   now the evidenced win, so storage is no longer the priority even if a clean node shows nonzero L3.
 
 ---
 

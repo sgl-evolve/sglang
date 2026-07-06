@@ -49,3 +49,4 @@
 07-06 04:43	v68-fb-wt-B	mechanism	ttft_mean=1151.0ms	b364b8f20	logged
 07-06 05:32	v69-best-lfu	config	ttft_mean=879.5ms	3348b01ae	logged
 07-06 06:13	v70-best-slru	config	ttft_mean=903.6ms	14abb63c3	logged
+07-06 06:53	v71-best-lru-ctrl	config	ttft_mean=897.1ms	0e2889c67	logged

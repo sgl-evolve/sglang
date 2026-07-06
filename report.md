@@ -505,3 +505,11 @@ v71 lru-ctrl confirm). Recompute floor is set by what FITS in device+host, not b
 (host 100% full), not eviction-ORDER-bound -- LRU/LFU/SLRU protect similar sets under heavy churn. So even stock
 eviction tuning can't move the recompute floor here; it would need more host CAPACITY (frozen) not smarter order.
 v71 lru-control confirms the same-alloc baseline. This closes the eviction-strategy direction (honest negative).
+
+### EVICTION-STRATEGY DIRECTION CLOSED (empirically neutral): best base + {lfu 879.5, slru 903.6, lru-ctrl 897.1}
+all within ~3% noise. Eviction ORDER is neutral because the hit rate (0.73) is HOST-CAPACITY-bound (host 100% full),
+not order-bound -- LRU/LFU/SLRU protect similar sets under the heavy multiturn churn. IMPLICATION: the recompute floor
+needs more host CAPACITY (frozen by contract), not a smarter eviction policy -- so even a custom eviction strategy
+(e.g. recompute-cost-aware) would NOT help in this full-bypass+write_back regime (it could only help a queue/capacity-
+slack regime). My independence-driven avoidance of custom eviction cost nothing here. DEFINITIVE FINAL: best_effort +
+skip_L3_write + skip_L3_prefetch + write_back = ~889 ms (~122x < v0_tuned); every accessible independent lever tested.

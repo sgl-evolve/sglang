@@ -552,3 +552,8 @@ for the binding direction; best stays ~889 (non-binding). Now testing the last u
 ### v75-best-sc0.5 (best base + schedule_conservativeness=0.5) = 876.9, throughput 3.52, median 508 -> NEUTRAL (~=best).
 schedule_conservativeness affects retract aggressiveness; with ~0 retracts at throughput>=lambda it's a no-op, now
 empirically confirmed (sc0.5 = 877 ~= best ~889). v76 sc2.0, v77 control complete it. Last untested knob -> neutral.
+
+### v76-best-sc2.0 = 888.9 -> schedule_conservativeness {0.5: 876.9, 2.0: 888.9} both ~= best ~889 -> NEUTRAL
+(empirically confirmed no-op: retract-focused knob, ~0 retracts at throughput>=lambda). Last untested knob CLOSED.
+Now EVERY server-args KV/cache/scheduling knob has been either eval-tested or empirically/cheaply closed.
+FINAL: best_effort + skip_L3_write + skip_L3_prefetch + write_back ~889 ms (~122x < v0_tuned). v77 = control.

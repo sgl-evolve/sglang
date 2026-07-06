@@ -16,6 +16,27 @@ SLFU_RUNS = ["v20-be-slfu", "v20b-be-slfu"]
 SLRU_RUNS = ["v18-be-slru"]   # built-in reuse-aware reference
 
 
+import re
+
+
+def applied_eviction_policy(d):
+    """Integrity proof: read the ACTUAL radix_eviction_policy the server booted with (server.log).
+    resolved_args does NOT capture it, so grep the server_args echo. Returns e.g. 'lru'/'slfu' or None."""
+    f = f"runs/{d}/server.log"
+    if not os.path.exists(f):
+        return None
+    try:
+        with open(f, errors="ignore") as fh:
+            for line in fh:
+                if "radix_eviction_policy=" in line:
+                    m = re.search(r"radix_eviction_policy='?([a-z_]+)'?", line)
+                    if m:
+                        return m.group(1)
+    except Exception:
+        pass
+    return None
+
+
 def load(d):
     s = f"runs/{d}/summary.json"
     if not os.path.exists(s):
@@ -29,6 +50,7 @@ def load(d):
         prompt=m.get("hicache_prompt_tokens"),
         l3=m.get("hicache_hit_storage_frac"),
         pf=j.get("resolved_args", {}).get("hicache_storage_prefetch_policy"),
+        applied_evict=applied_eviction_policy(d),
         commit=j.get("commit"),
     )
 
@@ -61,7 +83,9 @@ def main():
     btm, btsd = stats(bt)
     print(f"=== LRU baseline (n={len(bh)}): hit {bm:.4f} ± {bsd:.4f} | ttft {btm:.0f} ± {btsd:.0f} ===")
     for d, r in base:
-        print(f"    {d:24s} hit={r['hit']:.4f} ttft={r['ttft'] and round(r['ttft'])}")
+        ae = r["applied_evict"]
+        warn = "" if ae in (None, "lru") else f"  !! applied={ae} (NOT lru — remove from baseline)"
+        print(f"    {d:24s} hit={r['hit']:.4f} ttft={r['ttft'] and round(r['ttft'])} applied_evict={ae}{warn}")
 
     # Sanity: same fixed workload across baseline (the finding's premise).
     prompts = [r["prompt"] for _, r in base if r["prompt"]]
@@ -73,12 +97,23 @@ def main():
         if not runs:
             print(f"\n=== {label}: no runs yet ===")
             continue
-        hits = [r["hit"] for _, r in runs]
-        m, sd = stats(hits)
-        print(f"\n=== {label} (n={len(hits)}): hit {m:.4f}" + (f" ± {sd:.4f}" if len(hits) > 1 else "") + " ===")
+        # INTEGRITY GATE: only trust runs whose server actually booted the intended policy.
+        want = "slfu" if "slfu" in label else ("slru" if "slru" in label else None)
+        good = []
         for d, r in runs:
+            ae = r["applied_evict"]
             l3 = f" L3={r['l3']:.2f}" if r["l3"] is not None else ""
-            print(f"    {d:24s} hit={r['hit']:.4f} ttft={r['ttft'] and round(r['ttft'])} host_util={r['host_util']}{l3} commit={r['commit']}")
+            ok = (want is None) or (ae == want)
+            flag = "" if ok else f"  !! applied_evict={ae} != {want} — DEAD-PATH, DO NOT CLAIM"
+            print(f"    {d:24s} hit={r['hit']:.4f} ttft={r['ttft'] and round(r['ttft'])} host_util={r['host_util']}{l3} applied_evict={ae} commit={r['commit']}{flag}")
+            if ok:
+                good.append(r["hit"])
+        hits = good
+        if not hits:
+            print(f"    (no integrity-valid {want} runs yet)")
+            continue
+        m, sd = stats(hits)
+        print(f"    -> {label} integrity-valid (n={len(hits)}): hit {m:.4f}" + (f" ± {sd:.4f}" if len(hits) > 1 else ""))
         # Prediction 1: raises mean hit. z vs baseline (per-run, using baseline sd).
         if bsd and bsd == bsd:
             z = (m - bm) / bsd

@@ -25,21 +25,25 @@ held_nodes(){
   [ -d "$RT/held" ] && for f in "$RT"/held/*; do [ -f "$f" ] && basename "$f"; done;
 }
 
+# NOTE on `200>&-`: fd 200 is the per-node flock held by the main loop. srun children INHERIT open fds,
+# and flock is tied to the open-file-description — so a lingering srun step that inherited fd 200 keeps
+# the lock held even after the parent `flock -u 200`, silently failing every later sweep's `flock -n`.
+# Every srun below closes fd 200 in the child (`200>&-`) so the lock releases the instant the parent does.
 probe(){  # $1=node $2=holdjid -> "diskG ramG"
   timeout 60 srun --jobid="$2" --overlap -N1 -w "$1" bash -c \
-    'd=$(df --output=avail -BG /mnt/localssd 2>/dev/null | tail -1 | tr -dc 0-9); m=$(awk "/MemAvailable/{print int(\$2/1024/1024)}" /proc/meminfo); echo ${d:-0} ${m:-0}' 2>/dev/null
+    'd=$(df --output=avail -BG /mnt/localssd 2>/dev/null | tail -1 | tr -dc 0-9); m=$(awk "/MemAvailable/{print int(\$2/1024/1024)}" /proc/meminfo); echo ${d:-0} ${m:-0}' 2>/dev/null 200>&-
 }
 
 gpu_max_mem(){  # $1=node $2=holdjid -> max GPU MiB used across the 8 GPUs (or "" on failure)
   timeout 60 srun --jobid="$2" --overlap -N1 -w "$1" bash -c \
-    'nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | sort -rn | head -1' 2>/dev/null | tr -dc 0-9
+    'nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | sort -rn | head -1' 2>/dev/null 200>&- | tr -dc 0-9
 }
 
 fresh_check(){  # $1=node $2=holdjid -> "gpuMiB procN" ; empty/timeout => treat as not-fresh.
   # A node is "truly fresh" only if GPUs are idle AND no sglang.launch_server procs linger. A node I
   # previously wedged (D-state procs) fails this OR times out the srun -> skipped (won't re-hang there).
   timeout 60 srun --jobid="$2" --overlap -N1 -w "$1" bash -c \
-    'g=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | sort -rn | head -1); p=$(pgrep -f sglang.launch_server 2>/dev/null | wc -l); echo ${g:-999999} ${p:-9}' 2>/dev/null
+    'g=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | sort -rn | head -1); p=$(pgrep -f sglang.launch_server 2>/dev/null | wc -l); echo ${g:-999999} ${p:-9}' 2>/dev/null 200>&-
 }
 
 run_seq(){  # $1=node $2=holdjid — run the pre-registered CONFIG probes v14 then v15 into this hold.
@@ -53,12 +57,34 @@ run_seq(){  # $1=node $2=holdjid — run the pre-registered CONFIG probes v14 th
     "v15-be-mixchunk|--hicache-storage-prefetch-policy best_effort --enable-mixed-chunk"; do
     ver="${spec%%|*}"; args="${spec#*|}"
     [ -f "runs/$ver/summary.json" ] && { echo "[poolw] $ver already done — skip"; continue; }
-    echo "[poolw] wiping my L3 on $node; === running $ver ==="
-    srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "rm -rf /mnt/localssd/$NAME/* 2>/dev/null; true" 2>/dev/null
-    timeout 2700 srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" "$ver" \
-      --enforce-disable-flashinfer-allreduce-fusion $args
-    echo "[poolw] $ver rc=$?"
-    srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "pkill -9 -f 'sglang.launch_server.*$NAME' 2>/dev/null; rm -rf /mnt/localssd/$NAME/* 2>/dev/null; true" 2>/dev/null
+    echo "[poolw] pre-clean (kill my stragglers) + wipe my L3 on $node; === running $ver ==="
+    # Pre-eval: kill any of MY lingering sglang procs (e.g. stragglers from a prior timeout-killed run that
+    # could still hold the server port) and wipe my L3, so the fresh server binds cleanly + has full disk.
+    srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "pkill -9 -f 'sglang.launch_server.*$NAME' 2>/dev/null; sleep 8; rm -rf /mnt/localssd/$NAME 2>/dev/null; mkdir -p /mnt/localssd/$NAME 2>/dev/null; true" 2>/dev/null 200>&-
+    # timeout MUST exceed a full eval: ~11min server load + JIT/graph-capture + ~50min bench ≈ 62min.
+    # (An earlier 2700s=45min killed v14 mid-bench at 85% -> rc=124.) 4800s=80min gives margin without
+    # letting a genuinely-hung run wedge the shared node indefinitely.
+    timeout 4800 srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$EVAL" "$NAME" "$ver" \
+      --enforce-disable-flashinfer-allreduce-fusion $args 200>&-
+    local rc=$?
+    echo "[poolw] $ver rc=$rc"
+    # VALIDITY GATE: eval.sh writes summary.json even for a DEGRADED partial (e.g. v14's earlier
+    # 1275/7037 environmental-collision casualty). A summary is only trustworthy if the bench actually
+    # completed the full workload. If rc!=0 or completed<7000, REJECT (rename summary aside) so the
+    # watcher retries this version on a later genuinely-clean window instead of banking bad data.
+    local completed=0
+    [ -f "runs/$ver/mix_result.json" ] && completed=$(python3 -c "import json;print(int(json.load(open('runs/$ver/mix_result.json')).get('completed',0)))" 2>/dev/null || echo 0)
+    if [ "$rc" -ne 0 ] || [ "${completed:-0}" -lt 7000 ]; then
+      echo "[poolw] $ver REJECTED (rc=$rc completed=${completed:-0} <7000) — degraded/partial; will retry on next clean window"
+      [ -f "runs/$ver/summary.json" ]    && mv -f "runs/$ver/summary.json"    "runs/$ver/summary.rejected-c${completed:-0}.json"    2>/dev/null
+      [ -f "runs/$ver/mix_result.json" ] && mv -f "runs/$ver/mix_result.json" "runs/$ver/mix_result.rejected-c${completed:-0}.json" 2>/dev/null
+    else
+      echo "[poolw] $ver VALID full run (completed=$completed) — summary kept"
+    fi
+    # Cleanup: kill my server, WAIT for it to exit (a timeout-killed server goes D-state briefly and holds
+    # its L3 files, blocking reclaim), then reclaim the ~1.8TB write_through L3 so the next version's disk
+    # gate passes. rm of 1.8TB of small page files is slow (minutes) — no timeout so it runs to completion.
+    srun --jobid="$jid" --overlap -N1 -w "$node" bash -c "pkill -9 -f 'sglang.launch_server.*$NAME' 2>/dev/null; sleep 12; rm -rf /mnt/localssd/$NAME 2>/dev/null; mkdir -p /mnt/localssd/$NAME 2>/dev/null; true" 2>/dev/null 200>&-
   done
 }
 

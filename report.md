@@ -507,3 +507,40 @@ not currently afford. **The headline is
 unaffected:** the 45× regime jump + rigorously same-node-controlled plateau rests on the earlier clean
 full runs (v1–v13, each 7037/7037 completed, on-contract, logged) and is fully independent of
 v16/v14/v15.
+
+---
+
+## Round 4 — pre-registered scheduler-config probes RESOLVED (clean on-contract data) + environmental diagnosis CONFIRMED
+
+The Round-3 blocker was environmental (mid-run peer collision on the shared pool), not a mechanism
+result. I built a **collision-safe, sustained-GPU-idle-gated, flock-HOLDING pool watcher** (polls both
+held pool nodes every 90 s; fires only after 4 consecutive idle sweeps = a genuine ~5 min sustained gap =
+peer truly done; **holds the per-node `$RT/locks` flock for the entire run** so a flock-respecting peer
+cannot start a second server on the node mid-run; a `completed>=7000` validity gate rejects any partial).
+It caught a genuine ~9-min gap in the peer's eval cadence and produced **clean, uncollided, full
+on-contract runs** for both pre-registered config probes. This retroactively **confirms** the Round-3
+diagnosis: the identical config (v14) that stalled at 1275/7037 under collision now completes **7037/7037**
+when the flock is held — i.e., the earlier degradation was the environment, exactly as diagnosed.
+
+**v14 — `--schedule-conservativeness 0.5` (non-SPF scheduler config): NEUTRAL.**
+7037/7037 completed, on-contract (mem-frac 0.85, hicache 96, tp 8, ctx 262144, best_effort; rc=0), mean
+TTFT **2102 ms**, out_tok/s 334, duration 2692 s, device/host/storage hit-fracs 0.50/0.50/0.00. vs the v6
+baseline mechanism (~2035 ms) this is **+3.3 %, well inside the ~25-30 % between-node speed confound → no
+effect.** Lowering the schedule conservativeness does not move mean TTFT in this prefill-compute-bound
+regime. Logged (config). Confirms the scheduler-admission knob is not a lever — consistent with the plateau.
+
+**v15 — `--enable-mixed-chunk` (mix prefill+decode in one batch): STRONG NEGATIVE.**
+On the **same node**, minutes after v14 completed cleanly (so **not** environmental), mixed-chunk
+completed only **6675/7037** (≈5 % of requests failed / timed out) with mean TTFT **9557 ms over the
+completed set alone — ≈4.7× WORSE than v6** (and the true degradation is worse still, since the 362
+failures are excluded from that mean). Interleaving decode tokens into prefill batches starves the
+long-context prefills that dominate this 1:1:1 Mooncake mix, inflating TTFT past the benchmark's
+client-side tolerance so the tail of the workload cannot be sustained at concurrency 128. Logged (config)
+**with the partial-completion caveat** — it is a characterized *negative*, not a comparable plateau point.
+Do **not** enable mixed-chunk for this workload.
+
+**Running tally: 13 logged versions** (v1–v13 lineage + v14 + v15; v16/spf remains UNMEASURED per Round 3).
+Both new points are **at or below** the ~2000 ms plateau (v14 neutral, v15 strongly negative), so the 45×
+headline and the same-node-controlled plateau/ceiling conclusion are **reinforced, not changed**: no
+scheduler-side config (conservativeness, mixed-chunk) — nor the earlier eviction/scheduling/capacity
+knobs — beats the best_effort + concurrent-per-page-IO mechanism. The cache-architecture ceiling stands.

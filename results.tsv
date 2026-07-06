@@ -50,3 +50,4 @@
 07-06 05:32	v69-best-lfu	config	ttft_mean=879.5ms	3348b01ae	logged
 07-06 06:13	v70-best-slru	config	ttft_mean=903.6ms	14abb63c3	logged
 07-06 06:53	v71-best-lru-ctrl	config	ttft_mean=897.1ms	0e2889c67	logged
+07-06 07:47	v72-best-mrr96	config	ttft_mean=6042.8ms	ce0cdb141	logged

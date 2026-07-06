@@ -532,3 +532,9 @@ the only capacity lever (int8-mamba) is lossy. Program complete & thorough.
 inherent (Poisson arrival bursts + variable long-context prefill within the fixed 128-concurrency). schedule_
 conservativeness only affects retract behavior (none occur at throughput>=lambda) -> also no-op. Definitively:
 NO remaining lossless, independent, accessible lever exists. Program complete at ~889 ms (~122x < v0_tuned).
+
+### v72-best-mrr96 (best base + max_running_requests=96, BINDING < client-128) = 6042.8 ms — STRONGLY NEGATIVE (7x worse)
+throughput 3.47 (ok), median 618 (ok), but MEAN explodes to 6043: capping the running batch below the client's 128
+concurrency forces ~32 requests into a SERVER-SIDE queue -> tail explosion. Empirically confirms max_running_requests
+binding is negative (the non-binding auto default is best). My earlier "no-op" closure was for the non-binding auto
+value; testing the BINDING case empirically proves binding HURTS (tail), not helps. v73 mrr112 (less binding), v74 control.

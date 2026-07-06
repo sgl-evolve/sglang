@@ -29,6 +29,13 @@ SJF+aging (v8) **65 321**. (Aging also lowers the mean, not just the tail: v3 77
 > `SGLANG_SJF_CACHE_AWARE` forces the per-request match), a clean A/B vs v3 that should help on the
 > multi-turn ShareGPT portion where a late turn has huge total length but a tiny *uncached* extension.
 
+> **⚠️ v1 result is INVALID (degraded run).** v1-parallel-l3-io logged 150215 ms but with **hit_rate 0.298**
+> (vs the normal ~0.82), median TTFT 161 s, out 98 tok/s — it ran (~03:51) during the cluster NCCL-fabric
+> outage; the KV cache barely functioned, so this is a run-condition artifact, **not** a valid measurement of
+> parallel-L3 disk I/O. It passed the completion guard (7012≥6800 done) but the guard doesn't check cache
+> health — a known gap (TODO: add a hit-rate sanity gate). Needs a clean re-run for a valid ablation point;
+> low priority (L3 I/O is not the lever — scheduling is). Does not affect the headline (v8=65321 ≪ 150215).
+
 ### Ablation ladder (each version adds one mechanism)
 `SGLANG_HICACHE_FILE_BACKEND_IO_THREADS` defaults to **4**, so the parallel-L3-I/O code path (v1) is
 active on the whole branch. The versions therefore form a clean additive ladder, each isolating one
@@ -44,7 +51,7 @@ mechanism: **v0** (stock: FCFS + serial L3 I/O) → **v1** (FCFS + *parallel* L3
 | v3-sjf-aged | SJF(total-len) + aging=90s | 77082.7 | 1.41× (−29%) | 1.14× (−12%) | 149.2 | .818 / .253 |
 | v5-sjf-aged90-rep | **v3 repeat** (SJF+aging=90, total-len) | 84043.4 | 1.29× (−23%) | 1.04× (−4%) | 149.6 | .820 / .257 |
 | v2-sjf | pure SJF(total-len, aging=0) | 80341.6 | 1.35× (−26%) | 1.09× (−8%) | 151.3 | .813 / .250 |
-| v1-parallel-l3-io | parallel L3 disk I/O | _infra-blocked (queued)_ | | | | |
+| v1-parallel-l3-io | parallel L3 disk I/O | _150215 ⚠️ **DEGRADED-INVALID**_ | — | — | 98.2 | **.298** / — |
 | v7-hrrn | HRRN (smooth anti-starvation) | _queued_ | | | | |
 
 **v8-sjf-ca-aged90 is the current best (65321, 1.67×).** **Reproducibility (v5 = v3-repeat):** v5

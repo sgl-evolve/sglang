@@ -430,3 +430,12 @@ best in every regime. Full-bypass on 18336 = 1122 (within the ~1095-1131 allocat
 
 ### v63 full-bypass no-lpm = 1145.1 ~= full-bypass+lpm (v62 1122.3) -> lpm REDUNDANT under full-bypass (confirmed,
 consistent with v48/v49). skip mechanisms are the whole win; scheduling order adds ~0 once the queue is drained. v64 write_back last.
+
+### *** v64-fb-writeback (full-bypass + write_back, alloc 18336) = 884.2 ms — STRONG CANDIDATE (new best?) ***
+vs full-bypass+write_through ctrl (v62 1122.3) SAME ALLOC -> -21%. Metrics: hit_rate 0.627->0.732 (+10.5pp!),
+throughput 3.46->3.52 (>= lambda 3.5 -> queue FULLY drains -> mean approaches median), median 586->505, p99 7722->6493,
+tpot 232->175. LOSSLESS (hit_storage_frac=0.0 both; write_back persists KV to host on eviction). MECHANISM: eager
+write_through offloads EVERY write device->host, churning the FULL host tier (evicting useful KV); write_back writes
+only on device-eviction -> far less host churn -> higher host hit rate -> less recompute -> throughput reaches lambda.
+REGIME-DEPENDENT: write_back was NEGATIVE without skip (v21 2819) but POSITIVE under full-bypass. ~123x < v0_tuned.
+n=1 -> confirming n>=2 same-alloc (v65-v68) before claiming/emailing (v24 lesson).

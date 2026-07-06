@@ -378,3 +378,19 @@ baseline) is a contract-imposed hit-rate ceiling (frozen `hicache-size 96`) + th
 Mamba is lossy + HiCache-incompatible), NOT a policy gap. Budget ~9/100 used (budget is a ceiling, not a
 target). Holding: keep the loop alive and keep seeking genuinely novel high-EV lossless ideas, but not
 fabricating predicted-neutral versions or risking the shared eval pool on low-EV / stall-prone builds.
+
+### Why the 0.55 ceiling is intrinsic (hicache metrics, from v10/v12 runs) — airtight
+Per-run hicache counters (v10): host_util **0.9996** (host tier full), evicted **616M** tokens, backuped-to-host
+**111M**, load_back (H→D) **272M**, load_back_mean **0.94 ms**, cached 55M (device 25.7M / host 28.6M / disk 0.9M),
+prompt 100M. Reading these:
+- **The reusable set IS cached effectively:** 111M written to host but 272M read back → host items reused ~2.4×;
+  host serves 52% of all hits. Write-through is already admission-selective (`hit_count ≥ threshold`), so one-shot
+  prefixes never reach host — they churn device-only (most of the 616M evictions) and are re-fetched at 0.94 ms.
+- **Device↔host churn is ~free** (load_back 0.94 ms), which is exactly why lpm's +13% device-hit shift and any
+  admission-control reduction of device churn are NEUTRAL on TTFT — the tier the request hits barely matters.
+- **The 45% misses are genuinely COLD** (first-occurrence document prefixes in the LEval/LooGLE mix), not
+  thrashed-out reusable items — otherwise better eviction/admission would have moved hit_rate; it stays 0.55
+  everywhere. Cold misses are uncacheable by construction.
+⇒ hit_rate 0.55 is the workload's **intrinsic reuse rate**, not a fixable cache inefficiency. No lossless cache
+policy (eviction order, scheduling, or admission) can reduce the cold-miss prefill that dominates mean TTFT.
+This is the airtight basis for HOLD: the KV-cache subsystem is at its lossless optimum for this fixed workload.

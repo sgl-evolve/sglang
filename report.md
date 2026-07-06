@@ -526,3 +526,9 @@ CONCLUSION: every accessible independent, lossless KV-cache lever is exhausted (
 lossy/dormant/off-limits). FINAL BEST = best_effort + skip_L3_write + skip_L3_prefetch + write_back ~889 ms (~122x <
 v0_tuned), 4 composing wins (2 novel engine mechanisms + 2 config). Recompute floor is host-capacity-bound (frozen);
 the only capacity lever (int8-mamba) is lossy. Program complete & thorough.
+
+### FINAL due-diligence: max_running_requests is a NO-OP (non-binding). Auto=270, but actual concurrency maxes at 139
+(the client --max-concurrency 128 is the binding cap). So batch-size can't be tuned to reduce the tail; the tail is
+inherent (Poisson arrival bursts + variable long-context prefill within the fixed 128-concurrency). schedule_
+conservativeness only affects retract behavior (none occur at throughput>=lambda) -> also no-op. Definitively:
+NO remaining lossless, independent, accessible lever exists. Program complete at ~889 ms (~122x < v0_tuned).

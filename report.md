@@ -538,3 +538,8 @@ throughput 3.47 (ok), median 618 (ok), but MEAN explodes to 6043: capping the ru
 concurrency forces ~32 requests into a SERVER-SIDE queue -> tail explosion. Empirically confirms max_running_requests
 binding is negative (the non-binding auto default is best). My earlier "no-op" closure was for the non-binding auto
 value; testing the BINDING case empirically proves binding HURTS (tail), not helps. v73 mrr112 (less binding), v74 control.
+
+### v73-best-mrr112 = 3293.1 -> max_running_requests sweep MONOTONIC: 96->6043, 112->3293, default(non-binding)->~889.
+Any cap below the client 128-concurrency forces a server-side queue -> tail grows monotonically as the cap tightens.
+Non-binding default is OPTIMAL. Empirically confirms max_running_requests can't help (only hurt) here. (Worthwhile
+empirical test: proved the trade-off vs just reasoning it.) Best stays ~889 (non-binding). v74 = control baseline.

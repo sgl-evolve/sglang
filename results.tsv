@@ -51,3 +51,4 @@
 07-06 06:13	v70-best-slru	config	ttft_mean=903.6ms	14abb63c3	logged
 07-06 06:53	v71-best-lru-ctrl	config	ttft_mean=897.1ms	0e2889c67	logged
 07-06 07:47	v72-best-mrr96	config	ttft_mean=6042.8ms	ce0cdb141	logged
+07-06 08:27	v73-best-mrr112	config	ttft_mean=3293.1ms	8a01a7a03	logged

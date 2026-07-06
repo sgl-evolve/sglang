@@ -60,6 +60,17 @@ negative WITHOUT skip (v21 2819) but the ~21% WIN under full-bypass (see headlin
 NEUTRAL on the full-bypass base: load_back_threshold, lpm (redundant once skipped).
 NEGATIVE config: mixed_chunk (16180 ms, fragments prefill); page-size 128/256 (monotonically worse than 64 --
  coarser prefix-match lowers hit rate). timeout prefetch beats best_effort ALONE but loses once lpm is added.
+BLOCKED (not a config lever for THIS model) -- `--hicache-io-backend kernel` / `--hicache-mem-layout page_first`
+ (GPU-assisted staged-kernel IO, Strata-IO): the eval default is `io_backend=direct` + `mem_layout=page_first_direct`
+ and I never varied it. Re-audited 2026-07-06 and re-CONFIRMED from live code that it is HARD-BLOCKED for this
+ hybrid-Mamba model: `MambaPoolHost.__init__` raises `ValueError` unless layout==`page_first_direct` AND
+ io_backend==`direct` (`mem_cache/memory_pool_host.py:1413,1779,1824`; comment: "Mamba pool is currently
+ incompatible with write-back staging kernel ... Relax once the staging bug is fixed"). Requesting `kernel` thus
+ crashes the server at pool init -- inaccessible at the config level, not an untested win. Unblocking it is a
+ MECHANISM (rebuild sgl-kernel + fix the staging-kernel bug) that is (a) heavy / off the "never recompile" path and
+ (b) expected-NEUTRAL anyway: the residual floor here is prefill-RECOMPUTE + HOST-CAPACITY bound, and the H->D
+ transfer it would optimize is already overlapped (~1.1ms) and NOT the bottleneck. Verified from code, not run --
+ zero shared-pool evals spent (driver killed before it consumed a held node).
 
 ## Why the mechanisms are neutral -- the bottleneck (v35 metrics, be+lpm on -0)
 throughput 2.55 req/s (< lambda 3.5 -> still saturated) | hit_rate 0.52 (~48% miss = GPU recompute) | hit tiers

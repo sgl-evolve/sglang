@@ -5,19 +5,29 @@ Bar to beat: **v0_tuned** (mean TTFT 108824 ms). Reference/context: v0_official 
 Headline metric: **mean TTFT** (lower better), lossless gate: outputs match no-cache.
 
 ## TL;DR
-**Mean TTFT here is prefill-queue-waiting-dominated** (median ~1 s but mean ~90 s, prompts 0–190 K
-tokens). Reordering the prefill waiting queue by **true uncached (cache-aware) remaining prefill work**,
-shortest-first with light **aging** to bound the tail, cuts mean TTFT to **65 321 ms — a 1.67× improvement
-over the v0_tuned bar** (108 824 ms; and 1.34× over v0_official 87 615). This is the headline result
-(best = **v8-sjf-ca-aged90**). Pure reorder ⇒ **lossless** (each request's output is invariant to schedule
-order — the KV cache returns bit-identical KV to recompute; completed=7037, no drops).
+**Mean TTFT here is prefill-queue-waiting-dominated** (median ~1 s but mean ~80-90 s, prompts 0–190 K
+tokens), so reordering the prefill waiting queue **shortest-job-first** (with light **aging**) is the lever:
+**every SJF variant robustly beats the v0_tuned bar (108 824 ms)** — measured means span **65–88 K ms
+(1.24–1.67×)** across v2/v3/v5/v8/v10. Pure reorder ⇒ **lossless** (each request's output is invariant to
+schedule order — the KV cache returns bit-identical KV to recompute; completed=7037/run, no drops).
+Best single run = **v8-sjf-ca-aged90 = 65 321 ms (1.67×)**.
 
-**Why cache-aware wins big here:** the mix is **78% multi-turn follow-ups** on already-cached documents
-(7037 requests / 1553 docs; doc ~12 K tokens, new question ~40 tokens). Ordering by *total* length
-(v3, 77 083) misjudges those cheap follow-ups as ~12 K-token jobs; ordering by *uncached* length (v8)
-schedules them first — median TTFT drops to **988 ms** (v3 1418), p99 to **234.8 s** (v3 249.9), out_tok/s
-up to **174** (v3 149). The ladder: v0_tuned 108 824 → total-length SJF+aging (v3) 77 083 → cache-aware
-SJF+aging (v8) **65 321**. (Aging also lowers the mean, not just the tail: v3 77 083 < pure-SJF v2 80 342.)
+> **⚠️ Variance caveat (2026-07-06, from repeats — READ THIS).** This regime is **very noisy** (the two
+> stock baselines share identical args yet differ 24%). Same-config repeats confirm large run-to-run
+> spread: SJF+aging90 **total-length** gave v3 77 083 / v5 84 043 (~9%); cache-aware SJF+aging90 gave
+> **v8 65 321 / v10 87 575 (~34% spread!)**. So the **cache-aware vs total-length ranges OVERLAP**
+> (cache-aware 65–88 K, total-length 77–84 K) — the cache-aware refinement is **NOT robustly distinguishable
+> from total-length SJF** in these noisy, differently-node-conditioned runs (v10 also ran on a slower node:
+> out 143 vs v8's 174 tok/s). **Robust claim: SJF (any variant) ≫ v0_tuned.** NOT robust: the precise
+> cache-aware advantage, or beating v0_official (v10 87 575 ≈ v0_official 87 615). v8=65 321 is the best
+> *single* draw, not a reproducible 1.67×. Proper A/B would need many repeats per config (eval-capacity-bound).
+
+**Mechanism rationale (why cache-aware *should* help, even if noise masks it here):** the mix is **78%
+multi-turn follow-ups** on already-cached documents (7037 requests / 1553 docs; doc ~12 K tokens, new
+question ~40 tokens). Total-length SJF misjudges those cheap follow-ups as ~12 K-token jobs; cache-aware
+SJF (env `SGLANG_SJF_CACHE_AWARE`) subtracts the cached prefix so they're scheduled first. v8's run showed
+exactly this profile (median 988 ms, out 174) — but v10 (same config) did not reproduce the magnitude, so
+treat the mechanism as *promising and sound* rather than a *proven* win over total-length SJF.
 
 > **Correction & follow-up (2026-07-05).** Static-analysis audit of the schedule path found that the
 > `− num_matched_prefix_tokens` (cached-prefix) term in the SJF/HRRN sort key was **inert** as-run:
@@ -47,19 +57,25 @@ mechanism: **v0** (stock: FCFS + serial L3 I/O) → **v1** (FCFS + *parallel* L3
 |-----|-----------|---------------:|:-----------:|:--------------:|----------:|---------:|
 | v0_official | stock default | 87615 | +19% (worse) | — | 146.9 | .816 / — |
 | v0_tuned | best stock cfg (THE BAR) | 108824 | — | +24% (worse) | 119.3 | .821 / — |
-| **v8-sjf-ca-aged90** | **genuine cache-aware SJF + aging=90s** | **65321.4** | **1.67× (−40%)** | **1.34× (−25%)** | **174.4** | .779 / .170 |
-| v3-sjf-aged | SJF(total-len) + aging=90s | 77082.7 | 1.41× (−29%) | 1.14× (−12%) | 149.2 | .818 / .253 |
-| v5-sjf-aged90-rep | **v3 repeat** (SJF+aging=90, total-len) | 84043.4 | 1.29× (−23%) | 1.04× (−4%) | 149.6 | .820 / .257 |
-| v2-sjf | pure SJF(total-len, aging=0) | 80341.6 | 1.35× (−26%) | 1.09× (−8%) | 151.3 | .813 / .250 |
+| **v8-sjf-ca-aged90** | cache-aware SJF + aging=90s | **65321.4** | **1.67× (−40%)** | 1.34× | 174.4 | .779 / .170 |
+| v3-sjf-aged | SJF(total-len) + aging=90s | 77082.7 | 1.41× (−29%) | 1.14× | 149.2 | .818 / .253 |
+| v2-sjf | pure SJF(total-len, aging=0) | 80341.6 | 1.35× (−26%) | 1.09× | 151.3 | .813 / .250 |
+| v5-sjf-aged90-rep | **v3 REPEAT** (total-len+aging90) | 84043.4 | 1.29× (−23%) | 1.04× | 149.6 | .820 / .257 |
+| v10-sjf-ca-rep | **v8 REPEAT** (cache-aware+aging90) | 87575.4 | 1.24× (−20%) | ~1.00× | 143.1 | .820 / .258 |
 | v1-parallel-l3-io | parallel L3 disk I/O | _150215 ⚠️ **DEGRADED-INVALID**_ | — | — | 98.2 | **.298** / — |
-| v7-hrrn | HRRN (smooth anti-starvation) | _queued_ | | | | |
+| v7-hrrn / v9-hrrn-ca | HRRN / cache-aware HRRN | _no valid run (node-degraded, gave up)_ | | | | |
 
-**v8-sjf-ca-aged90 is the current best (65321, 1.67×).** **Reproducibility (v5 = v3-repeat):** v5
-(84043) repeats v3's SJF+aging90 config; its cache profile matches v3 (hit .82/.818, l3 .257/.253,
-out 150/149, median 1221/1418) — a clean replicate — but mean TTFT is 84043 vs v3's 77083, i.e. **~9%
-run-to-run variance** for the *same* config in this noisy regime. Crucially, **v8's cache-aware win
-survives this noise**: v8 (65321) is 15% below v3 and **22% below v5**, both far outside the ~9% same-config
-band → the cache-aware advantage is robust, not a lucky draw. (The regime's noise is why wins must be large.)
+**Config pairs (repeats bracket the noise): cache-aware SJF+aging90 = {v8 65321, v10 87575}; total-length
+SJF+aging90 = {v3 77083, v5 84043}. Ranges overlap ⇒ cache-aware ≉ distinguishable from total-length here.**
+
+**v8 (65321) is the best single run, but repeats show the cache-aware advantage is within noise.** Two
+same-config repeat pairs now exist: total-length SJF+aging90 = {v3 77083, v5 84043} (~9% spread) and
+cache-aware SJF+aging90 = {v8 65321, v10 87575} (~34% spread). The cache-aware pair (65–88 K) **overlaps**
+the total-length pair (77–84 K), so the earlier "v8 is robustly 15–22% better than total-length" claim was
+**an artifact of comparing v8's lucky low draw to single total-length runs** — corrected here. v10 even
+ran on a slower node (out 143 vs v8 174 tok/s), inflating its mean. **What IS robust:** all SJF variants
+(65–88 K) beat v0_tuned (108824) by 1.24–1.67×; SJF ordering is the real lever. **What is NOT robust:** the
+cache-aware refinement vs total-length, and beating v0_official (87615) on unlucky draws (v10 87575 ≈ 87615).
 
 **v3-sjf-aged (77083) — prior best, superseded by v8** — a **29% mean-TTFT cut vs the bar** with hit-rate/l3-frac matching
 baseline (cache behaviour preserved) and out_tok/s slightly *up*. Confirms the core thesis: mean TTFT

@@ -394,3 +394,11 @@ prompt 100M. Reading these:
 ⇒ hit_rate 0.55 is the workload's **intrinsic reuse rate**, not a fixable cache inefficiency. No lossless cache
 policy (eviction order, scheduling, or admission) can reduce the cold-miss prefill that dominates mean TTFT.
 This is the airtight basis for HOLD: the KV-cache subsystem is at its lossless optimum for this fixed workload.
+
+**Capacity quantified (v12 server.log): the ceiling is a hard, frozen size limit.** Device KV token pool =
+`max_total_num_tokens` **1,782,912** (~1.78M tokens; mem-fraction-static 0.85 fully allocated, ~9 GB safety
+headroom only), host tier **7.81M** tokens (100% full). Total resident cache ≈ **9.6M tokens vs a ~100M-token
+prompt stream (~10% resident)**; the 0.55 hit_rate is pure REUSE of that small resident set. All three tiers are
+frozen by the contract (device=mem-fraction, host=hicache-size 96, disk too slow at ~1% of hits). No lossless
+mechanism can enlarge the resident set, and eviction/scheduling/admission cannot manufacture reuse that the
+workload doesn't have. This closes the analysis: v4 (56×) is the lossless optimum for this fixed protocol.

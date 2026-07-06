@@ -485,12 +485,18 @@ by *operational* (not mechanism) issues:
   - **v16 on-contract effect: UNMEASURED** (no full benchmark completed; no number logged; no positive
     *or* firm-negative claim about SPF's TTFT effect — the earlier "definitive negative / prediction
     refuted" wording is retracted as an over-claim).
-  - **v14/v15 on-contract: also compromised** by the same current-pool degradation (v14 partial 1275/7037;
-    v15 attempted) — I do **not** log v14's partial number (it covers only 18% of the workload and is not
-    comparable to the full-run baselines).
+  - **v14/v15 on-contract: also compromised** by the same current-pool degradation — v14 stalled at
+    1275/7037; **v15 (`--enable-mixed-chunk`, also non-SPF) stalled at ~0/7037** with the identical
+    detokenizer-heartbeat symptom. I log **neither** (v14 covers only 18% of the workload; v15 produced no
+    benchmark). Three consecutive runs spanning **two different policies + SPF** all degrading the same way
+    is decisive evidence the fault is the **environment**, not any one mechanism.
 
-**Net:** every on-contract run I attempted *after* the pool's disk-recovery/contention chaos (v16, v14,
-v15) hit a server-degradation that prevented a clean full benchmark, so none yields a comparable number.
-This is an operational/environmental blocker, not a mechanism result. **The headline is unaffected:** the
-45× regime jump + rigorously same-node-controlled plateau rests on the earlier clean full runs (v1–v13,
-each 7037/7037 completed, on-contract, logged) and is fully independent of v16/v14/v15.
+**Net:** every on-contract run I attempted *after* the pool's disk-recovery/contention chaos — v16 (spf,
+~1 req), v14 (config, 1275 req), v15 (config, ~0 req) — hit the same server-side detokenizer degradation
+and never completed a clean full benchmark, so none yields a comparable number. This is an
+**operational/environmental blocker** (most plausibly the shared-pool `srun --overlap` execution path
+and/or this pool node's state after the heavy contention), **not a mechanism result**, and I have stopped
+running on the degraded pool (retrying only wedges shared nodes for other researchers). **The headline is
+unaffected:** the 45× regime jump + rigorously same-node-controlled plateau rests on the earlier clean
+full runs (v1–v13, each 7037/7037 completed, on-contract, logged) and is fully independent of
+v16/v14/v15.

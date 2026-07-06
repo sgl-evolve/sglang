@@ -522,3 +522,14 @@ no-silent-fallback gate). Finding: **kernel IO is incompatible with the frozen `
 **v18-kernel-pf (`--hicache-mem-layout page_first` + `--hicache-io-backend kernel`) — the CORRECT test** (layout
 is in-scope per charter; the blog's recommended combo). Running: directly probes whether faster CPU↔GPU transfer
 lowers TTFT (real win if transfer is on the critical path) or is neutral (if transfer is already overlapped).
+
+**v18-kernel-pf (`--hicache-mem-layout page_first` + `--hicache-io-backend kernel`) — CRASH, transfer axis CLOSED.**
+`ValueError: MambaPoolHost only supports layout='page_first_direct', got 'page_first'.` The hybrid-Mamba host
+pool HARD-REQUIRES `page_first_direct`, which forces `direct` IO (kernel needs `page_first`). So the GPU-assisted
+**kernel IO backend is architecturally INACCESSIBLE for hybrid-Mamba + HiCache** — the two attempts bracket it:
+v17 (kernel alone) silently falls back to direct; v18 (kernel + page_first) crashes the Mamba host pool. Killed
+the deterministic-crash retry loop to free the node. **Maintainer note:** the HiCache blog's "page-first + kernel
+IO = up to 3× transfer" optimization does NOT apply to hybrid-SSM models on this code — a real architectural
+limitation. This empirically closes the transfer axis: for this model, `page_first_direct` + `direct` IO is the
+only valid tier-transfer config, and `load_back_mean` 0.94 ms confirms transfer is not on the TTFT critical path
+anyway. No transfer lever exists.

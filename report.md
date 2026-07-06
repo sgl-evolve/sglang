@@ -443,3 +443,12 @@ n=1 -> confirming n>=2 same-alloc (v65-v68) before claiming/emailing (v24 lesson
 ### v65-fb-wb-A (full-bypass + write_back, alloc 18348) = 888.1 -> write_back n=2 = {884.2, 888.1} TIGHT (0.4%),
 reproducible across 2 allocations, well below full-bypass write_through band (~1094-1145). Strong candidate new best
 ~886ms (~123x < v0_tuned). Awaiting v66 (write_through same-alloc control on 18348) for the clean same-alloc delta.
+
+### *** CONFIRMED NEW BEST: full-bypass + write_back ~886 ms (~123x < v0_tuned) ***
+TWO same-alloc confirmations, both -21%: 18336 wb 884.2 vs wt 1122.3 ; 18348 wb 888.1 vs wt 1130.0.
+write_back n=2 {884.2, 888.1} (tight) NON-OVERLAPPING with write_through {1122.3, 1130.0}. LOSSLESS (hit_storage_frac
+=0.0; write_back persists KV to host on device-eviction). MECHANISM: under full-bypass, eager write_through offloads
+every write device->host, churning the FULL host tier (evicting useful KV); write_back writes only on eviction ->
+host hit_rate 0.63->0.73 -> throughput reaches lambda 3.5 -> queue drains -> mean 1122->886. REGIME-DEPENDENT config
+finding (write_back was NEGATIVE without skip: v21 2819). Best stack: best_effort + skip_L3_write + skip_L3_prefetch
++ write_back = ~886ms. EMAILED. v67/v68 extend n.

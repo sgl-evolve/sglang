@@ -422,3 +422,8 @@ full-bypass ~1095-1131.
 Above full-bypass ~1095-1131 -> write_through_selective (less-eager device->host offload) appears to HURT even under
 full-bypass (lower host population -> lower hit rate -> more recompute; consistent with v20 negative). Need v62
 same-alloc control to confirm. Default write_through (eager) remains best.
+
+### v61/v62 (alloc 18336): write_through_selective CONFIRMED NEGATIVE under full-bypass.
+full-bypass+wtsel (v61) 1403.0 vs full-bypass ctrl (v62) 1122.3 -> +25% same-alloc. Less-eager device->host offload
+lowers host population/hit-rate -> more recompute (consistent with v20 without skip). Default eager write_through is
+best in every regime. Full-bypass on 18336 = 1122 (within the ~1095-1131 allocation-invariant band). v63 no-lpm, v64 write_back next.

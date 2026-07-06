@@ -40,3 +40,4 @@
 07-05 21:47	v59-fb-lbt4	mechanism	ttft_mean=1126.4ms	90eba465d	logged
 07-05 22:30	v60-fb-ctrl	mechanism	ttft_mean=1131.4ms	90eba465d	logged
 07-05 23:56	v61-fb-wtsel	mechanism	ttft_mean=1403.0ms	f6dbbb772	logged
+07-06 00:37	v62-fb-ctrl2	mechanism	ttft_mean=1122.3ms	767b1050b	logged

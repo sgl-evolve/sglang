@@ -402,3 +402,12 @@ prompt stream (~10% resident)**; the 0.55 hit_rate is pure REUSE of that small r
 frozen by the contract (device=mem-fraction, host=hicache-size 96, disk too slow at ~1% of hits). No lossless
 mechanism can enlarge the resident set, and eviction/scheduling/admission cannot manufacture reuse that the
 workload doesn't have. This closes the analysis: v4 (56×) is the lossless optimum for this fixed protocol.
+
+**Disk (L3) tier ruled out rigorously (not just "irrelevant"):** disk holds only 0.9M tokens of 1.8 TB and
+serves ~1% of hits — but NOT because it's slow or unwritten. `write_backup_storage` persists EVERY host-backed
+node to disk (verified: called from `_finish_write_through_ack` for all published nodes, no gate). Disk is
+written but rarely READ (`disk_read_tokens` 0.9M): the reused working set is SHORT-DISTANCE (served by host
+before eviction); items spilled to disk are not reused again. The only tunable read knob (`prefetch_threshold`
+256) is reasoned-negative (prefetching sub-threshold prefixes costs a wait-load > their cheap recompute), and
+`prefetch_policy` is frozen. So the disk's large capacity cannot raise hit_rate for THIS workload — there is no
+late reuse to capture. This independently reconfirms the reuse-bound ceiling across ALL tiers (device, host, disk).

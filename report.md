@@ -571,3 +571,9 @@ output-diff quality gate within the fixed protocol (and can't edit eval.sh). So 
 -enough -> off-limits under "lossless above all". This was the ONLY capacity-increasing lever; the capacity-bound
 recompute floor is therefore genuinely inaccessible losslessly. Every lever now closed by test or concrete evidence.
 DEFINITIVE FINAL: best_effort + skip_L3_write + skip_L3_prefetch + write_back = ~889 ms (~122x < v0_tuned), 58 versions.
+
+### v78 HEADLINE REPRODUCIBILITY at HEAD (commit 3086fa881) = 940.4 ms -> REPRODUCES.
+Mechanism metrics IDENTICAL to prior best runs: hit 0.732 (=0.732), throughput 3.52 (=3.52), median 506 (=~505).
+Mean 940 vs prior ~889 is pure allocation variance (~6%, this alloc slower like v74's 957) -- within documented
+node/alloc variance. Best config (best_effort+skip_write+skip_prefetch+write_back) now n=4 {884.2,888.1,895.4,940.4},
+reproducible from the deliverable commit. Headline VERIFIED for upstreaming. 59 versions.

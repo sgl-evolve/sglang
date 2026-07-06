@@ -440,3 +440,13 @@ well-overlapped and **compute+reuse bound**, not bubble-bound. The one remaining
 balanced-batching CODE build) has low EV here (few bubbles to fill; overlap already on) against high stall/wedge
 risk, so it is not a deliberate use of the shared pool. **Final: v4 (56×) is the lossless optimum across every
 accessible axis — cache policy, capacity, transfer/prefetch, compute-overlap, and algorithmic.**
+
+**Tail/queue/preemption analysis (server.log, v9+v13) — closes the last angle.** The mean TTFT is tail-dominated
+(p99 ~12 s vs median ~1 s), so I checked whether the tail is a fixable pathology (preemption/queue) vs genuine
+compute. Findings: **zero preemption events**; server-side **queue is short** (`#queue-req` mostly 0–3);
+**batch is full** (`#running-req` 125–128 of max-concurrency 128). So the system is CONCURRENCY-capped at the
+frozen `--max-concurrency 128`, not queue-saturated — the mild throughput deficit (3.3 vs λ 3.5) is arrivals
+slightly outpacing the 128-concurrent completion rate, held back client-side by bench_serving's semaphore (not a
+server bubble). The p99 tail is therefore GENUINE long-context prefill compute under a full batch, which is
+irreducible without losing tokens or capacity. No preemption/admission lever exists to exploit. This is the final
+angle; the KV-cache subsystem is confirmed at its lossless optimum for this fixed protocol (v4, ~53–56×).

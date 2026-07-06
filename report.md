@@ -439,3 +439,7 @@ write_through offloads EVERY write device->host, churning the FULL host tier (ev
 only on device-eviction -> far less host churn -> higher host hit rate -> less recompute -> throughput reaches lambda.
 REGIME-DEPENDENT: write_back was NEGATIVE without skip (v21 2819) but POSITIVE under full-bypass. ~123x < v0_tuned.
 n=1 -> confirming n>=2 same-alloc (v65-v68) before claiming/emailing (v24 lesson).
+
+### v65-fb-wb-A (full-bypass + write_back, alloc 18348) = 888.1 -> write_back n=2 = {884.2, 888.1} TIGHT (0.4%),
+reproducible across 2 allocations, well below full-bypass write_through band (~1094-1145). Strong candidate new best
+~886ms (~123x < v0_tuned). Awaiting v66 (write_through same-alloc control on 18348) for the clean same-alloc delta.

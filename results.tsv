@@ -43,3 +43,4 @@
 07-06 00:37	v62-fb-ctrl2	mechanism	ttft_mean=1122.3ms	767b1050b	logged
 07-06 01:17	v63-fb-nolpm	mechanism	ttft_mean=1145.1ms	e2a0cfcae	logged
 07-06 01:58	v64-fb-writeback	mechanism	ttft_mean=884.2ms	083425f32	logged
+07-06 02:40	v65-fb-wb-A	mechanism	ttft_mean=888.1ms	775396961	logged

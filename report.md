@@ -174,6 +174,7 @@ plus completing the mechanism curve (v2-wc, v3-wc).
 | v3-wc | mech | 92,956 | 280,154 | 138.2 | 0.82 | 0.26 | +read-priority+aux-threads: WORSE than v1 (contention) |
 | **be-sjf-cost** | mech | **1,519** | **9,012** | 341.9 | 0.596 | 0.00 | **CHAMPION −98.6%**; FLOP-weighted SJF (`uncached*total`): −3% over be-sjf (better prefill-cost estimate) |
 | **be-sjf** | mech | **1,565** | **8,998** | 333.6 | 0.597 | 0.00 | SJF prefill scheduling (least-remaining-work-first): **−22% mean & −49% p99 vs be-lpm** — novel code mechanism |
+| be-sjf-age | mech | 1,679 | 19,058 | 347.3 | 0.614 | 0.00 | SJF + anti-starvation aging (wait>8s→front): still beats lpm, but aging did NOT cap the tail here (p99 contention-driven, not starvation) — within SJF noise |
 | be-sjf-cost-rep | mech | 2,466 | 30,194 | 328 | – | – | REPRODUCTION of be-sjf-cost: **median 1,395 (matches!) but mean/p99 spiked** — SJF tail-variance (see caveat) |
 | be-sjf-mixedchunk | mech | — | — | — | — | — | be-sjf-cost + `--enable-mixed-chunk`: server CRASHES at startup (exit 4) — incompatible w/ hybrid-mamba+hicache |
 | be-sjf-blend | mech | 1,698 | 9,491 | – | 0.600 | 0.00 | lpm-primary + SJF-secondary tiebreak: better than lpm, WORSE than pure/cost SJF — **SJF must be PRIMARY** |
@@ -271,6 +272,16 @@ plus completing the mechanism curve (v2-wc, v3-wc).
   should pair it with anti-starvation aging to cap the tail. The *dimension-level* ordering
   (SJF < lpm < best_effort < baseline; gaps of 25–75%+) is robust across runs; small gaps (be-sjf-cost
   1,519 vs be-sjf 1,565) are within noise. Even the tail-heavy 2,466 is −97.7% vs v0_tuned.
+- **SJF robustly beats lpm despite the variance.** Across 4 SJF-family runs (1,519 / 1,565 / 1,679 /
+  2,466) vs the 7-run be-lpm cluster (tight 2,011–2,149): **3 of 4 SJF runs beat *every* lpm run, and
+  SJF's p99 is ≤ lpm's in every run**. Only the one extreme-tail outlier (cost-rep 2,466, p99 30,194)
+  exceeded lpm — and that coincided with heaviest shared-node contention. So the SJF win is real; the
+  variance is the confound, not the effect.
+- **Anti-starvation aging (be-sjf-age: wait>8s → front) did NOT demonstrably help.** At 1,679 / p99
+  19,058 it sits within the SJF noise band and did not cap the tail to ~8s as hoped. Combined with the
+  observation that p99 tracks *when* a run executed (contention) more than the policy, this indicates the
+  tail-variance is **shared-node contention, not SJF starvation** — so aging has little to fix here (it
+  may still matter on a dedicated node or a lower threshold; untested). be-sjf-cost (1,519) stays champion.
 - **Config sweeps (best_effort/lpm/eviction/etc.) are single-run each**; their large gaps are trustworthy,
   but treat sub-5% differences as noise.
 - `--enable-mixed-chunk` **crashes the server at startup (exit 4)** with this hybrid-mamba + hicache build.

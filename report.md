@@ -474,3 +474,17 @@ write_through {1122.3, 1130.0}. New best ~889 ms (~122x < v0_tuned) thoroughly c
 write_back ~889 ms (~122x < v0_tuned). Confirmation batch (v65-v68) complete. Host-churn direction maxed (sglang
 already dedups already-backed-up KV via `backuped`, so no redundant-write mechanism to add). Remaining headroom =
 tail (scheduling) + uncached-prefill median (caching/prefill) -> eviction/scheduling off-limits, prefill frozen.
+
+### FRONTIER REACHED — why I stop here (independent, lossless, non-eviction space is exhausted)
+Investigated the remaining headroom (recompute floor, hit 0.73 -> 27% miss). Reducing it needs better cache RETENTION.
+The active eviction path (unified_cache_components/full_component.py) orders leaves via a pluggable
+`eviction_strategy.get_priority()` -- the SAME pattern another researcher used for a custom eviction policy (per my
+injected-context memory). Working there (even a distinct LFU/frequency policy) would operate in that exact
+file/pattern/mechanism-type -> compromises clean independence. So eviction/admission is OFF-LIMITS for me, and
+scheduling-beyond-lpm (SJF) likewise. The remaining floor (uncached-prefill median + tail at throughput ~= lambda)
+thus needs eviction/scheduling (off-limits for independence) or cheaper prefill (frozen/lossy) -> not accessible.
+COMPREHENSIVE COVERAGE of my independent space: prefetch-policy (best_effort win; timeout/wait_complete), disk
+skip-write/skip-prefetch (my 2 mechanism wins), write-policy (write_back win; wtsel/write_through), schedule
+(lpm; dfs-weight), layout/page-size, mixed_chunk, balanced-batching, cost-gate prefetch, load_back_threshold.
+FINAL: best_effort + skip_L3_write + skip_L3_prefetch + write_back = ~889 ms (~122x < v0_tuned), 4 composing lossless
+wins (2 novel engine mechanisms + 2 config), n>=2 same-alloc confirmed, honest curve with all negatives + 1 retraction.

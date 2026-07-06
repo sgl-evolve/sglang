@@ -427,3 +427,6 @@ same-alloc control to confirm. Default write_through (eager) remains best.
 full-bypass+wtsel (v61) 1403.0 vs full-bypass ctrl (v62) 1122.3 -> +25% same-alloc. Less-eager device->host offload
 lowers host population/hit-rate -> more recompute (consistent with v20 without skip). Default eager write_through is
 best in every regime. Full-bypass on 18336 = 1122 (within the ~1095-1131 allocation-invariant band). v63 no-lpm, v64 write_back next.
+
+### v63 full-bypass no-lpm = 1145.1 ~= full-bypass+lpm (v62 1122.3) -> lpm REDUNDANT under full-bypass (confirmed,
+consistent with v48/v49). skip mechanisms are the whole win; scheduling order adds ~0 once the queue is drained. v64 write_back last.

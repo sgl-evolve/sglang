@@ -572,7 +572,7 @@ Isolating the two new mechanisms (mean TTFT / hit_rate, on best_effort + skip-L3
 | eviction \ scheduler | lpm (→FCFS under load) | SJF |
 |---|---|---|
 | LRU   | 1142 / 0.623 (prev best) | **{869, 894} → ~881 / 0.62** (v24, v29 — n=2) |
-| costaware d8192 | 954 / 0.681 | **{802,777,767} → ~782 / 0.681** (BEST — n=3) |
+| costaware d8192 | 954 / 0.681 | **{802,777,767,786} → ~783 / 0.68** (BEST — n=4) |
 
 - **SJF is the larger single lever: −23% alone** (1142→~881, n=2 {869,894}) with hit UNCHANGED
   (0.62≈LRU) — a pure scheduling win (fixing FCFS-under-load), orthogonal to caching. (v29 solidifies
@@ -622,9 +622,10 @@ Isolating the two new mechanisms (mean TTFT / hit_rate, on best_effort + skip-L3
   first-touch recompute). Layout is not a lever in this regime. Logged W&B [config].
 
 ## STATUS: comprehensive lossless optimum reached for this fixed protocol
-Design space explored end-to-end (config + capacity + disk-tier + eviction + scheduling + layout), 28 logged
-versions (incl. the costfreq negative re-confirming cost≠count, the best config reproduced n=3 @ ~782 ms,
-and the layout/page-size dimension mapped neutral across 32/64/128). Best = best_effort + skip-L3-writes + skip-L3-prefetch + cost-aware eviction (d8192) + SJF
+Design space explored end-to-end (config + capacity + disk-tier + eviction + scheduling + layout), 30 logged
+versions (incl. the costfreq negative re-confirming cost≠count, the best config reproduced n=4 @ ~783 ms
+{802,777,767,786}, the SJF-alone attribution solidified n=2, and the layout/page-size dimension mapped
+neutral across 32/64/128). Best = best_effort + skip-L3-writes + skip-L3-prefetch + cost-aware eviction (d8192) + SJF
 scheduling = **~790 ms mean TTFT, ~138× below v0_tuned, lossless, system keeps up with λ=3.5**. The floor
 is now the unavoidable long-context first-touch recomputes (P99 ~5 s); the only remaining lever is
 prefill/decode overlap (mixed_chunk), declined for a device-KV-pool leak + silent-losslessness risk.

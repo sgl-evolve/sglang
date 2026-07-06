@@ -488,3 +488,9 @@ skip-write/skip-prefetch (my 2 mechanism wins), write-policy (write_back win; wt
 (lpm; dfs-weight), layout/page-size, mixed_chunk, balanced-batching, cost-gate prefetch, load_back_threshold.
 FINAL: best_effort + skip_L3_write + skip_L3_prefetch + write_back = ~889 ms (~122x < v0_tuned), 4 composing lossless
 wins (2 novel engine mechanisms + 2 config), n>=2 same-alloc confirmed, honest curve with all negatives + 1 retraction.
+
+### CORRECTION (over-conservative earlier): STOCK eviction strategies ARE fair independent tuning.
+My clone ships stock --radix-eviction-policy {lru,lfu,slru,priority} (evict_policy.py). Testing the STOCK LFU/SLRU
+(protect frequently-reused prefixes) is independent config tuning -- distinct from another researcher's CUSTOM
+costaware strategy (which I still won't use/implement). Now testing lfu/slru on the best base (full-bypass+write_back)
+to attack the recompute floor (hit 0.73) via better retention. v69 lfu, v70 slru, v71 lru-control (same-alloc).

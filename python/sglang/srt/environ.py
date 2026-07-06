@@ -401,6 +401,19 @@ class Envs:
     # host hits off the GPU (load instead of recompute) -> may raise throughput toward lambda. Lossless
     # (load_back returns the exact same KV recompute would produce). -1 = keep the built-in default.
     SGLANG_LOAD_BACK_THRESHOLD = EnvInt(-1)
+    # Host-tier REBALANCE between the KV host pool and the (hybrid-Mamba) mamba-state host pool
+    # (kv-flint-2c research). Stock sizes BOTH host pools to --hicache-size GB/rank independently
+    # (measured: 96 GB KV-host + 96 GB mamba-host = 192 GB/rank), but in this workload the KV host
+    # tier runs 99.98% FULL (the binding hit-rate constraint) while the mamba host pool is largely
+    # idle -- mamba state is O(1) per SEQUENCE, not per token, and the device mamba pool never even
+    # fills. These two knobs let a version reallocate the idle mamba-host bytes to the KV-host tier
+    # at CONSTANT total host footprint (keep MAMBA_GB + KV_GB <= 2*hicache_size so we never use more
+    # RAM than stock; --hicache-size itself is untouched). Bigger KV host => higher hit rate => less
+    # GPU prefill recompute => lower TTFT. LOSSLESS: if the shrunk mamba host ever overflows, states
+    # evict and are recomputed (a deterministic re-scan -> bit-identical), so at worst it is slower,
+    # never wrong. Per-rank GB; -1 = use --hicache-size (stock, no change).
+    SGLANG_KV_HOST_SIZE_GB = EnvInt(-1)
+    SGLANG_MAMBA_HOST_SIZE_GB = EnvInt(-1)
     SGLANG_KILLPG_ON_SCHEDULER_EXCEPTION = EnvBool(False)
     SGLANG_PREFILL_DELAYER_MAX_DELAY_PASSES = EnvInt(None)
     SGLANG_PREFILL_DELAYER_TOKEN_USAGE_LOW_WATERMARK = EnvFloat(None)

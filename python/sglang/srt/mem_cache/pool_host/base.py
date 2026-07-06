@@ -99,6 +99,17 @@ class HostKVCache(abc.ABC):
 
         self.dtype = device_pool.store_dtype
         self.size_per_token = self.get_size_per_token()
+        # kv-flint-2c: optional host-tier rebalance -- override the KV host pool size (GB/rank) so idle
+        # mamba-host bytes can be reallocated here (see environ.SGLANG_KV_HOST_SIZE_GB). Only the KV/SWA
+        # host pools reach this base __init__; MambaPoolHost overrides its own sizing. -1 = stock.
+        from sglang.srt.environ import envs
+
+        _kv_gb = envs.SGLANG_KV_HOST_SIZE_GB.get()
+        if _kv_gb is not None and _kv_gb >= 0:
+            host_size = _kv_gb
+            logger.info(
+                f"[kv-flint-2c] KV host pool size overridden to {host_size} GB/rank (host-tier rebalance)."
+            )
         if host_size > 0:
             self.size = sync_fixed_hicache_size(
                 int(host_size * 1e9 // self.size_per_token), host_size

@@ -1435,6 +1435,18 @@ class MambaPoolHost(HostKVCache):
         self.dtype = self.conv_dtype
         self.size_per_token = self.get_size_per_token()
 
+        # kv-flint-2c: optional host-tier rebalance -- shrink the (largely idle) mamba host pool so its
+        # bytes can be reallocated to the KV host tier (see environ.SGLANG_MAMBA_HOST_SIZE_GB). Mamba state
+        # is O(1) per sequence, so a smaller pool still comfortably holds the working set; on overflow,
+        # states evict+recompute (deterministic -> lossless). -1 = stock (== --hicache-size).
+        from sglang.srt.environ import envs
+
+        _mamba_gb = envs.SGLANG_MAMBA_HOST_SIZE_GB.get()
+        if _mamba_gb is not None and _mamba_gb >= 0:
+            host_size = _mamba_gb
+            logger.info(
+                f"[kv-flint-2c] Mamba host pool size overridden to {host_size} GB/rank (host-tier rebalance)."
+            )
         if host_size > 0:
             self.size = sync_fixed_hicache_size(
                 int(host_size * 1e9 // self.size_per_token), host_size

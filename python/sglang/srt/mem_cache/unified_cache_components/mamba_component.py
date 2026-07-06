@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, Callable, Optional, Sequence
 
 import torch
@@ -27,6 +28,19 @@ from sglang.srt.mem_cache.unified_cache_components.tree_component import (
     get_and_increase_time_counter,
 )
 from sglang.srt.server_args import get_global_server_args
+
+# kv-lynx-4d2: frequency-aware (CLOCK / second-chance) Mamba eviction on the ACTIVE
+# UnifiedRadixCache path (hybrid-SSM + hierarchical cache). The Mamba tier is the
+# binding capacity constraint in this workload, and its stock eviction is strict LRU
+# (see MambaComponent.drive_eviction). This gives frequently-reused Mamba states a
+# bounded number of "second chances" before eviction, evicting a colder node instead.
+#   KVLYNX_MAMBA_CLOCK_MAXSKIP: max hot nodes to skip per evict() call (0 => stock LRU).
+#   KVLYNX_MAMBA_CLOCK_THR:     hit_count threshold to treat a node as "hot".
+# LOSSLESS: only reorders which cached sequence is recomputed; a skipped node stays
+# fully cached (value untouched) and any evicted sequence recomputes bit-identically.
+# The bounded skip budget guarantees termination (falls back to strict LRU).
+_MAMBA_CLOCK_MAXSKIP = int(os.environ.get("KVLYNX_MAMBA_CLOCK_MAXSKIP") or "0")
+_MAMBA_CLOCK_THR = int(os.environ.get("KVLYNX_MAMBA_CLOCK_THR") or "2")
 
 if TYPE_CHECKING:
     from sglang.srt.managers.schedule_batch import Req
@@ -207,8 +221,22 @@ class MambaComponent(TreeComponent):
         ct = self.component_type
         lru = self.cache.lru_lists[ct]
         x = lru.get_lru_no_lock()
+        # kv-lynx-4d2: CLOCK second-chance skip budget (0 => stock strict LRU).
+        skips_left = _MAMBA_CLOCK_MAXSKIP
         while tracker[ct] < request and x is not None and lru.in_list(x):
             assert x.component_data[ct].value is not None
+            # kv-lynx-4d2: give a frequently-reused Mamba state a second chance --
+            # move it to MRU and evict a colder node instead. Bounded by skips_left
+            # so eviction always makes progress (strict-LRU fallback). Lossless:
+            # the skipped node stays cached; only victim order changes.
+            if skips_left > 0 and getattr(x, "hit_count", 0) >= _MAMBA_CLOCK_THR:
+                x_next = lru.get_prev_no_lock(x)
+                lru.reset_node_mru(x)
+                skips_left -= 1
+                if x_next is None or not lru.in_list(x_next):
+                    x_next = lru.get_lru_no_lock()
+                x = x_next
+                continue
             if x in self.cache.evictable_device_leaves:
                 # D-leaf: atomic eviction of all components
                 x_next = lru.get_prev_no_lock(x)

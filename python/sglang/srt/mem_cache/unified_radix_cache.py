@@ -376,6 +376,20 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
 
         self.reset()
         logger.info(f"Init Unified RadixTree with components {self.tree_components}")
+        # kv-lynx-4d2: confirm we are on the ACTIVE UnifiedRadixCache path (the
+        # hybrid-SSM + HiCache model routes here; HiMambaRadixCache is dormant) and
+        # report the Mamba CLOCK-eviction toggle so an eval can VERIFY the mechanism
+        # is live vs silently stock. MAXSKIP=0 == stock strict LRU (lossless default).
+        from sglang.srt.mem_cache.unified_cache_components.mamba_component import (
+            _MAMBA_CLOCK_MAXSKIP,
+            _MAMBA_CLOCK_THR,
+        )
+        logger.info(
+            "kv-lynx-4d2 UnifiedRadixCache ACTIVE: KVLYNX_MAMBA_CLOCK_MAXSKIP=%s "
+            "KVLYNX_MAMBA_CLOCK_THR=%s (MAXSKIP=0=stock LRU)",
+            _MAMBA_CLOCK_MAXSKIP,
+            _MAMBA_CLOCK_THR,
+        )
 
     def _all_reduce_attn_groups(self, tensor: torch.Tensor, op):
         reduced = False

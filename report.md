@@ -55,7 +55,9 @@ vs a same-node control; only effects >~30% (or same-node effects clearly >~8%) a
 NEUTRAL (my two novel engine mechanisms -- do NOT help in this regime):
  - Balanced/loading-bound prefill batching (SGLANG_ENABLE_BALANCED_PREFILL): same-node {2746,2789} ~= be-alone.
  - Length/cost-aware prefetch gate (SGLANG_PREFETCH_COST_GATE): same-node {2586,2519} ~= no-gate.
-NEUTRAL config: dfs-weight scheduling; write_through_selective / write_back (default write_through is best).
+NEUTRAL config: dfs-weight scheduling; write_through_selective (worse). NOTE: write_back is REGIME-DEPENDENT --
+negative WITHOUT skip (v21 2819) but the ~21% WIN under full-bypass (see headline); write_through best only pre-skip.
+NEUTRAL on the full-bypass base: load_back_threshold, lpm (redundant once skipped).
 NEGATIVE config: mixed_chunk (16180 ms, fragments prefill); page-size 128/256 (monotonically worse than 64 --
  coarser prefix-match lowers hit rate). timeout prefetch beats best_effort ALONE but loses once lpm is added.
 
@@ -69,7 +71,10 @@ Cutting the recompute would require better caching (eviction/admission) or cheap
 off-limits to stay an independent replicate, the latter is frozen by the contract (chunk size) or lossy (mixed_chunk).
 
 ## Bottom line for a maintainer
-Reproducible frontier (lossless, non-eviction): **best_effort + lpm + skip_L3_write ~1167 ms (~93x < v0_tuned)**.
+Reproducible frontier (lossless, non-eviction): **best_effort + skip_L3_write + skip_L3_prefetch + write_back
+~886 ms (~123x < v0_tuned)** [n>=2 same-alloc confirmed at each step]. (The "Why mechanisms are neutral" section
+below describes the PRE-skip regime, throughput 2.55 -- superseded once the disk is bypassed and throughput reaches
+lambda; the remaining floor is then the tail + the uncached-prefill median, which need eviction/scheduling/cheaper-prefill.)
 Three upstream-ready takeaways, in order of impact: (1) for HiCache under queue-saturating load, **best_effort
 prefetch beats the wait_complete default by ~35-45x** (don't synchronously block admission on slow-disk reads);
 (2) **don't offload KV to a storage tier you never read** -- under best_effort the disk is write-only, and skipping

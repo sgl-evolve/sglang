@@ -460,3 +460,6 @@ every write device->host, churning the FULL host tier (evicting useful KV); writ
 host hit_rate 0.63->0.73 -> throughput reaches lambda 3.5 -> queue drains -> mean 1122->886. REGIME-DEPENDENT config
 finding (write_back was NEGATIVE without skip: v21 2819). Best stack: best_effort + skip_L3_write + skip_L3_prefetch
 + write_back = ~886ms. EMAILED. v67/v68 extend n.
+
+### v67 write_back = 895.4 -> write_back n=3 {884.2, 888.1, 895.4} mean 889, TIGHT (~1.2%), non-overlapping with
+write_through {1122.3, 1130.0}. New best ~889 ms (~122x < v0_tuned) thoroughly confirmed. v68 = write_through n=3.

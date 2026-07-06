@@ -52,12 +52,20 @@ While blocked, implemented a genuine novel engine mechanism on the VERIFIED-ACTI
 - **Offline-verified:** `test_slfu_policy.py` PASSES (no GPU) — ordering reuse>size-retention>recency,
   None-key safe. Still MUST be eval-validated + multi-sampled vs ±0.15 hit noise before any claim.
 
-## CURRENT PLAN (queued, blocked on capacity)
-Queue (`experiment_queue.txt`): **v19-timeout-clean** (`--hicache-storage-prefetch-policy timeout`) FIRST,
-then **v18-be-slru** (`best_effort --radix-eviction-policy slru`, config), then **v20-be-slfu**
-(`best_effort --radix-eviction-policy slfu`, the NOVEL mechanism — the payoff if the eviction lever
-moves hit rate; slfu targets a failure mode (cold-start large-doc eviction) slru does not, so worth
-running even if slru is within-noise).
+## KEY FINDING (2026-07-06): eviction-TIMING is the lever (report.md "The variance is eviction-timing")
+Re-analysis of 5 best_effort runs: workload FIXED (prompt_tok 99.91M ±0.001%) + eviction pressure FIXED
+(evict_tok 579–581M, host_util pinned 0.96–1.00) yet hit_rate swings 0.44–0.61 (hit tokens ±37%). Same
+requests + same evict volume → wildly different hits ⇒ variance is host-eviction TIMING under default LRU,
+NOT arrival noise. **Eviction policy is THE controllable lever (~16 hit pts left on table).** L3=0 always;
+53% of hits are HOST tier. Predicts slfu raises mean hit AND shrinks variance. Storage line DEMOTED.
+I hold a **5-run LRU baseline distribution (hit 0.504±0.057)** → slfu ×2–3 vs it is the powered test
+(unpaired needs |Δ|>0.093 at n=3 for 2σ).
+
+## CURRENT PLAN (queued, blocked on capacity) — REPRIORITIZED to lead with the novel mechanism
+Queue (`experiment_queue.txt`): **v20-be-slfu** ×2 (`best_effort --radix-eviction-policy slfu`, the NOVEL
+mechanism on the evidenced lever) FIRST, then **v18-be-slru** (built-in reuse-aware reference), then
+**v19-timeout-clean** (DEMOTED — one run to close the L3-disk-artifact question; storage no longer the
+priority even if a clean node shows nonzero L3).
 - **v19 = DECISIVE:** timeout on a CLEAN ≥2.5TB certified node → check `loaded=` in server.log.
   - loaded>0 → storage tier is REAL; disk-starvation crippled all prior runs → revive storage direction
     (then optimize the now-functional L3 path; parallel reads finally matter, correctly placed).

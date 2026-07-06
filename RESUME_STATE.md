@@ -34,9 +34,30 @@ A self-audit of raw metrics + active code paths proved **all 3 of my "engine mec
 - File KV read = `_generic_page_get → HiCacheFile.batch_get` (my parallel code is live here, but L3=0 hits
   so moot); mamba pool read = serial `_batch_io_v2` (small states, low value).
 
+## NOVEL MECHANISM BUILT OFFLINE (during the capacity block) — `slfu` size-aware LFU eviction
+While blocked, implemented a genuine novel engine mechanism on the VERIFIED-ACTIVE eviction path
+(unlike the retracted dead-path edits). New eviction policy **`slfu`** = size-aware LFU:
+`get_priority(node) = (hit_count, num_tokens, last_access_time)`, smallest evicted first.
+- **Why:** hit rate is the lever but `hit_count` alone (LFU) ignores prefix SIZE. In the LooGLE
+  multi-Q-per-long-doc mix, the highest-value entries are LARGE prefixes reused by MANY requests.
+  slfu retains them: among equal reuse, evict small first; a large fresh document (hit_count=0,
+  before its 2nd question) is protected over cheap one-shot prefixes (fixes the reuse cold-start in
+  the right direction). Lossless (eviction only changes what's recomputed), parameter-free, drop-in.
+- **Files:** `evict_policy.py` (SLFUStrategy), `utils.py` (import + registry `"slfu"`),
+  `server_args.py` (added `"slfu"` to RADIX_EVICTION_POLICY_CHOICES — argparse validates against it).
+- **ACTIVE-path proof (integrity):** `unified_radix_cache.py:318` builds `eviction_strategy` from the
+  policy; `full_component.py:137` calls `eviction_strategy.get_priority` in host+GPU eviction — so it
+  IS exercised (contrast the dead hi_mamba edits). Default eviction=`lru`, so champion best_effort
+  used LRU → slru/slfu are clean deltas vs LRU.
+- **Offline-verified:** `test_slfu_policy.py` PASSES (no GPU) — ordering reuse>size-retention>recency,
+  None-key safe. Still MUST be eval-validated + multi-sampled vs ±0.15 hit noise before any claim.
+
 ## CURRENT PLAN (queued, blocked on capacity)
 Queue (`experiment_queue.txt`): **v19-timeout-clean** (`--hicache-storage-prefetch-policy timeout`) FIRST,
-then **v18-be-slru** (`best_effort --radix-eviction-policy slru`, config).
+then **v18-be-slru** (`best_effort --radix-eviction-policy slru`, config), then **v20-be-slfu**
+(`best_effort --radix-eviction-policy slfu`, the NOVEL mechanism — the payoff if the eviction lever
+moves hit rate; slfu targets a failure mode (cold-start large-doc eviction) slru does not, so worth
+running even if slru is within-noise).
 - **v19 = DECISIVE:** timeout on a CLEAN ≥2.5TB certified node → check `loaded=` in server.log.
   - loaded>0 → storage tier is REAL; disk-starvation crippled all prior runs → revive storage direction
     (then optimize the now-functional L3 path; parallel reads finally matter, correctly placed).

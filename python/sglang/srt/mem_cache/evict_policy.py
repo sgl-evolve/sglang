@@ -63,3 +63,32 @@ class SLRUStrategy(EvictionStrategy):
 
         is_protected = 1 if node.hit_count >= self.protected_threshold else 0
         return (is_protected, node.last_access_time)
+
+
+class SLFUStrategy(EvictionStrategy):
+    """Size-aware LFU: (hit_count, num_tokens, last_access_time), smaller evicted first.
+
+    Motivation: for reuse-heavy long-document workloads (e.g. many questions over one
+    long context), the highest-value cache entries are the *large* prefixes reused by
+    *many* distinct requests. Plain LFU/LRU ignore prefix size, so a big shared document
+    prefix can be evicted just as readily as a tiny one-shot chat prefix — and, under
+    memory pressure, a freshly-inserted document (hit_count still 0 before its 2nd
+    question arrives) is indistinguishable from a cheap one-shot prefix.
+
+    Tuple comparison (all "smaller = evicted first"):
+      1. hit_count      — least-reused first (LFU primary; reused nodes always outrank
+                          any not-yet-reused node regardless of size).
+      2. num_tokens     — among equal reuse, evict the *smaller* node first, i.e. RETAIN
+                          large prefixes. This protects a large fresh document prefix
+                          (hit_count == 0) over cheap-to-recompute small prefixes, fixing
+                          the reuse cold-start in the correct direction.
+      3. last_access_time — LRU tiebreak among equal (reuse, size).
+
+    Lossless: eviction only changes which cached entries are dropped; any evicted prefix
+    is recomputed on miss. Parameter-free. Drop-in via get_priority (no eviction-loop
+    changes). Distinct from every built-in policy, none of which is size-aware.
+    """
+
+    def get_priority(self, node: TreeNode) -> Tuple[int, int, float]:
+        num_tokens = len(node.key) if node.key is not None else 0
+        return (node.hit_count, num_tokens, node.last_access_time)

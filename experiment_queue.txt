@@ -1,2 +1,3 @@
 v19-timeout-clean|-|--hicache-storage-prefetch-policy timeout|config
 v18-be-slru|-|--hicache-storage-prefetch-policy best_effort --radix-eviction-policy slru|config
+v20-be-slfu|-|--hicache-storage-prefetch-policy best_effort --radix-eviction-policy slfu|mechanism

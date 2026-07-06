@@ -510,3 +510,15 @@ being more selective (v16) misses second-uses (worse), and being less selective 
 pollute the full host tier with one-shots (worse). Logged W&B `config`. Lossless. This also confirms hit_rate IS
 sensitive to what's on host (it can drop to 0.38), so the flat-at-0.55 result under eviction reordering is
 genuinely the reuse ceiling given aggressive-but-not-polluting admission — not an artifact of an insensitive metric.
+
+## Transfer axis, take 2 (reconsidered: load_back ≈ 38K tok/req is substantial)
+Motivation: `load_back_tokens` 272M / 7037 ≈ 38K tokens loaded H→D per request — substantial transfer volume
+whose overlap-with-compute is unproven. The blog's high-perf transfer combo is page-first layout + GPU-assisted
+kernel IO.
+**v17-io-kernel (`--hicache-io-backend kernel` alone) — SILENT FALLBACK, killed.** Server logged "Kernel io
+backend does not support page first direct layout, switching to direct io backend" → ran stock io=direct
+(= duplicate of v9). Killed at ~7 min load to free the contended node (zero marginal value; fails self-audit's
+no-silent-fallback gate). Finding: **kernel IO is incompatible with the frozen `page_first_direct` layout.**
+**v18-kernel-pf (`--hicache-mem-layout page_first` + `--hicache-io-backend kernel`) — the CORRECT test** (layout
+is in-scope per charter; the blog's recommended combo). Running: directly probes whether faster CPU↔GPU transfer
+lowers TTFT (real win if transfer is on the critical path) or is neutral (if transfer is already overlapped).

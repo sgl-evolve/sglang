@@ -548,3 +548,7 @@ empirical test: proved the trade-off vs just reasoning it.) Best stays ~889 (non
 Binding cap < client-128 monotonically worse (server-side queue tail). Non-binding default OPTIMAL. Honest negative
 for the binding direction; best stays ~889 (non-binding). Now testing the last untested knob: schedule_conservativeness
 (prefill-admission aggressiveness) -- empirical, not reasoned.
+
+### v75-best-sc0.5 (best base + schedule_conservativeness=0.5) = 876.9, throughput 3.52, median 508 -> NEUTRAL (~=best).
+schedule_conservativeness affects retract aggressiveness; with ~0 retracts at throughput>=lambda it's a no-op, now
+empirically confirmed (sc0.5 = 877 ~= best ~889). v76 sc2.0, v77 control complete it. Last untested knob -> neutral.

@@ -468,3 +468,9 @@ finding (write_back was NEGATIVE without skip: v21 2819). Best stack: best_effor
 
 ### v67 write_back = 895.4 -> write_back n=3 {884.2, 888.1, 895.4} mean 889, TIGHT (~1.2%), non-overlapping with
 write_through {1122.3, 1130.0}. New best ~889 ms (~122x < v0_tuned) thoroughly confirmed. v68 = write_through n=3.
+
+### write_back CONFIRMED n=3 (full-bypass): write_back {884.2,888.1,895.4} mean 889 vs write_through {1122.3,1130.0,
+1151.0} mean 1134 -> non-overlapping, tight, -21.5%. New best DEFINITIVE: best_effort+skip_write+skip_prefetch+
+write_back ~889 ms (~122x < v0_tuned). Confirmation batch (v65-v68) complete. Host-churn direction maxed (sglang
+already dedups already-backed-up KV via `backuped`, so no redundant-write mechanism to add). Remaining headroom =
+tail (scheduling) + uncached-prefill median (caching/prefill) -> eviction/scheduling off-limits, prefill frozen.

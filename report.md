@@ -42,12 +42,19 @@ mechanism: **v0** (stock: FCFS + serial L3 I/O) → **v1** (FCFS + *parallel* L3
 | v0_tuned | best stock cfg (THE BAR) | 108824 | — | +24% (worse) | 119.3 | .821 / — |
 | **v8-sjf-ca-aged90** | **genuine cache-aware SJF + aging=90s** | **65321.4** | **1.67× (−40%)** | **1.34× (−25%)** | **174.4** | .779 / .170 |
 | v3-sjf-aged | SJF(total-len) + aging=90s | 77082.7 | 1.41× (−29%) | 1.14× (−12%) | 149.2 | .818 / .253 |
+| v5-sjf-aged90-rep | **v3 repeat** (SJF+aging=90, total-len) | 84043.4 | 1.29× (−23%) | 1.04× (−4%) | 149.6 | .820 / .257 |
 | v2-sjf | pure SJF(total-len, aging=0) | 80341.6 | 1.35× (−26%) | 1.09× (−8%) | 151.3 | .813 / .250 |
 | v1-parallel-l3-io | parallel L3 disk I/O | _infra-blocked (queued)_ | | | | |
-| v5-sjf-aged90-rep | v3 repeat (noise band) | _infra-blocked (queued)_ | | | | |
 | v7-hrrn | HRRN (smooth anti-starvation) | _queued_ | | | | |
 
-**v3-sjf-aged is the current best** — a **29% mean-TTFT cut vs the bar** with hit-rate/l3-frac matching
+**v8-sjf-ca-aged90 is the current best (65321, 1.67×).** **Reproducibility (v5 = v3-repeat):** v5
+(84043) repeats v3's SJF+aging90 config; its cache profile matches v3 (hit .82/.818, l3 .257/.253,
+out 150/149, median 1221/1418) — a clean replicate — but mean TTFT is 84043 vs v3's 77083, i.e. **~9%
+run-to-run variance** for the *same* config in this noisy regime. Crucially, **v8's cache-aware win
+survives this noise**: v8 (65321) is 15% below v3 and **22% below v5**, both far outside the ~9% same-config
+band → the cache-aware advantage is robust, not a lucky draw. (The regime's noise is why wins must be large.)
+
+**v3-sjf-aged (77083) — prior best, superseded by v8** — a **29% mean-TTFT cut vs the bar** with hit-rate/l3-frac matching
 baseline (cache behaviour preserved) and out_tok/s slightly *up*. Confirms the core thesis: mean TTFT
 here is **prefill-queue-waiting-dominated**, and shortest-job ordering is the dominant lever, not disk
 latency. **Both SJF variants beat both baselines robustly** (1.35–1.41× vs the bar — large, well outside

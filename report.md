@@ -461,3 +461,18 @@ Token-usage median 0.36 / p90 0.62 / max 0.90 of the device KV pool: burst headr
 long-context peaks (0.90), and the device-cache cap (`hicache_ratio`) is frozen — so the underused-average device
 pool is not an exploitable lever. Together these directly support the compute+reuse-bound conclusion: no idle GPU
 to reclaim, no free capacity to safely exploit. v4 (~53–56×) is the lossless optimum.
+
+**v15-mixed-chunk (`--enable-mixed-chunk`) — strong NEGATIVE on headline, but the most informative run.**
+mean TTFT **5328 ms (3.1× WORSE than stock 1696)**, median 1967 (1028), p99 19955 (12910) — a large TTFT
+regression. BUT throughput **3.52** (stock 3.32, now ABOVE λ 3.5) and hit_rate **0.582** (stock 0.55) both
+IMPROVED, with tpot_mean 108 ms. Interpretation: mixing prefill chunks into decode batches raises GPU
+utilization/throughput and cache efficiency, but each request's first token is delayed (prefill shares slots
+with decode) → TTFT collapses. This is a classic **prefill↔decode tradeoff, and it moves the WRONG way for our
+TTFT headline.** Logged W&B `config` (kept negative). Lossless (batching only). Two takeaways:
+1. **Independent result differs from a prior context's "mixed_chunk halves hit_rate → collapse"** — mine shows a
+   TTFT/throughput TRADEOFF (hit_rate actually ROSE), not a hit_rate collapse. Testing it myself was the right call.
+2. **Stock is already at the TTFT-optimal end of the prefill/decode axis** (prefill-dedicated steps, no delayer);
+   there is no "more prefill-favoring than stock" knob (delayer already off, batch concurrency-capped at 128), so
+   this axis offers no lossless TTFT win. The throughput/hit_rate headroom mixed_chunk unlocks is inseparable from
+   its TTFT cost (fundamental tradeoff), so it can't be captured for the TTFT headline.
+This closes the prefill/decode scheduling axis too. v4 (~53–56×) remains the lossless TTFT optimum.

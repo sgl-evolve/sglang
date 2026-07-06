@@ -494,9 +494,16 @@ by *operational* (not mechanism) issues:
 **Net:** every on-contract run I attempted *after* the pool's disk-recovery/contention chaos — v16 (spf,
 ~1 req), v14 (config, 1275 req), v15 (config, ~0 req) — hit the same server-side detokenizer degradation
 and never completed a clean full benchmark, so none yields a comparable number. This is an
-**operational/environmental blocker** (most plausibly the shared-pool `srun --overlap` execution path
-and/or this pool node's state after the heavy contention), **not a mechanism result**, and I have stopped
-running on the degraded pool (retrying only wedges shared nodes for other researchers). **The headline is
+**operational/environmental blocker**, **not a mechanism result**. Leading root-cause hypothesis:
+**mid-run peer collision on the shared pool** — my earlier clean runs (v1–v13, 7037/7037) executed with
+effectively exclusive node access, whereas v16/v14/v15 ran via `srun --overlap` into the *manager's shared
+hold* while a peer cycles evals continuously **without taking the `$RT/locks` flock**. My sustained-GPU-idle
+gate guarantees the node is idle at *launch*, but cannot stop a peer from starting a second 122B server on
+the same 8 GPUs *mid-run*; the resulting contention/OOM-pressure stalls my detokenizer. (Consistent with
+the varied stall points: ~1, ~1275, ~0 requests = whenever the peer next jumped in.) I have stopped
+running on the degraded shared pool (retrying only wedges shared nodes for other researchers); a clean
+number would require genuinely exclusive certified-node access, which pool saturation + admin-drains do
+not currently afford. **The headline is
 unaffected:** the 45× regime jump + rigorously same-node-controlled plateau rests on the earlier clean
 full runs (v1–v13, each 7037/7037 completed, on-contract, logged) and is fully independent of
 v16/v14/v15.

@@ -561,3 +561,19 @@ the fix path was heavily exercised. Results:
   self-audit is the definitive at-scale correctness+lossless check (v11 & write_back both failed it).
 - **Remaining gate (3): disk.** The full protocol eval needs a certified ≥1.8 TB node; the mechanism is
   built, verified, committed & pushed, and the eval command is staged — launches the instant disk frees.
+
+### v19 eval attempts blocked by NODE CONTENTION (not mixed-chunk) — 2026-07-06
+Disk freed (node 1-2 → 1951G). Two v19-mixedchunk launch attempts (adaptive+srpf+lfu+`--enable-mixed-chunk`
+= v18 best + only-delta mixed-chunk) both died on load with `Not enough GPU memory for hybrid mamba state
+cache; total_rest_memory=-0.19 GB`. Diagnosed: **not a mixed-chunk cost** — v18 successfully allocated a
+**1350-slot mamba cache (23.75GB ssm + 0.42GB conv ≈ 24GB rest-memory)**, so a −0.19GB rest means ~24GB was
+taken by another process during my load. Confirmed: researcher **quartz-7m3 runs a continuous campaign on
+held node 1-2 via `srun --overlap` WITHOUT taking the pool flock** (`$RT/locks/…`), so the flock reads FREE;
+my launcher grabbed a clean window between quartz's evals, but quartz's next eval started concurrently →
+GPU-memory collision → my server OOM'd on the mamba cache. 1-2 is therefore un-usable for a valid (exclusive,
+comparable) eval and is blocklisted. Hardened `smart-eval.sh` this session: **GPU-cleanliness precheck**
+(skip nodes with <75G GPU0 free — a just-finished eval's cleanup tail or a co-tenant), **blocking flock**
+(win the lock the instant it releases instead of losing sub-poll races), **rc=3 blocklist-retry**. The only
+other certified node (ondem-3) is flock-managed (genuinely exclusive when free); smart-eval waits for it and
+will run v19 there. Mixed-chunk itself is correctness-verified and, on an exclusive node, fits (v18 margin +
+mixed-chunk's small overhead). Contention/capacity — not the mechanism — is the blocker.

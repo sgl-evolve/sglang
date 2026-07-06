@@ -623,3 +623,37 @@ runs at its throughput CEILING, mixed OFF vs ON (8600 MIXED batches fired on ON;
 - **Redirects the search:** mixed-chunk is not the TTFT lever. A future idea (v20): **TTFT-aware mixed-chunk** — cap
   decode-folding so a prefill step reserves enough budget for new prefills (capture some throughput without the TTFT
   hit). Speculative; needs the eval loop. The accessible-lever TTFT plateau (~1798ms) otherwise stands.
+
+## v19-mixedchunk (LOGGED, `mechanism`, commit d4fe0036a) — CATASTROPHIC REGRESSION, reverted
+Ran the full fixed protocol on an exclusive node (1-2, after quartz-7m3 vacated it): v18 best config
+(adaptive prefetch + srpf + lfu) **+ `--enable-mixed-chunk`** — the only delta. On-contract self-audit PASSED
+(resolved_args match ctx 262144 / mem-frac 0.85 / hicache 96 / tp 8 / io direct / page_first_direct /
+write_through / prefetch adaptive / page 64; no SILENT FALLBACK; EVAL_DONE). Result vs v18 (1798 ms):
+
+| metric | v18 (best) | v19 (mixed-chunk) | delta |
+|---|---|---|---|
+| **mean TTFT** | 1798 ms | **150252 ms** | **83.6x WORSE** |
+| median TTFT | ~ | 161490 ms | catastrophic |
+| p99 TTFT | ~ | 199682 ms | catastrophic |
+| req throughput | 2.80 req/s | 0.77 req/s | -73% |
+| output tok/s | ~ | 98.2 | collapse |
+| **cache hit_rate** | ~0.62 | **0.298** | **HALVED** |
+| host_util | ~ | 0.9988 (saturated) | thrash |
+| evict_tokens | ~ | 1.227 BILLION | thrash |
+| successful | 7037/7037 | 7012/7037 | 25 overload-timeout drops |
+| tpot_mean | ~489 (v0) | 41.3 ms | (decode itself fine) |
+
+- **Mechanism of the collapse (richer than the no-disk saturation scan showed):** in the eval's hierarchical-cache
+  regime, mixed-chunk **halves the prefix-cache hit_rate (0.62 -> 0.298)**. Folding running decodes into every prefill
+  batch disrupts prefix reuse / drives host-tier thrashing (host_util 0.999, 1.23B evict tokens) -> ~2.5x more prefill
+  recompute -> throughput collapses 2.8 -> 0.77 req/s -> the overloaded queue (lambda 3.5 >> 0.77) never drains ->
+  mean TTFT explodes to 150 s. The 25 non-successful requests are overload timeouts (waited >150 s), not output
+  corruption (correctness harness proved outputs lossless; TPOT/ITL are healthy).
+- **Verdict: mixed-chunk is decisively NOT viable for this TTFT-headline eval.** It is a throughput mechanism whose
+  decode-into-prefill folding is actively harmful here (halves hit rate + delays prefill). Logged as the honest
+  negative 19th version; NOT emailed (not a best). This CLOSES the mixed-chunk line: the enablement fix is real and
+  lossless (upstreamable for throughput-bound, non-hierarchical, non-TTFT workloads), but for this protocol it is a
+  large regression. **v18 (~1798 ms, SRPF + adaptive-prefetch) remains the definitive accessible-lever optimum.**
+- The v20 "TTFT-aware mixed-chunk" idea is now even less promising: the dominant harm here is the hit-rate halving
+  (not just prefill-budget sharing), which capping decode-folding would only partly mitigate, and it still cannot go
+  below v18's zero-folding baseline. Not worth a scarce eval slot. Accessible research is complete.

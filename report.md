@@ -361,3 +361,20 @@ kernel/capacity wall, not a cache-policy wall. **v4 (56×) stands as the near-op
 The only remaining lossless idea that could beat the capacity ceiling is **cross-request in-flight prefill
 coalescing** (dedup prefill of a shared UNcached prefix computed concurrently by multiple requests) — a
 larger/riskier scheduler-path build; investigating feasibility before committing an eval slot.
+
+**Prefill-coalescing candidate — REJECTED (already handled by sglang):** `cache_unfinished_req(chunked=True)`
+inserts the prefilled-so-far tokens into the radix tree during chunked prefill (`insert()` on
+`get_fill_ids()`), so a committed prefix chunk is immediately matchable by concurrent requests. sglang
+thus already does in-flight prefix sharing at chunk (6144-token) granularity; the only residual redundancy
+is two requests entering the SAME uncached prefix within one chunk window — a narrow, low-EV, scheduler-path
+(high-stall-risk) target. Not worth an eval slot or the risk. **No accessible lossless lever remains.**
+
+### HOLD (2026-07-06): honest completion of the accessible research
+Delivered: 2 real wins (v2 scandir O(N)→O(1), novel mechanism; v3/v4 Mamba/KV capacity rebalance → 56×) +
+3 fully-characterized active-path neutrals (v10/v12 eviction-order, v11 lpm scheduling) + a caught
+dormant-path integrity save (v8/v9 were in the dormant `HiMambaRadixCache`; re-implemented on the live
+`UnifiedRadixCache` and proven active before logging). The residual mean-TTFT wall (~1.7 s, 56× over
+baseline) is a contract-imposed hit-rate ceiling (frozen `hicache-size 96`) + the lossless bar (int8/2×
+Mamba is lossy + HiCache-incompatible), NOT a policy gap. Budget ~9/100 used (budget is a ceiling, not a
+target). Holding: keep the loop alive and keep seeking genuinely novel high-EV lossless ideas, but not
+fabricating predicted-neutral versions or risking the shared eval pool on low-EV / stall-prone builds.

@@ -499,3 +499,9 @@ to attack the recompute floor (hit 0.73) via better retention. v69 lfu, v70 slru
 hit 0.73). At the current best (throughput>=lambda, hit 0.73) the eviction ORDER (LRU vs LFU) doesn't change hit rate
 -- it's HOST-CAPACITY-bound (host full), not order-bound. So eviction quality is neutral in this regime (v70 slru,
 v71 lru-ctrl confirm). Recompute floor is set by what FITS in device+host, not by which order we evict.
+
+### v70-best-slru = 903.6 -> eviction strategies on best base: LFU 879.5, SLRU 903.6, ~= LRU best ~889 (all within
+~2-3% noise). ECVICTION STRATEGY IS NEUTRAL on the full-bypass+write_back base: hit rate (0.73) is HOST-CAPACITY-bound
+(host 100% full), not eviction-ORDER-bound -- LRU/LFU/SLRU protect similar sets under heavy churn. So even stock
+eviction tuning can't move the recompute floor here; it would need more host CAPACITY (frozen) not smarter order.
+v71 lru-control confirms the same-alloc baseline. This closes the eviction-strategy direction (honest negative).

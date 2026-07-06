@@ -38,9 +38,15 @@ re-implemented on the live path). Each lever characterized as neutral/inapplicab
 - **Compute overlap** — `--enable-two-batch-overlap`: architecturally incompatible (EP-only) (v14).
 - **Prefill/decode balance** — `--enable-mixed-chunk`: TTFT 3.1× WORSE (prefill↔decode tradeoff: throughput
   3.52 & hit_rate 0.582 rise, first-token delayed) → **stock is already TTFT-optimal on this axis** (v15).
-- **Ruled out via metrics (no eval):** admission (write-through already hit-gated), disk L3 (written but
-  short-reuse → rarely read), preemption (zero events; concurrency-capped at 128), algorithmic (cache ops
-  sub-ms; GPU-prefill-bound), device pool (36% median use = burst headroom; `hicache_ratio` frozen).
+- **Admission** — `--hicache-write-policy write_through_selective` (host-backup only ≥2-hit prefixes): hit_rate
+  0.55→0.38 (−31%), TTFT +20% → HURTS; **stock write_through (backup on first reuse) is the admission optimum**
+  (v16; `config`). Also proves hit_rate IS sensitive → the flat-0.55 under eviction is the genuine reuse ceiling.
+- **Transfer / IO backend** — GPU-assisted kernel IO is **architecturally inaccessible** for hybrid-Mamba: kernel
+  needs `page_first` but the Mamba host pool hard-requires `page_first_direct` (v17 silently falls back to direct;
+  v18 kernel+page_first crashes `MambaPoolHost`). `load_back` 0.94 ms confirms transfer isn't on the TTFT path.
+- **Ruled out via metrics (no eval):** disk L3 (written but short-reuse → rarely read), preemption (zero events;
+  concurrency-capped at 128), algorithmic (cache ops sub-ms; GPU-prefill-bound), device pool (36% median use =
+  burst headroom; `hicache_ratio` frozen).
 **Root cause of the residual ~1.7 s / ~53–56× wall:** hit_rate ~0.55 is the workload's *intrinsic reuse rate*
 (resident cache ≈ 9.6 M tokens vs a ~100 M-token stream; ~45% of requests are first-occurrence cold prefixes),
 and mean TTFT is the genuine long-context prefill compute of those cold misses under a full batch — no lossless

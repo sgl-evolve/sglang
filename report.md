@@ -330,3 +330,12 @@ eviction-policy lever (both the config knob `--radix-eviction-policy`, which is 
 tier, and a hand-rolled frequency mechanism). Logged to W&B as `mechanism`. Next: scheduling axis
 (v11 `--schedule-policy lpm`, cache-aware admission) — a different lever that reorders requests to
 maximize prefix reuse rather than changing eviction victims.
+
+**v11-sched-lpm RESULT (--schedule-policy lpm, cache-aware scheduling) — NEUTRAL:**
+mean TTFT **1715 ms** vs stock 1696 (+1.1%, within noise), median **982** (1028, slightly better),
+hit_rate 0.536 (0.550), req_thpt 3.29. Notable tier shift: **device-hit-frac 0.540 vs 0.476 (+13%)**,
+host 0.445 vs 0.510 — lpm DOES keep prefixes hotter on-device (groups prefix-sharing requests), but
+this does NOT lower mean TTFT because the device↔host hit-latency gap is small vs the prefill compute
+that dominates the 45% of MISSING requests. `schedule_policy='lpm'` confirmed in server_args. Logged
+W&B as `config`. Conclusion: the scheduling axis is not a mean-TTFT lever here either — mean TTFT is
+bounded by prefill throughput at the hit-rate ceiling, not by request ordering.

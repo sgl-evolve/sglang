@@ -318,3 +318,15 @@ number of skips before eviction; a colder node is evicted instead. Env-gated `KV
 skipped node stays cached, evicted seq recomputes identically); bounded skips guarantee termination.
 Offline-verified 10/10 (verify_clock_evict.py). Running at MAXSKIP=8 vs the 1696 ms stock bar; a real
 win requires beating it beyond the ~24% noise (i.e. < ~1290 ms) or a clear hit_rate lift.
+
+**v10-umamba-clock RESULT (MAXSKIP=8, THR=2) — NEUTRAL (eviction order is not a lever):**
+mean TTFT **1762 ms** vs stock 1696 (+3.8%, within ~24% noise), median 1042 (1028), hit_rate **0.5525
+vs 0.550 — DEAD FLAT**, req_thpt 3.31 (3.32), tier split device 46.6% / host 51.8% / storage 1.6%.
+Activation confirmed in server.log (KVLYNX_MAMBA_CLOCK_MAXSKIP=8). Lossless (victim-order only).
+The unchanged hit_rate is the key signal: protecting frequently-reused Mamba states via CLOCK does not
+change what fits — the Mamba tier is **capacity-bound, not eviction-order-bound**, and stock LRU is
+already near-optimal for this access pattern. This is a clean active-path negative that closes the
+eviction-policy lever (both the config knob `--radix-eviction-policy`, which is a no-op for the Mamba
+tier, and a hand-rolled frequency mechanism). Logged to W&B as `mechanism`. Next: scheduling axis
+(v11 `--schedule-policy lpm`, cache-aware admission) — a different lever that reorders requests to
+maximize prefix reuse rather than changing eviction victims.

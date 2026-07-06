@@ -313,6 +313,16 @@ Revisited the charter's bolder direction (raise throughput → drain the overloa
   would require switching the MoE to expert parallelism, a major departure from the contract's single-node TP=8 setup
   that adds communication pure-TP never incurs, with uncertain net throughput benefit. Not an accessible, in-contract,
   lossless lever. (Also checked `enable_single_batch_overlap` — same EP-oriented family.)
+- **Queue-time SSD prefetch (hypothesis investigated + DISPROVEN).** Idea: in the overloaded regime requests wait
+  ~1.8 s in the queue; trigger the (slow) SSD read at queue-entry so it overlaps the wait -> turn the abandoned SSD
+  (l3_hit=0) into hits -> raise hit_rate -> lower TTFT. Two findings kill it: (1) **prefetch is ALREADY queue-entry
+  triggered** — `_prefetch_kvcache` runs in `_add_request_to_queue` (scheduler.py:2311), before the request enters
+  the waiting queue, so the full queue wait is already the overlap window; (2) **v8-adaptive-uncap3, which waits
+  UNLIMITED time for prefetch, still has l3_hit_frac=0.0.** So even infinite overlap yields zero SSD hits — the SSD
+  is bandwidth/existence-bound, not timing/wait-cap/rate-limit-bound. No prefetch-policy or capacity change unlocks
+  SSD hits; adaptive's SSD abandonment is empirically optimal. Data nuance: v18 has LOWER hit_rate than v8 (0.57 vs
+  0.63) yet LOWER TTFT (1798 vs 2580) — SRPF scheduling dominates TTFT in this range; only a large hit_rate collapse
+  (v19 -> 0.30) triggers the throughput catastrophe. Confirms hit_rate ceiling is capacity-bound and unraisable in-contract.
 
 ## FINAL conclusion — lossless accessible floor is ~1798 ms (48.7× v0_official)
 Both directions are now exhausted for lossless, on-contract, accessible changes:

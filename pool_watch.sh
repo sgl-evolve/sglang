@@ -60,7 +60,9 @@ run_seq(){  # $1=node $2=holdjid — run ONLY v16 (the critical mechanism) into 
 
 echo "[poolw] starting; cycle=${CYCLE}s; gate=1800G disk / 1300G RAM; disk-short cooldown=${COOLDOWN:-300}s"
 COOLDOWN="${COOLDOWN:-300}"
+IDLE_STREAK="${IDLE_STREAK:-4}"   # consecutive GPU-idle observations required = "peer truly done"
 declare -A cooldown_until   # node -> loop-tick after which to re-probe a disk-short node
+declare -A idle_count       # node -> consecutive cycles seen GPU-idle (distinguishes peer-done from between-evals)
 tick=0
 while :; do
   ran=0
@@ -87,17 +89,24 @@ while :; do
         echo "[poolw] $node disk-short (${diskg:-?}G) — cooldown ${COOLDOWN}s"; continue
       fi
       read -r gmem gprocs < <(fresh_check "$node" "$jid")
-      echo "[poolw] $node: disk=${diskg:-?}G ram=${ramg:-?}G gpu_max=${gmem:-?}MiB sglang_procs=${gprocs:-?} (hold $jid)"
-      # TRULY-FRESH gate: GPUs idle (<2GB) AND no lingering sglang procs (a node I previously wedged
-      # keeps D-state procs and fails this / times out -> skipped, so I never re-hang on a damaged node).
-      if [ "${ramg:-0}" -ge 1300 ] && [ -n "${gmem:-}" ] && [ "${gmem:-999999}" -lt 2000 ] && [ "${gprocs:-9}" -eq 0 ]; then
-        echo "[poolw] acquired $node (disk OK + GPUs idle + no lingering procs = truly fresh) — running v16"
+      # SUSTAINED-GPU-IDLE gate: GPUs idle (<2GB) for IDLE_STREAK consecutive cycles => the peer is
+      # genuinely DONE (not just briefly idle between its evals) => safe to run without colliding, and
+      # robust to leftover dying/zombie procs (which hold 0 GPU). A single idle blip is NOT enough.
+      if [ -n "${gmem:-}" ] && [ "${gmem:-999999}" -lt 2000 ]; then
+        idle_count[$node]=$(( ${idle_count[$node]:-0} + 1 ))
+      else
+        idle_count[$node]=0
+      fi
+      echo "[poolw] $node: disk=${diskg:-?}G ram=${ramg:-?}G gpu_max=${gmem:-?}MiB procs=${gprocs:-?} idle_streak=${idle_count[$node]:-0}/$IDLE_STREAK (hold $jid)"
+      if [ "${ramg:-0}" -ge 1300 ] && [ "${idle_count[$node]:-0}" -ge "$IDLE_STREAK" ]; then
+        echo "[poolw] acquired $node (disk OK + sustained GPU-idle = peer done) — running v16"
         run_seq "$node" "$jid"
+        idle_count[$node]=0
         flock -u 200; exec 200>&-
         echo "[poolw] DONE on $node"; ran=1; break
       else
         flock -u 200; exec 200>&-
-        echo "[poolw] release $node (ram=${ramg:-?}G gpu=${gmem:-?}MiB procs=${gprocs:-?} not-fresh) — retry"
+        echo "[poolw] release $node (ram=${ramg:-?}G gpu=${gmem:-?}MiB idle_streak=${idle_count[$node]:-0}) — retry"
       fi
     else
       exec 200>&-   # another holder — try next node / next cycle

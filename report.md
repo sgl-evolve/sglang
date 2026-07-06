@@ -4,9 +4,17 @@
 file L3, Mooncake 1:1:1 mix (1553 convs), lambda=3.5, max-conc 128. Headline: mean TTFT (lower better).
 Baselines: v0_official (wait_complete stock) 87615 ms; **v0_tuned 108824 ms (the bar)**.
 
-## HEADLINE (best config): best_effort + SKIP_L3_WRITE + SKIP_L3_PREFETCH = ~1094 ms  (~99x < v0_tuned)
-Two config wins (best_effort prefetch, then lpm) plus TWO genuine composing engine MECHANISM wins of mine that
-**fully bypass the L3 disk tier under best_effort, where it is never read (measured hit_storage_frac = 0.0):**
+## HEADLINE (best config): best_effort + SKIP_L3_WRITE + SKIP_L3_PREFETCH + write_back = ~886 ms  (~123x < v0_tuned)
+THREE composing wins that all attack "work for a resource you don't need": (A) fully bypass the never-read L3 disk
+tier [my two novel engine mechanisms], then (B) stop churning the full host tier [write_back config]. Confirmed
+n>=2 same-allocation at each step (cf. RETRACTED v24 below). Curve: best_effort ~35-45x > +skip-write ~2x >
++skip-prefetch ~7% > **+write_back ~21% = ~886 ms**.
+ 0) **write_back** (--hicache-write-policy) -- once the disk is bypassed, eager write_through offloads EVERY write
+    device->host, churning the FULL host tier (evicts useful KV); write_back offloads only on device-eviction ->
+    host hit_rate 0.63->0.73, throughput 3.46->3.52 (>=lambda -> queue drains), mean 1122->886. TWO same-alloc
+    confirms both -21% (884/1122, 888/1130), write_back {884,888} non-overlapping with write_through {1122,1130}.
+    REGIME-DEPENDENT: write_back was NEGATIVE without skip (v21 2819) -- only wins once host-churn is the bottleneck.
+The two disk-bypass MECHANISMS (both self-guarded to best_effort where hit_storage_frac=0.0, LOSSLESS):
  1) **SKIP_L3_WRITE** -- stop offloading KV host->disk (~252M tokens of write-only waste contending with the
     essential host<->device load_back). ~2x alone: throughput 2.55->3.40 req/s, host hit 0.52->0.62, TTFT halves.
  2) **SKIP_L3_PREFETCH** -- stop even ISSUING the disk prefetch (under best_effort it completes 0 tokens yet allocates

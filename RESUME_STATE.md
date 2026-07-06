@@ -30,6 +30,14 @@
   (kept negative). NOTE: my independent result is a TRADEOFF, NOT the hit_rate collapse a prior context implied —
   good that I tested it myself. Stock is already TTFT-optimal on this axis (prefill-dedicated, delayer off,
   concurrency-capped 128); the throughput/hit_rate headroom is inseparable from the TTFT cost.
+- **ADMISSION axis tested + CLOSED (v16, 2026-07-06 ~13:45):** `--hicache-write-policy write_through_selective`
+  (host-backup only ≥2-hit prefixes) → mean TTFT 2042 (+20%), **hit_rate 0.378 (−31% from 0.55)**. HURTS — the
+  workload has substantial hit-once-then-reused-later traffic that selective backup drops. **Stock write_through
+  (threshold=1) is the admission OPTIMUM** (more selective misses second-uses; eager would pollute). LOGGED
+  `config`. KEY: this proves hit_rate IS sensitive (can drop to 0.38) → the flat-0.55 under eviction reordering is
+  the genuine REUSE CEILING, not an insensitive metric. Prior-art study (HiCache blog) done; remaining untested
+  levers (io-backend=kernel, timeout-prefetch) are high-confidence-neutral (transfer 0.94ms + storage 1% = proven
+  non-bottleneck) — not worth slots on the heavily-contended pool (v16 waited 55 min for a node).
 - **STANCE = HOLD (thoroughly justified — even the bold mixed_chunk lever tested).** Every axis characterized;
   stock is TTFT-optimal everywhere; v4 (~53–56×) is the lossless optimum. Only untried = full Strata
   balanced-batching CODE build (low-EV: throughput headroom only buys itself via TTFT cost; high stall/wedge risk).

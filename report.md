@@ -424,3 +424,19 @@ skipping it saves little). Lossless (prefetch policy). Logged W&B `config`. My T
 across eviction/scheduling/prefetch policies → strongly policy-insensitive (compute+reuse bound).
 Next (bolder, per charter L227): two-batch-overlap (`--enable-two-batch-overlap`) — the direct compute-overlap
 bubble-filling lever — v14.
+
+**v14-tbo (`--enable-two-batch-overlap`) — INCOMPATIBLE (architectural), not run.** Server crashes at startup:
+`ValueError: When enabling two batch overlap, moe_a2a_backend cannot be 'none'.` TBO is a multi-node
+expert-parallel (EP) MoE overlap technique; this protocol is single-node TP=8 with `moe_a2a_backend='none'`,
+`ep_size=1`, so TBO cannot apply (enabling an a2a backend would change the parallelism strategy, off-spirit and
+pointless single-node). No W&B point (crash, no metrics). Independently confirms TBO is inaccessible here.
+
+### Bubble/overlap axis CLOSED too — conclusion strengthened
+The transfer/overlap axis the charter highlights (Strata bubble-filling) is now explored: prefetch-overlap policy
+(v13 best_effort) NEUTRAL, compute-overlap TBO (v14) architecturally INCOMPATIBLE, and sglang's overlap scheduler
+is already ON by default (`disable_overlap_schedule=False`). Consistent with the data: `load_back_mean` 0.94 ms
+(transfer is not a bubble) and TTFT stable within ~5% across eviction/scheduling/prefetch — the engine is already
+well-overlapped and **compute+reuse bound**, not bubble-bound. The one remaining bolder idea (a full Strata
+balanced-batching CODE build) has low EV here (few bubbles to fill; overlap already on) against high stall/wedge
+risk, so it is not a deliberate use of the shared pool. **Final: v4 (56×) is the lossless optimum across every
+accessible axis — cache policy, capacity, transfer/prefetch, compute-overlap, and algorithmic.**

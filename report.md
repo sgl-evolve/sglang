@@ -597,3 +597,29 @@ mixed OFF then ON:
   raises throughput in the OVERLOADED regime -- TBD by the eval (or a saturation proxy). Caveat: if the eval is
   SSD-I/O-bound, a compute optimization like mixed-chunk may be headline-neutral (like LFU); if compute/queue-bound
   (plausible since adaptive-prefetch abandons the SSD, l3_hit~0), it should help.
+
+### SATURATION scan (job 18347, node 1-1) — DECISIVE: mixed-chunk = +22% throughput but WORSE TTFT
+Overloaded the same config (request-rate 14 >> ~6 max, max-conc 128, 300 convs -> 1475 turn-reqs) so the server
+runs at its throughput CEILING, mixed OFF vs ON (8600 MIXED batches fired on ON; both 1475/1475 successful = lossless):
+
+| metric | OFF (baseline) | ON (mixed-chunk) | delta |
+|---|---|---|---|
+| Request throughput | 6.19 req/s | 7.57 req/s | **+22.3%** |
+| Output token throughput | 685.8 tok/s | 838.2 tok/s | **+22.2%** |
+| Benchmark duration | 238.2 s | 194.9 s | -18% (faster) |
+| Mean TTFT | 1344.9 ms | 2598.4 ms | **+93% (WORSE)** |
+| Median TTFT | 579.5 ms | 975.7 ms | **+68% (WORSE)** |
+| P99 TTFT | 23840 ms | 51493 ms | **+116% (WORSE)** |
+
+- **This OVERTURNS the v19 hypothesis.** Mixed-chunk folds running decodes into each prefill batch, so a prefill step
+  spends part of its token budget on decodes -> NEW requests' prefill is delayed -> **TTFT rises**, even though decode
+  throughput/completion improve (higher req/s + tok/s, shorter total duration). Mixed-chunk **trades TTFT for
+  throughput.**
+- **Headline is mean TTFT (lower better) => mixed-chunk is a LIKELY REGRESSION, not a win.** The +22% throughput is a
+  real, lossless gain on a *reported* metric, but not on the headline. (Cf. LFU: also balance-positive, headline-neutral.)
+- **v19 status:** still queued (auto-runs when a certified node frees) as an honest curve point in the real (disk,
+  lambda=3.5) regime; now EXPECTED to log as a `mechanism` NEGATIVE (worse mean TTFT), not a new best. Will NOT email as
+  a best. The scan (no-disk, lambda=14 proxy) predicts the direction; the eval confirms magnitude in-regime.
+- **Redirects the search:** mixed-chunk is not the TTFT lever. A future idea (v20): **TTFT-aware mixed-chunk** — cap
+  decode-folding so a prefill step reserves enough budget for new prefills (capture some throughput without the TTFT
+  hit). Speculative; needs the eval loop. The accessible-lever TTFT plateau (~1798ms) otherwise stands.

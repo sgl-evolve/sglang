@@ -47,3 +47,4 @@
 07-06 03:22	v66-fb-wt-A	mechanism	ttft_mean=1130.0ms	9349f50bf	logged
 07-06 04:02	v67-fb-wb-B	mechanism	ttft_mean=895.4ms	5653f1eea	logged
 07-06 04:43	v68-fb-wt-B	mechanism	ttft_mean=1151.0ms	b364b8f20	logged
+07-06 05:32	v69-best-lfu	config	ttft_mean=879.5ms	3348b01ae	logged

@@ -494,3 +494,8 @@ My clone ships stock --radix-eviction-policy {lru,lfu,slru,priority} (evict_poli
 (protect frequently-reused prefixes) is independent config tuning -- distinct from another researcher's CUSTOM
 costaware strategy (which I still won't use/implement). Now testing lfu/slru on the best base (full-bypass+write_back)
 to attack the recompute floor (hit 0.73) via better retention. v69 lfu, v70 slru, v71 lru-control (same-alloc).
+
+### v69-best-lfu (best base + LFU eviction) = 879.5, hit 0.732, throughput 3.52, median 509 -> NEUTRAL vs LRU (~889,
+hit 0.73). At the current best (throughput>=lambda, hit 0.73) the eviction ORDER (LRU vs LFU) doesn't change hit rate
+-- it's HOST-CAPACITY-bound (host full), not order-bound. So eviction quality is neutral in this regime (v70 slru,
+v71 lru-ctrl confirm). Recompute floor is set by what FITS in device+host, not by which order we evict.

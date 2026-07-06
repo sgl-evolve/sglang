@@ -24,10 +24,18 @@
   (eviction/scheduling/admission/disk), capacity (frozen), transfer/prefetch, compute-overlap (TBO incompat),
   algorithmic (GPU-bound). TTFT stable within ~5% across ALL policy levers → engine is compute+reuse bound and
   already well-overlapped. hit_rate 0.55 = intrinsic reuse rate (frozen 9.6M-token cache vs 100M stream).
-- **STANCE = HOLD (now thoroughly justified — bubble axis explored too).** The only untried idea is a full Strata
-  balanced-batching CODE build: LOW EV here (few bubbles; overlap already on) + HIGH stall/wedge risk → not a
-  deliberate use of the shared pool. Keep loop alive + monitor; act only on a genuinely novel high-EV low-risk
-  lossless idea or a material change. Budget ~10/100 (CEILING, not target — do NOT touch `w8.researcher-done`).
+- **PREFILL/DECODE scheduling axis also tested + CLOSED (v15, 2026-07-06 ~11:50):** `--enable-mixed-chunk` →
+  mean TTFT **5328 ms = 3.1× WORSE** (prefill shares slots with decode → first-token delayed), BUT throughput
+  3.52 (↑, >λ) and hit_rate 0.582 (↑). Classic prefill↔decode tradeoff, wrong way for TTFT. LOGGED `config`
+  (kept negative). NOTE: my independent result is a TRADEOFF, NOT the hit_rate collapse a prior context implied —
+  good that I tested it myself. Stock is already TTFT-optimal on this axis (prefill-dedicated, delayer off,
+  concurrency-capped 128); the throughput/hit_rate headroom is inseparable from the TTFT cost.
+- **STANCE = HOLD (thoroughly justified — even the bold mixed_chunk lever tested).** Every axis characterized;
+  stock is TTFT-optimal everywhere; v4 (~53–56×) is the lossless optimum. Only untried = full Strata
+  balanced-batching CODE build (low-EV: throughput headroom only buys itself via TTFT cost; high stall/wedge risk).
+  Keep loop alive + monitor; released the node (no positive-EV experiment). Act only on a genuinely novel
+  positive-EV low-risk lossless idea or a material change. Budget ~11/100 (CEILING, not target — do NOT touch
+  `w8.researcher-done`).
 - **RULE: run evals SERIALLY** (parallel = cold-`~/.cache/flashinfer` JIT race; v8 crashed this way, [[sgl-flashinfer-jit-race]]).
   Eval mechanism: `setsid nohup bash run_eval.sh <ver> --mamba-full-memory-ratio 1.5 --enforce-disable-flashinfer-allreduce-fusion > runs/<ver>_launch.log 2>&1 </dev/null &`
 

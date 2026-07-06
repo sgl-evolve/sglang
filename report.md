@@ -562,3 +562,12 @@ FINAL: best_effort + skip_L3_write + skip_L3_prefetch + write_back ~889 ms (~122
 -> NEUTRAL. Last untested knob empirically closed. EVERY server-args KV/cache/scheduling knob is now EVAL-TESTED
 (win/neutral/negative) or cheaply/empirically closed (no-op/dormant/lossy/off-limits/frozen). 58 versions.
 DEFINITIVE FINAL BEST: best_effort + skip_L3_write + skip_L3_prefetch + write_back = ~889 ms (~122x < v0_tuned).
+
+### FINAL closure of the last high-value lever (int8-mamba, 2x capacity): DEFINITIVELY OFF-LIMITS.
+int8-mamba is lossy (int8 quantization of cached mamba states -> changes outputs). The charter allows gated-lossy
+IF gated on a quality metric -- but the frozen eval.sh runs bench_serving with --output-file (aggregate METRICS only:
+throughput/latency percentiles), NO per-request generated text, and no --seed/--temperature -> I CANNOT construct an
+output-diff quality gate within the fixed protocol (and can't edit eval.sh). So int8-mamba can't be validated lossless
+-enough -> off-limits under "lossless above all". This was the ONLY capacity-increasing lever; the capacity-bound
+recompute floor is therefore genuinely inaccessible losslessly. Every lever now closed by test or concrete evidence.
+DEFINITIVE FINAL: best_effort + skip_L3_write + skip_L3_prefetch + write_back = ~889 ms (~122x < v0_tuned), 58 versions.

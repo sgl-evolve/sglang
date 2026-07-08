@@ -57,3 +57,6 @@ Extracted hit/p99 spread from all existing summary.json + diag logs (no new pool
 - P99: baseline 5470 ± 713ms (n=6, incl. diag3 outlier 6594 = the node variance I flagged) vs excl 4188ms (n=2) = −23% at mean; corroborates the controlled same-node A/B (−8..−17%).
 - req/s ≈3.02 = λ in every run (no throughput regression).
 Added to report.md executive summary. Charter "error bars" rigor point now addressed at zero pool cost.
+
+## 2026-07-08 ~16:45Z — Cross-conv dedup axis CLOSED (free trace check)
+Checked whether convs share docs (a potential capacity lever): 888 unique full docs / 1553 convs; but the biggest "shared" cluster (n=538) is EMPTY-input ShareGPT chat convs (no doc). Token-weighted cross-conv doc dedup saves only 0.84M tok = 4% of 19.22M doc volume, and radix already dedups co-resident identical prefixes → negligible realizable gain. Working set is genuinely ~19M distinct → capacity pressure is real. Last within-contract axis closed. All axes (capacity/eviction/scheduling/admission/dedup/latency) now rigorously exhausted → v3c exclusive tiering is the within-contract-optimal contribution.

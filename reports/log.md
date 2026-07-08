@@ -58,3 +58,11 @@ Ranges overlap; initial paired -10.7% was noise (2nd 3-tier run 5011). hit/p50/t
 Verdict: 2-tier cost-aware eviction @t2048 captures the available benefit; refinements (mamba v3, reuse-gate
 v5, 3-tier v7) all NEUTRAL. p99 tail is noise/capacity-limited (~±10% intrinsic variance) beyond t2048.
 Cost-aware eviction design space thoroughly bounded. Robust contribution: hit +5.4pp, p50 -21% (lossless).
+
+## 2026-07-08 — v8 depth-mode cost eviction NEUTRAL
+depth@8192 (cumulative-prefix cost, protect deep conversation tails) vs segment@2048 (best, paired same-node):
+hit 0.682 vs 0.684 (flat, within 6-run seg range 0.670-0.684), p99 5465 vs 5559 (flat), p50 512 vs 481 (+6%),
+p90 1754 vs 1916 (-8%), tput 3.02 both. NEUTRAL — cost AXIS (segment vs depth) doesn't matter; over-protection
+tension (depth protects nearly all deep nodes) as predicted. segment-length @t2048 remains sufficient/optimal.
+Cost-aware eviction design space now EXHAUSTIVELY characterized: WIN=segment@t2048 (hit +5.4pp, p50 -21%, lossless);
+NEUTRALS=mamba(v3), reuse-gate(v5), 3-tier(v7), depth(v8), threshold!=2048 (U-optimum). Refinements don't add.

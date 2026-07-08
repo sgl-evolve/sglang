@@ -20,6 +20,9 @@ OUT="$WS/runs/sweep_$LABEL"; mkdir -p "$OUT"
 RATES="${RATES:-3 4 5 6}"
 NPROMPTS="${NPROMPTS:-800}"
 echo "[sweep] label=$LABEL extra=[${EXTRA[*]:-none}] exclusive=[${SGLANG_HICACHE_EXCLUSIVE:-unset}] rates=[$RATES] nprompts=$NPROMPTS"
+# DRAM preflight (base_free servers on shared held nodes leave <1.3T free -> host tier OOMs). Bail fast.
+DRAMG=$(awk '/MemAvailable/{printf "%d",$2/1048576}' /proc/meminfo)
+[ "${DRAMG:-0}" -lt 1300 ] && { echo "[sweep] DRAM_TOO_LOW ${DRAMG}G on $(hostname) — skip"; exit 2; }
 
 LAUNCH=(python3 -m sglang.launch_server --model-path "$MODEL" --tp 8 --trust-remote-code
   --context-length 262144 --chunked-prefill-size 6144 --mem-fraction-static 0.85

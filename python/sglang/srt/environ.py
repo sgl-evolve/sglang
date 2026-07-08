@@ -361,6 +361,9 @@ class Envs:
     SGLANG_ENABLE_COST_AWARE_EVICTION = EnvBool(True)
     # Prefix segments with >= this many tokens are "expensive" (protected segment). Tokens.
     SGLANG_COST_AWARE_EVICT_THRESHOLD = EnvInt(4096)
+    # Reuse gating for cost-aware eviction: only protect an expensive prefix once it has been re-matched
+    # at least this many times (hit_count >= this). 0 = protect all expensive prefixes (pure cost gating).
+    SGLANG_COST_AWARE_REUSE_MIN = EnvInt(0)
     # Extend cost-aware eviction to the hybrid Mamba state pool (the binding hybrid resource, whose
     # eviction is otherwise raw-LRU). Off by default so it can be ablated separately from full-KV.
     SGLANG_ENABLE_COST_AWARE_MAMBA_EVICTION = EnvBool(False)

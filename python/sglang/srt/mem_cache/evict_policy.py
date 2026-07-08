@@ -64,16 +64,26 @@ class CostAwareStrategy(EvictionStrategy):
     priority is a (segment, last_access_time) tuple; the eviction heap pops the
     minimum, so segment 0 (cheap) is evicted before segment 1 (expensive), and
     older nodes go first within a segment.
+
+    Reuse gating (``reuse_min`` > 0): only protect a prefix that is BOTH expensive
+    AND has proven reuse (``hit_count`` >= reuse_min, i.e. it was re-matched by a
+    later request). This avoids sacrificing reused short prefixes to protect
+    one-shot long prefixes (e.g. a single long-context query with no follow-up),
+    which is the main source of the median-TTFT regression from pure cost gating.
+    reuse_min = 0 recovers the pure cost-aware behavior.
     """
 
-    def __init__(self, threshold: int = 4096):
+    def __init__(self, threshold: int = 4096, reuse_min: int = 0):
         self.threshold = threshold
+        self.reuse_min = reuse_min
 
     def get_priority(self, node: TreeNode) -> Tuple[int, float]:
         key = getattr(node, "key", None)
         cost = len(key) if key is not None else 0
-        is_expensive = 1 if cost >= self.threshold else 0
-        return (is_expensive, node.last_access_time)
+        protected = cost >= self.threshold
+        if self.reuse_min > 0:
+            protected = protected and getattr(node, "hit_count", 0) >= self.reuse_min
+        return (1 if protected else 0, node.last_access_time)
 
 
 class SLRUStrategy(EvictionStrategy):

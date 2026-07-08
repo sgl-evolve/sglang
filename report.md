@@ -98,3 +98,27 @@ hit 0.6269; host_util 1.0; tput 2.87; out_tok/s 367; tpot 252; load_back 302M; e
   hit-rate, whereas token-value-aware eviction wins on TOKEN-weighted hit-rate + tail latency.
   **Next:** threshold sweep (2048/8192) to trade off p50 vs tail; then depth/recency-continuous cost, and
   extend cost-awareness to the MAMBA pool (binding hybrid resource, currently raw-LRU).
+
+- **v3** (`7ae10b9e8`, `mechanism`, NEUTRAL/NEGATIVE): extend cost-aware eviction to the hybrid **Mamba
+  state pool** (SGLANG_ENABLE_COST_AWARE_MAMBA_EVICTION=1). Clean same-node A/B on ondem-3 vs v1-repro
+  (full-only), both cost-aware full @4096, back-to-back, serial. Mamba path engaged (behavior differs, 0
+  fallbacks).
+
+  | metric | v1-repro (full only) | v3 (full+mamba) | Δ |
+  |---|---|---|---|
+  | hit_rate | 0.6742 | 0.6712 | −0.4% (flat) |
+  | req throughput | 3.02 | 3.02 | flat |
+  | out_tok/s | 386.7 | 386.7 | flat |
+  | p50 TTFT (ms) | 797 | 619 | −22.3% |
+  | p99 TTFT (ms) | 4601 | **5167** | **+12.3% (worse)** |
+  | p90 TTFT (ms) | 1957 | 1965 | flat |
+
+  **Takeaway (negative):** cost-aware **mamba** eviction does NOT compound v1 — hit_rate/tput flat, p99 tail
+  *worse*. The binding constraint for token-hit-rate is the **full-KV host eviction** (already cost-aware in
+  v1), not the mamba pool; mamba states reload cheaply from L2 so their eviction rarely triggers the binding
+  recompute. Mamba cost-awareness is redundant here. Kept gated OFF by default (v1 remains best). Note: also
+  reproduces v1's stability — v1-repro (p99 4601, tput 3.02, hit 0.674) ≈ v1 (p99 4820, tput 3.02, hit 0.681).
+
+- **v4** (planned): **reuse-gated cost-aware eviction** — protect a long prefix only when it is BOTH
+  expensive (≥ thr tokens) AND has proven reuse (hit_count ≥ 1), so one-shot long prefixes aren't protected
+  at the expense of reused short ones. Aims to keep v1's tail/hit/tput gains while cutting the p50 regression.

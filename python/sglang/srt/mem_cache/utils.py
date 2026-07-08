@@ -74,10 +74,13 @@ def get_eviction_strategy(eviction_policy: str) -> EvictionStrategy:
     # via SGLANG_ENABLE_COST_AWARE_EVICTION=0 to recover stock LRU.
     if policy == "lru" and envs.SGLANG_ENABLE_COST_AWARE_EVICTION.get():
         thr = envs.SGLANG_COST_AWARE_EVICT_THRESHOLD.get()
+        reuse_min = envs.SGLANG_COST_AWARE_REUSE_MIN.get()
         logger.info(
-            "[sgl_mech] eviction strategy = CostAwareStrategy (threshold=%d tokens)", thr
+            "[sgl_mech] eviction strategy = CostAwareStrategy (threshold=%d tokens, reuse_min=%d)",
+            thr,
+            reuse_min,
         )
-        return CostAwareStrategy(threshold=thr)
+        return CostAwareStrategy(threshold=thr, reuse_min=reuse_min)
     logger.info("[sgl_mech] eviction strategy = stock %s", policy)
     try:
         return _EVICTION_POLICY_FACTORIES[policy]()

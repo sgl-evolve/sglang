@@ -368,6 +368,15 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # HiCache D↔H defaults (overridden by init_hicache)
         self.cache_controller: Optional[HybridCacheController] = None
         self.write_through_threshold = 256
+        # base_mech diagnostics (survive flush_cache/reset; logged in check_hicache_events)
+        self._bm_diag = {
+            "dev_delete_cnt": 0, "dev_delete_tok": 0,   # LOSSY: unbacked device leaf deleted
+            "dev_demote_cnt": 0, "dev_demote_tok": 0,   # device leaf demoted to host (recoverable)
+            "wb_fail_cnt": 0,                            # write_backup returned 0 (host full)
+            "wb_ok_cnt": 0,
+            "host_evict_tok": 0,                         # host leaf tokens dropped (LOST)
+        }
+        self._bm_diag_log_ctr = 0
         self.prefetch_stop_policy = "best_effort"
         self.prefetch_threshold = 256
         self.prefetch_timeout_base = 1.0
@@ -1414,6 +1423,7 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         comp = self.components.get(component_type)
         if comp is not None:
             comp.drive_host_eviction(num_tokens, tracker)
+        self._bm_diag["host_evict_tok"] += tracker[component_type]
         return tracker[component_type]
 
     def _is_device_leaf(self, node: UnifiedTreeNode) -> bool:
@@ -1504,6 +1514,9 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 return
             else:
                 # Write-through: node has no backup, delete entirely.
+                _bv = node.component_data[BASE_COMPONENT_TYPE].value
+                self._bm_diag["dev_delete_cnt"] += 1
+                self._bm_diag["dev_delete_tok"] += (len(_bv) if _bv is not None else 0)
                 self._record_remove_event(node, medium=StorageMedium.GPU)
                 for comp in self._components_tuple:
                     self._evict_component_and_detach_lru(
@@ -1515,6 +1528,9 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 self._update_evictable_leaf_sets(parent)
                 self._iteratively_delete_tombstone_leaf(node, tracker)
                 return
+        _bv = node.component_data[BASE_COMPONENT_TYPE].value
+        self._bm_diag["dev_demote_cnt"] += 1
+        self._bm_diag["dev_demote_tok"] += (len(_bv) if _bv is not None else 0)
         self._evict_to_host(node, tracker)
 
     def _evict_host_leaf(
@@ -1571,6 +1587,7 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             needed = kv_tokens - host_avail
             evicted = self.evict_host(needed)
             if evicted < needed:
+                self._bm_diag["wb_fail_cnt"] += 1
                 return 0
 
         aux_xfers = [x for xfers in comp_xfers.values() for x in xfers]
@@ -1579,8 +1596,10 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             device_value, node_id=node.id, extra_pools=aux_xfers or None
         )
         if host_indices is None:
+            self._bm_diag["wb_fail_cnt"] += 1
             return 0
 
+        self._bm_diag["wb_ok_cnt"] += 1
         # Commit
         kv_xfer = PoolTransfer(name=PoolName.KV, host_indices=host_indices)
         self.components[BASE_COMPONENT_TYPE].commit_hicache_transfer(
@@ -2466,6 +2485,15 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self._drain_async_work()
         self.writing_check()
         self.loading_check()
+        # base_mech diagnostics: log accumulated eviction/backup stats periodically
+        self._bm_diag_log_ctr += 1
+        if self._bm_diag_log_ctr % 2000 == 0:
+            d = self._bm_diag
+            logger.info(
+                "[BM_DIAG] dev_delete=%d/%dtok dev_demote=%d/%dtok wb_ok=%d wb_fail=%d host_evict=%dtok",
+                d["dev_delete_cnt"], d["dev_delete_tok"], d["dev_demote_cnt"],
+                d["dev_demote_tok"], d["wb_ok_cnt"], d["wb_fail_cnt"], d["host_evict_tok"],
+            )
         if self.enable_storage:
             self.drain_storage_control_queues()
         if self.enable_storage_metrics and self.storage_metrics_collector is not None:

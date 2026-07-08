@@ -1,0 +1,68 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    python_version: 3.12.13
+    cli_version: 0.28.0
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1783480870
+    t:
+      3:
+      - 2
+      - 4
+      - 13
+      - 14
+      - 16
+      - 42
+      4: 3.12.13
+      5: 0.28.0
+      13: linux-x86_64
+    e:
+      uqfqpejrlq8k7xq4fuom8bd2tvir81bf:
+        os: Linux-6.8.0-1027-gcp-tcpx-x86_64-with-glibc2.35
+        python: CPython 3.12.13
+        started_at: '2026-07-08T03:21:09.549220Z'
+        args:
+        - base_mech
+        - /home/junyanch_google_com/autoresearch/programs/sgl/v0.25_ablations/base_mech/researcher/baseline.json
+        - v0_official
+        - baseline
+        program: /home/junyanch_google_com/autoresearch/programs/sgl/v0.25_ablations/base_mech/researcher/.claude/skills/report-sop/scripts/log_wandb.py
+        git:
+          remote_url: https://x-access-token:@github.com/sgl-evolve/sglang.git
+          commit: a334877e5670a7b64091267b33199dc6497e945d
+        root: /home/junyanch_google_com/autoresearch/workspace/sgl/v0.25_ablations/base_mech/researchers/base_mech
+        host: slurm2-c3nodeset-0
+        executable: /home/junyanch_google_com/autoresearch/workspace/sgl/v0.25_ablations/base_mech/researchers/base_mech/.venv/bin/python
+        cpu_count: 44
+        cpu_count_logical: 44
+        disk:
+          /:
+            total: '1040442621952'
+            used: '454819819520'
+        memory:
+          total: '371914428416'
+        writer_id: uqfqpejrlq8k7xq4fuom8bd2tvir81bf
+version:
+  desc: null
+  value: v0_official
+commit:
+  desc: null
+  value: baseline
+resolved_args:
+  desc: null
+  value:
+    context_length: '262144'
+    mem_fraction_static: '0.85'
+    hicache_size: '96'
+    tp_size: '8'
+    hicache_io_backend: direct
+    hicache_mem_layout: page_first_direct
+    hicache_write_policy: write_through
+    page_size: '64'
+version_kind:
+  desc: null
+  value:
+    v0_official: '-'

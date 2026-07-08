@@ -56,3 +56,8 @@
   scheduling has no leverage even where a queue forms; exclusive PLACEMENT is sufficient+complete.
 - CONCLUSION: accessible in-contract lossless mechanism space fully explored. Exclusive L1<->L2 tiering is
   THE mechanism (hit 0.750+/-0.003, -25% p99, +12% goodput knee). Compression = documented low-EV frontier.
+
+## 2026-07-08 ~10:40Z — v2c (4th exclusive replicate) -> tightened error bars
+- v2c_exclusive_rep: hit 0.7518, p99 4079 (best), mean 789. 7 W&B versions logged.
+- EXCLUSIVE n=4: hit 0.7509+/-0.0020 (+12.9pp, rock-solid), mean TTFT 841+/-47 (-27%, tight),
+  p99 4575+/-506 (-28%; noisier = node variance). Hit-rate + mean-TTFT are the robust headline claims.

@@ -79,10 +79,12 @@ load_back **397M** (vs 402M → transfer reduction worked as designed), mean TTF
 p99 4420 (≈v1). **Net neutral.** Finding: the transfer cost of exclusivity is NOT the limiter — trading
 capacity for fewer transfers doesn't net a win ⇒ PURE exclusive (v1/v2) is near-optimal for this design.
 
-### Error bars & synthesis (3 exclusive runs: v1/v2/v3)
-- **hit_rate = 0.750 ± 0.003** (0.7525/0.7517/0.7474) vs baseline 0.622 → **+12.8pp, robust/reproducible.**
-- p99 TTFT ≈ 4740 ± 560 ms (4380/5420/4420) vs baseline 6326 → **-25% mean** (p99 is the noisier signal;
-  hit-rate and mean-TTFT are stable). mean TTFT 806–907 vs 1146 → -21 to -30%.
+### Error bars & synthesis (4 exclusive runs: v1/v2/v3/v2c)
+- **hit_rate = 0.7509 ± 0.0020** (0.7525/0.7517/0.7474/0.7518) vs baseline 0.622 → **+12.9pp, rock-solid,
+  node-independent** (the robust headline signal).
+- **mean TTFT = 841 ± 47 ms** (863/907/806/789) vs baseline 1146 → **-27%, tight.**
+- p99 TTFT = 4575 ± 506 ms (4380/5421/4420/4079) vs baseline 6326 → **-28% mean** (noisier — consistent
+  with cluster node-to-node variance; hit-rate & mean-TTFT are the stable claims). Best p99 4079 (-36%).
 - Goodput-curve shift: -17% p99 at the knee (λ=4,5).
 - **Lines EXHAUSTED:** ordering (v0_lpm, NEG), admission (sim, weak + unimplementable), eviction-order
   (LRU≈Belady), device-headroom (none), transfer-reduction hybrid (v3, neutral), mamba host-rebalance

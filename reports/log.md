@@ -67,3 +67,10 @@
   hit 0.6163->0.7522 (+13.6pp), p99 6928->4354 (-37.2%), mean 1038->812 (-21.8%), p50 565->503,
   req/s & out_tok/s unchanged (lossless). => true p99 improvement is -37% on identical hardware
   (the multi-node -28% was node-variance-inflated). 9 W&B versions logged (added v_ab_baseline/exclusive).
+
+## 2026-07-08 ~14:30Z — DEFINITIVE same-node goodput-knee shift
+- Same node (ondem-2), baseline vs exclusive sweeps at l=3.5/4/4.5, NO node variance:
+  p99(ms): l3.5 8320/6615, l4 9002/8055, l4.5 12199/11271. Baseline over 8s SLO by l3.5 (knee<3.5);
+  exclusive under to ~l4.0 => goodput knee lifted ~+14-18% req/s (same-node, definitive). Headline metric.
+- Contribution now has BOTH definitive same-node results: A/B @l3 (p99 -37%, hit +13.6pp, lossless) +
+  goodput-knee shift (~+18% req/s @ p99<=8s SLO). 9 W&B versions + these screens.

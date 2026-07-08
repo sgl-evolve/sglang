@@ -18,8 +18,11 @@ and tail-latency win.
 hit **0.6163→0.7522 (+13.6pp)**, p99 TTFT **6928→4354 ms (−37.2%)**, mean TTFT **1038→812 ms (−21.8%)**,
 p50 565→503, req/s & out_tok/s unchanged (3.02 / 386 → lossless). This eliminates the node-to-node
 variance that made multi-node p99 noisy → the true p99 improvement is **−37%** on identical hardware.
-**Goodput @ SLO (full-protocol λ=4):** baseline p99 9098/3.38 req/s vs exclusive 8091/**3.78** → −11% p99,
-**+12% throughput**; SLO knee ~λ3.6→~λ3.95 (~+10% sustainable goodput).
+**Goodput @ SLO — definitive SAME-NODE curve (ondem-2, baseline vs exclusive at λ=3.5/4/4.5, no node
+variance):** p99 TTFT (ms): λ3.5 base 8320 / exc **6615**; λ4 base 9002 / exc **8055**; λ4.5 base 12199 /
+exc 11271. Baseline exceeds the 8s SLO already by λ3.5 (knee <λ3.5); exclusive stays under to λ≈4.0 (interp
+knee λ3.98) → **exclusive lifts the p99≤8s goodput knee by ~+14–18% sustainable req/s**, same-node, no
+confound. (Earlier multi-node full-protocol λ=4 agreed: −11% p99, +12% req/s.)
 
 **Result ladder (fixed protocol, λ=3), all clean/on-contract, lossless:**
 - fcfs baseline (inclusive, stock): hit **0.622**, p99 TTFT **6326 ms**.

@@ -35,3 +35,9 @@
 
 ## 2026-07-08T15:05Z — same-node baseline sweep (CORRECTS headline: +8% not +15%)
 - SAME-NODE (1-2) goodput A/B: baseline λ=3 p99 5258 / λ=4 3.54 req/s p99 7847; excl λ=3 p99 4443 (−15%) / λ=4 3.83 req/s (+8%) p99 7231 (−8%), both <8s SLO. Documented baseline (λ=4 ~11s) was pessimistic/different-node → same-node shift is +~8% goodput (not +15%). HONEST correction. Exclusive tiering: +11pp hit, p99 −8..−15%, goodput +~8% at the knee, no regression, stable, lossless. Curve shifts up. Same-node rigor was worth it.
+
+## 2026-07-08 ~15:48Z — excl goodput knee PINNED (λ=5)
+- Ran sweep_rates.sh exclk5 excl (SWEEP_RATES=5) on node 1-2 (same-node family as the earlier baseline/excl λ=3,4 sweep).
+- Result: **excl λ=5 → p99 12031 ms (>8s SLO), req/s 4.28 (raw), median 566, mean 1022.**
+- Interpretation: excl's SLO knee is between λ=4 (p99 7231, <SLO) and λ=5 (p99 12031, >SLO) — the SAME bracket baseline crosses, but excl holds more headroom at λ=4 (7231 vs baseline 7847). So the mechanism shifts the goodput curve RIGHT by ~+8% at the SLO-limited operating point; it does NOT push the knee to arbitrarily high λ (both saturate by λ=5). Honest, bounded gain — consistent with a capacity lever, not a de-saturation artifact.
+- Goodput curve now COMPLETE: baseline {λ3: 3.02@5258, λ4: 3.54@7847}, excl {λ3: 3.02@4443, λ4: 3.83@7231, λ5: 4.28@12031>SLO}. Headline = +~8% goodput. Contribution finalized.

@@ -904,11 +904,17 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         best_match_node = node
         best_match_device_node = node
         best_match_device_value_len = 0
+        # base_mech diag: presented length + per-component (host+device) valid depth,
+        # to detect whether a non-KV component (Mamba SSM state) truncates the match.
+        _bm_presented = len(key)
+        _bm_cum_tok = 0
+        _bm_kv_only_tok = 0     # deepest cum-tok where the Full-KV component alone validates
         separate_device_match = self.cache_controller is not None
         if separate_device_match:
             validators = tuple(
                 comp.create_match_validator() for comp in self._components_tuple
             )
+            _bm_full_validator = self.components[BASE_COMPONENT_TYPE].create_match_validator()
             device_validators = tuple(
                 comp.create_match_validator(match_device_only=True)
                 for comp in self._components_tuple
@@ -950,16 +956,36 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 node = self._split_node(child.key, child, prefix_len)
                 if not node.evicted:
                     value.append(node.component_data[BASE_COMPONENT_TYPE].value)
+                    _bm_cum_tok += prefix_len
+                    if separate_device_match and _bm_full_validator(node):
+                        _bm_kv_only_tok = _bm_cum_tok
                 _update_best_if_valid(node)
                 break
 
             if not child.evicted:
                 value.append(child.component_data[BASE_COMPONENT_TYPE].value)
+                _bm_cum_tok += prefix_len
+                if separate_device_match and _bm_full_validator(node if False else child):
+                    _bm_kv_only_tok = _bm_cum_tok
             node = child
             _update_best_if_valid(node)
             key = key[prefix_len:]
             if len(key):
                 child_key = key.child_key(self.page_size)
+
+        if separate_device_match and _bm_presented > 0:
+            d = self._bm_diag
+            # consensus (ALL components incl. Mamba) KV-token depth = sum KV lens root..best_match_node
+            _bm_consensus = 0
+            _n = best_match_node
+            while _n is not None and _n is not self.root_node:
+                _v = _n.component_data[BASE_COMPONENT_TYPE].value
+                _bm_consensus += (len(_v) if _v is not None else 0)
+                _n = _n.parent
+            d["m_presented"] = d.get("m_presented", 0) + _bm_presented
+            d["m_kv_only"] = d.get("m_kv_only", 0) + _bm_kv_only_tok
+            d["m_consensus"] = d.get("m_consensus", 0) + _bm_consensus
+            d["m_calls"] = d.get("m_calls", 0) + 1
 
         return (
             value,
@@ -2487,12 +2513,16 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self.loading_check()
         # base_mech diagnostics: log accumulated eviction/backup stats periodically
         self._bm_diag_log_ctr += 1
-        if self._bm_diag_log_ctr % 2000 == 0:
+        if self._bm_diag_log_ctr % 800 == 0:
             d = self._bm_diag
+            mp = d.get("m_presented", 0) or 1
             logger.info(
-                "[BM_DIAG] dev_delete=%d/%dtok dev_demote=%d/%dtok wb_ok=%d wb_fail=%d host_evict=%dtok",
+                "[BM_DIAG] dev_delete=%d/%dtok dev_demote=%d/%dtok wb_ok=%d wb_fail=%d "
+                "host_evict=%dtok | match presented=%d kv_only=%d(%.3f) consensus=%d(%.3f)",
                 d["dev_delete_cnt"], d["dev_delete_tok"], d["dev_demote_cnt"],
                 d["dev_demote_tok"], d["wb_ok_cnt"], d["wb_fail_cnt"], d["host_evict_tok"],
+                d.get("m_presented", 0), d.get("m_kv_only", 0), d.get("m_kv_only", 0)/mp,
+                d.get("m_consensus", 0), d.get("m_consensus", 0)/mp,
             )
         if self.enable_storage:
             self.drain_storage_control_queues()

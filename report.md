@@ -33,6 +33,21 @@
 
 ---
 
-## Versions
+## Analysis (offline, sim/)
+- Trace: 1553 convs / 7037 turns; each conv = 1 large doc (mean 12.3K tok, median 7K, max 192K) + ~4.5 QA turns; turn 0 prefills the doc, turns 1..n reuse it (verbatim re-send).
+- Total presented prompt tok = 99.5M (≈ baseline 99.9M ✓). **Ceiling hit = 0.806** (full-history reuse), 0.780 (doc-only, retokenization-pessimistic). Baseline actual = 0.622 → **~16-18M tok/run of reusable history is recomputed.**
+- Plain-LRU DES → hit ≈ 0.81 (active-set reuse distance fits easily): the 0.62 is a **HiCache mechanism inefficiency, not capacity.**
+- Only truly-LOSSY path in engine: `_evict_device_leaf` DELETE of an unbacked device leaf under write-through (fires when `write_backup`→0 = host full & `evict_host` can't free). Everything else demotes to host (recoverable via load_back). Baseline: 582M dev-evict + 298M load-back for 62M hits = ~8-16× L1↔L2 thrash.
+- Structural note: an ACTIVE multi-turn conv's doc node is an INTERNAL node (has next-turn child) → not a device/host leaf → protected from eviction while the conv extends. So loss should concentrate on (a) cold single-turn docs, (b) the arrival ramp where host fills faster than completed-conv leaves free.
+- Prior art (HiCache blog, Strata): multi-turn session KV co-residency under concurrency is UNSOLVED; eviction not session/turn-aware; Strata is I/O-latency-scheduling, orthogonal. → my angle is novel.
 
-_(none logged yet — designing first mechanism)_
+## Decision tree (after diagnostic s0-diag counters)
+- **dev_delete_tok large (~tens of M):** delete-path is the leak → Mechanism = *lossless write-through eviction* (back up or defer before deleting; never recompute what we can demote).
+- **dev_delete_tok small, host_evict_tok large & reused:** host-pressure leak → Mechanism = *reduce host write-through pressure / conversation-aware admission to bound the resident working set*.
+- **both small:** loss is partial-path / match / load_back timing → deeper instrumentation.
+
+## Versions
+| ver | commit | tag | hit | TTFT p50/p99 | host_util | req/s | note |
+|---|---|---|---|---|---|---|---|
+| v0_official | stock | baseline | 0.6217 | 750/6326 | 0.9999 | 2.78 | given baseline |
+| s0-diag | ed175dc05 | (screening) | _running_ | | | | baseline behavior + loss counters |

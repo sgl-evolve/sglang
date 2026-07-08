@@ -555,8 +555,10 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self.xtier_lazy = os.environ.get("SGLANG_XTIER_LAZY", "0") == "1"
         # Trigger the proactive backup when device-free-fraction drops below this.
         self.xtier_wm_frac = float(os.environ.get("SGLANG_XTIER_WM_FRAC", "0.15"))
-        # Max device leaves to async-back-up per scheduler step.
+        # Max device leaves to async-back-up per proactive pass.
         self.xtier_batch = int(os.environ.get("SGLANG_XTIER_BATCH", "32"))
+        # Run the proactive pass every N scheduler steps (throttle; keeps it cheap).
+        self.xtier_period = max(1, int(os.environ.get("SGLANG_XTIER_PERIOD", "4")))
         self._xtier_device_total = None
 
         if storage_backend is not None:
@@ -2491,7 +2493,7 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             return
         try:
             self._xtier_step = getattr(self, "_xtier_step", 0) + 1
-            if self._xtier_step % 4 != 0:  # throttle: at most every 4 scheduler steps
+            if self._xtier_step % self.xtier_period != 0:  # throttle
                 return
             alloc = self.token_to_kv_pool_allocator
             free = (
@@ -2520,9 +2522,20 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 self.evictable_device_leaves,
                 key=lambda n: self.eviction_strategy.get_priority(n),
             )
+            n_backed_up = 0
             for n in coldest:
                 if not n.backuped and n in self.evictable_device_leaves:
                     self.write_backup(n)  # async (write_through); ack polled by writing_check
+                    n_backed_up += 1
+            if os.environ.get("SGLANG_XTIER_LOG", "0") != "0" and getattr(
+                self, "pp_rank", 0
+            ) == 0:
+                self._xtier_log_ctr = getattr(self, "_xtier_log_ctr", 0) + 1
+                if self._xtier_log_ctr % int(os.environ["SGLANG_XTIER_LOG"]) == 0:
+                    logger.info(
+                        f"[XTIER] dev_free={free} frac={free/max(1,total):.3f} "
+                        f"dev_leaves={len(self.evictable_device_leaves)} backed_up={n_backed_up}"
+                    )
         except Exception as e:  # never crash the scheduler over an optimization
             logger.warning(f"[XTIER] proactive backup skipped: {e}")
 

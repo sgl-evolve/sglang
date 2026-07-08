@@ -89,6 +89,13 @@ capacity for fewer transfers doesn't net a win ⇒ PURE exclusive (v1/v2) is nea
   (out-of-budget). Remaining ~5pp to the 0.807 ceiling needs lossless KV COMPRESSION (host tier) —
   high-risk kernel, likely low compressibility on FP8, low iteration throughput under node contention →
   documented as the bolder future line, not attempted.
+  - **Compression feasibility (reasoned, why not pursued now):** the host KV is FP8 (E4M3) post-attention
+    activations — high-entropy, so LOSSLESS compression realistically yields <1.2× (≈<2pp hit on the steep
+    curve), needs a decompression kernel on the H→D load-back path (latency risk), and is impractical to
+    iterate under the current severe pool contention (base_free monopolizes all 4 nodes; ~1 eval / several
+    hours). Lossy KV compression (bigger gains) is forbidden by the lossless contract. ⇒ low expected value;
+    left as future work. The accessible, in-contract, lossless mechanism space is EXHAUSTED at exclusive
+    tiering (hit 0.750, the effective-capacity ceiling short of KV compression).
 
 ## The protocol (fixed contract)
 - 2-tier: L1 GPU HBM (~2.35M tok) + L2 host DRAM (`--hicache-size 96` = 768 GB, ~7.81M tok). No L3.

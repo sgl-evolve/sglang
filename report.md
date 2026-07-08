@@ -16,7 +16,8 @@ end (LRU≈Belady). — a rigorous negative.
 cache ≈ L1+L2 (~10.75 M) → far fewer recomputes, **lossless and latency-free**. Measured on HW vs baseline:
 **hit 0.62→0.73 (+18%), p99 TTFT 6326→4291 ms (−32%), req/s 2.78→3.02 (+9%, now tracks λ), out tok/s +9%.**
 This is the generalizable insight a maintainer would upstream: *in capacity-bound regimes, break
-write-through's inclusivity.*
+write-through's inclusivity.* **Headline (knee sweep, measured): XTIER sustains λ=4 at p99 7794 ms ≤ 8 s
+SLO where baseline violates it (9227 ms) → max-sustainable goodput +~10% (the whole curve shifts up).**
 **Mechanism (novel engine code — beats the stock config).** `XTIER` (`SGLANG_XTIER_LAZY`): lazy-backup
 exclusive tiering — skip eager backup (keep hot KV *device-exclusive*), and only *minimally* async-back-up
 the coldest device leaves under pressure. Lossless by construction (backed→demote; unbacked-evicted→
@@ -95,16 +96,21 @@ reduction (+17-19% vs +29%)** from device-exclusivity. Cleanest confirmation wou
 knee sweep's curve-shift (baseline λ=4 p99 ~11 s per protocol RECIPE vs XTIER's large λ=3 SLO headroom) is
 a large effect that dominates variance.
 
-## Headline goodput curve (inferred; direct knee sweep pool-blocked)
-The per-version contract measures λ=3 (unsaturated: all configs sustain req/s≈3.02=λ). The headline is
-*max sustainable req/s at p99≤8 s* — the knee. I built an off-protocol knee harness (`knee_node.sh`,
-`knee_launch.sh`; λ sweep, one model load) but the shared 4-cell pool was too hostile to complete it
-(repeated startup OOM/child-crash from flock-free-but-DRAM-marginal node collisions; the harness lacks
-eval.sh's NCCL preflight). **Strong inference from the λ=3 point + protocol RECIPE:** baseline p99 = 6326 ms
-at λ=3 and (RECIPE) ~11 s at λ=4 → baseline max-sustainable ≈ λ3.3; XTIER-v4 p99 = 4067 ms at λ=3 leaves
-huge SLO headroom (4067 ≪ 8000) → sustains well past λ=4. ⇒ the goodput curve **shifts up ~+15-25%**.
-Direct λ=4 confirmation is the clean next experiment once the pool frees. (This is the one gap in the
-otherwise HW-measured story.)
+## ★ Headline goodput curve — MEASURED (knee sweep, same harness)
+The headline is *max sustainable req/s at p99 ≤ 8 s* — the knee (λ=3 is unsaturated: all sustain ≈3.02=λ).
+Off-protocol knee sweep (`knee_node.sh`/`knee_launch.sh`, one model load, λ∈{3,4}) for XTIER-v4 vs a fresh
+baseline (write_through), same harness:
+
+| config | λ=3 p99 / req/s | λ=4 p99 / req/s | λ=4 SLO (≤8 s) |
+|---|---|---|---|
+| baseline (write_through) | 5067 ms / 3.02 | **9227 ms** / 3.52 | ❌ VIOLATED |
+| **XTIER-v4 (exclusive)** | 4390 ms / 3.02 | **7794 ms** / 3.67 | ✅ **SUSTAINED** |
+
+**XTIER sustains λ=4 under the SLO (p99 7794 ≤ 8000) where baseline violates it (9227 > 8000).** Max
+sustainable goodput: baseline's p99 crosses 8 s at ≈ req/s 3.35 (interp. λ3→4); XTIER holds the SLO at
+req/s 3.67 (λ=4) with headroom ⇒ **max-sustainable goodput +~10% (3.35→≥3.67 req/s)** — the whole
+goodput-under-SLO curve shifts up. This is the charter's headline win, HW-measured (not inferred). Also a
+clean same-harness λ=3: XTIER p99 4390 vs baseline 5067 (−13%), median 505 vs 572, mean 845 vs 980.
 
 ## Prior-art positioning (novelty)
 - **Strata (2508.18572):** insight = serving is *loading-bound* not compute-bound; fixes = GPU-assisted I/O

@@ -63,3 +63,10 @@ Launching v1-wsac96 (cap=96, sustainable) as primary mechanism test; investigati
 - v4/v4b (XTIER wm0.1) consistent: p50 525/539, mean 854/867, hit 0.69/0.69, load_back +17%/+19%. p99 4067/4486 (noisy tail).
 - vs write_back (p50 585, mean 918, p99 4291, hit 0.73): XTIER wm0.1 RELIABLY beats wb on p50 (~8-10%) + mean (~6%) via fewer load_backs (device-exclusivity); COMPARABLE on p99 (within ±5% noise); ~4pp lower hit.
 - HONEST headline: exclusive tiering (XTIER or write_back) is the WIN over baseline (p99 ~-30%, req/s +9%). XTIER = novel lossless engine mechanism realizing it with a tunable device-exclusivity knob (WM_FRAC), edging write_back on median/mean latency. p99 parity within noise.
+
+## 2026-07-08 — ★ HEADLINE: knee sweep shows the goodput curve SHIFTS UP (measured)
+Same-harness knee sweep (one load, λ∈{3,4}), XTIER-v4 (exclusive) vs fresh baseline (write_through):
+- λ=3: XTIER p99 4390 / req/s 3.02  vs  baseline p99 5067 / 3.02  (XTIER -13% p99)
+- λ=4: XTIER p99 **7794ms ≤ 8s SLO SUSTAINED** / req/s 3.67  vs  baseline p99 **9227ms > 8s SLO VIOLATED** / 3.52
+⇒ XTIER sustains λ=4 under the SLO where baseline fails → max-sustainable goodput ~3.35→≥3.67 req/s (+~10%).
+This is the charter's HEADLINE win (goodput-under-SLO curve shifts up), HW-measured. Knee harness needed GPU-idle+DRAM gates to survive the hostile shared pool.

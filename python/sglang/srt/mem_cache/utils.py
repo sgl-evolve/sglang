@@ -18,6 +18,7 @@ from typing import Any, Callable, List, Optional, Tuple
 
 from sglang.srt.environ import envs
 from sglang.srt.mem_cache.evict_policy import (
+    CostAwareStrategy,
     EvictionStrategy,
     FIFOStrategy,
     FILOStrategy,
@@ -65,6 +66,13 @@ _EVICTION_POLICY_FACTORIES: dict[str, Callable[[], EvictionStrategy]] = {
 
 def get_eviction_strategy(eviction_policy: str) -> EvictionStrategy:
     policy = eviction_policy.lower()
+    # Cost-aware eviction (mechanism): for the default 'lru' policy, protect
+    # expensive-to-recompute long prefixes to shave the p99-TTFT tail. Opt out
+    # via SGLANG_ENABLE_COST_AWARE_EVICTION=0 to recover stock LRU.
+    if policy == "lru" and envs.SGLANG_ENABLE_COST_AWARE_EVICTION.get():
+        return CostAwareStrategy(
+            threshold=envs.SGLANG_COST_AWARE_EVICT_THRESHOLD.get()
+        )
     try:
         return _EVICTION_POLICY_FACTORIES[policy]()
     except KeyError:

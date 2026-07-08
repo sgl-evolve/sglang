@@ -354,6 +354,13 @@ class Envs:
     SGLANG_SCHEDULER_MAX_RECV_PER_POLL = EnvInt(-1)
     SGLANG_EXPERIMENTAL_CPP_RADIX_TREE = EnvBool(False)
     SGLANG_RADIX_FORCE_MISS = EnvBool(False)
+    # Cost-aware KV eviction (recompute-cost-weighted eviction for tail-latency SLOs).
+    # When on, the default 'lru' policy protects expensive-to-recompute (long) prefixes from
+    # eviction ahead of cheap ones (LRU within each cost segment), to shave the p99-TTFT tail that
+    # count-optimal LRU/Belady leave on the table. Set to False for stock LRU (ablation control).
+    SGLANG_ENABLE_COST_AWARE_EVICTION = EnvBool(True)
+    # Prefix segments with >= this many tokens are "expensive" (protected segment). Tokens.
+    SGLANG_COST_AWARE_EVICT_THRESHOLD = EnvInt(4096)
     SGLANG_DYNAMIC_CHUNKING_SMOOTH_FACTOR = EnvFloat(0.75)
     SGLANG_SCHEDULER_SKIP_ALL_GATHER = EnvBool(False)
     SGLANG_SCHEDULER_DECREASE_PREFILL_IDLE = EnvBool(False)

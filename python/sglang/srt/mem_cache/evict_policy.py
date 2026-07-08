@@ -46,6 +46,36 @@ class PriorityStrategy(EvictionStrategy):
         return (node.priority, node.last_access_time)
 
 
+class CostAwareStrategy(EvictionStrategy):
+    """Recompute-cost-aware eviction for tail-latency SLOs.
+
+    Motivation: in a tiered KV cache under memory pressure, count-optimal
+    replacement (LRU, which ~ matches Belady for in-order reuse) minimizes the
+    *number* of misses but not their *cost*. Per-miss recompute cost is ~ the
+    lost prefix length, which spans orders of magnitude (a 1k chat turn vs a
+    128k document prefix). Under an SLO the tail is what matters, and the tail
+    is dominated by the few catastrophic long-prefix recomputes. This strategy
+    segments evictable nodes by recompute cost (prefix segment length) and
+    evicts *cheap* segments before *expensive* ones, LRU within each segment —
+    so long, expensive-to-recompute prefixes are retained longer and their
+    misses (which drive p99 TTFT) are avoided, at the price of more cheap
+    misses (which barely move the tail). Lossless: only eviction order changes.
+
+    priority is a (segment, last_access_time) tuple; the eviction heap pops the
+    minimum, so segment 0 (cheap) is evicted before segment 1 (expensive), and
+    older nodes go first within a segment.
+    """
+
+    def __init__(self, threshold: int = 4096):
+        self.threshold = threshold
+
+    def get_priority(self, node: TreeNode) -> Tuple[int, float]:
+        key = getattr(node, "key", None)
+        cost = len(key) if key is not None else 0
+        is_expensive = 1 if cost >= self.threshold else 0
+        return (is_expensive, node.last_access_time)
+
+
 class SLRUStrategy(EvictionStrategy):
     def __init__(self, protected_threshold: int = 2):
         self.protected_threshold = protected_threshold

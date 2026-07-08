@@ -9,7 +9,7 @@ POOL="$ROOT/workspace/sgl/v0.25_ablations/_pool"
 SGL_HOME="$ROOT/programs/sgl/v0.25_ablations/sgl_free"
 EVAL="$SGL_HOME/researcher/.claude/skills/evaluation-sop/scripts/eval.sh"
 WS="$ROOT/workspace/sgl/v0.25_ablations/sgl_free/researchers/sgl_free"
-BASE_VER="v_ab_baseline"; EXC_VER="v_ab_exclusive"
+SUF="${SUFFIX:-}"; BASE_VER="v_ab${SUF}_baseline"; EXC_VER="v_ab${SUF}_exclusive"
 held_nodes(){ for f in "$POOL"/held/*; do [ -e "$f" ] && basename "$f"; done; }
 echo "[ab] same-node A/B: $BASE_VER (fcfs) then $EXC_VER (exclusive) on ONE node"
 for try in $(seq 1 200); do

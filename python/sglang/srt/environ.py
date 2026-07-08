@@ -364,6 +364,9 @@ class Envs:
     # Reuse gating for cost-aware eviction: only protect an expensive prefix once it has been re-matched
     # at least this many times (hit_count >= this). 0 = protect all expensive prefixes (pure cost gating).
     SGLANG_COST_AWARE_REUSE_MIN = EnvInt(0)
+    # Second cost boundary for 3-tier cost-aware eviction: prefixes >= this get the most protection (evicted
+    # last), targeting the p99 tail. 0 = 2-tier (single threshold). Should be > SGLANG_COST_AWARE_EVICT_THRESHOLD.
+    SGLANG_COST_AWARE_EVICT_THRESHOLD2 = EnvInt(0)
     # Extend cost-aware eviction to the hybrid Mamba state pool (the binding hybrid resource, whose
     # eviction is otherwise raw-LRU). Off by default so it can be ablated separately from full-KV.
     SGLANG_ENABLE_COST_AWARE_MAMBA_EVICTION = EnvBool(False)

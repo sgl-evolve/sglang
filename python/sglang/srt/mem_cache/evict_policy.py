@@ -71,19 +71,33 @@ class CostAwareStrategy(EvictionStrategy):
     one-shot long prefixes (e.g. a single long-context query with no follow-up),
     which is the main source of the median-TTFT regression from pure cost gating.
     reuse_min = 0 recovers the pure cost-aware behavior.
+
+    Multi-tier segmentation (``threshold2`` > 0): use TWO cost boundaries so the
+    *longest* (most catastrophic-to-recompute, p99-tail-driving) prefixes are
+    protected MORE strongly than merely-long ones. Tier = number of thresholds
+    the cost meets/exceeds: short (<threshold) → tier 0 (evicted first), long
+    (threshold..threshold2) → tier 1, longest (>=threshold2) → tier 2 (evicted
+    last). Unlike lowering a single threshold (which protects *more* prefixes and
+    can over-protect / worsen the tail), this keeps the same protected set but
+    orders it by cost, targeting the tail. threshold2 = 0 recovers 2-tier.
     """
 
-    def __init__(self, threshold: int = 4096, reuse_min: int = 0):
+    def __init__(self, threshold: int = 4096, reuse_min: int = 0, threshold2: int = 0):
         self.threshold = threshold
         self.reuse_min = reuse_min
+        self.threshold2 = threshold2
 
     def get_priority(self, node: TreeNode) -> Tuple[int, float]:
         key = getattr(node, "key", None)
         cost = len(key) if key is not None else 0
-        protected = cost >= self.threshold
-        if self.reuse_min > 0:
-            protected = protected and getattr(node, "hit_count", 0) >= self.reuse_min
-        return (1 if protected else 0, node.last_access_time)
+        tier = 1 if cost >= self.threshold else 0
+        if tier == 1 and self.reuse_min > 0:
+            # unproven long prefixes fall back to the cheap segment
+            if getattr(node, "hit_count", 0) < self.reuse_min:
+                tier = 0
+        if tier >= 1 and self.threshold2 > 0 and cost >= self.threshold2:
+            tier = 2
+        return (tier, node.last_access_time)
 
 
 class SLRUStrategy(EvictionStrategy):

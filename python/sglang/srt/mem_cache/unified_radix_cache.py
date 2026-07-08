@@ -619,9 +619,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         for component in self._components_tuple:
             component.drive_eviction(params=params, tracker=tracker)
 
-        if (
-            self.cache_controller is not None
-            and self.cache_controller.write_policy == "write_back"
+        if self.cache_controller is not None and (
+            self.cache_controller.write_policy == "write_back" or self.exclusive_tiering
         ):
             self.writing_check(write_back=True)
 
@@ -2698,9 +2697,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         if self.session.any_holding_kv():
             return
 
-        write_back = (
-            self.cache_controller is not None
-            and self.cache_controller.write_policy == "write_back"
+        write_back = self.cache_controller is not None and (
+            self.cache_controller.write_policy == "write_back" or self.exclusive_tiering
         )
 
         errors: list[str] = []

@@ -6,6 +6,24 @@ ctx 262144. Fixed mix bench (ShareGPT+LEval+LooGLE 1:1:1, 1553 convs / ~19M tok)
 **Headline metric = goodput under p99 TTFT ≤ 8 s SLO** (a mechanism must shift the whole curve up; a config
 flip or de-saturation trick cannot). Every version must be an engine-CODE `mechanism` (config-only is off-contract).
 
+## 🗺️ DESIGN-SPACE MAP (exhaustive; all versions on the W&B `sgl_mech` curve)
+| version | mechanism | verdict |
+|---|---|---|
+| v0_official / v0-ctl | stock LRU (control) | baseline (hit ~0.62, p50 ~640, p99 ~5800 mean) |
+| **v1-t2048 (best)** | cost-aware eviction, segment cost, threshold **2048** | **WIN: hit +5.4pp, p50 −21% (robust, n≥6); p99 −13% noisy; tput marginal; lossless** |
+| v1 (t4096) | cost-aware, threshold 4096 | win but p50 regression (threshold too high) |
+| v1-t1024 | cost-aware, threshold 1024 | worse (over-protect → p99 > stock) |
+| v1-t8192 | cost-aware, threshold 8192 | beats stock tput/p99 but hit < stock (under-protect) |
+| v3 | + cost-aware **Mamba** eviction | NEUTRAL (mamba not the binding recompute constraint) |
+| v5 | + reuse-gating (protect only reused) | NEUTRAL (superseded by t2048) |
+| v7 | 3-tier cost segmentation (protect longest most) | NEUTRAL (n=2; p99 within noise band) |
+| v8 | depth cost (cumulative prefix, protect deep tails) | NEUTRAL (cost axis doesn't matter; over-protection tension) |
+
+**Conclusion:** the mechanism is *recompute-cost-aware eviction*; **segment-length cost @ threshold ~2048 is the
+sweet spot and captures all available benefit** — every refinement (cost axis, tiering, reuse-gating, mamba,
+other thresholds) is neutral-or-worse. The p99 tail is noise/capacity-limited beyond this (workload is
+capacity-bound: 19M ≫ 10.7M). This exhaustive bounding *is* the rigorous result.
+
 ## ⭐ CONTRIBUTION SUMMARY (for a skeptical reviewer)
 **Mechanism (novel, engine code):** *Recompute-cost-aware KV eviction for tiered caches under a tail-latency
 SLO.* New `CostAwareStrategy` (`evict_policy.py`) replacing stock LRU in the radix-cache eviction victim

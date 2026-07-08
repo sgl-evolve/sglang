@@ -19,6 +19,14 @@ DRAMG=$(awk '/MemAvailable/{printf "%d",$2/1048576}' /proc/meminfo)
 [ "${DRAMG:-0}" -lt 1450 ] && { echo "DRAM_TOO_LOW ${DRAMG}G"; exit 2; }
 GMAX=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null|sort -n|tail -1)
 [ "${GMAX:-0}" -gt 5000 ] && { echo "GPU_BUSY ${GMAX}MiB — skip"; exit 2; }
+# NCCL preflight (like eval.sh) — bail fast on a flaky node before the expensive launch
+mkdir -p "$WORK/runs/_ab_probe"; cat > "$WORK/runs/_ab_probe/nccl.py" <<'PY'
+import torch, torch.distributed as d
+d.init_process_group("nccl"); r=d.get_rank(); torch.cuda.set_device(r)
+x=torch.ones(8,device="cuda"); d.all_reduce(x); torch.cuda.synchronize(); print("NCCL_OK",r); d.destroy_process_group()
+PY
+torchrun --standalone --nproc_per_node=8 "$WORK/runs/_ab_probe/nccl.py" > "$WORK/runs/_ab_probe/log" 2>&1 || { echo "NODE_NCCL_FAIL on $(hostname) — skip"; exit 6; }
+echo "NCCL preflight OK"
 
 run_cfg(){ # $1=label  $2..=extra launch args ; XTIER via env exported by caller per label
   local label="$1"; shift; local extra=("$@")

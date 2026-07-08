@@ -169,3 +169,12 @@
   upstream sync that added _default_hip to environ.py, so base..HEAD wrongly picked up +59 unrelated lines;
   using 21023af6d^ isolates purely my change.) + patches/README.md apply instructions. Completes the
   mergeable-PR packaging.
+
+## 2026-07-08 ~20:50Z — Surfaced UNREPORTED full-protocol goodput confirmation (node-free, from existing runs)
+- runs/sweep_{baseline,exclusive}_full_l4: matched FULL-protocol pair (1553 conv / 7037 turns, rate 4.0,
+  deterministic - both 900082 gen tokens) was on disk but UNREPORTED. At the knee (rate 4): exclusive
+  request_throughput 3.375->3.783 (+12.1%, baseline queue-limited below offered 4.0), p99 TTFT 9098->8091
+  (-11.1%), mean TTFT 1150->978 (-14.9%), p99 e2e 203657->169626 (-16.7%), p99 tpot -20.5%, p99 itl -14.1%.
+  Full-scale confirmation of the headline goodput metric, corroborating the node-controlled snab screen.
+  Honest provenance caveat: this pair's node isn't in the logs -> node-CONTROL claim still rests on the
+  flock-held snab pair; full_l4 is corroborating full-scale evidence. Added to report + UPSTREAM.

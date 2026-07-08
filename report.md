@@ -86,6 +86,25 @@ full eval; the baseline-vs-exclusive COMPARISON at matched load is the valid sig
 curve shift, not a de-saturation artifact — it comes from the +13pp hit-rate (less fresh prefill under
 load), attributable to the exclusive-tiering engine mechanism.
 
+**Full-protocol confirmation at the knee (matched 1553-conv / 7037-turn pair, rate 4.0 — deterministic
+workload, both exactly 900082 gen tokens).** The 600-conv screen above is corroborated at FULL scale:
+
+| metric (full protocol, rate 4.0) | baseline | exclusive | Δ |
+|---|---|---|---|
+| request_throughput (req/s) | 3.375 | **3.783** | **+12.1%** |
+| p99 TTFT ms | 9098 | **8091** | **−11.1%** |
+| mean TTFT ms | 1150 | **978** | **−14.9%** |
+| p99 e2e latency ms | 203657 | **169626** | **−16.7%** |
+| p99 TPOT ms | 1709 | 1359 | −20.5% |
+| p99 ITL ms | 2990 | 2569 | −14.1% |
+
+The throughput signal is the cleanest goodput evidence: at a *fixed offered* rate 4.0, baseline can only
+sustain 3.38 req/s (queue builds, p99 blows past 8s), while exclusive sustains **3.78** (nearer the offered
+rate) at p99 8091 ms (essentially at the SLO). So at full scale the exclusive knee sits ~1 SLO-width higher
+in load — consistent with the same-node screen (§ top) and the +13pp hit. (Provenance caveat: this matched
+pair's node isn't recorded in the logs, so the node-CONTROLLED knee claim rests on the flock-held `snab`
+pair; this full-scale pair is corroborating, not independently node-controlled.)
+
 ### v3_exclusive_hotkeep2 — frequency-aware hybrid (commit 91d611a10, mechanism) — NEUTRAL
 `SGLANG_HICACHE_EXCLUSIVE=1 SGLANG_HICACHE_EXCLUSIVE_HOT_KEEP=2` (stock write_through flag): keep nodes
 promoted ≥2× "hot" → inclusive (skip freeing host) to cut re-backup transfers; cold nodes exclusive.

@@ -87,3 +87,11 @@ p99: both PAIRED same-node deltas negative (v0-ctl2->v6-t2048 -707; ctlC->t2048C
 ranges overlap -> consistent/suggestive (n=2 paired). tput marginal (cost reliably 3.02). Powering used idle nodes,
 serial (no NFS contention). Conclusion unchanged, now better-powered: cost-aware eviction @t2048 = robust lossless
 hit + median-TTFT win, with a consistent (paired) ~-9% p99 tail reduction. t2048C logged.
+
+## 2026-07-08 — p99 powering COMPLETE (n=4 stock, n=8 cost-aware t2048; 3 paired deltas) — p99 now ROBUST
+STOCK n=4: p50 591±97, p99 5470±622 [5044-6393], hit 0.6185±0.0061, tput 2.98.
+COST t2048 n=8: p50 496±15, p99 5061±461 [4451-5686], hit 0.6786±0.0054, tput 3.02.
+Paired same-node p99 deltas (ALL negative): -707, -406, -593 -> mean -568±152 ms (-10%), paired t≈6.5, p≈0.01.
+FINAL robust claims (lossless): hit +6.0pp (non-overlapping), p50 -16% (non-overlapping), p99 -10% (paired,
+statistically significant; unpaired ranges overlap due to cluster cross-run variance, which pairing cancels).
+tput marginal (both sustain λ=3, meet p99≤8s SLO). Powering campaign complete; p99 upgraded noisy->robust.

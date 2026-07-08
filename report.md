@@ -200,6 +200,37 @@ cache (where inclusive duplication wastes the most), and never negative. On this
 hit (robust), −14 to −22% mean TTFT, and a lower+stabler p99 tail; on GPUs with more HBM-cache relative to
 host it would help more.
 
+### Generalization — the WORKLOAD axis: a falsifiable band boundary (`sim/generalization_band.py`)
+The HW table above varies the device tier at a fixed workload. The complementary, more falsifiable claim
+pins the HW and asks *for which workloads* exclusive pays off. Exclusive's benefit is **exactly the
+reuse-mass CDF slope over the reclaimed capacity band `[H, H+D]`** (host `H`, device `D`):
+
+    benefit(H, D) = HitRate(C = H+D) − HitRate(C = H)
+
+Calibration: the sim's `lam` is an effective-CONCURRENCY knob (real 122B prefill ≫ sim service time, so the
+protocol's real λ=3 induces the concurrency the sim reaches near λ_sim≈30); pin it so the sim reproduces the
+MEASURED hit-rates, then read the band off the calibrated curve. It self-validates: at this HW it predicts
+**+11.8pp**, matching the measured **+13pp**.
+
+Reuse-mass CDF (calibrated): flat-low <4M (thrash) → **STEEP 5–12M** → **plateau 0.806 from ~15M** (working
+set fully resident). Sliding host `H` with the fixed device band `D=2.35M`:
+
+| host H | band [H,H+D] sits on… | benefit (pp) |
+|---|---|---|
+| 2.0M | flat-low bottom (deep undercapacity) | +3.1 |
+| 4.0M | entering the knee | +14.7 |
+| 6.0M | **straddles the steep knee** | **+25.4 (max)** |
+| 7.81M (this HW) | upper-steep | +11.8 *(≈ measured +13)* |
+| 10.0M | top of the knee | +6.1 |
+| ≥14M | **plateau (host alone covers the working set)** | **0.0** |
+
+**Falsifiable boundary:** exclusive helps **iff** host capacity `H` < the working set (so the band overlaps
+the steep region); once the host tier alone already covers the working set (`H ≳ 15M` here), the benefit is
+**provably 0** — over-provisioned-host deployments should not expect a gain. This one law subsumes the HW
+table (that's the `H=7.81M` row swept over `D`) and transfers to any workload: compute *that* workload's
+reuse CDF and read the slope over `[H, H+D]`. It also bounds the ceiling: no *placement* policy can exceed
+`HitRate(H+D)` — beyond it needs more bytes (lossy quantization), consistent with the closed frontier.
+
 ## The protocol (fixed contract)
 - 2-tier: L1 GPU HBM (~2.35M tok) + L2 host DRAM (`--hicache-size 96` = 768 GB, ~7.81M tok). No L3.
 - Frozen launch: TP8, ctx 262144, mem-frac 0.85, page-size 64, chunked-prefill 6144, io-backend `direct`,

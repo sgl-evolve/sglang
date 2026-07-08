@@ -137,3 +137,10 @@
   (0.808) is reachable via fp8-KV at a MODEST quality cost, but it IS lossy + a config flag (out-of-contract).
   (Divergence != scored accuracy; proxy only.) Confirms: lossless exclusive tiering (0.752, 0 added loss) is
   the right in-contract choice; the residual ~5.6pp to ceiling is a lossy tradeoff. Frontier fully characterized.
+
+## 2026-07-08 ~19:20Z — Workload-axis generalization: falsifiable band boundary (sim, node-free)
+- New sim/generalization_band.py: exclusive benefit = reuse-CDF slope over reclaimed band [H, H+D].
+  Calibrated (lam_sim~30 reproduces measured baseline+exclusive hit). Self-validates: predicts +11.8pp at
+  this HW vs measured +13pp. Benefit peaks +25.4pp when band straddles the steep knee (H~6M), ->0.0 on the
+  plateau (H>=14M, host alone covers the working set). FALSIFIABLE BOUNDARY: exclusive helps iff H < working
+  set. Subsumes the HW-ratio table (its H=7.81M row) + generalizes to any workload. Report updated.

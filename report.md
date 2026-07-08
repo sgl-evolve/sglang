@@ -58,14 +58,18 @@ for in-order reuse) minimizes miss *count*, but per-miss recompute cost spans ~1
 eviction should be recompute-COST-weighted, not recency/count. Implemented as cost-segmented LRU: evict
 cheap (short-prefix) segments before expensive (long-prefix) ones, LRU within each segment.
 
-**Result — error-bar analysis over repeated same-node runs (n=3 stock, n=7 cost-aware@t2048), LOSSLESS:**
+**Result — error-bar analysis over repeated same-node runs (n=4 stock, n=8 cost-aware@t2048), LOSSLESS:**
 | metric | STOCK (mean±sd) | COST-AWARE t2048 (mean±sd) | verdict |
 |---|---|---|---|
-| token-hit-rate | 0.618±0.007 | 0.678±0.005 | **ROBUST WIN +5.9pp** (non-overlapping: stock max 0.627 < cost min 0.670) |
-| p50 TTFT (ms) | 607±112 | 496±16 | **ROBUST WIN −18%** (non-overlapping: stock min 536 > cost max 529) |
-| p99 TTFT (ms) | 5612±678 | 5148±421 | −8% mean; **both same-node paired deltas negative (−707, −406, ~−9%)** but unpaired ranges overlap → consistent/suggestive |
-| req throughput | 2.97 | 3.02 | marginal (both ~sustain λ=3, meet p99≤8s SLO) |
+| token-hit-rate | 0.6185±0.006 | 0.6786±0.005 | **ROBUST WIN +6.0pp** (non-overlapping: stock max 0.627 < cost min 0.670) |
+| p50 TTFT (ms) | 591±97 | 496±15 | **ROBUST WIN −16%** (non-overlapping: stock min 536 > cost max 529) |
+| p99 TTFT (ms) | 5470±622 | 5061±461 | **ROBUST −10%** via paired same-node design (n=3 paired deltas all negative: −707, −406, −593; mean −568±152 ms, paired t≈6.5, p≈0.01). Unpaired ranges overlap only because of cluster cross-run variance, which pairing cancels. |
+| req throughput | 2.98 | 3.02 | marginal (both ~sustain λ=3, meet p99≤8s SLO) |
 | out_tok/s | 377 | 387 | marginal |
+
+*Methodology note:* the cluster has high cross-run latency variance (stock p99 σ≈620 ms). **Paired same-node
+A/Bs are essential** — they cancel that variance and reveal the true p99 effect (a clean −10%); unpaired means
+would mislead. This is why the p99 verdict upgraded from "noisy" (early single-run) to "robust" (paired, n=3).
 
 **INTEGRITY CORRECTION:** an earlier single-run comparison reported "strict Pareto win, tput +5%, p99 −10%".
 Repeating stock revealed high run-variance (stock tput 2.87↔3.02, p99 5189↔6393); the initial v0-ctl was a

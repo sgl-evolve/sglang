@@ -422,6 +422,11 @@ class Envs:
     # cached content, raising distinct cache capacity by the device tier size. Lossless: the device
     # copy is committed before the host copy is freed; a later device eviction re-backs-up to host.
     SGLANG_HICACHE_EXCLUSIVE = EnvBool(False)
+    # Frequency-aware hybrid exclusivity (v3): if >0, do NOT free the host copy on promotion for a node
+    # that has been promoted (loaded H->D) >= this many times ("hot") — keep it inclusive so its device
+    # eviction needs no re-backup (fewer H<->D transfers), while cold entries stay exclusive (capacity).
+    # 0 = pure exclusive (free host on every promotion). Requires SGLANG_HICACHE_EXCLUSIVE=1.
+    SGLANG_HICACHE_EXCLUSIVE_HOT_KEEP = EnvInt(0)
     SGLANG_HUGEPAGE_SIZE = EnvStr("")
     # Staging buffer for heterogeneous TP KV transfer
     SGLANG_DISAGG_STAGING_BUFFER = EnvBool(False)

@@ -91,6 +91,7 @@ class UnifiedTreeNode:
         self.creation_time = get_and_increase_time_counter()
         self.hash_value = None
         self.hit_count = 0
+        self.load_back_count = 0  # #times this node's KV was promoted H->D (exclusive hot-keep, v3)
         self.priority = priority
         self.lru_prev: list[UnifiedTreeNode | None] = [None] * (
             _NUM_COMPONENT_TYPES * 2
@@ -368,10 +369,12 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # Exclusive L1<->L2 tiering (SGLANG_HICACHE_EXCLUSIVE): free the host copy after a
         # host->device promotion so an entry lives on device XOR host (see _promote_free_host).
         self.exclusive_tiering = envs.SGLANG_HICACHE_EXCLUSIVE.get()
+        self.exclusive_hot_keep = envs.SGLANG_HICACHE_EXCLUSIVE_HOT_KEEP.get()  # 0 = pure exclusive
         if self.exclusive_tiering:
             logger.info(
                 "UnifiedRadixCache: EXCLUSIVE L1<->L2 tiering ENABLED "
                 "(free host copy on promotion; pair with --hicache-write-policy write_back)"
+                + (f"; hot-keep threshold={self.exclusive_hot_keep}" if self.exclusive_hot_keep else "")
             )
 
         # HiCache D↔H defaults (overridden by init_hicache)
@@ -2443,6 +2446,12 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 cd.host_lock_ref != 0 for cd in cur.component_data
             ):
                 break
+            # frequency-aware hybrid (v3): keep HOT nodes inclusive (don't free host) so their device
+            # eviction needs no re-backup; cold nodes stay exclusive. count this promotion first.
+            cur.load_back_count += 1
+            if self.exclusive_hot_keep and cur.load_back_count >= self.exclusive_hot_keep:
+                cur = cur.parent
+                continue
             for comp in self._components_tuple:
                 if comp.node_has_component_data(cur, target=EvictLayer.HOST):
                     self._evict_component_and_detach_lru(

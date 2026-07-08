@@ -95,6 +95,17 @@ reduction (+17-19% vs +29%)** from device-exclusivity. Cleanest confirmation wou
 knee sweep's curve-shift (baseline λ=4 p99 ~11 s per protocol RECIPE vs XTIER's large λ=3 SLO headroom) is
 a large effect that dominates variance.
 
+## Headline goodput curve (inferred; direct knee sweep pool-blocked)
+The per-version contract measures λ=3 (unsaturated: all configs sustain req/s≈3.02=λ). The headline is
+*max sustainable req/s at p99≤8 s* — the knee. I built an off-protocol knee harness (`knee_node.sh`,
+`knee_launch.sh`; λ sweep, one model load) but the shared 4-cell pool was too hostile to complete it
+(repeated startup OOM/child-crash from flock-free-but-DRAM-marginal node collisions; the harness lacks
+eval.sh's NCCL preflight). **Strong inference from the λ=3 point + protocol RECIPE:** baseline p99 = 6326 ms
+at λ=3 and (RECIPE) ~11 s at λ=4 → baseline max-sustainable ≈ λ3.3; XTIER-v4 p99 = 4067 ms at λ=3 leaves
+huge SLO headroom (4067 ≪ 8000) → sustains well past λ=4. ⇒ the goodput curve **shifts up ~+15-25%**.
+Direct λ=4 confirmation is the clean next experiment once the pool frees. (This is the one gap in the
+otherwise HW-measured story.)
+
 ## Prior-art positioning (novelty)
 - **Strata (2508.18572):** insight = serving is *loading-bound* not compute-bound; fixes = GPU-assisted I/O
   (decouple GPU/host layouts) + cache-aware *scheduling* (order requests to balance compute vs I/O) +

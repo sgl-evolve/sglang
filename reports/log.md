@@ -42,3 +42,12 @@ Full curve (p50/p99/hit/tput): stock 736/5189/0.627/2.87 | t1024 520/5571/0.657/
 | t4096 797/4602/0.674/3.02 | t8192 543/4837/0.615/3.02. t1024 (over-protect) p99 WORSE than stock (5571);
 t8192 (under-protect) hit<stock (0.615). Cost-awareness must be TARGETED near reusable-prefix len (~2048),
 not blanket. t2048 = definitive optimum (strict Pareto win). Cost-aware eviction study definitively complete.
+
+## 2026-07-08 — INTEGRITY CORRECTION via definitive paired A/B + error bars (n=2 stock, n=3 t2048)
+Repeated stock revealed high run-variance (tput 2.87↔3.02, p99 5189↔6393); earlier v0-ctl was a low-tput draw.
+Corrected robust claims (non-overlapping ranges): hit_rate +5.4pp (0.620→0.674), p50 −21% (643→508 ms).
+Noisier: p99 −13% mean (5791→5009, ranges overlap). Marginal: tput (both ~sustain λ=3, meet p99≤8s SLO at λ=3),
+out_tok. Earlier "strict Pareto +5% tput / −10% p99" OVERSTATED (partly variance) — report.md corrected.
+Robust core stands: cost-aware eviction @t2048 is a lossless hit-rate (+5.4pp) & median-TTFT (−21%) win,
+−12.5% total recompute work. Lesson: single-run comparisons on this contended cluster overstate; need paired
+same-node A/Bs + repeats. v6-t2048 logged (3rd t2048 replicate, p99 5686 = high-variance draw).

@@ -15,16 +15,32 @@ for in-order reuse) minimizes miss *count*, but per-miss recompute cost spans ~1
 eviction should be recompute-COST-weighted, not recency/count. Implemented as cost-segmented LRU: evict
 cheap (short-prefix) segments before expensive (long-prefix) ones, LRU within each segment.
 
-**Result (clean same-node serial A/B, warm cache; strict Pareto win over stock LRU at threshold 2048):**
-p50 TTFT −28% (736→529 ms), p99 TTFT −10% (5189→4691), token-hit-rate +7.5% (0.627→0.674),
-req throughput +5% (2.87→3.02, fully sustaining λ=3 where stock is backpressured), out_tok/s +5% — every
-metric better, **lossless**.
+**Result — error-bar analysis over repeated same-node runs (n=2 stock, n=3 cost-aware@t2048), LOSSLESS:**
+| metric | STOCK (range, mean) | COST-AWARE t2048 (range, mean) | verdict |
+|---|---|---|---|
+| token-hit-rate | 0.613–0.627 (0.620) | 0.670–0.679 (0.674) | **ROBUST WIN +5.4pp** (non-overlapping) |
+| p50 TTFT (ms) | 550–736 (643) | 489–529 (508) | **ROBUST WIN −21%** (non-overlapping) |
+| p99 TTFT (ms) | 5189–6393 (5791) | 4650–5686 (5009) | win −13% mean, but **ranges overlap (noisy)** |
+| req throughput | 2.87–3.02 (2.95) | 3.02 (3.02) | marginal (both ~sustain λ=3) |
+| out_tok/s | 367–387 (377) | 387 (387) | marginal |
 
-**Evidence:** (a) reproducible — v0-ctl reproduces the golden baseline (p99 5189 vs 6326), and the win is
-consistent across 4 cost-aware runs (tput 3.02, hit 0.674 vs stock 2.87/0.627); (b) mechanism confirmed
-active per server.log; (c) on-contract (resolved_args match, no silent fallback); (d) threshold ablation
-(t2048/t4096/t8192) characterizes the knob; (e) **honest negative** — extending cost-awareness to the Mamba
-pool (v3) is neutral (that pool isn't the binding recompute constraint).
+**INTEGRITY CORRECTION:** an earlier single-run comparison reported "strict Pareto win, tput +5%, p99 −10%".
+Repeating stock revealed high run-variance (stock tput 2.87↔3.02, p99 5189↔6393); the initial v0-ctl was a
+low-tput draw, so the tput/p99 gains were partly variance. The **robust, non-overlapping wins are hit_rate
+(+5.4pp) and median TTFT (−21%)**; p99 is −13% on average but noisy (overlapping); throughput is marginal
+(both meet the p99≤8s SLO and ~sustain λ=3 at the frozen load). The mechanism's value (higher hit-rate,
+lower median, lower average tail) would raise goodput at λ>3 — but per-version λ is frozen at 3, so the
+goodput-curve shift is *inferred, not directly measured*.
+
+**Evidence:** (a) reproducible — v0-ctl reproduces the golden baseline; hit-rate/p50 wins non-overlapping
+across 5 stock+cost-aware runs; (b) noise-robust cache metric: −12.5% total recompute work (37.5M→32.8M
+new tokens), insensitive to latency noise; (c) mechanism confirmed active per server.log; (d) on-contract
+(resolved_args match, no silent fallback); (e) threshold ablation (t1024/t2048/t4096/t8192) → U-optimum at
+t2048; (f) **honest negatives** — Mamba-pool extension (v3) and reuse-gating (v5) both NEUTRAL.
+
+**Methodological note:** this cluster has high cross-run latency variance (stock p99 ±23%) from shared-NFS
+cross-cell contention; single-run comparisons overstate effects. Paired same-node A/Bs + repeats (error
+bars) are required — and were what corrected the record here.
 
 **Lossless by construction:** eviction order only decides cache hit vs. miss; a miss recomputes *bit-identical*
 KV (prefix caching is exact), so model outputs are independent of eviction policy. No quality gate needed.
@@ -167,11 +183,11 @@ hit 0.6269; host_util 1.0; tput 2.87; out_tok/s 367; tpot 252; load_back 302M; e
   | req throughput | 2.87 | 3.02 | 3.02 | **+5.2%** |
   | out_tok/s | 367 | 387 | 387 | **+5.4%** |
 
-  **KEY RESULT:** at threshold 2048, cost-aware eviction is a **strict Pareto improvement over stock LRU on
-  every metric** — the p50 regression seen at t4096 was a *threshold artifact*. Protecting prefixes ≥2048 tok
-  (near the ~2741-tok average reusable prefix) keeps the median-relevant prefixes resident, so both the
-  median AND the tail improve. p99 is ~flat across thresholds (all ≈4600-4700 << stock 5189) — the headline
-  (goodput@p99-SLO) win is robust; t2048 additionally wins p50. Lossless by construction.
+  **KEY RESULT (single-run above; see error-bar analysis at top for the corrected, robust claims):** at
+  threshold 2048, cost-aware eviction protects prefixes ≥2048 tok (near the ~2741-tok average reusable prefix),
+  keeping median-relevant prefixes resident. ⚠️ The single-run table above overstates tput/p99 (stock has high
+  run-variance — see INTEGRITY CORRECTION at top). Across repeats the ROBUST, non-overlapping wins are
+  **hit_rate +5.4pp** and **p50 −21%**; p99 is −13% mean (noisy); tput marginal. Lossless by construction.
 
 - **v4** (reuse-gated cost, code ready `7a5fe5850`): motivation (fix p50 regression) largely superseded by
   t2048; may still help capacity use. Lower priority now.

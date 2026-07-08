@@ -48,3 +48,13 @@ Launching v1-wsac96 (cap=96, sustainable) as primary mechanism test; investigati
 - v3 (WM_FRAC 0.3/BATCH 256/PERIOD 2, MORE proactive backup): hit 0.65 (+5%) < v2 0.69 (+10%) < write_back 0.73 (+18%). load_back +9% (fewest). Logged W&B (mechanism).
 - INSIGHT: proactive backup OVER-backs-up → displaces host content prematurely (host always full → each premature backup drops a host item → recompute) → LOWER hit. write_back's backup-ONLY-on-eviction is OPTIMAL for exclusive tiering here; XTIER's async proactive design only helps where the backup tier is slow/eviction heavy (not this fast-host 2-tier).
 - ⇒ To BEAT write_back: not more backup, but REUSE-AWARE DEVICE RETENTION (keep high-reuse docs in L1 → device hits → fewer load_backs → lower p99 at write_back's 0.73 hit). v4 candidate.
+
+## 2026-07-08 — NEW BEST: v4-xtier-wm10 BEATS write_back on TTFT (headline SLO metric)
+- XTIER WM_FRAC=0.1 (minimal proactive backup → maximally device-exclusive). vs v0_official:
+  p50 525ms(-30%), p99 4067ms(-36%), mean 854ms(-25%), req/s 3.02(+9%), out 386 tok/s(+9%), hit 0.69(+11%).
+- vs write_back (config): BETTER TTFT on all (write_back p50 585/-22%, p99 4291/-32%, mean 918/-20%). Same req/s.
+- Mechanism: minimal backup → more DEVICE-exclusive KV → fewer load_backs (+17% vs write_back +29%) → lower TTFT.
+  Trades ~4pp hit (0.69 vs 0.73) for fewer H→D transfers = right trade for p99-TTFT SLO. NOVEL engine-code
+  mechanism beating the stock write_back flag on the headline (goodput-under-SLO), lossless. Logged W&B (mechanism).
+- Sweep: WM_FRAC 0.1(BEST p99 4067) > 0.2(4462) > 0.3(4479) → less proactive backup = better (device-exclusivity↑, host-displacement↓).
+- Next rigor: repeat v4 for error bars; knee sweep λ=4 to confirm goodput-curve shift.

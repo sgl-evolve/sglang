@@ -58,14 +58,14 @@ for in-order reuse) minimizes miss *count*, but per-miss recompute cost spans ~1
 eviction should be recompute-COST-weighted, not recency/count. Implemented as cost-segmented LRU: evict
 cheap (short-prefix) segments before expensive (long-prefix) ones, LRU within each segment.
 
-**Result — error-bar analysis over repeated same-node runs (n=2 stock, n=3 cost-aware@t2048), LOSSLESS:**
-| metric | STOCK (range, mean) | COST-AWARE t2048 (range, mean) | verdict |
+**Result — error-bar analysis over repeated same-node runs (n=3 stock, n=7 cost-aware@t2048), LOSSLESS:**
+| metric | STOCK (mean±sd) | COST-AWARE t2048 (mean±sd) | verdict |
 |---|---|---|---|
-| token-hit-rate | 0.613–0.627 (0.620) | 0.670–0.679 (0.674) | **ROBUST WIN +5.4pp** (non-overlapping) |
-| p50 TTFT (ms) | 550–736 (643) | 489–529 (508) | **ROBUST WIN −21%** (non-overlapping) |
-| p99 TTFT (ms) | 5189–6393 (5791) | 4650–5686 (5009) | win −13% mean, but **ranges overlap (noisy)** |
-| req throughput | 2.87–3.02 (2.95) | 3.02 (3.02) | marginal (both ~sustain λ=3) |
-| out_tok/s | 367–387 (377) | 387 (387) | marginal |
+| token-hit-rate | 0.618±0.007 | 0.678±0.005 | **ROBUST WIN +5.9pp** (non-overlapping: stock max 0.627 < cost min 0.670) |
+| p50 TTFT (ms) | 607±112 | 496±16 | **ROBUST WIN −18%** (non-overlapping: stock min 536 > cost max 529) |
+| p99 TTFT (ms) | 5612±678 | 5148±421 | −8% mean; **both same-node paired deltas negative (−707, −406, ~−9%)** but unpaired ranges overlap → consistent/suggestive |
+| req throughput | 2.97 | 3.02 | marginal (both ~sustain λ=3, meet p99≤8s SLO) |
+| out_tok/s | 377 | 387 | marginal |
 
 **INTEGRITY CORRECTION:** an earlier single-run comparison reported "strict Pareto win, tput +5%, p99 −10%".
 Repeating stock revealed high run-variance (stock tput 2.87↔3.02, p99 5189↔6393); the initial v0-ctl was a

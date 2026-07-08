@@ -78,3 +78,12 @@ Reasoned through remaining levers before spending evals:
   off-contract. Exclusive tiering: siblings' (shared memory) → not adopted per independence rule.
 Conclusion: cost-aware eviction is THE accessible lossless lever for this capacity-bound hybrid 2-tier cache;
 characterized and won. Model: 48 layers = 36 linear/GDN + 12 full-attn (interval 4); GDN state ~3× attn-KV.
+
+## 2026-07-08 — p99 error-bar powering (n=3 stock, n=7 cost-aware t2048; 2 same-node paired deltas)
+STOCK n=3: p50 607±112, p99 5612±678 [5189-6393], hit 0.6184±0.0074, tput 2.97.
+COST t2048 n=7: p50 496±16, p99 5148±421 [4650-5686], hit 0.6776±0.0051, tput 3.02.
+Robust NON-OVERLAPPING wins: hit +5.9pp (stock max 0.627 < cost min ~0.670), p50 -18% (stock min 536 > cost max 529).
+p99: both PAIRED same-node deltas negative (v0-ctl2->v6-t2048 -707; ctlC->t2048C -406), mean ~-9%, but unpaired
+ranges overlap -> consistent/suggestive (n=2 paired). tput marginal (cost reliably 3.02). Powering used idle nodes,
+serial (no NFS contention). Conclusion unchanged, now better-powered: cost-aware eviction @t2048 = robust lossless
+hit + median-TTFT win, with a consistent (paired) ~-9% p99 tail reduction. t2048C logged.

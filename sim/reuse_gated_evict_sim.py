@@ -43,6 +43,10 @@ def run(convs, cache_cap, mode="reuse_gated"):
         if mode == "reuse_gated":
             # unproven (served once, never reused) first, then proven; each by LRU
             rc.sort(key=lambda c: (served_cnt[c] >= 2, last_used[c]))
+        elif mode == "lfu":
+            # least-FREQUENTLY-used first (tie-break LRU). Note: a completed multi-turn
+            # conv has HIGH freq (served many times) -> LFU wrongly PROTECTS stale docs.
+            rc.sort(key=lambda c: (served_cnt[c], last_used[c]))
         else:  # pure LRU
             rc.sort(key=lambda c: last_used[c])
         for c in rc:
@@ -65,6 +69,6 @@ def run(convs, cache_cap, mode="reuse_gated"):
 if __name__ == "__main__":
     convs = load()
     print(f"cache={CACHE/1e6:.1f}M  pure-LRU=0.733  oracle=0.806")
-    for mode in ["lru", "reuse_gated"]:
+    for mode in ["lru", "reuse_gated", "lfu"]:
         h = run(convs, CACHE, mode)
         print(f"  {mode:>12}: hit={h:.4f}")

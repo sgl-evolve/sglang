@@ -61,6 +61,31 @@
   - hit ≈ 0.627 (flat) → reuse is NOT eviction/scheduling-limited (corroborates s1-diag: incremental kv_only stable regardless of host fill) → baseline near structural reuse ceiling for this workload → PIVOT: (a) per-turn hit instrumentation to find the residual doc-miss cause, (b) different lever (goodput curve / admission working-set).
   - p99 > baseline (cold prefills deferred) → warm-first trades tail → confirms pure-reorder can't shift the SLO curve (charter's point); need a work-reducing (hit) mechanism instead.
 
+## ★ ROOT CAUSE CRACKED (sim-confirmed): capacity-limited by long client-imposed reuse distance
+bench_serving multiturn RE-QUEUES each conversation to the END of a FIFO queue after every turn (bench_serving.py:187-190) and pulls FIFO — so a conversation's consecutive turns are separated by a FULL QUEUE CYCLE (hundreds of convs), giving a reuse distance ≫ cache. Corrected offline sim (sim/requeue_sim.py, FIFO re-queue + finite LRU) reproduces the baseline:
+| effective cache | sim hit |
+|---|---|
+| 5.0M | 0.316 |
+| 7.8M | 0.502 |
+| **8.4M (= host tier)** | **0.593 ≈ baseline 0.62** |
+| 9.0M | 0.721 |
+| 10.7M (L1+L2) | 0.733 |
+| ∞ | 0.806 |
+- **Sharp capacity cliff at 8-9M.** Baseline (0.62) ≈ FIFO-LRU-optimal at the **host tier size (8.4M)** → the small **device tier (2.35M) churns too fast (running batch + short-reuse) to hold long-reuse docs**, so the effective LONG-reuse cache ≈ host only. Baseline is near host-tier-optimal.
+- **Why scheduling is neutral (v1/v2):** the access ORDER is client-imposed (FIFO re-queue); the server cannot change which turns arrive when → reordering can't shrink the reuse distance. (Confirmed empirically.)
+- **Recoverable lever:** push the effective long-reuse cache 8.4M→10.7M (past the cliff → +11-13pp hit) by making the DEVICE tier contribute to long-reuse caching (L1↔L2 PLACEMENT: keep a bounded set of multi-turn docs device-resident instead of churning them). NOTE: charter's "eviction is a dead end (LRU≈Belady under IN-ORDER reuse)" premise does NOT hold here (long reuse distance) — but the gap is cache SIZE not replacement policy, so pure LRU→LFU/SLRU won't reach it; the win must come from device placement adding capacity to the long-reuse set. To test: v3.
+
+## ★★ diag4 write_back DIAGNOSTIC (private, config — NOT a logged version): INSIGHT CONFIRMED
+Same node (ondem-2), `--hicache-write-policy write_back` (else frozen):
+| | baseline (0-3) | write_back |
+|---|---|---|
+| hit | 0.61-0.63 | **0.7312 (+11pp)** |
+| TTFT p50 | 573 | **491 (−14%)** |
+| TTFT p99 | 4902-6594 | **4292 (best)** |
+| req/s | 3.02 | 3.02 |
+- **Matches my sim's 10.7M prediction (0.733) exactly.** CONFIRMS: write-through makes the device tier a redundant subset of host (effective unique cache = host 8.4M → hit 0.62); write-back makes device NON-REDUNDANT (effective 10.7M → hit 0.73). This is the real recoverable headroom (+11pp hit = ~11M fewer recomputed tokens), plus better TTFT (fewer eviction-recompute stalls).
+- write_back is a **config flag → off-contract to log as a version** here. My CONTRIBUTION = (1) this rigorous root-cause characterization + validation, (2) a NOVEL ENGINE mechanism achieving non-redundant device tiering (not the stock flag). Design: non-inclusive/exclusive KV tiering (device holds content not mirrored on host) — implemented in engine code.
+
 ## Puzzle-diagnostic decision tree (per-prefill instrumentation, run after v2)
 Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected continuations ≈ 5484 (turns>0). Read pf_warm_count / pf_warm_hit / pf_cold_new:
 - **pf_warm_count ≪ 5484** (few prefills reuse ≥512): continuations are NOT matching their resident doc → a match/tier bug (deeper than mamba/extra_key/eviction, all ruled out). Investigate host_hit_length computation / tree traversal / load_back gating. → potential BIG hit-recovery mechanism.
@@ -90,6 +115,12 @@ diag2 (baseline fcfs, node 0-3) vs v2 (warm-first+aging, node 0-3) — SAME NODE
 - **Finding: for this workload, prefill scheduling order does NOT affect goodput/hit** — fcfs is already fine; the bottleneck is the hit-rate (near-ceiling with a ~16M unexplained doc-reuse miss), NOT scheduling. LESSON: always A/B on the SAME node (node variance ≈ 14% on req/s).
 - Per-prefill (diag2, unbiased, matches summary hit 0.624 ✓): warm=3686 prefills→61.8M reuse; cold_new=36.2M. The 36.2M cold = ~19M unavoidable turn-0 + ~16M avoidable missed-continuation (the puzzle).
 - NEXT hypothesis: **load_back FAILURE under device pressure** — host-resident doc recomputed because `load_back`'s `evict()` can't free enough (running KV locked). Instrument load_back failure tokens.
+
+## diag3 (baseline + load_back-fail instrumentation, node 0-3): LB_FAIL = 0
+- **load_back NEVER fails** (lb_fail_evict=0, lb_fail_thresh=0 across all ranks, full saturation) → load_back-failure hypothesis RULED OUT.
+- **Every recoverable cause for the ~16M avoidable-reuse-miss is now ruled out**: eviction (kv_only stable), Mamba consensus-truncation (kv_only≈consensus), capacity/reuse-distance (~2M ≪ 10.7M), retraction (0), extra_key (uniform None), retokenization (≤ doc-only ceiling 0.78, but achieved 0.62), load_back-failure (0).
+- **Conclusion:** the structural ceiling (0.78 doc-only / 0.81 full) OVER-ESTIMATES the truly reusable prefix for the served token sequences → the baseline HiCache (hit 0.62) is **near the achievable reuse for this hybrid-Mamba multi-turn workload**; the "18M headroom" was a modeling artifact (concatenation-reuse assumption). Rigorous NEGATIVE on the hit-rate lever.
+- Combined with the scheduling NEGATIVE (warm-first neutral same-node), the baseline is near-optimal on both hit AND scheduling for this workload/hardware. (Honest result; charter values negatives.)
 
 ## v1 warm-first RESULT + interpretation (vs s1-diag same-clone baseline)
 - **hit FLAT (0.622 vs 0.627)** → reuse-aware scheduling does NOT recover reuse ⇒ reuse is NOT eviction/scheduling-limited; **baseline is near the structural reuse ceiling for this workload.** (Corroborates: s1-diag incremental match ratio was stable regardless of host fill; Mamba ruled out; delete/wb_fail≈0.) This contradicts the optimistic full-concat ceiling (0.81) — real reuse is capped lower.

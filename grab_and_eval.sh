@@ -38,6 +38,8 @@ while :; do
         [ -n "${BM_WARMFIRST:-}" ] && ENVPFX="$ENVPFX export BM_WARMFIRST=$(printf %q "$BM_WARMFIRST");"
         [ -n "${BM_WARM_THRESHOLD:-}" ] && ENVPFX="$ENVPFX export BM_WARM_THRESHOLD=$(printf %q "$BM_WARM_THRESHOLD");"
         [ -n "${BM_AGE_LIMIT_S:-}" ] && ENVPFX="$ENVPFX export BM_AGE_LIMIT_S=$(printf %q "$BM_AGE_LIMIT_S");"
+        [ -n "${BM_EXCL:-}" ] && ENVPFX="$ENVPFX export BM_EXCL=$(printf %q "$BM_EXCL");"
+        [ -n "${BM_EXCL_KEEP_HITS:-}" ] && ENVPFX="$ENVPFX export BM_EXCL_KEEP_HITS=$(printf %q "$BM_EXCL_KEEP_HITS");"
         srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 \
           bash -c "$ENVPFX exec bash '$EVAL' '$NAME' '$VER' $EXTRA_STR"
         rc=$?

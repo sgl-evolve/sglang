@@ -14,6 +14,7 @@ import torch
 
 from sglang.srt.disaggregation.kv_events import StorageMedium
 from sglang.srt.environ import envs
+from sglang.srt.utils import get_bool_env_var
 from sglang.srt.mem_cache.base_prefix_cache import (
     BasePrefixCache,
     DecLockRefParams,
@@ -377,6 +378,15 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             "host_evict_tok": 0,                         # host leaf tokens dropped (LOST)
         }
         self._bm_diag_log_ctr = 0
+        # base_mech mechanism: reuse-gated EXCLUSIVE tiering. Defer the eager
+        # write-through backup so the device (L1) tier holds NON-REDUNDANT content
+        # (not mirrored on host) -> effective unique cache = device + host, not host
+        # alone. On device eviction, back up only reuse-proven nodes (hit_count >=
+        # BM_EXCL_KEEP_HITS) and drop single-use ones (frees host + write bandwidth).
+        # Targets the confirmed capacity cliff for long-reuse-distance multi-turn.
+        import os as _os
+        self._bm_excl = get_bool_env_var("BM_EXCL")
+        self._bm_excl_keep_hits = int(_os.environ.get("BM_EXCL_KEEP_HITS") or "2")
         self.prefetch_stop_policy = "best_effort"
         self.prefetch_threshold = 256
         self.prefetch_timeout_base = 1.0
@@ -1540,6 +1550,22 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 self.writing_check(write_back=True)
                 self._evict_to_host(node, tracker)
                 return
+            elif (
+                self._bm_excl
+                and self.cache_controller is not None
+                and node.hit_count >= self._bm_excl_keep_hits
+            ):
+                # base_mech EXCLUSIVE tiering: this device-exclusive node has been
+                # reused (hit>=keep) -> back it up now and demote to host (write-back
+                # on eviction), preserving its reuse. Single-use nodes fall through to
+                # delete (don't waste host/bandwidth on them).
+                written = self.write_backup(node, write_back=True)
+                if written == 0:
+                    return
+                self.writing_check(write_back=True)
+                self._bm_diag["dev_demote_cnt"] = self._bm_diag.get("dev_demote_cnt", 0) + 1
+                self._evict_to_host(node, tracker)
+                return
             else:
                 # Write-through: node has no backup, delete entirely.
                 _bv = node.component_data[BASE_COMPONENT_TYPE].value
@@ -1871,6 +1897,11 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         ):
             return
         node.hit_count += 1
+        # base_mech EXCLUSIVE tiering: defer the eager D->H backup so the device
+        # copy stays NON-REDUNDANT (not mirrored on host). Backup is done lazily at
+        # device eviction, reuse-gated (see _evict_device_leaf).
+        if self._bm_excl:
+            return
         if (
             self.cache_controller is not None
             and not node.backuped

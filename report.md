@@ -68,6 +68,17 @@ After landing the exclusive-tiering win (hit 0.62→0.733 at the 10.7 M effectiv
 
 ---
 
+## Related work / positioning (prior art — the contribution occupies a distinct axis)
+Studied per the charter (HiCache blog, Strata, Mooncake, LMCache). My contribution sits on a *different axis* than each:
+- **HiCache** (the system this runs on; lmsys blog 2025-09-10): offers write-through / write-through-**selective** / write-back as configurable write policies and frames plain write-through as *"the strongest caching benefits if bandwidth permits."* My finding **refines that framing**: under a long-reuse-distance workload, write-through's "strongest" omits a hidden **capacity** cost — the eagerly-mirrored device tier becomes a redundant subset of host, halving effective *unique* capacity (8.4 M vs 10.7 M) and capping hit. Per its own writeup, HiCache **does not discuss inclusive/exclusive redundancy or effective aggregate cross-tier capacity** — precisely the lens of this contribution. (Honest kinship: HiCache's write-through-**selective** — hit-count-gated backup of hot spots — is close kin to my reuse-gated backup; my novelty is the redundancy/capacity *insight* + the boundary, not the gating, consistent with my "v3c ≈ write_back-class" positioning.)
+- **Strata** (arXiv 2508.18572, the reference bar): GPU-assisted I/O (decoupled layouts, de-fragmented transfers) + cache-aware scheduling that overlaps loading stalls — it targets the **loading/transfer** bottleneck ("systems are *loading-bound rather than compute-bound*"). This is **orthogonal** to my lever, and the regimes differ: in my measured setting `load_back` is cheap (~1.6–5.5 ms, ~300 GB/s) and **not** the bottleneck — the tail is **recompute** (misses), i.e. capacity/compute-bound. Strata optimizes transfer for a loading-bound long-context regime; exclusive tiering optimizes effective capacity for a reuse-capacity-bound multi-turn regime. Complementary, not competing.
+- **Mooncake** (KVCache-centric disaggregation): cross-node prefill/decode disaggregation + a distributed KV pool — a different *scale*; my inter-tier-redundancy insight applies within a single node's L1/L2.
+- **LMCache** (cross-request KV reuse layer): shares KV across requests/instances. My measured cross-conversation doc sharing is only **~4 %** (boundary item 4), so cross-request sharing has little headroom on this workload — my reuse source is *intra-conversation* multi-turn history, a different origin of reuse.
+
+**Positioning takeaway:** the novel axis here is **effective capacity via inter-tier de-redundancy** — distinct from Strata's transfer-latency optimization, Mooncake's disaggregation, and LMCache's cross-request sharing — and it surfaces a redundancy/capacity issue that HiCache's own design writeup leaves unaddressed. That is the "generalizable insight a maintainer would upstream and a researcher would cite" the charter asks for.
+
+---
+
 ## ★★★ HEADLINE: GOODPUT CURVE SHIFTS RIGHT (SAME-NODE A/B — error bars over 3 nodes)
 The headline metric = max req/s at p99 TTFT ≤ 8s. SAME-NODE A/B — baseline write-through vs BM_EXCL exclusive tiering — on node 1-2 (rate sweep) and repeated on node 0-3 (paired λ=4):
 | node | λ | baseline req/s | baseline p99 | **excl req/s** | **excl p99** | Δp99 | Δreq/s |

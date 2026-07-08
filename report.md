@@ -42,5 +42,21 @@ conversation prefixes (turns re-enqueued at back of client queue, dispatched at 
    a bounded inter-turn window (targets concurrency-induced eviction).
 4. **Smarter cache-aware scheduling** beyond LPM — reuse-distance / eviction-imminence aware.
 
+## Live diagnostic evidence (v0-diag, stock code, mid-bench @ ~28%)
+Ground truth from server `/metrics` + logs during the fixed bench:
+- **7037 total turns** from 1553 convs (~4.5 turns/conv); 19.3M input tok.
+- `num_running_reqs=128`, **`num_queue_reqs=0`** → server runs full client concurrency with NO waiting
+  queue ⇒ **scheduling-reorder has ~zero headroom here** (nothing to reorder). Eviction/retention is the lever.
+- `full_token_usage≈0.11` (device full-KV pool ~89% EMPTY), `kv_evictable_tokens≈2.09M`,
+  **`mamba_evictable_tokens≈716` (~0)**, mamba usage ~0.37. `evicted(GPU→CPU)=181M`, `load_back=7.5M` so far.
+- **Interpretation:** HOST/L2 is the binding *capacity* tier (host_util→1.0); device full-KV pool is
+  under-used. For this hybrid model the Mamba state pool is a separate scarce resource whose device cache
+  for finished prefixes is ~empty (reuse served mostly from host). Reuse needs BOTH full-KV + mamba state.
+- **Hook coverage:** FULL component eviction (device `drive_eviction` + host `drive_host_eviction`) uses the
+  pluggable `eviction_strategy` → cost-aware applies, incl. the host-drop→recompute path (the binding tier).
+  MAMBA component eviction uses a RAW LRU walk (ignores strategy) → cost-aware does NOT reach mamba. This is
+  the main uncertainty for v1, and the seed for a v2 (cost/reuse-aware **mamba** eviction on the binding pool).
+
 ## Versions
-_(none logged yet; diagnostic run in flight)_
+- **v1** (`7bac2815d`, `mechanism`): recompute-cost-aware eviction (CostAwareStrategy; threshold 4096).
+  Status: committed+pushed; eval queued behind v0-diag on the shared pool. A/B vs v0-diag (same env).

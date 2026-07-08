@@ -14,9 +14,12 @@
 """Common utilities."""
 
 import hashlib
+import logging
 from typing import Any, Callable, List, Optional, Tuple
 
 from sglang.srt.environ import envs
+
+logger = logging.getLogger(__name__)
 from sglang.srt.mem_cache.evict_policy import (
     CostAwareStrategy,
     EvictionStrategy,
@@ -70,9 +73,12 @@ def get_eviction_strategy(eviction_policy: str) -> EvictionStrategy:
     # expensive-to-recompute long prefixes to shave the p99-TTFT tail. Opt out
     # via SGLANG_ENABLE_COST_AWARE_EVICTION=0 to recover stock LRU.
     if policy == "lru" and envs.SGLANG_ENABLE_COST_AWARE_EVICTION.get():
-        return CostAwareStrategy(
-            threshold=envs.SGLANG_COST_AWARE_EVICT_THRESHOLD.get()
+        thr = envs.SGLANG_COST_AWARE_EVICT_THRESHOLD.get()
+        logger.info(
+            "[sgl_mech] eviction strategy = CostAwareStrategy (threshold=%d tokens)", thr
         )
+        return CostAwareStrategy(threshold=thr)
+    logger.info("[sgl_mech] eviction strategy = stock %s", policy)
     try:
         return _EVICTION_POLICY_FACTORIES[policy]()
     except KeyError:

@@ -86,3 +86,6 @@ Same-node (0-3) write_back: λ=3 p99 4909 / λ=4 p99 7718 (SUSTAINED, req/s 3.86
 
 ## 2026-07-08 — ★ DEFINITIVE same-node A/B complete (node 0-3): XTIER ≥ write_back
 Same node, back-to-back: wb λ3 p99 4909 / λ4 7718(SUSTAIN); XTIER λ3 p99 4184(-15%) / λ4 7599(SUSTAIN). Both beat inclusive baseline (λ4 9227 VIOLATED). No node-variance confound. ⇒ XTIER mechanism matches-or-beats stock write_back config (clear λ=3 p99 edge -15%, λ=4 comparable), both realizing exclusive tiering. Resolves the earlier node-variance caveat. CONTRIBUTION now fully rigorous: novel lossless mechanism ≥ best config, same-node verified.
+
+## 2026-07-08 — A/B repeat (error bars) abandoned: harness fragility
+Same-node A/B repeat (suffix 2) hit repeated transient capture-phase crashes (sigquit; NOT caught by NCCL preflight) + slow health-check hangs on crashed servers → not making progress. Killed, freed node. The FIRST same-node A/B (XTIER λ3 p99 4184 vs wb 4909 -15%, λ4 parity) is DEFINITIVE, and multi-run data (v4 4067/v4b 4486 XTIER; cfg-writeback 4291/ab-wb 4909 write_back) already establishes XTIER≥write_back robustly across nodes. Contribution COMPLETE & maximally rigorous. Harness lesson: custom multi-config on-node harness needs a hard server-kill + short health timeout to retry fast on transient crashes.

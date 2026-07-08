@@ -167,6 +167,17 @@ class SchedulePolicy:
         # It is used to find the matching prefix for in-batch prefix caching.
         self.waiting_queue_radix_tree = RadixCache.create_simulated()
 
+        if (
+            self.policy == CacheAgnosticPolicy.FCFS
+            and self.enable_hierarchical_cache
+            and get_bool_env_var("BM_WARMFIRST")
+        ):
+            logger.info(
+                "[BM_WARMFIRST] two-class warm-first prefill scheduling ENABLED "
+                "(threshold=%s tok)",
+                os.environ.get("BM_WARM_THRESHOLD", "512"),
+            )
+
     def calc_priority(
         self, waiting_queue: List[Req], running_batch: Optional[ScheduleBatch] = None
     ) -> None:
@@ -189,6 +200,21 @@ class SchedulePolicy:
                 SchedulePolicy._sort_by_priority_and_fcfs(
                     waiting_queue, self.priority_sign
                 )
+                return
+            # base_mech mechanism (BM_WARMFIRST): two-class warm-first prefill
+            # scheduling for hierarchical cache. Serve requests that already have a
+            # substantial RESIDENT (device+host) reusable prefix ("warm" continuations
+            # of a multi-turn conversation) before "cold" cold-start prefills, so the
+            # conversation's cached KV is reused before concurrent large cold-doc
+            # prefills evict it. FCFS order is preserved WITHIN each class -> cold
+            # requests keep arrival-order fairness (bounded starvation), unlike LPM's
+            # full sort. Active at all queue depths (LPM disables above 128).
+            if (
+                self.enable_hierarchical_cache
+                and get_bool_env_var("BM_WARMFIRST")
+                and len(waiting_queue) > 1
+            ):
+                self._sort_warm_first(waiting_queue)
             return
 
         if isinstance(policy, CacheAwarePolicy):
@@ -348,6 +374,29 @@ class SchedulePolicy:
     def _sort_randomly(waiting_queue: List[Req]) -> None:
         """Shuffles the waiting queue randomly."""
         random.shuffle(waiting_queue)
+
+    def _sort_warm_first(self, waiting_queue: List[Req]) -> None:
+        """base_mech: two-class warm-first ordering (see calc_priority).
+
+        Compute each request's RESIDENT (device+host) reusable prefix, then place
+        'warm' continuations (large resident prefix) ahead of 'cold' cold-starts,
+        preserving arrival (FCFS) order within each class."""
+        WARM_THRESHOLD = int(os.environ.get("BM_WARM_THRESHOLD", "512"))
+        for r in waiting_queue:
+            match_prefix_for_req(self.tree_cache, r)
+        warm = [
+            r
+            for r in waiting_queue
+            if (r.num_matched_prefix_tokens or 0) >= WARM_THRESHOLD
+        ]
+        if not warm or len(warm) == len(waiting_queue):
+            return  # all one class -> keep FCFS order (no-op)
+        cold = [
+            r
+            for r in waiting_queue
+            if (r.num_matched_prefix_tokens or 0) < WARM_THRESHOLD
+        ]
+        waiting_queue[:] = warm + cold
 
     @staticmethod
     def _sort_by_priority_and_fcfs(

@@ -54,6 +54,11 @@
 - **dev_delete_tok small, host_evict_tok large & reused:** host-pressure leak → Mechanism = *reduce host write-through pressure / conversation-aware admission to bound the resident working set*.
 - **both small:** loss is partial-path / match / load_back timing → deeper instrumentation.
 
+## Candidate mechanisms (choose after s1-diag discriminator)
+**M-mamba (if kv_only >> consensus): Mamba/KV co-residency for hybrid models.** Mamba SSM-state evicts independently of its KV (separate pools+LRU; device tombstone mamba_component.py:220, host tombstone :548), truncating the consensus prefix match even when KV is host-resident. Fix: couple Mamba eviction to KV — never drop a node's Mamba state (device+host) while its KV prefix is retained & reusable (and prefer evicting Mamba of nodes whose KV is also being evicted). Novel: no prior serving cache co-manages SSM-state + KV residency for hybrid Mamba/attention models. Generalizable to all Qwen3.5-MoE / hybrid models. Must respect the small Mamba budget (1351 device slots) — evaluate for OOM.
+**M-host (if kv_only ≈ consensus ≈ 0.62): conversation-coherent host retention.** Reused KV dropped from host under pressure/ramp. Fix: conversation-/reuse-aware host admission + retention that keeps an active conversation's prefix co-resident across its turns (charter thesis). 
+**M-thrash (secondary): reduce 298M load-back / 582M evict churn** by keeping hot prefixes device-resident (fewer H→D reloads) — improves TTFT even if reuse is preserved.
+
 ## Versions
 | ver | commit | tag | hit | TTFT p50/p99 | host_util | req/s | note |
 |---|---|---|---|---|---|---|---|

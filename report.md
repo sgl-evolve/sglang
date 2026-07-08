@@ -2,6 +2,29 @@
 
 **Researcher:** `base_free` · branch `evolve/base_free` · base commit `a334877e5` · W&B run `base_free` (project `sgl-evolve`).
 
+## Executive summary (for a skeptical maintainer)
+**Problem.** In capacity-bound multi-turn LLM serving (working set ~19 M ≫ L1+L2 ~10.7 M), the default
+**write-through** HiCache tiering is *inclusive*: L1 (GPU) just mirrors L2 (host)'s hot subset, so the
+distinct cache = L2 alone (~8.4 M tok). The ~19 M working set thrashes → **~21 pp of hit rate lost to
+concurrency eviction** (offline sim: ceiling 0.80 vs baseline ~0.60; per-turn on HW: turns 0-2 ≈ 0 hit —
+a conversation's large document is evicted before its next turn reuses it).
+**What does NOT work.** *Admission control* (bound active conversations, v1 WSAC) recovers the hit rate in
+simulation but **catastrophically violates the p99≤8 s SLO** on HW (mean TTFT 12.7 s): turns are
+decode-bound (~32 s) so deferred cold prefills wait tens of seconds. *Eviction-policy* tuning is a dead
+end (LRU≈Belady). — a rigorous negative.
+**What works (the contribution).** **EXCLUSIVE tiering** — let L1 hold KV *not* mirrored in L2 → distinct
+cache ≈ L1+L2 (~10.75 M) → far fewer recomputes, **lossless and latency-free**. Measured on HW vs baseline:
+**hit 0.62→0.73 (+18%), p99 TTFT 6326→4291 ms (−32%), req/s 2.78→3.02 (+9%, now tracks λ), out tok/s +9%.**
+This is the generalizable insight a maintainer would upstream: *in capacity-bound regimes, break
+write-through's inclusivity.*
+**Mechanism.** `XTIER` (novel engine code, `SGLANG_XTIER_LAZY`): lazy-backup exclusive tiering — skip eager
+backup (keep hot KV device-exclusive), async-back-up the coldest device leaves ahead of eviction. Lossless
+by construction (backed→demote; unbacked-evicted→recompute). Achieves **+10% hit / −29% p99 / +9% req/s**.
+Honest finding: in *this* 2-tier fast-host regime, the stock `write_back` policy (backup-on-eviction) is
+actually optimal — proactive backup *over*-backs-up and prematurely displaces host content; XTIER's async
+design pays off only when the backup tier is slow / eviction is heavy. Tuning sweep (WM_FRAC 0.1/0.2/0.3)
+maps this. Remaining lever past the 0.73 exclusive-capacity ceiling: reuse-aware L1 retention (device hits).
+
 ## Regime (this cell, v0.25 — distinct from v0.2)
 2-tier HiCache: **L1** GPU HBM (~2.35 M tok) + **L2** host DRAM 768 GB (~8.4 M tok) = **~10.7 M** capacity.
 **No L3/disk** — overflow beyond L1+L2 is *recompute*. Model Qwen3.5-122B-A10B-FP8 (hybrid Mamba), TP8,

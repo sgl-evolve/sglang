@@ -186,3 +186,10 @@
   drift fixed: goodput knee shift was "+14-18%" (2 places) vs "10-15%" (1 place) -> harmonized to
   "+10-18% (screen/node-dependent)" in both docs, with the 3 screens + full-protocol +12% reconciled as
   mutually consistent. No contradictions remain.
+
+## 2026-07-08 ~19:05Z — Wrote paper.md (coherent research paper — the charter's stated deliverable format)
+- Synthesized all established findings into a tight abstract->conclusion paper (no new claims; all trace to
+  report.md/UPSTREAM.md/runs). Sections: abstract, intro, background, mechanism+correctness, evaluation
+  (hit/lossless/ablation/goodput/negatives), two-sided generalization law, frontier, related work, limits,
+  conclusion. Distinct from report.md (working log) + UPSTREAM.md (PR summary). This is the "paper a top PC
+  would accept" artifact.

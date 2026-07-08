@@ -32,3 +32,6 @@
 ## 2026-07-08T13:40Z — ★★ HEADLINE: goodput curve shifts right (rate sweep)
 - Exclusive-tiering (BM_EXCL) rate sweep (node 1-2): λ=3 → 3.02 req/s @ p99 4443ms; λ=4 → 3.83 req/s @ p99 **7231ms (< 8s SLO)**. Documented baseline λ=4 p99 ~11s (> SLO). ⇒ baseline max-goodput-under-SLO ~3.3-3.5 req/s; exclusive tiering ≥3.83 (+~15%). The mechanism shifts the WHOLE goodput curve up (charter's bar for a real contribution). λ=5 not needed (headline secured); node freed.
 - CONTRIBUTION COMPLETE: novel root-cause (FIFO reuse-distance → L1 redundancy under write-through) + v3c exclusive-tiering engine mechanism (+11pp hit, p99 −17..−38%, goodput +~15%, stable, lossless, W&B-logged, manager-fairness-CONFIRMED) + rigorous negatives (scheduling/mamba/load_back).
+
+## 2026-07-08T15:05Z — same-node baseline sweep (CORRECTS headline: +8% not +15%)
+- SAME-NODE (1-2) goodput A/B: baseline λ=3 p99 5258 / λ=4 3.54 req/s p99 7847; excl λ=3 p99 4443 (−15%) / λ=4 3.83 req/s (+8%) p99 7231 (−8%), both <8s SLO. Documented baseline (λ=4 ~11s) was pessimistic/different-node → same-node shift is +~8% goodput (not +15%). HONEST correction. Exclusive tiering: +11pp hit, p99 −8..−15%, goodput +~8% at the knee, no regression, stable, lossless. Curve shifts up. Same-node rigor was worth it.

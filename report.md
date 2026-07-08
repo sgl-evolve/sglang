@@ -33,13 +33,14 @@
 
 ---
 
-## ★★★ HEADLINE: GOODPUT CURVE SHIFTS RIGHT (rate sweep, sweep_rates.sh, node 1-2)
-The headline metric = max req/s at p99 TTFT ≤ 8s. Exclusive-tiering mechanism (BM_EXCL) rate sweep:
-| λ | excl req/s | excl p99 TTFT | baseline p99 (protocol RECIPE) |
-|---|---|---|---|
-| 3 | 3.02 | 4443 ms (<SLO) | ~6.3 s (<SLO) |
-| 4 | **3.83** | **7231 ms (<SLO ✓)** | **~11 s (>SLO ✗)** |
-- **Baseline knee (p99=8s) is BELOW λ=4 → max goodput-under-SLO ≈ 3.3-3.5 req/s. Exclusive tiering sustains λ=4 at p99 7.2s < 8s → goodput-under-SLO ≥ 3.83 req/s (+~15%).** The mechanism shifts the WHOLE curve up (not a single-point/de-saturation trick — the charter's bar). The +11pp hit (less prefill recompute) is what buys the extra sustainable rate. (Baseline curve = documented protocol RECIPE; the ~4s p99 gap at λ=4 far exceeds the ±30% node p99 variance, so the shift is robust. Same-node baseline sweep = future work.)
+## ★★★ HEADLINE: GOODPUT CURVE SHIFTS RIGHT (SAME-NODE rate sweep, sweep_rates.sh, node 1-2)
+The headline metric = max req/s at p99 TTFT ≤ 8s. SAME-NODE (1-2) A/B — baseline write-through vs BM_EXCL exclusive tiering:
+| λ | baseline req/s | baseline p99 | **excl req/s** | **excl p99** |
+|---|---|---|---|---|
+| 3 | 3.02 | 5258 ms | 3.02 | **4443 ms (−15%)** |
+| 4 | 3.54 | 7847 ms (~SLO edge) | **3.83 (+8%)** | **7231 ms (−8%, <SLO)** |
+- At λ=4 (the knee), exclusive tiering sustains **+8% throughput (3.83 vs 3.54) at −8% p99 (7231 vs 7847), both under the 8s SLO** → goodput-under-SLO ~3.54→≥3.83 req/s. At λ=3, −15% p99. Plus the +11pp hit (less prefill recompute) that buys it. The whole curve shifts up/right (not a single-point/de-saturation trick — the charter's bar).
+- **HONESTY NOTE:** an earlier claim of +15% goodput used the DOCUMENTED protocol baseline (λ=4 p99 ~11s); the SAME-NODE baseline is actually 7847ms (the doc baseline was pessimistic / different node). Running the same-node sweep corrected +15%→+~8%. Node variance is large — same-node A/B is essential (lesson reinforced). excl's exact knee (>λ=4) not pinned (λ=5 not run); goodput gain ≥+8%.
 
 ## ============ EXECUTIVE SUMMARY (as of 2026-07-08 ~13:40Z) ============
 **Novel insight (the contribution), sim + write_back-validated:** for the long-reuse-distance multi-turn workload, bench_serving RE-QUEUES each turn to a FIFO tail → reuse distance ≫ cache. Under the frozen **write-through** policy, every device (L1) KV is eagerly mirrored to host (L2), so **L1 is a redundant subset of L2 → effective UNIQUE cache = host (8.4M) → hit capped ~0.62**. Making L1 **non-redundant** (exclusive/deferred-backup tiering) → effective cache = L1+L2 (10.7M) → **hit 0.73 (+11pp)** + better TTFT. Confirmed by: (a) my FIFO re-queue sim (8.4M→0.59≈baseline, 10.7M→0.73), (b) write_back diagnostic (config, private): hit 0.731, p50 491, p99 4292 on the same setup.

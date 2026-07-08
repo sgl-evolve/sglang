@@ -91,6 +91,9 @@ class UnifiedTreeNode:
         self.creation_time = get_and_increase_time_counter()
         self.hash_value = None
         self.hit_count = 0
+        # Cumulative prefix length from root to this node (tokens); maintained at node creation/split.
+        # Used by depth-mode cost-aware eviction to protect deep conversation tails. Root/sentinels = 0.
+        self.prefix_len = 0
         self.priority = priority
         self.lru_prev: list[UnifiedTreeNode | None] = [None] * (
             _NUM_COMPONENT_TYPES * 2
@@ -1017,6 +1020,7 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         new_node.children = {key[split_len:].child_key(self.page_size): child}
         new_node.parent = child.parent
         new_node.key = child.key[:split_len]
+        new_node.prefix_len = new_node.parent.prefix_len + split_len
         new_node.hit_count = child.hit_count
         new_node.creation_time = child.creation_time
 
@@ -1065,6 +1069,7 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         new_node = UnifiedTreeNode(self.tree_components, priority=priority)
         new_node.parent = parent
         new_node.key = key
+        new_node.prefix_len = parent.prefix_len + len(key)
         new_node.component_data[BASE_COMPONENT_TYPE].value = value.clone()
         parent.children[key.child_key(self.page_size)] = new_node
         self.component_evictable_size_[BASE_COMPONENT_TYPE] += len(value)
@@ -1244,6 +1249,7 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         new_node = UnifiedTreeNode(self.tree_components, priority=node.priority)
         new_node.parent = node
         new_node.key = key
+        new_node.prefix_len = node.prefix_len + len(key)
         new_node.hash_value = hash_value
         new_node.component_data[BASE_COMPONENT_TYPE].host_value = host_value.clone()
         node.children[child_key] = new_node

@@ -82,14 +82,30 @@ class CostAwareStrategy(EvictionStrategy):
     orders it by cost, targeting the tail. threshold2 = 0 recovers 2-tier.
     """
 
-    def __init__(self, threshold: int = 4096, reuse_min: int = 0, threshold2: int = 0):
+    def __init__(
+        self,
+        threshold: int = 4096,
+        reuse_min: int = 0,
+        threshold2: int = 0,
+        cost_mode: str = "segment",
+    ):
         self.threshold = threshold
         self.reuse_min = reuse_min
         self.threshold2 = threshold2
+        # "segment" = recompute cost of THIS node's own tokens (len(key)); "depth" = cumulative prefix
+        # length from root (protects deep conversation tails — short late turns of long multiturn chats
+        # that segment-mode misses). depth targets the charter's conversation-co-residency goal directly.
+        self.cost_mode = cost_mode
 
     def get_priority(self, node: TreeNode) -> Tuple[int, float]:
         key = getattr(node, "key", None)
-        cost = len(key) if key is not None else 0
+        seg = len(key) if key is not None else 0
+        if self.cost_mode == "depth":
+            # max() is a safety net: prefix_len >= own segment always, so this uses the maintained
+            # cumulative depth when set and never falls below segment cost if a node missed maintenance.
+            cost = max(getattr(node, "prefix_len", 0), seg)
+        else:
+            cost = seg
         tier = 1 if cost >= self.threshold else 0
         if tier == 1 and self.reuse_min > 0:
             # unproven long prefixes fall back to the cheap segment

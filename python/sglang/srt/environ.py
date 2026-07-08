@@ -367,6 +367,9 @@ class Envs:
     # Second cost boundary for 3-tier cost-aware eviction: prefixes >= this get the most protection (evicted
     # last), targeting the p99 tail. 0 = 2-tier (single threshold). Should be > SGLANG_COST_AWARE_EVICT_THRESHOLD.
     SGLANG_COST_AWARE_EVICT_THRESHOLD2 = EnvInt(0)
+    # Cost metric for cost-aware eviction: "segment" = this node's own token count; "depth" = cumulative
+    # prefix length from root (protects deep conversation tails / short late multiturn turns).
+    SGLANG_COST_AWARE_COST_MODE = EnvStr("segment")
     # Extend cost-aware eviction to the hybrid Mamba state pool (the binding hybrid resource, whose
     # eviction is otherwise raw-LRU). Off by default so it can be ablated separately from full-KV.
     SGLANG_ENABLE_COST_AWARE_MAMBA_EVICTION = EnvBool(False)

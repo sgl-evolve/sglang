@@ -10,7 +10,7 @@ export SGLANG_DG_CACHE_DIR=/mnt/localssd/base_free_dg
 POOL=/home/junyanch_google_com/autoresearch/workspace/sgl/v0.25_ablations/_pool
 NODE_SH=/home/junyanch_google_com/autoresearch/workspace/sgl/v0.25_ablations/base_free/researchers/base_free/knee_node.sh
 LABEL="${1:?label}"; LAMS="${2:?lambdas}"; shift 2
-for attempt in $(seq 1 30); do
+for attempt in $(seq 1 300); do
   for f in "$POOL"/held/*; do
     node=$(basename "$f"); jid=$(cat "$f" 2>/dev/null) || continue
     squeue -h -j "$jid" >/dev/null 2>&1 || continue

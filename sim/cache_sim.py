@@ -1,7 +1,24 @@
 #!/usr/bin/env python3
-"""Discrete-event HiCache 2-tier simulator for the loogle-multiturn workload.
+"""[SUPERSEDED for the baseline thesis — kept as the CO-RESIDENCY reference point.]
 
-Purpose: quantify recoverable prefix-reuse headroom and RANK candidate mechanisms
+IMPORTANT: this DES uses a CO-RESIDENCY arrival model — "a conv holds its slot across
+ALL its turns" (line ~12) — so a conversation's turns are served close together (short
+reuse distance). Under that model it predicts hit ~0.81 (the ceiling), with little
+eviction pressure. That is NOT the real bench_serving arrival model: the real client
+RE-QUEUES each turn to the FIFO tail (benchmark/hicache/bench_serving.py:186-190), so a
+conv's turns are a FULL ~1553-conv cycle apart. `sim/requeue_sim.py` models that correct
+arrival order and reproduces the MEASURED hit (0.59 baseline / 0.73 exclusive) — use it
+for the baseline/capacity thesis.
+
+The 0.81-vs-0.59 gap between this sim and requeue_sim is NOT an error — it is exactly the
+admission/co-residency headroom: keeping a conv's turns co-resident (this sim's model, or
+an admission policy that K-limits and runs convs to completion) shrinks the reuse distance
+to the ceiling. See report.md BOUNDARY item 1 and `admission_sim.py` (oracle_free=False),
+which independently reproduces this +7.3pp co-residency effect on hit — at the cost of
+deferring conversations (an unmeasured p99-SLO trade). So: requeue_sim = real FIFO regime;
+this = the co-residency regime an admission mechanism would create.
+
+Original purpose: quantify recoverable prefix-reuse headroom and RANK candidate mechanisms
 cheaply (no GPU) before spending a scarce full eval.
 
 Models the pieces that drive eviction of about-to-be-reused KV:

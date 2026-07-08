@@ -91,3 +91,14 @@ This is a scientific-generality addition (strengthens the citable insight), inde
 
 ## 2026-07-08 ~20:40Z — Code correctness-by-default fix (BM_EXCL_KEEP_HITS default 2→1)
 Integrity check of the mechanism code surfaced a latent defect: BM_EXCL_KEEP_HITS defaulted to "2" — the MEASURED-NEGATIVE variant (keep_hits≥2 drops docs at hit=1 before their delayed full-cycle reuse). All logged wins (v3c + goodput/error-bar sweeps) set keep_hits=1 EXPLICITLY (paired_sweep.sh/sweep_rates.sh line 25; v3c's 0.7331 is itself the keep_hits=1 signature), so NO logged result is affected. Changed default 2→1 so enabling BM_EXCL alone yields the WINNING variant (correct-by-default → upstreamable). Added an explanatory comment. Syntax-verified (ast.parse OK). Safe: only affects the unset-env case, which no eval hit.
+
+## 2026-07-08 ~21:20Z — ADVERSARIAL SELF-REVIEW → major boundary CORRECTION + sim-story fixes
+Spawned an independent skeptical-PC review of my own report+code (independence-safe: my work only). It found REAL issues; fixed all:
+1. ★ BIG: my "admission does nothing / gap unobservable/unreachable" was WRONG. Added no-oracle variant to admission_sim (K-limit + run-to-completion co-residency, LRU, NO oracle) → REACHES 0.806 (+7.3pp) for ALL K<1553. So admission/co-residency DOES capture the hit gap (shrinks reuse distance ~1553-cycle→~K-cycle). It works by CHANGING arrival order (defers convs → unmeasured p99-SLO cost; = base_free WSAC, declined for independence). Corrected boundary+abstract+takeaway: excl tiering optimal ONLY among ARRIVAL-ORDER-PRESERVING levers (eviction/tiering); the 4-signal 'unobservable' result now correctly scoped to eviction that keeps every req scheduled.
+2. cache_sim.py (unreferenced, predicted 0.81) — NOT wrong, it modeled the CO-RESIDENCY arrival regime (conv holds slot across all turns) = the ceiling; added a header reconciling it (0.81 = the admission/co-residency headroom; requeue_sim = real FIFO regime). Landmine → coherent story.
+3. Cliff mis-stated: fine sweep shows cliff is 8.4→9.0M (+12.9pp) then FLAT 9.0→10.7M (+1.2pp), not 'steep over [8.4,10.7]'. Fixed item 3 + generalization prose (honest: most of L1 past the cliff is idle for long-reuse).
+4. generalization regime label: workload is 'far>H+D / capacity-bound', not 'between tiers' — reconciled prose with the sim's own label.
+5. Softened 'provably unobservable/proof' → sim-level argument corroborated by measured LRU≈write_back (sims are whole-conv single-LRU models).
+6. bench_serving path 187 → benchmark/hicache/bench_serving.py:186-190 (python/sglang/bench_serving.py is a shim).
+7. n=6 baseline caveat: 3 diag + v0 + v1/v2 (debunked-neutral warm-first, all frozen write-through) — clarified.
+The measured win + root cause are unaffected (all numbers re-verified by the reviewer). The correction makes the boundary honest + precisely scoped. Adversarial self-review = high value.

@@ -33,7 +33,12 @@ def load():
     convs = json.load(open(TRACE))
     return [[(t["prompt_len"], t["output_len"]) for t in c] for c in convs]
 
-def run(convs, cache_cap, K):
+def run(convs, cache_cap, K, oracle_free=True):
+    """oracle_free=True: free a conv's KV the instant it completes (ORACLE — measures the
+    ceiling + the active working set). oracle_free=False: TRUE admission — cap concurrency
+    to K and keep a conv active until done (co-residency), but do NOT free on completion;
+    LRU handles eviction. This isolates whether admission/co-residency ALONE (no completion
+    oracle) lifts hit at fixed budget."""
     N = len(convs)
     cum_before = []
     for turns in convs:
@@ -84,8 +89,10 @@ def run(convs, cache_cap, K):
         if idx[c] < len(convs[c]):
             active.append(c)          # re-queue within the active set (short cycle)
         else:
-            resident[c] = 0           # conv done -> free its doc, admit next
-            total_resident = sum(resident)
+            if oracle_free:
+                resident[c] = 0       # ORACLE: free its doc the instant the conv completes
+                total_resident = sum(resident)
+            # no-oracle: leave resident for LRU to evict (dead weight lingers)
             admit()
         if not active:
             admit()
@@ -96,10 +103,16 @@ if __name__ == "__main__":
     print(f"convs={len(convs)}  cache={CACHE/1e6:.1f}M")
     print(f"{'K (concurrency)':>16} | {'hit':>7} | {'peak active WS':>14}")
     print("-"*46)
+    print("ORACLE-completion (free KV on completion) — measures ceiling + active WS:")
     for K in [4, 8, 16, 32, 64, 128, 256, 512, 1553]:
-        h, pws = run(convs, CACHE, K)
-        note = "  <- baseline/max-conc" if K in (128, 1553) else ""
-        print(f"{K:>16} | {h:>7.4f} | {pws/1e6:>12.2f}M{note}")
-    print("\nReference: exclusive tiering (full concurrency, 10.7M) measured 0.733;")
-    print("infinite-cache ceiling 0.806. If small K does NOT lift hit >> 0.733,")
-    print("admission cannot capture the gap at fixed budget -> rigorous negative.")
+        h, pws = run(convs, CACHE, K, oracle_free=True)
+        note = "  <- max-conc" if K in (128, 1553) else ""
+        print(f"{K:>16} | oracle hit={h:>7.4f} | peak active WS={pws/1e6:>6.2f}M{note}")
+    print("\nTRUE ADMISSION (no oracle — K-limit + co-residency, LRU eviction):")
+    print(f"{'K (concurrency)':>16} | {'hit':>10} | vs LRU(0.7334)")
+    for K in [4, 8, 16, 32, 64, 128, 256, 1553]:
+        h, _ = run(convs, CACHE, K, oracle_free=False)
+        print(f"{K:>16} | {h:>10.4f} | {100*(h-0.7334):+.1f}pp")
+    print("\nRead: ORACLE reaches 0.806 at ALL K (active WS<10.7M) → the gap is completion")
+    print("dead weight, not concurrency. TRUE admission (no oracle) shows what K-limiting")
+    print("ALONE does at fixed budget — the honest test of the admission lever's hit effect.")

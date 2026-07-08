@@ -174,6 +174,7 @@ from sglang.srt.managers.schedule_policy import (
     AddReqResult,
     PrefillAdder,
     SchedulePolicy,
+    match_prefix_for_req,
 )
 from sglang.srt.managers.scheduler_components.batch_result_processor import (
     SchedulerBatchResultProcessor,
@@ -2914,6 +2915,10 @@ class Scheduler(
             # survive to their next turn. Lossless: the deferred req stays in the queue.
             req_cold = False
             if wsac_on:
+                # Populate num_matched_prefix_tokens if the schedule policy (e.g. FCFS)
+                # did not (UnifiedRadixCache has no fast-match). match_prefix_for_req with
+                # req=None is side-effect-free (no alloc/lock) — safe before deferral.
+                match_prefix_for_req(self.tree_cache, req)
                 prompt_len = max(1, len(req.origin_input_ids))
                 req_cold = (
                     req.num_matched_prefix_tokens < self.wsac_cold_ratio * prompt_len

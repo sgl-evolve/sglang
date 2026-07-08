@@ -74,3 +74,12 @@
   exclusive under to ~l4.0 => goodput knee lifted ~+14-18% req/s (same-node, definitive). Headline metric.
 - Contribution now has BOTH definitive same-node results: A/B @l3 (p99 -37%, hit +13.6pp, lossless) +
   goodput-knee shift (~+18% req/s @ p99<=8s SLO). 9 W&B versions + these screens.
+
+## 2026-07-08 ~15:00Z — frontier CLOSED via fp8-KV upper-bound (decisive)
+- KV dtype is bf16 (measured). fp8-KV (--kv-cache-dtype fp8_e4m3) doubles KV tokens (2.35M->4.70M dev,
+  confirmed) -> hit 0.808 (=ceiling 0.807), mean TTFT 699 (-39% vs base), p50 425. LOSSY + stock flag =>
+  out-of-contract (logged v_kvfp8e4m3_LOSSY_upperbound, config). 10 W&B versions now.
+- DECISIVE: capacity ceiling reachable via one-line LOSSY flag => lossless compression build (major, ~1.4x
+  on bf16, ~+2-3pp) is DOMINATED -> NOT worth building. Compression frontier CLOSED with data.
+- Final: lossless exclusive tiering (0.752, +13pp, same-node p99 -37%, goodput knee +~15%) captures ~70% of
+  the recoverable headroom; residual only reachable lossily. Accessible LOSSLESS mechanism space fully closed.

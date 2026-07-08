@@ -97,6 +97,14 @@ capacity for fewer transfers doesn't net a win ⇒ PURE exclusive (v1/v2) is nea
   (out-of-budget). Remaining ~5pp to the 0.807 ceiling needs lossless KV COMPRESSION (host tier) —
   high-risk kernel, likely low compressibility on FP8, low iteration throughput under node contention →
   documented as the bolder future line, not attempted.
+  - **★Frontier CLOSED (measured): fp8-KV (2× capacity) reaches the ceiling.** `--kv-cache-dtype fp8_e4m3`
+    doubles KV tokens (device 2.35M→4.70M, confirmed) → hit **0.808** (= analytic ceiling 0.807), mean TTFT
+    699 (−39% vs baseline), p50 425. BUT it is **LOSSY** (KV quantized, outputs change) + a stock flag ⇒
+    out-of-contract as a lossless contribution (logged as `v_kvfp8e4m3_LOSSY_upperbound`, config). Decisive
+    implication: the capacity ceiling is reachable via a one-line LOSSY flag, so a LOSSLESS compression build
+    (major new variable-size host allocator, and — per sim — only ~1.4–1.5× on bf16 → ~+2–3pp, far short of
+    the lossy 2×) is DOMINATED and NOT worth building. My lossless exclusive tiering (0.752) captures ~70% of
+    the total headroom; the residual is only reachable lossily (fp8/fp4 KV) → excluded by the lossless contract.
   - **KV dtype correction (measured):** the KV cache is **torch.bfloat16** (2 B/elem; device pool 2.35M tok,
     K+V 26.9 GB/rank), NOT FP8. ⇒ lossless compressibility is HIGHER than the FP8 estimate (~1.3–1.5× via
     byte-plane split: the exponent plane compresses well). Also exposes a large CAPACITY lever via

@@ -14,6 +14,10 @@ duplicates every hot device entry onto host. This raises *distinct* cache capaci
 and, because the system sits on the STEEP part of the hit-vs-capacity curve, converts to a large hit-rate
 and tail-latency win.
 
+**Headline (goodput @ p99-TTFT≤8s SLO), FULL-protocol λ=4 (1553 conv):** baseline p99 9098 ms / 3.38 req/s
+vs exclusive p99 **8091 ms / 3.78 req/s** → **-11% p99, +12% throughput**; the SLO knee shifts ~λ3.6→~λ3.95
+(**~+10% sustainable goodput**). Confirmed at full scale (not just the 600-conv screen).
+
 **Result ladder (fixed protocol, λ=3), all clean/on-contract, lossless:**
 - fcfs baseline (inclusive, stock): hit **0.622**, p99 TTFT **6326 ms**.
 - +write_back flag (write-side exclusivity only): hit **0.733** (+11pp), p99 **4581** (-28%).  [config]

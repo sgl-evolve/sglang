@@ -41,3 +41,9 @@
 - 6 W&B versions logged. Exclusive-tiering line EXHAUSTED (ordering/admission/eviction/device-headroom/
   transfer-hybrid/mamba-rebalance all dead or neutral). Remaining ~5pp needs lossless KV compression
   (high-risk, deferred).
+
+## 2026-07-08 ~09:30Z — full-protocol goodput confirmation (headline)
+- FULL-protocol (1553 conv) lambda=4: baseline p99 9098ms/3.38 req_s vs exclusive p99 8091ms/3.78 req_s
+  = -11% p99, +12% throughput. SLO knee ~l3.6 -> ~l3.95 (~+10% goodput). Confirms curve shift at full scale.
+- Contribution FULLY VALIDATED: exclusive L1<->L2 KV tiering. 6 W&B versions (lambda=3 curve) + goodput
+  sweeps (600-conv screen + full-protocol l4). Line exhausted; compression = deferred future line.

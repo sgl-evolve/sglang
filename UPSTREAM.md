@@ -39,10 +39,34 @@ nodes inclusive) was tried and is **neutral** (transfer cost isn't the limiter) 
   checkpoint reconstruction — but stock shows the IDENTICAL pattern, so this is an sglang cache property,
   not the exclusive mechanism; the baseline bears it equally.)
 
+## Correctness argument (why freeing the host copy is safe)
+The one genuinely new operation is `_promote_free_host` (freeing a host copy after an H→D promotion). It is
+lossless-safe by construction — a maintainer can check four properties:
+1. **Ordering:** it runs in `loading_check` *after* `finish_event.synchronize()` (the device copy is
+   committed) and *after* the load-back's own `dec_host_lock_ref` — host is never freed before device is
+   durable.
+2. **Concurrent-loadback race:** if another in-flight request is loading the same node from host, that
+   request still holds `host_lock_ref`; the guard `cur.id in ongoing_write_through or any(host_lock_ref!=0)`
+   makes `_promote_free_host` skip it. The `host_value is None` check also makes it a no-op if a sibling
+   already freed it (no double-free). All within the single-threaded per-rank scheduler loop.
+3. **Conservative walk:** walking leaf→root, it **stops at the first device-absent ancestor** (`value is
+   None`) — so it never frees a host copy that is the *sole* copy; at worst it leaves some inclusive residue
+   (safe), never drops the last copy.
+4. **Round-trip:** a later device eviction of the now-exclusive entry re-creates the host copy via the
+   `write_back` eviction path (`_evict_device_leaf`→`write_backup`), so every entry always has ≥1 copy.
+The invariant (device XOR host) is held by three gated edits — no eager backup (`_inc_hit_count` early
+return), free-host-on-promotion (above), back-up-on-eviction — all sharing the mature `write_back` plumbing
+(`write_policy=="write_back" or exclusive_tiering`), minimizing new surface. This code-level argument matches
+the measured 24/24 bit-exact result.
+
 ## When to use it (generalization)
 Benefit scales monotonically with the **device/host cache ratio** (the fraction of total cache in the fast
 tier): larger GPU-cache-to-host-cache ratio ⇒ more inclusive-duplication reclaimed ⇒ bigger win; never
-negative. Largest under memory pressure + high load (near the SLO knee).
+negative. Largest under memory pressure + high load (near the SLO knee). **Falsifiable boundary** (sim,
+`sim/generalization_band.py`): the gain equals the workload's reuse-mass CDF slope over the reclaimed band
+`[H, H+D]` — maximal when that band straddles the steep knee, and **provably 0** once the host tier alone
+already covers the working set (over-provisioned host ⇒ no gain). The calibrated sim self-validates
+(predicts +11.8pp at this HW vs measured +13pp).
 
 ## Limits / not pursued
 - Residual headroom to the analytic hit ceiling (~0.81) requires MORE capacity, reachable only by *lossy*

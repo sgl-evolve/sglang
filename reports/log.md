@@ -144,3 +144,11 @@
   this HW vs measured +13pp. Benefit peaks +25.4pp when band straddles the steep knee (H~6M), ->0.0 on the
   plateau (H>=14M, host alone covers the working set). FALSIFIABLE BOUNDARY: exclusive helps iff H < working
   set. Subsumes the HW-ratio table (its H=7.81M row) + generalizes to any workload. Report updated.
+
+## 2026-07-08 ~19:45Z — Correctness self-review of the +79-line mechanism diff (node-free) -> PASS
+- Reviewed _promote_free_host + gated edits. Lossless-safe by 4 properties: (1) freed only after
+  finish_event.synchronize()+dec_host_lock_ref (device durable first); (2) concurrent-loadback race guarded
+  by host_lock_ref!=0 + ongoing_write_through + host_value-None no-op (no UAF/double-free); (3) walk stops at
+  first device-absent ancestor (never frees the sole copy); (4) device eviction re-backs-up via write_back
+  path (always >=1 copy). Invariant held by 3 gated edits reusing mature write_back plumbing. Matches the
+  measured 24/24 bit-exact. Added a "Correctness argument" section to UPSTREAM.md (maintainer-facing).

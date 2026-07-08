@@ -116,3 +116,9 @@ Added "Related work / positioning" section to report.md. Positioning takeaway: n
 
 ## 2026-07-08 ~23:00Z — Hit advantage stable across load curve (free, from BM_DIAG logs)
 Extracted λ=4 unbiased prefill hit from the paired-A/B server logs (BM_DIAG counter): node 0-3 baseline 0.611→excl 0.730 (+11.9pp); ondem-3 baseline 0.617→excl 0.728 (+11.1pp). Matches +11.0pp at λ=3. Both arms drop ~1pp under higher load (more eviction pressure) but the +11pp advantage HOLDS → the win is a stable capacity effect across the operating range, not λ=3-specific. (Nice: the _bm_diag instrumentation — documented as A/B-cancelling/validity-neutral — paid off here, giving λ=4 hit for free.) Added to report headline error-bars area. Robustness element of a complete contribution now covered.
+
+## 2026-07-08 ~23:20Z — Integrity: correct keep_hits "measured NEGATIVE" overclaim + document parameter sensitivity honestly
+Checked whether keep_hits≥2 was actually measured: NO clean run (no keep_hits=2 run dir/log). Only data = v3 (~0.691, ran old default-2, DIED LATE/scrape lost/unstable) + reasoning. So the code comment's "measured NEGATIVE" OVERCLAIMED. Fixed:
+- Code comment (unified_radix_cache.py): "measured NEGATIVE" → "screened/weakly-measured NEGATIVE (v3 ~0.691 died late; + reasoning)". Parses OK.
+- Report: added honest "Parameter sensitivity" note — keep_hits=1 wins (all logged wins, now default); keep_hits≥2 is reasoned + weakly-measured worse (v3 partial ~0.691), NOT a clean sweep (won't spend pool on a predicted-negative param I've already set).
+Completes the "parameter sensitivity" element of a complete contribution, honestly (no overclaim of a clean ablation I don't have).

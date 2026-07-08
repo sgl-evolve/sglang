@@ -387,9 +387,11 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         import os as _os
         self._bm_excl = get_bool_env_var("BM_EXCL")
         # Default 1 = the WINNING variant (back up a node on device eviction once it has
-        # >=1 proven reuse). keep_hits>=2 is a measured NEGATIVE: under the full-cycle
-        # reuse distance, docs are evicted at hit=1 before their delayed reuse, dropping
-        # them. All logged wins used keep_hits=1 explicitly; this makes it correct-by-default.
+        # >=1 proven reuse). keep_hits>=2 is a screened/weakly-measured NEGATIVE (v3, which
+        # ran the old default-2, reached only ~0.691 before dying late; reasoning: under the
+        # full-cycle reuse distance a doc is typically at hit=1 when evicted from device with
+        # more reuses still coming, so keep>=2 DELETES it before its delayed reuse -> recompute
+        # -> lower hit). All logged wins used keep_hits=1 explicitly; default 1 = correct-by-default.
         self._bm_excl_keep_hits = int(_os.environ.get("BM_EXCL_KEEP_HITS") or "1")
         self.prefetch_stop_policy = "best_effort"
         self.prefetch_threshold = 256

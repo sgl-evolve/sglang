@@ -14,6 +14,7 @@ def load(p):
 PAIRS = [
     ("1-2", "runs/sweep-basesweep/r{R}.json", "runs/sweep-excl/r{R}.json"),
     ("0-3", "runs/paired-eb1/baseline-r{R}.json", "runs/paired-eb1/excl-r{R}.json"),
+    ("ondem-3", "runs/paired-eb2/baseline-r{R}.json", "runs/paired-eb2/excl-r{R}.json"),
 ]
 RATES = [3, 4]
 

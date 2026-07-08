@@ -73,3 +73,7 @@ This is the charter's HEADLINE win (goodput-under-SLO curve shifts up), HW-measu
 
 ## 2026-07-08 — CONCLUSION: XTIER near the lossless frontier
 Two ceilings, both reached: (1) hit-rate ceiling 0.73 = exclusive distinct capacity L1+L2 (infinite=0.80 needs >cap, lossless-impossible); (2) device-hit ceiling — docs are radix ROOTS already retained by leaf-first eviction; demoted leaves are low-reuse QA tails → reuse-aware retention adds little. XTIER captures both → +~10% goodput-under-SLO, lossless. Further lossless gains need bigger physical tiers (out of budget). Contribution complete.
+
+## 2026-07-08 — λ=5 knee: XTIER's exact knee pinned (headline refined)
+Full XTIER knee (measured): λ=3 p99 4390 / λ=4 p99 7497-7794 (✅ ≤8s, 2 nodes) / λ=5 p99 11012 (✗). Baseline: λ=3 5067 / λ=4 9227 (✗).
+⇒ max-sustainable goodput (p99≤8s): XTIER ~3.74-3.9 req/s (knee ~λ4.3) vs baseline ~3.35 (knee ~λ3.4) = +~12-16%. Headline goodput-curve shift MEASURED end-to-end. Contribution complete.

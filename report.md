@@ -59,7 +59,9 @@ The headline metric = max req/s at p99 TTFT ≤ 8s. SAME-NODE (1-2) A/B — base
 |---|---|---|---|---|
 | 3 | 3.02 | 5258 ms | 3.02 | **4443 ms (−15%)** |
 | 4 | 3.54 | 7847 ms (~SLO edge) | **3.83 (+8%)** | **7231 ms (−8%, <SLO)** |
-| 5 | — (>SLO) | — | 4.28 (raw) | **12031 ms (>SLO)** |
+| 5 | not run¹ | not run¹ | 4.28 (raw) | **12031 ms (>SLO)** |
+
+¹ baseline λ=5 not measured; it is necessarily >SLO since baseline λ=4 is already at the 7847 ms edge (excl, which is strictly better, is already 12031 ms at λ=5).
 - At λ=4 (the knee), exclusive tiering sustains **+8% throughput (3.83 vs 3.54) at −8% p99 (7231 vs 7847), both under the 8s SLO** → goodput-under-SLO ~3.54→≥3.83 req/s. At λ=3, −15% p99. Plus the +11pp hit (less prefill recompute) that buys it. The whole curve shifts up/right (not a single-point/de-saturation trick — the charter's bar).
 - **KNEE PINNED (excl λ=5, node 1-2):** p99 **12031 ms > 8s SLO** (raw req/s 4.28) → the excl knee is **between λ=4 and λ=5** — the *same* SLO-crossing bracket as baseline, but excl carries more headroom AT the λ=4 operating point (7231 vs 7847 ms). Honest reading: the mechanism **shifts the curve right by ~+8%** at the SLO-limited point; it does **not** extend the knee to arbitrarily high λ (both saturate by λ=5). The gain is a genuine, bounded rightward shift — exactly what a capacity-lever (not a de-saturation trick) should produce. Goodput = **+~8%** (3.54→3.83 req/s under the 8s SLO).
 - **HONESTY NOTE:** an earlier claim of +15% goodput used the DOCUMENTED protocol baseline (λ=4 p99 ~11s); the SAME-NODE baseline is actually 7847ms (the doc baseline was pessimistic / different node). Running the same-node sweep corrected +15%→+~8%. Node variance is large — same-node A/B is essential (lesson reinforced).

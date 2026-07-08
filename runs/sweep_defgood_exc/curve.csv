@@ -1,0 +1,4 @@
+label,rate,p99_ttft_ms,p50_ttft_ms,req_throughput,completed
+defgood_exc,3,4111.37,487.80,3.02,7037
+defgood_exc,4,10062.50,604.53,3.82,7037
+defgood_exc,4.5,9850.29,607.30,4.14,7037

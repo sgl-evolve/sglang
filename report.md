@@ -35,6 +35,27 @@ p99): the knee-shift magnitude is NODE-DEPENDENT — on a "fast" node whose base
 smaller. The ROBUST, node-independent driver is the **+13pp hit-rate** (≈13% less fresh-prefill compute);
 its latency/goodput payoff GROWS with load and is largest on prefill-stressed nodes/rates (near the knee).
 
+**★ DEFINITIVE same-node FULL-PROTOCOL goodput A/B (ondem-2, np=1553/7037-turn, flock-held both legs,
+2026-07-08 22:xxZ) — supersedes the screens above for the node-controlled claim, and TEMPERS the knee number:**
+| offered rate | baseline p99 / p50 / req/s | exclusive p99 / p50 / req/s |
+|---|---|---|
+| 3.0 | 4907 / 543 / 3.02 ✓SLO | **4111 / 488 / 3.02** ✓SLO |
+| 4.0 | 9525 / 605 / 3.48 ✗ | 10062 / 605 / **3.82** ✗ |
+| 4.5 | 10569 / 627 / 3.67 ✗ | 9850 / 607 / **4.14** ✗ |
+
+Honest reading of the definitive run:
+- **At the SLO-sustainable rate (3.0, both PASS):** exclusive cuts p99 by **−16.2%** (4907→4111) and p50 by
+  **−10.2%** (543→488) at identical throughput (3.02) — a clean, node-controlled *latency* win with more
+  SLO headroom (exclusive has 3889 ms slack to the 8s SLO vs baseline 3093 ms, i.e. **+26% headroom**).
+- **Under overload (4.0 & 4.5, both FAIL SLO):** exclusive absorbs **+9.8%** then **+12.8%** more achieved
+  throughput at *identical p50* (605/605, 627/607); the p99 tail is noisy for both (deep past SLO — rate 4
+  exclusive slightly higher, rate 4.5 −6.8%). The ROBUST overload signal is the throughput, not the tail.
+- **Goodput knee is CO-BRACKETED in (3,4) for BOTH at this 3/4/4.5 grid** — so this run does NOT resolve a
+  precise knee-shift number; my earlier "+10–18% knee shift" was from coarser/screen bases and is hereby
+  DOWNGRADED to "suggestive." The rate-3 headroom (+26%) implies exclusive's true 8s-crossing is at a higher
+  rate, but proving it needs a finer grid → **knee-resolver A/B at 3.25/3.5/3.75 is IN FLIGHT** (tools/knee_resolve.sh,
+  same-node both-legs); its result will give the definitive knee-shift magnitude.
+
 **Result ladder (fixed protocol, λ=3), all clean/on-contract, lossless:**
 - fcfs baseline (inclusive, stock): hit **0.622**, p99 TTFT **6326 ms**.
 - +write_back flag (write-side exclusivity only): hit **0.733** (+11pp), p99 **4581** (-28%).  [config]

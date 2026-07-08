@@ -193,3 +193,27 @@
   (hit/lossless/ablation/goodput/negatives), two-sided generalization law, frontier, related work, limits,
   conclusion. Distinct from report.md (working log) + UPSTREAM.md (PR summary). This is the "paper a top PC
   would accept" artifact.
+
+## 2026-07-08 ~23:00Z — ★ DEFINITIVE node-controlled FULL-PROTOCOL goodput A/B (closes the soft-spot; TEMPERS knee claim)
+- Ran the long-pending definitive A/B: ONE flock-held node (ondem-2, job 18532), BOTH legs (baseline fcfs
+  inclusive → exclusive), FULL protocol np=1553/7037-turn, rates 3/4/4.5. Exclusive server log confirms
+  mechanism live ("UnifiedRadixCache: EXCLUSIVE L1<->L2 tiering ENABLED") with hicache_write_policy frozen
+  =write_through in resolved args (benefit in engine code, not config — fairness-audit-clean).
+- Curves (p99 / p50 / req/s):  BASE r3 4907/543/3.02✓  r4 9525/605/3.48✗  r4.5 10569/627/3.67✗ ;
+  EXC r3 4111/488/3.02✓  r4 10062/605/3.82✗  r4.5 9850/607/4.14✗  (✓/✗ = under/over 8s SLO).
+- HONEST read: (i) at the SLO-sustainable rate (3.0, both PASS) exclusive p99 −16.2%, p50 −10.2%, same
+  throughput, +26% more SLO headroom — CLEAN node-controlled latency win. (ii) under overload (4/4.5, both
+  FAIL) exclusive absorbs +9.8%/+12.8% more achieved throughput at IDENTICAL p50; p99 tail noisy (r4 slightly
+  worse, r4.5 −6.8%) — robust overload signal is THROUGHPUT not tail.
+- ★ KEY CORRECTION: this grid puts BOTH p99≤8s knees in (3,4) → does NOT resolve a knee-shift number. Prior
+  "+10–18% knee shift" (screens + full_l4 pair) DOWNGRADED to "suggestive." Prior full_l4 "r4 p99 −11%" is
+  NOT reproduced here (r4 exclusive p99 was slightly higher) → the p99 improvement is at the SUSTAINABLE rate,
+  not the overload rate; the overload win is throughput. Folded honestly into paper.md (abstract/§4/§8),
+  UPSTREAM.md, report.md.
+- Launched knee_resolve.sh (tools/): same contention-gated same-node both-legs A/B at FINE grid 3.25/3.5/3.75
+  to pin the exact 8s crossing for each policy → definitive knee-shift magnitude. Fired immediately (2 free
+  nodes), running on ondem-2. Will fold its result when it lands.
+- OPS note: the defgood launcher's LOGIN-side srun client was killed at a session teardown ~22:45Z; it saw
+  curve.csv already existed (r3+r4) and printed SUCCESS/exited, but the REMOTE sweep step survived the
+  disconnect and finished r4.5 (orphaned but self-completing via its EXIT-trap teardown). Lesson: srun
+  --overlap remote steps can outlive a killed client; verify node-side procs, not just the launcher log.

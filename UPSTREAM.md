@@ -30,12 +30,15 @@ nodes inclusive) was tried and is **neutral** (transfer cost isn't the limiter) 
 ## Evaluation (fixed protocol: real 1:1:1 mix, 1553 convs, λ=3, max-conc 128; SLO p99 TTFT ≤ 8s)
 - **Prefix hit-rate: 0.62 → 0.75 (+13pp), ROBUST/node-independent** — exclusive = 0.7522 on 2 distinct
   nodes and 0.7509±0.002 across n=4 runs. This ≈ 13% less fresh-prefill compute.
-- **Latency/goodput (grow with load; node-dependent):** mean TTFT −14…−22%; p99 TTFT lowered AND stabilized
-  (~4.4–4.5s vs baseline high+variable 4.7–6.9s); on a prefill-stressed node the p99≤8s **goodput knee
-  shifts ~+10–18% sustainable req/s** (screen/node-dependent). The magnitude scales with prefill stress.
-  Full-protocol confirmation at the knee (matched 1553-conv pair, offered rate 4.0): exclusive sustains
-  **+12% req/s** (3.38→3.78, baseline queue-limited) at **−11% p99 TTFT** (9098→8091 ms), −15% mean TTFT,
-  −17% p99 e2e — the whole latency curve shifts down under load.
+- **Latency/goodput (definitive node-controlled full-protocol A/B; ondem-2, 1553-conv/7037-turn, flock-held
+  both legs):** two robust effects. (i) **At the SLO-sustainable rate** (offered 3.0, both under 8s SLO):
+  exclusive cuts **p99 TTFT −16%** (4907→4111 ms) and **p50 −10%** (543→488) at identical 3.02 req/s — a
+  clean latency win with **+26% more SLO headroom** (3889 vs 3093 ms slack). (ii) **Under overload** (offered
+  4.0/4.5, both over SLO): exclusive absorbs **+10%/+13% more achieved throughput** (3.48→3.82, 3.67→4.14) at
+  *identical* p50 — it stays nearer the offered rate before the queue runs away. The p99≤8s **goodput knee is
+  co-bracketed in (3,4) for both** at this coarse grid, so the precise knee-shift magnitude is being pinned by
+  a finer-grid (3.25/3.5/3.75) same-node A/B; the earlier "+10–18%" screen estimate is suggestive pending
+  that. Magnitudes are node/load-dependent; the robust node-independent driver is the +13pp hit-rate.
 - **Lossless: MEASURED bit-exact.** Greedy 3-mode verify (24 long docs, fresh vs cache-hit exercising the
   exclusive host-free/load-back path): exclusive == stock outputs **24/24** on both paths. (Note: the
   hybrid-Mamba radix cache is inherently ~non-bit-exact vs *no-cache* on ~17% of long docs due to Mamba

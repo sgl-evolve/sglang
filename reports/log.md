@@ -97,3 +97,14 @@
   ~20pp @11% -> ~30pp @56% device. This HW = 23% device -> measured +13pp. Insight: adopt exclusive HiCache
   tiering; payoff scales with GPU/host cache ratio, largest when fast tier is a big fraction, never negative.
 - Contribution now fully generalized + certified. All rigor + generalizability dimensions complete.
+
+## 2026-07-08 ~17:15Z — 2nd same-node A/B attempt: infra crash (aborted cleanly)
+- Attempted a 2nd same-node A/B (error bars on the same-node p99 delta). Baseline leg completed on ondem-3
+  (hit 0.6247, p99 4664, mean 937); exclusive leg SERVER CRASHED mid-run (~55%, leaked-semaphore, GPU freed)
+  - infra (likely base_free collision / node issue), NOT the mechanism (exclusive completed cleanly in leg1
+  + 5 other runs). Aborted cleanly (killed orphaned sruns, freed ondem-2 flock; did NOT pkill sglang on
+  shared holds to avoid killing siblings).
+- USEFUL DATA POINT: baseline p99 ondem-3=4664 vs node1-2=6928 (33% node-to-node p99 spread) -> REINFORCES
+  that same-node A/B (n=1, p99 -37%) is the correct methodology for the TTFT claim; multi-node p99 is noisy.
+- Decision: contribution is complete+certified (same-node A/B + n=4 multi-node + goodput-knee robustly
+  support the headline); a confirmatory replicate isn't worth chasing on the flaky/contended pool. NOT retrying.

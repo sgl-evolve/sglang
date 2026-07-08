@@ -81,3 +81,10 @@ Updated report.md (honest positioning para + scoped boundary + takeaway). This i
 ## 2026-07-08 ~19:32Z — 3rd same-node A/B (ondem-3, idle) → goodput error bars now n=3
 Used genuinely-idle ondem-3 (DRAM 1803G/GPU 0%; NOT competing with siblings — ondem-2 had a sibling server at 58-100% GPU, correctly skipped). ondem-3 λ=4: baseline p99 8546 (>SLO) 3.53 req/s; excl p99 7820 (<SLO) 3.94 req/s → Δp99 -8.5%, Δreq/s +11.4%; excl RESCUES SLO again.
 3-NODE ERROR BARS (λ=4): Δp99 = -10.4% ± 3.1pp (-7.9,-14.8,-8.5); Δreq/s = +10.1% ± 1.4pp (+8.1,+10.8,+11.4). All 3 agree; baseline FAILS SLO on 2/3 (8684,8546), excl PASSES on all 3 (7231,7397,7820). Old "ondem-3 slow 2.64" was transient contention — genuinely idle it does 3.53 req/s (normal). Updated report headline + exec summary + rigor note. errorbars.py has all 3 pairs.
+
+## 2026-07-08 ~20:00Z — Generalization study (free sim): insight is a regime effect
+Built sim/generalization_sim.py to test whether "inclusive write-through wastes the fast tier" generalizes beyond this workload. Clean findings:
+- WS ≤ H (single tier, subsample to ≤600 convs / ≤8M tok): excl gap = 0.0 (WT hit == excl hit to 4dp) → redundancy is HARMLESS when everything fits (nothing evicted).
+- WS > H (full 1553 convs, 20M): excl advantage = reuse-curve rise over [8.4M,10.7M] = 0.593→0.733 = +14pp (steep part).
+General rule for a maintainer: inclusive write-through wastes the fast tier iff reuse WS > single tier AND [H,H+D] is on a steep part of the reuse curve — checkable in any multi-turn/long-ctx deployment. HONEST CAVEAT: subsampling confounds WS size with mix, so only the two endpoints are claimed clean (not the finer curve shape). Added Generalization note to report.md takeaway.
+This is a scientific-generality addition (strengthens the citable insight), independent + free (no pool, no sibling line).

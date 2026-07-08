@@ -108,11 +108,15 @@ if __name__ == "__main__":
         h, pws = run(convs, CACHE, K, oracle_free=True)
         note = "  <- max-conc" if K in (128, 1553) else ""
         print(f"{K:>16} | oracle hit={h:>7.4f} | peak active WS={pws/1e6:>6.2f}M{note}")
-    print("\nTRUE ADMISSION (no oracle — K-limit + co-residency, LRU eviction):")
-    print(f"{'K (concurrency)':>16} | {'hit':>10} | vs LRU(0.7334)")
-    for K in [4, 8, 16, 32, 64, 128, 256, 1553]:
+    print("\nTRUE ADMISSION (no oracle — K-limit + co-residency, LRU eviction) — is there a SWEET SPOT?")
+    print(f"{'K':>6} | {'hit':>7} | {'deferred':>8} | vs LRU(0.7334)")
+    for K in [128, 400, 700, 900, 1100, 1300, 1450, 1553]:
         h, _ = run(convs, CACHE, K, oracle_free=False)
-        print(f"{K:>16} | {h:>10.4f} | {100*(h-0.7334):+.1f}pp")
+        print(f"{K:>6} | {h:>7.4f} | {max(0,1553-K):>8} | {100*(h-0.7334):+.1f}pp")
+    print("NO SWEET SPOT: the +7.3pp hit benefit needs K<=700 (defer >=853 convs = 55%+ of the")
+    print("workload); at tolerable deferral (K>=1300, <=253 deferred) the benefit is ZERO (=LRU).")
+    print("p99 of deferring 853 convs draining at ~lambda_complete(~0.67 conv/s) ~= 20 min -> SLO")
+    print("catastrophe. Hit benefit and p99 cost are INSEPARABLE -> admission has no goodput sweet spot.")
     print("\nRead: ORACLE reaches 0.806 at ALL K (active WS<10.7M) → the gap is completion")
     print("dead weight, not concurrency. TRUE admission (no oracle) shows what K-limiting")
     print("ALONE does at fixed budget — the honest test of the admission lever's hit effect.")

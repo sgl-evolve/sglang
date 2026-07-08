@@ -1,0 +1,77 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    python_version: 3.12.13
+    cli_version: 0.28.0
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1783491604
+    t:
+      3:
+      - 2
+      - 4
+      - 13
+      - 14
+      - 16
+      - 42
+      4: 3.12.13
+      5: 0.28.0
+      13: linux-x86_64
+    e:
+      8fbs32e11bprmu471d2pfw8rj8vae0x6:
+        os: Linux-6.8.0-1027-gcp-tcpx-x86_64-with-glibc2.35
+        python: CPython 3.12.13
+        started_at: '2026-07-08T06:20:03.852530Z'
+        args:
+        - base_mech
+        - runs/v1-warmfirst/summary.json
+        - v1-warmfirst
+        - d843b607f
+        - mechanism
+        program: /home/junyanch_google_com/autoresearch/programs/sgl/v0.25_ablations/base_mech/researcher/.claude/skills/report-sop/scripts/log_wandb.py
+        git:
+          remote_url: https://x-access-token:@github.com/sgl-evolve/sglang.git
+          commit: d843b607fa3a8f47da5a213e07322e8c0bc3ac66
+        root: /home/junyanch_google_com/autoresearch/workspace/sgl/v0.25_ablations/base_mech/researchers/base_mech
+        host: slurm2-c3nodeset-0
+        executable: /home/junyanch_google_com/autoresearch/workspace/sgl/v0.25_ablations/base_mech/researchers/base_mech/.venv/bin/python
+        cpu_count: 44
+        cpu_count_logical: 44
+        disk:
+          /:
+            total: '1040442621952'
+            used: '454831988736'
+        memory:
+          total: '371914428416'
+        writer_id: 8fbs32e11bprmu471d2pfw8rj8vae0x6
+version:
+  desc: null
+  value: v1-warmfirst
+commit:
+  desc: null
+  value: d843b607f
+resolved_args:
+  desc: null
+  value:
+    context_length: '262144'
+    mem_fraction_static: '0.85'
+    hicache_size: '96'
+    tp_size: '8'
+    hicache_io_backend: direct
+    hicache_mem_layout: page_first_direct
+    hicache_write_policy: write_through
+    page_size: '64'
+version_kind:
+  desc: null
+  value:
+    v1-warmfirst: mechanism
+code_churn:
+  desc: null
+  value:
+    v1-warmfirst:
+      files: 2
+      added: 109
+      deleted: 0
+      net: 109

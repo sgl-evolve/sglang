@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 import os
 import random
+import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 from enum import Enum, auto
@@ -382,20 +383,29 @@ class SchedulePolicy:
         'warm' continuations (large resident prefix) ahead of 'cold' cold-starts,
         preserving arrival (FCFS) order within each class."""
         WARM_THRESHOLD = int(os.environ.get("BM_WARM_THRESHOLD") or "512")
+        # cold-aging: a request waiting >= AGE_LIMIT_S is "urgent" and promoted ahead
+        # of warm continuations, so deferring cold cold-start prefills cannot grow the
+        # p99 TTFT tail unboundedly. 0 disables (=v1 pure warm-first).
+        AGE_LIMIT_S = float(os.environ.get("BM_AGE_LIMIT_S") or "0")
         for r in waiting_queue:
             match_prefix_for_req(self.tree_cache, r)
-        warm = [
-            r
-            for r in waiting_queue
-            if (r.num_matched_prefix_tokens or 0) >= WARM_THRESHOLD
-        ]
+        is_warm = lambda r: (r.num_matched_prefix_tokens or 0) >= WARM_THRESHOLD
+        if AGE_LIMIT_S > 0:
+            now = time.perf_counter()
+            def urgent(r):
+                t = r.time_stats.wait_queue_entry_time
+                return t > 0 and (now - t) >= AGE_LIMIT_S
+            urg = [r for r in waiting_queue if urgent(r)]
+            warm = [r for r in waiting_queue if not urgent(r) and is_warm(r)]
+            if not warm:
+                return  # nothing to promote ahead of -> keep FCFS
+            cold = [r for r in waiting_queue if not urgent(r) and not is_warm(r)]
+            waiting_queue[:] = urg + warm + cold
+            return
+        warm = [r for r in waiting_queue if is_warm(r)]
         if not warm or len(warm) == len(waiting_queue):
             return  # all one class -> keep FCFS order (no-op)
-        cold = [
-            r
-            for r in waiting_queue
-            if (r.num_matched_prefix_tokens or 0) < WARM_THRESHOLD
-        ]
+        cold = [r for r in waiting_queue if not is_warm(r)]
         waiting_queue[:] = warm + cold
 
     @staticmethod

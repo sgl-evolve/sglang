@@ -54,6 +54,13 @@
 - **dev_delete_tok small, host_evict_tok large & reused:** host-pressure leak → Mechanism = *reduce host write-through pressure / conversation-aware admission to bound the resident working set*.
 - **both small:** loss is partial-path / match / load_back timing → deeper instrumentation.
 
+## v1 warm-first — live monitoring + interpretation plan
+- v1 running clean (BM_WARMFIRST active, threshold 512, 0 crashes). ~25% slower it/s than baseline — warm-first re-matches ALL waiting reqs every round (deferred cold reqs pile up → O(queue) match overhead). This overhead is a v2 fixable (cache per-req match), does NOT affect the summary hit_rate (counts actual prefills once) — so hit_rate is the CLEAN thesis test.
+- **Interpretation when v1 completes (compare summary vs s1-diag baseline hit 0.627 / p99 4960 / reqps 2.64):**
+  - hit ↑ meaningfully → warm-first serves continuations before eviction → co-residency/scheduling IS a lever → v2: cache matches (kill overhead) + add cold-aging (bound p99).
+  - hit ≈ 0.627 (flat) → reuse is NOT eviction/scheduling-limited (corroborates s1-diag: incremental kv_only stable regardless of host fill) → baseline near structural reuse ceiling for this workload → PIVOT: (a) per-turn hit instrumentation to find the residual doc-miss cause, (b) different lever (goodput curve / admission working-set).
+  - p99 > baseline (cold prefills deferred) → warm-first trades tail → confirms pure-reorder can't shift the SLO curve (charter's point); need a work-reducing (hit) mechanism instead.
+
 ## Candidate mechanisms (choose after s1-diag discriminator)
 **M-mamba (if kv_only >> consensus): Mamba/KV co-residency for hybrid models.** Mamba SSM-state evicts independently of its KV (separate pools+LRU; device tombstone mamba_component.py:220, host tombstone :548), truncating the consensus prefix match even when KV is host-resident. Fix: couple Mamba eviction to KV — never drop a node's Mamba state (device+host) while its KV prefix is retained & reusable (and prefer evicting Mamba of nodes whose KV is also being evicted). Novel: no prior serving cache co-manages SSM-state + KV residency for hybrid Mamba/attention models. Generalizable to all Qwen3.5-MoE / hybrid models. Must respect the small Mamba budget (1351 device slots) — evaluate for OOM.
 **M-host (if kv_only ≈ consensus ≈ 0.62): conversation-coherent host retention.** Reused KV dropped from host under pressure/ramp. Fix: conversation-/reuse-aware host admission + retention that keeps an active conversation's prefix co-resident across its turns (charter thesis). 

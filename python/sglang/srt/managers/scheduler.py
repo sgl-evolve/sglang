@@ -971,6 +971,17 @@ class Scheduler(
 
     def init_running_status(self):
         self.waiting_queue: List[Req] = []
+        # --- WSAC: Working-Set Admission Control (base_free / evolve, default OFF) ---
+        # Cap concurrently in-flight COLD-start (new-document) prefills so the resident
+        # reusable KV working set stays within L1+L2, preventing premature eviction of
+        # documents that will be reused by imminent conversation turns. Lossless: only
+        # reorders/defers scheduling; never changes outputs. 0 => disabled (exact stock).
+        self.wsac_max_cold = int(os.environ.get("SGLANG_WSAC_MAX_COLD", "0"))
+        # A req is COLD if its cached prefix < ratio * its total prompt length.
+        self.wsac_cold_ratio = float(os.environ.get("SGLANG_WSAC_COLD_RATIO", "0.5"))
+        # Periodic admission diagnostics (0 = off; N = log every N prefill passes).
+        self.wsac_log = int(os.environ.get("SGLANG_WSAC_LOG", "0"))
+        self._wsac_pass = 0
         # The running decoding batch for continuous batching
         self.running_batch: ScheduleBatch = ScheduleBatch(reqs=[], batch_is_full=False)
         # The current forward batch
@@ -2857,6 +2868,15 @@ class Scheduler(
         mamba_allocator = getattr(self.req_to_token_pool, "mamba_allocator", None)
         if mamba_allocator is not None:
             mamba_allocator.alloc_group_begin(len(self.waiting_queue))
+        # WSAC: count COLD-start prefills already in flight in the running batch, so we
+        # can cap how many concurrent new documents compete with resident reusable KV.
+        wsac_on = self.wsac_max_cold > 0
+        cold_active = (
+            sum(1 for r in self.running_batch.reqs if getattr(r, "wsac_cold", False))
+            if wsac_on
+            else 0
+        )
+        wsac_deferred = 0
         # Get requests from the waiting queue to a new prefill batch
         for req in self.waiting_queue:
             if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
@@ -2888,12 +2908,34 @@ class Scheduler(
                     req.rid
                 )
 
+            # WSAC gate: defer COLD (new-document) prefills once the cap is reached, as
+            # long as real progress is guaranteed (something is already runnable). This
+            # bounds the number of concurrent new conversations so resident documents
+            # survive to their next turn. Lossless: the deferred req stays in the queue.
+            req_cold = False
+            if wsac_on:
+                prompt_len = max(1, len(req.origin_input_ids))
+                req_cold = (
+                    req.num_matched_prefix_tokens < self.wsac_cold_ratio * prompt_len
+                )
+                have_runnable = (
+                    len(self.running_batch.reqs) + len(adder.can_run_list)
+                ) > 0
+                if req_cold and have_runnable and cold_active >= self.wsac_max_cold:
+                    wsac_deferred += 1
+                    continue
+
             req.init_next_round_input(self.tree_cache)
+            n_before = len(adder.can_run_list)
             res = adder.add_one_req(
                 req,
                 has_chunked_req=(self.chunked_req is not None),
                 truncation_align_size=self.truncation_align_size,
             )
+            if wsac_on and len(adder.can_run_list) > n_before:
+                req.wsac_cold = req_cold
+                if req_cold:
+                    cold_active += 1
 
             if self.enable_lora:
                 running_loras.add(req.lora_id)
@@ -2925,6 +2967,26 @@ class Scheduler(
 
         if mamba_allocator is not None:
             mamba_allocator.alloc_group_end()
+
+        # WSAC diagnostics: confirm whether admission has a lever (waiting depth) and
+        # whether the cold-start cap is actually deferring anything.
+        if self.wsac_log > 0:
+            self._wsac_pass += 1
+            if self._wsac_pass % self.wsac_log == 0:
+                try:
+                    host_used = self.tree_cache.cache_controller.mem_pool_host.size - (
+                        self.tree_cache.cache_controller.mem_pool_host.available_size()
+                    )
+                    host_tot = self.tree_cache.cache_controller.mem_pool_host.size
+                    host_util = host_used / max(1, host_tot)
+                except Exception:
+                    host_util = -1.0
+                logger.info(
+                    f"[WSAC] pass={self._wsac_pass} run_bs={len(self.running_batch.reqs)} "
+                    f"wait={len(self.waiting_queue)} admitted={len(adder.can_run_list)} "
+                    f"cold_active={cold_active} deferred={wsac_deferred} "
+                    f"host_util={host_util:.3f}"
+                )
 
         # Update waiting queue
         can_run_list: List[Req] = adder.can_run_list

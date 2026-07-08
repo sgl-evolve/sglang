@@ -97,6 +97,11 @@ capacity for fewer transfers doesn't net a win ⇒ PURE exclusive (v1/v2) is nea
   (out-of-budget). Remaining ~5pp to the 0.807 ceiling needs lossless KV COMPRESSION (host tier) —
   high-risk kernel, likely low compressibility on FP8, low iteration throughput under node contention →
   documented as the bolder future line, not attempted.
+  - **KV dtype correction (measured):** the KV cache is **torch.bfloat16** (2 B/elem; device pool 2.35M tok,
+    K+V 26.9 GB/rank), NOT FP8. ⇒ lossless compressibility is HIGHER than the FP8 estimate (~1.3–1.5× via
+    byte-plane split: the exponent plane compresses well). Also exposes a large CAPACITY lever via
+    `--kv-cache-dtype fp8` (2× KV capacity) — but that is LOSSY + a stock flag ⇒ out-of-contract as a
+    contribution. Running fp8-KV as a SCREEN measures the upper bound of the capacity lever (v_kvfp8).
   - **Compression feasibility (reasoned, why not pursued now):** the host KV is FP8 (E4M3) post-attention
     activations — high-entropy, so LOSSLESS compression realistically yields <1.2× (≈<2pp hit on the steep
     curve), needs a decompression kernel on the H→D load-back path (latency risk), and is impractical to

@@ -86,6 +86,15 @@ requests that reuse resident prefixes — bounding the active conversation worki
 Lossless (reorders scheduling only). Env-gated, default off = exact baseline. Backpressure via the client
 concurrency limit naturally caps active convs. Latency trade-off measured on the full eval.
 
+## Rigor caveat — run/node variance
+My two v4 runs (v4/v4b, identical config) differ by ~±10% on p99 (4067 vs 4486) — real run-to-run / node
+variance (each eval lands on a different held node). So: (a) the **robust** win vs baseline (p99 ~−30%,
+req/s +9%, hit +11-18%) far exceeds variance; (b) the XTIER-vs-write_back TTFT edge (p50/mean ~6-10%) is
+only *partly* above variance — the **mechanism-backed, non-noise** difference is the structural **load_back
+reduction (+17-19% vs +29%)** from device-exclusivity. Cleanest confirmation would be same-node A/B; the
+knee sweep's curve-shift (baseline λ=4 p99 ~11 s per protocol RECIPE vs XTIER's large λ=3 SLO headroom) is
+a large effect that dominates variance.
+
 ## Prior-art positioning (novelty)
 - **Strata (2508.18572):** insight = serving is *loading-bound* not compute-bound; fixes = GPU-assisted I/O
   (decouple GPU/host layouts) + cache-aware *scheduling* (order requests to balance compute vs I/O) +

@@ -68,6 +68,14 @@ negative. Largest under memory pressure + high load (near the SLO knee). **Falsi
 already covers the working set (over-provisioned host ⇒ no gain). The calibrated sim self-validates
 (predicts +11.8pp at this HW vs measured +13pp).
 
+**Cost caveat (deployment guidance):** exclusive wins by saving *prefill compute*, not by moving less data —
+it actually loads back ~34% MORE tokens H→D and, because eviction now writes D→H first, drives the H↔D bus
+bidirectionally (`evict_mean_ms` 1.1→20.7, `load_back_mean_ms` 1.8→19.0 in same-node A/B). The +13pp hit
+removes ~13% of fresh prefill, which dominates on a large model with long prefixes. So enable it where
+**prefill compute is the bottleneck**; on a slow host interconnect or a short-prefix workload (cheap
+prefill), the extra transfer traffic can erode or reverse the gain. (The hot-keep hybrid cuts load-back but
+is TTFT-neutral here — transfer isn't the limiter in this regime, so keep `HOT_KEEP=0`.)
+
 ## Limits / not pursued
 - Residual headroom to the analytic hit ceiling (~0.81) requires MORE capacity, reachable only by *lossy*
   KV quantization (`--kv-cache-dtype fp8_e4m3` doubles capacity → hit 0.808 but changes outputs) — a config

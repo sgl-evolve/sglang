@@ -231,6 +231,34 @@ table (that's the `H=7.81M` row swept over `D`) and transfers to any workload: c
 reuse CDF and read the slope over `[H, H+D]`. It also bounds the ceiling: no *placement* policy can exceed
 `HitRate(H+D)` — beyond it needs more bytes (lossy quantization), consistent with the closed frontier.
 
+### Mechanistic COST axis — the win is prefill-compute savings that DOMINATE ~2× more H↔D traffic
+The causal story, quantified from the same-node A/B run metrics (both pairs consistent), is important and
+non-obvious: exclusive tiering does **not** win by moving less data — it wins **despite moving more**.
+
+| metric (same-node A/B) | baseline (inclusive) | exclusive | change |
+|---|---|---|---|
+| hit_rate | 0.616 / 0.625 | 0.752 | **+13pp** |
+| hit_device_frac / hit_host_frac | 0.41 / 0.59 | 0.34 / 0.66 | more reuse served from **host** |
+| load_back_tokens (H→D) | 293–300M | **401M** | **+34%** |
+| load_back_mean_ms | 1.8 | **19.0** | **~10×** |
+| evict_mean_ms | 1.1 | **20.7** | **~19×** |
+
+Why: inclusive keeps a host mirror of every hot device entry, so evicting a device leaf is a cheap *drop*
+(host copy already exists, `evict_mean_ms`≈1) and 41% of reuse is served straight from the device copy.
+Exclusive makes the entry device-XOR-host, so (a) eviction must **write D→H** first (`evict_mean_ms`≈21) and
+(b) more reuse now sits host-only and must **load back H→D** (+34% tokens). The H↔D bus is thus loaded
+**bidirectionally** (evict-time backups *and* more load-backs) → each transfer op ~10× slower.
+
+Yet TTFT still improves (mean −14…−22%), because the **+13pp hit-rate removes ~13% of fresh-prefill compute**
+— and on a 122B model with ~10k-token prefixes, prefill FLOPs dominate TTFT far more than the (async,
+largely overlapped) H↔D copies. **Scope caveat (falsifiable):** the net win therefore holds only while
+*prefill compute* is the bottleneck. It would **shrink or reverse** on a deployment where H↔D bandwidth is
+the limiter — e.g. a slow host interconnect, or a short-prefix workload where fresh prefill is cheap so the
+saved compute no longer outweighs the extra ~2× transfer traffic. This is the cost-side complement to the
+capacity-side band boundary above, and it is why the *hot-keep* hybrid (inclusive for hot nodes, to cut
+load-back cost) was tried — it does cut load-back (402M→397M) but is **neutral** on TTFT, confirming
+transfer cost is not the limiter *here* (so pure exclusive is right for this regime).
+
 ## The protocol (fixed contract)
 - 2-tier: L1 GPU HBM (~2.35M tok) + L2 host DRAM (`--hicache-size 96` = 768 GB, ~7.81M tok). No L3.
 - Frozen launch: TP8, ctx 262144, mem-frac 0.85, page-size 64, chunked-prefill 6144, io-backend `direct`,

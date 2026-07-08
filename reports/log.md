@@ -152,3 +152,12 @@
   first device-absent ancestor (never frees the sole copy); (4) device eviction re-backs-up via write_back
   path (always >=1 copy). Invariant held by 3 gated edits reusing mature write_back plumbing. Matches the
   measured 24/24 bit-exact. Added a "Correctness argument" section to UPSTREAM.md (maintainer-facing).
+
+## 2026-07-08 ~20:05Z — Mechanistic COST axis quantified from existing A/B run metrics (node-free)
+- Same-node A/B (both pairs consistent): exclusive load_back_tokens 293-300M -> 401M (+34%),
+  load_back_mean_ms 1.8->19 (~10x), evict_mean_ms 1.1->20.7 (~19x); hit_device_frac 0.41->0.34 (more reuse
+  from host). => exclusive wins DESPITE ~2x more H<->D bus traffic (evict-time D->H backups + more H->D
+  load-backs), because +13pp hit removes ~13% of fresh prefill and prefill FLOPs dominate TTFT on 122B/long
+  prefix. FALSIFIABLE SCOPE CAVEAT (cost-side complement to the capacity band boundary): win shrinks/reverses
+  on H<->D-bandwidth-bound deployments or short-prefix (cheap-prefill) workloads. Confirms hot-keep neutral =
+  transfer not the limiter here. Added report subsection + UPSTREAM cost caveat.

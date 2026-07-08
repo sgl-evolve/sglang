@@ -51,7 +51,7 @@ run_cfg(){ # $1=label  $2..=extra launch args ; XTIER via env exported by caller
       --request-rate "$L" --max-concurrency 128 --num-prompts 1553 --port $PORT \
       --output-file "$OUT/res_lam$L.json" 2>&1 | tee "$OUT/bench_lam$L.txt" | grep -E "Request throughput|Median TTFT|P99 TTFT|Mean TTFT"
   done
-  kill $SRV 2>/dev/null; sleep 8; pkill -9 -f "[s]glang.launch_server" 2>/dev/null; sleep 10
+  kill $SRV 2>/dev/null; sleep 8; pkill -9 -f "[s]glang" 2>/dev/null; sleep 15
 }
 
 # A: stock write_back (config). Ensure XTIER off.

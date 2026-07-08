@@ -956,17 +956,19 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 node = self._split_node(child.key, child, prefix_len)
                 if not node.evicted:
                     value.append(node.component_data[BASE_COMPONENT_TYPE].value)
-                    _bm_cum_tok += prefix_len
-                    if separate_device_match and _bm_full_validator(node):
-                        _bm_kv_only_tok = _bm_cum_tok
+                # count KV depth regardless of tier (device OR host-backed)
+                _bm_cum_tok += prefix_len
+                if separate_device_match and _bm_full_validator(node):
+                    _bm_kv_only_tok = _bm_cum_tok
                 _update_best_if_valid(node)
                 break
 
             if not child.evicted:
                 value.append(child.component_data[BASE_COMPONENT_TYPE].value)
-                _bm_cum_tok += prefix_len
-                if separate_device_match and _bm_full_validator(node if False else child):
-                    _bm_kv_only_tok = _bm_cum_tok
+            # count KV depth regardless of tier (device OR host-backed)
+            _bm_cum_tok += prefix_len
+            if separate_device_match and _bm_full_validator(child):
+                _bm_kv_only_tok = _bm_cum_tok
             node = child
             _update_best_if_valid(node)
             key = key[prefix_len:]
@@ -975,12 +977,12 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
 
         if separate_device_match and _bm_presented > 0:
             d = self._bm_diag
-            # consensus (ALL components incl. Mamba) KV-token depth = sum KV lens root..best_match_node
+            # consensus (ALL components incl. Mamba) KV-token depth = sum node key lens
+            # root..best_match_node (counts host-backed nodes too, via node.key length)
             _bm_consensus = 0
             _n = best_match_node
             while _n is not None and _n is not self.root_node:
-                _v = _n.component_data[BASE_COMPONENT_TYPE].value
-                _bm_consensus += (len(_v) if _v is not None else 0)
+                _bm_consensus += len(_n.key)
                 _n = _n.parent
             d["m_presented"] = d.get("m_presented", 0) + _bm_presented
             d["m_kv_only"] = d.get("m_kv_only", 0) + _bm_kv_only_tok

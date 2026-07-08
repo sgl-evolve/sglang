@@ -41,6 +41,14 @@
 - Structural note: an ACTIVE multi-turn conv's doc node is an INTERNAL node (has next-turn child) → not a device/host leaf → protected from eviction while the conv extends. So loss should concentrate on (a) cold single-turn docs, (b) the arrival ramp where host fills faster than completed-conv leaves free.
 - Prior art (HiCache blog, Strata): multi-turn session KV co-residency under concurrency is UNSOLVED; eviction not session/turn-aware; Strata is I/O-latency-scheduling, orthogonal. → my angle is novel.
 
+## s0-diag findings (partial run, live server.log; killed at 22%)
+- **dev_delete ≈ 0 (44K tok), wb_fail = 0** → the write-through DELETE path is NOT the leak; nothing lost that way. All device eviction = lossless demote-to-host (14.9M).
+- **host_evict large & growing (8.5M @ 22%)** → host (L2) is the capacity bottleneck; reused content is dropped from host.
+- Pool sizes (per rank): KV device **2.35M tok** (26.9GB); Mamba device **1351 slots** (ssm_state 23.8GB, ~17.6MB/state); host = **96GB KV + 96GB Mamba** (SEPARATE pools). Mamba is a distinct, tightly-bounded tier.
+- `full token usage` p90=0.51 / `mamba usage` p90=0.34 = **LOCKED (running-batch) fraction only** (evictable cached counts as "available", pool_stats_observer.py:264). So device is effectively full; NOT idle.
+- match_prefix consensus (`best_match_node`) requires ALL components valid incl. Mamba; mamba validator = state on device OR host (mamba_component.py:67). Mamba evicts INDEPENDENTLY of KV (separate pools/LRU) → a node's KV can be on host while its Mamba state is dropped → **consensus truncates → KV reuse lost even though KV resident.** Leading hypothesis.
+- s1-diag (enhanced) adds kv_only-vs-consensus match-depth counters to confirm mamba-truncation vs KV-host-capacity.
+
 ## Decision tree (after diagnostic s0-diag counters)
 - **dev_delete_tok large (~tens of M):** delete-path is the leak → Mechanism = *lossless write-through eviction* (back up or defer before deleting; never recompute what we can demote).
 - **dev_delete_tok small, host_evict_tok large & reused:** host-pressure leak → Mechanism = *reduce host write-through pressure / conversation-aware admission to bound the resident working set*.

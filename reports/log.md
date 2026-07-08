@@ -47,3 +47,12 @@
   = -11% p99, +12% throughput. SLO knee ~l3.6 -> ~l3.95 (~+10% goodput). Confirms curve shift at full scale.
 - Contribution FULLY VALIDATED: exclusive L1<->L2 KV tiering. 6 W&B versions (lambda=3 curve) + goodput
   sweeps (600-conv screen + full-protocol l4). Line exhausted; compression = deferred future line.
+
+## 2026-07-08 ~09:55Z — space thoroughly exhausted (node-free confirmations)
+- Capacity model (sim): ceiling 0.806=0.807 (analytic); exclusive 0.725(sim)=0.750(measured). Exclusive
+  captures ~70% of the 0.622->0.807 recoverable headroom. Compression upside: x1.4->0.75, x1.6->0.77
+  (implausible lossless on FP8) -> low-EV, confirmed data-backed.
+- Scheduling co-residency AT THE KNEE (lam=4,5, C=10.16M): cold_defer adds ZERO (hit/p99 unchanged) ->
+  scheduling has no leverage even where a queue forms; exclusive PLACEMENT is sufficient+complete.
+- CONCLUSION: accessible in-contract lossless mechanism space fully explored. Exclusive L1<->L2 tiering is
+  THE mechanism (hit 0.750+/-0.003, -25% p99, +12% goodput knee). Compression = documented low-EV frontier.

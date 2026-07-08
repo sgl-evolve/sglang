@@ -118,6 +118,13 @@ Trace-driven sim (cache_sim2.py) hit vs distinct-cache capacity C, at λ=3:
   range). The residual ~30% needs KV compression ≥1.6× — implausible lossless on high-entropy FP8 (and
   with a decompression cost on the 400M-tok/run load-back path) → compression is genuinely low-EV, confirmed.
 
+### Co-residency via scheduling AT THE KNEE — NEGATIVE (sim, node-free)
+Tested cache-aware scheduling (cold-prefill defer) ON TOP of exclusive capacity (C=10.16M) at λ=4,5 (where
+a queue forms): hit **unchanged** (0.725), p99 **unchanged** (6.0/11.5 s). ⇒ the charter's "concurrency
+co-residency" is best served by exclusive PLACEMENT, not scheduling — scheduling/admission has no leverage
+on hit-rate even at the knee (cache dynamics are capacity-driven; deferring cold prefills doesn't change
+WHICH docs get cached). Confirms exclusive tiering is the sufficient AND complete mechanism for this regime.
+
 ## The protocol (fixed contract)
 - 2-tier: L1 GPU HBM (~2.35M tok) + L2 host DRAM (`--hicache-size 96` = 768 GB, ~7.81M tok). No L3.
 - Frozen launch: TP8, ctx 262144, mem-frac 0.85, page-size 64, chunked-prefill 6144, io-backend `direct`,

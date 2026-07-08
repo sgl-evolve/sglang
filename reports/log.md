@@ -33,3 +33,11 @@
   mamba has slack. A host-budget REBALANCE (grow full-attn, shrink mamba) could raise hit, BUT reuse needs
   BOTH components cached (no recompute-mamba path) and budget-ceiling/contract implications are murky
   (risk of "more memory" not "smarter engine"). DEFERRED as risky/uncertain future work.
+
+## 2026-07-08 ~08:35Z — v3 hybrid result + line synthesis
+- v3_exclusive_hotkeep2 (hybrid, threshold=2): hit 0.7474 (vs pure-exclusive 0.752), load_back 397M
+  (down from 402M), mean TTFT 806 (best). NEUTRAL -> transfer cost isn't the limiter; pure exclusive optimal.
+- Error bars (v1/v2/v3): hit 0.750+/-0.003 (+12.8pp robust), p99 ~4740+/-560 (-25%), mean TTFT -21..30%.
+- 6 W&B versions logged. Exclusive-tiering line EXHAUSTED (ordering/admission/eviction/device-headroom/
+  transfer-hybrid/mamba-rebalance all dead or neutral). Remaining ~5pp needs lossless KV compression
+  (high-risk, deferred).

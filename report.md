@@ -67,6 +67,25 @@ full eval; the baseline-vs-exclusive COMPARISON at matched load is the valid sig
 curve shift, not a de-saturation artifact — it comes from the +13pp hit-rate (less fresh prefill under
 load), attributable to the exclusive-tiering engine mechanism.
 
+### v3_exclusive_hotkeep2 — frequency-aware hybrid (commit 91d611a10, mechanism) — NEUTRAL
+`SGLANG_HICACHE_EXCLUSIVE=1 SGLANG_HICACHE_EXCLUSIVE_HOT_KEEP=2` (stock write_through flag): keep nodes
+promoted ≥2× "hot" → inclusive (skip freeing host) to cut re-backup transfers; cold nodes exclusive.
+Result: hit **0.7474** (vs pure-exclusive 0.7517–0.7525 → slightly LOWER, as hot entries take 2 tiers),
+load_back **397M** (vs 402M → transfer reduction worked as designed), mean TTFT **806 ms** (BEST; vs 863/907),
+p99 4420 (≈v1). **Net neutral.** Finding: the transfer cost of exclusivity is NOT the limiter — trading
+capacity for fewer transfers doesn't net a win ⇒ PURE exclusive (v1/v2) is near-optimal for this design.
+
+### Error bars & synthesis (3 exclusive runs: v1/v2/v3)
+- **hit_rate = 0.750 ± 0.003** (0.7525/0.7517/0.7474) vs baseline 0.622 → **+12.8pp, robust/reproducible.**
+- p99 TTFT ≈ 4740 ± 560 ms (4380/5420/4420) vs baseline 6326 → **-25% mean** (p99 is the noisier signal;
+  hit-rate and mean-TTFT are stable). mean TTFT 806–907 vs 1146 → -21 to -30%.
+- Goodput-curve shift: -17% p99 at the knee (λ=4,5).
+- **Lines EXHAUSTED:** ordering (v0_lpm, NEG), admission (sim, weak + unimplementable), eviction-order
+  (LRU≈Belady), device-headroom (none), transfer-reduction hybrid (v3, neutral), mamba host-rebalance
+  (out-of-budget). Remaining ~5pp to the 0.807 ceiling needs lossless KV COMPRESSION (host tier) —
+  high-risk kernel, likely low compressibility on FP8, low iteration throughput under node contention →
+  documented as the bolder future line, not attempted.
+
 ## The protocol (fixed contract)
 - 2-tier: L1 GPU HBM (~2.35M tok) + L2 host DRAM (`--hicache-size 96` = 768 GB, ~7.81M tok). No L3.
 - Frozen launch: TP8, ctx 262144, mem-frac 0.85, page-size 64, chunked-prefill 6144, io-backend `direct`,

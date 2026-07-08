@@ -33,6 +33,12 @@
 
 ---
 
+## ============ EXECUTIVE SUMMARY (as of 2026-07-08 ~10:20Z) ============
+**Novel insight (the contribution), sim + write_back-validated:** for the long-reuse-distance multi-turn workload, bench_serving RE-QUEUES each turn to a FIFO tail → reuse distance ≫ cache. Under the frozen **write-through** policy, every device (L1) KV is eagerly mirrored to host (L2), so **L1 is a redundant subset of L2 → effective UNIQUE cache = host (8.4M) → hit capped ~0.62**. Making L1 **non-redundant** (exclusive/deferred-backup tiering) → effective cache = L1+L2 (10.7M) → **hit 0.73 (+11pp)** + better TTFT. Confirmed by: (a) my FIFO re-queue sim (8.4M→0.59≈baseline, 10.7M→0.73), (b) write_back diagnostic (config, private): hit 0.731, p50 491, p99 4292 on the same setup.
+**Mechanism (v3, engine code, BM_EXCL):** reuse-gated exclusive tiering (defer eager backup; back up reuse-proven nodes on device eviction). Result (per-prefill unbiased hit; metrics scrape lost to late server death): **hit ≈ 0.691 (+7pp), p50 494, p99 4258 (≈ write_back, better than baseline)** — works but below the 0.73 ceiling + a late-run stability issue → needs clean re-run + refine.
+**Rigorous NEGATIVES:** warm-first scheduling ± cold-aging (v1/v2) = NEUTRAL (apparent gains were pure node variance, debunked same-node via diag2/diag3; access order is client-imposed FIFO → server scheduling can't shrink reuse distance). Mamba consensus-truncation, load_back-failure, retraction, extra_key: all ruled out with instrumentation.
+**Methodological lesson:** node variance ≈ 14% on req/s (ondem-3 2.64 vs 0-3 3.02) and ±30% on p99 → ALWAYS A/B on the SAME node.
+
 ## Analysis (offline, sim/)
 - Trace: 1553 convs / 7037 turns; each conv = 1 large doc (mean 12.3K tok, median 7K, max 192K) + ~4.5 QA turns; turn 0 prefills the doc, turns 1..n reuse it (verbatim re-send).
 - Total presented prompt tok = 99.5M (≈ baseline 99.9M ✓). **Ceiling hit = 0.806** (full-history reuse), 0.780 (doc-only, retokenization-pessimistic). Baseline actual = 0.622 → **~16-18M tok/run of reusable history is recomputed.**

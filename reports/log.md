@@ -18,3 +18,9 @@
 - s1-diag (same-clone baseline) reproduces golden: hit 0.627, p50 920 / p99 4960ms, req/s 2.64. Mamba RULED OUT (kv_only≈consensus whole run); delete-path/wb_fail≈0.
 - v1 warm-first scheduling (BM_WARMFIRST, commit d843b607f): hit FLAT 0.622, p50 637 (−31%), p99 5930 (+20%), req/s 2.94 (+11%), out_tok/s 376 (+11%). Logged to W&B (mechanism). KEY FINDING: reuse NOT scheduling-recoverable → baseline near structural reuse ceiling; warm-first trades p99 tail for median+throughput.
 - v2 (warm-first + cold-aging, commit 537bcd955) running: bound p99 while keeping throughput.
+
+## 2026-07-08T10:20Z — ROOT CAUSE cracked + exclusive-tiering mechanism
+- ★ Root cause (sim requeue_sim.py + write_back diagnostic): bench multiturn RE-QUEUES turns FIFO → reuse distance ≫ cache → capacity-limited. Under write-through, L1 device KV is a redundant subset of L2 host → effective unique cache = host 8.4M → hit 0.62. Non-redundant (exclusive) device → 10.7M → hit 0.73. write_back diag (config, private): hit 0.731, p50 491, p99 4292 (+11pp) — CONFIRMS.
+- MECHANISM v3 (BM_EXCL, reuse-gated exclusive tiering, commit 700e0f0fe): hit ≈0.691 (+7pp), p50 494/p99 4258 (≈write_back), but server died late (scrape lost) → re-running v3b. keep_hits≥2 NEGATIVE (long reuse distance).
+- NEGATIVES logged: v1 warm-first (0.622), v2 warm-first+aging (0.620) — NEUTRAL (node-variance debunked same-node via diag2 0.629/diag3 0.612, both 3.02 req/s). Mamba/load_back-fail/retraction/extra_key ruled out.
+- Baselines same-node (0-3): diag2 hit 0.629 p99 4902 reqps 3.02; diag3 hit 0.612 p99 6594 reqps 3.02 (p99 ±30% run variance).

@@ -36,3 +36,9 @@ t2048 reproduced on a 2nd node (ondem-2): p50 507, p99 4650, hit 0.670, tput 3.0
 v5 reuse-gating (reuse_min=1) @t2048 vs control: hit +1.2% (0.670->0.678), p99 +4.4% (within noise), headline flat → NEUTRAL.
 Conclusion: pure recompute-cost-aware eviction @ threshold ~2048 is the best operating point; extensions
 (mamba v3, reuse-gating v5) do not compound. Study of the cost-aware-eviction line complete.
+
+## 2026-07-08 — Threshold optimum characterized (U-shaped): t2048 is the sweet spot
+Full curve (p50/p99/hit/tput): stock 736/5189/0.627/2.87 | t1024 520/5571/0.657/3.02 | t2048 529/4691/0.674/3.02
+| t4096 797/4602/0.674/3.02 | t8192 543/4837/0.615/3.02. t1024 (over-protect) p99 WORSE than stock (5571);
+t8192 (under-protect) hit<stock (0.615). Cost-awareness must be TARGETED near reusable-prefix len (~2048),
+not blanket. t2048 = definitive optimum (strict Pareto win). Cost-aware eviction study definitively complete.

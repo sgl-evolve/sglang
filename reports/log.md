@@ -30,3 +30,9 @@ Same-node serial sweep (ondem-3). p50/p90/p99/hit/tput/outtok:
 Cost-aware eviction robustly wins the headline (tput +5%, p99 -10%) across thresholds; t2048 also fixes p50
 and lifts hit +7.5%. Confirms thesis: recompute-COST (not count-hit-rate) is the right eviction objective
 under an SLO. v3 mamba extension = negative. Best operating point = cost-aware eviction @ threshold 2048.
+
+## 2026-07-08 — v5 reuse-gating @t2048 NEUTRAL + t2048 REPRODUCED
+t2048 reproduced on a 2nd node (ondem-2): p50 507, p99 4650, hit 0.670, tput 3.02 (≈ 1st run p50 529/p99 4691/hit 0.674) → win is robust, not noise.
+v5 reuse-gating (reuse_min=1) @t2048 vs control: hit +1.2% (0.670->0.678), p99 +4.4% (within noise), headline flat → NEUTRAL.
+Conclusion: pure recompute-cost-aware eviction @ threshold ~2048 is the best operating point; extensions
+(mamba v3, reuse-gating v5) do not compound. Study of the cost-aware-eviction line complete.

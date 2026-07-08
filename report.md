@@ -126,7 +126,7 @@ The headline metric = max req/s at p99 TTFT ≤ 8s. SAME-NODE A/B — baseline w
   - p99 > baseline (cold prefills deferred) → warm-first trades tail → confirms pure-reorder can't shift the SLO curve (charter's point); need a work-reducing (hit) mechanism instead.
 
 ## ★ ROOT CAUSE CRACKED (sim-confirmed): capacity-limited by long client-imposed reuse distance
-bench_serving multiturn RE-QUEUES each conversation to the END of a FIFO queue after every turn (benchmark/hicache/bench_serving.py:186-190) and pulls FIFO — so a conversation's consecutive turns are separated by a FULL QUEUE CYCLE (hundreds of convs), giving a reuse distance ≫ cache. Corrected offline sim (sim/requeue_sim.py, FIFO re-queue + finite LRU) reproduces the baseline:
+bench_serving multiturn RE-QUEUES each conversation to the END of a FIFO queue after every turn (benchmark/hicache/bench_serving.py:186-190) and pulls FIFO — so a conversation's consecutive turns are separated by a FULL QUEUE CYCLE (hundreds of convs), giving a reuse distance ≫ cache. **Arrival model code-verified (this assumption is load-bearing, so I checked it directly, not just by the measurement match):** the re-queue is to the tail with **no inter-turn think-time** (`bench_serving.py:186-190`), the sender releases at **Poisson rate λ** (`get_requests`, `interval = np.random.exponential(1/request_rate)`, lines 279-283), and concurrency is a **semaphore of max-concurrency=128** (line 396). That is exactly `requeue_sim`'s model (tail re-queue + λ-paced FIFO + finite LRU) — so the reuse distance is a genuine client/harness property, not a sim artifact. Corrected offline sim (sim/requeue_sim.py) reproduces the baseline:
 | effective cache | sim hit |
 |---|---|
 | 5.0M | 0.316 |

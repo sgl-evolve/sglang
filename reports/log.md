@@ -20,3 +20,13 @@ hit 0.671 vs 0.674 (flat), tput 3.02 vs 3.02 (flat), p50 619 vs 797 (-22%), p99 
 Negative: mamba cost-aware eviction does NOT compound v1 (mamba pool isn't the binding recompute constraint;
 full-KV host eviction, already cost-aware in v1, is). Mamba code kept gated OFF. v1-repro reproduces v1 (stable).
 Next: threshold sweep (t2048/t8192) to probe p99; v4 reuse-gated cost (protect only reused-expensive) ready.
+
+## 2026-07-08 — Threshold sweep complete: t2048 = STRICT WIN over stock
+Same-node serial sweep (ondem-3). p50/p90/p99/hit/tput/outtok:
+  stock  736/2369/5189/0.627/2.87/367
+  t8192  543/2234/4837/0.615/3.02/387   (beats stock tput/p99 but hit<stock: cost>count)
+  t4096  797/1957/4602/0.674/3.02/387   (p50 regression artifact)
+  t2048  529/2107/4691/0.674/3.02/387   <- BEST: strict Pareto win over stock on ALL metrics
+Cost-aware eviction robustly wins the headline (tput +5%, p99 -10%) across thresholds; t2048 also fixes p50
+and lifts hit +7.5%. Confirms thesis: recompute-COST (not count-hit-rate) is the right eviction objective
+under an SLO. v3 mamba extension = negative. Best operating point = cost-aware eviction @ threshold 2048.

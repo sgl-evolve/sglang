@@ -119,6 +119,23 @@ hit 0.6269; host_util 1.0; tput 2.87; out_tok/s 367; tpot 252; load_back 302M; e
   recompute. Mamba cost-awareness is redundant here. Kept gated OFF by default (v1 remains best). Note: also
   reproduces v1's stability — v1-repro (p99 4601, tput 3.02, hit 0.674) ≈ v1 (p99 4820, tput 3.02, hit 0.681).
 
-- **v4** (planned): **reuse-gated cost-aware eviction** — protect a long prefix only when it is BOTH
-  expensive (≥ thr tokens) AND has proven reuse (hit_count ≥ 1), so one-shot long prefixes aren't protected
-  at the expense of reused short ones. Aims to keep v1's tail/hit/tput gains while cutting the p50 regression.
+- **v1-t2048** (`7a5fe5850`, `mechanism`, **STRICT WIN**): cost-aware eviction, threshold **2048** (vs v1's
+  4096). Threshold sweep on ondem-3 (same node, serial). Result vs stock control (v0-ctl):
+
+  | metric | v0-ctl (stock LRU) | v1 t4096 | **v1-t2048** | t2048 vs stock |
+  |---|---|---|---|---|
+  | p50 TTFT (ms) | 736 | 797 | **529** | **−28%** |
+  | p90 TTFT (ms) | 2369 | 1957 | 2107 | −11% |
+  | p99 TTFT (ms) | 5189 | 4602 | 4691 | **−9.6%** |
+  | hit_rate | 0.627 | 0.674 | 0.674 | **+7.5%** |
+  | req throughput | 2.87 | 3.02 | 3.02 | **+5.2%** |
+  | out_tok/s | 367 | 387 | 387 | **+5.4%** |
+
+  **KEY RESULT:** at threshold 2048, cost-aware eviction is a **strict Pareto improvement over stock LRU on
+  every metric** — the p50 regression seen at t4096 was a *threshold artifact*. Protecting prefixes ≥2048 tok
+  (near the ~2741-tok average reusable prefix) keeps the median-relevant prefixes resident, so both the
+  median AND the tail improve. p99 is ~flat across thresholds (all ≈4600-4700 << stock 5189) — the headline
+  (goodput@p99-SLO) win is robust; t2048 additionally wins p50. Lossless by construction.
+
+- **v4** (reuse-gated cost, code ready `7a5fe5850`): motivation (fix p50 regression) largely superseded by
+  t2048; may still help capacity use. Lower priority now.

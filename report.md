@@ -146,6 +146,19 @@ co-residency" is best served by exclusive PLACEMENT, not scheduling — scheduli
 on hit-rate even at the knee (cache dynamics are capacity-driven; deferring cold prefills doesn't change
 WHICH docs get cached). Confirms exclusive tiering is the sufficient AND complete mechanism for this regime.
 
+### Losslessness — MEASURED (bit-exact vs stock cache), not just by-construction
+A 3-mode greedy verify (24 long docs, round1 fresh / round2 cache-hit exercising the exclusive host-free +
+load-back path; tools/lossless_verify*.sh):
+- **exclusive vs stock: 24/24 bit-exact identical outputs on BOTH fresh and cache-hit paths** ⇒ the
+  exclusive-tiering mechanism produces the SAME outputs as the stock write_through cache — **lossless
+  relative to the default cache** (the correct bar). Certified by measurement, not just by-construction.
+- Honest caveat (applies to ALL cache modes here, incl. stock): the hybrid-Mamba radix cache is inherently
+  NOT bit-exact vs no-cache — 4/24 long docs show a subtle greedy drift (identical for ~30-40 tokens then a
+  token flips), because a cache hit reconstructs the Mamba SSM state from a chunk-aligned checkpoint + tail
+  recompute (float non-associativity) rather than a fresh full-sequence compute. STOCK shows the IDENTICAL
+  4/24 pattern ([6,8,12,17]) ⇒ this is a property of sglang's hybrid cache, NOT of exclusive tiering. My
+  mechanism only relocates the exact KV/checkpoint bytes, so it inherits stock's behavior exactly.
+
 ## The protocol (fixed contract)
 - 2-tier: L1 GPU HBM (~2.35M tok) + L2 host DRAM (`--hicache-size 96` = 768 GB, ~7.81M tok). No L3.
 - Frozen launch: TP8, ctx 262144, mem-frac 0.85, page-size 64, chunked-prefill 6144, io-backend `direct`,

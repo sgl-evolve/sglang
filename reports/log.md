@@ -24,3 +24,7 @@
 - MECHANISM v3 (BM_EXCL, reuse-gated exclusive tiering, commit 700e0f0fe): hit ≈0.691 (+7pp), p50 494/p99 4258 (≈write_back), but server died late (scrape lost) → re-running v3b. keep_hits≥2 NEGATIVE (long reuse distance).
 - NEGATIVES logged: v1 warm-first (0.622), v2 warm-first+aging (0.620) — NEUTRAL (node-variance debunked same-node via diag2 0.629/diag3 0.612, both 3.02 req/s). Mamba/load_back-fail/retraction/extra_key ruled out.
 - Baselines same-node (0-3): diag2 hit 0.629 p99 4902 reqps 3.02; diag3 hit 0.612 p99 6594 reqps 3.02 (p99 ±30% run variance).
+
+## 2026-07-08T12:00Z — ★ NEW BEST: v3c exclusive-tiering mechanism (+11pp hit, better TTFT, stable)
+- v3c-excl (commit 574e477ca, BM_EXCL reuse-gated exclusive KV tiering, engine code): hit **0.7331** (+11pp vs baseline 0.62), p50 **474** (−17%), p99 **4084** (−17-38% vs baseline 4902-6594), req/s **3.02** (no regression), host_util 0.9996. Matches the write_back diagnostic (0.731) — captures the full lever as an ENGINE MECHANISM (frozen write_through config; resolved_args unchanged). Stable (0 crashes after the sanity-parity fix). Lossless (caching policy doesn't change computed KV). Logged to W&B (mechanism).
+- This realizes the root-cause fix: write-through makes L1 a redundant subset of L2 (effective cache=host 8.4M→hit 0.62); exclusive tiering makes L1 non-redundant (effective 10.7M→hit 0.73).

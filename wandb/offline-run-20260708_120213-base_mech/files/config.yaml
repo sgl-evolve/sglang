@@ -1,0 +1,77 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    python_version: 3.12.13
+    cli_version: 0.28.0
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1783512134
+    t:
+      3:
+      - 2
+      - 4
+      - 13
+      - 14
+      - 16
+      - 42
+      4: 3.12.13
+      5: 0.28.0
+      13: linux-x86_64
+    e:
+      b34zbww6bagefnp1zwm4wtbeeqq07d4d:
+        os: Linux-6.8.0-1027-gcp-tcpx-x86_64-with-glibc2.35
+        python: CPython 3.12.13
+        started_at: '2026-07-08T12:02:13.804833Z'
+        args:
+        - base_mech
+        - runs/v3c-excl/summary.json
+        - v3c-excl
+        - 574e477ca
+        - mechanism
+        program: /home/junyanch_google_com/autoresearch/programs/sgl/v0.25_ablations/base_mech/researcher/.claude/skills/report-sop/scripts/log_wandb.py
+        git:
+          remote_url: https://x-access-token:@github.com/sgl-evolve/sglang.git
+          commit: 574e477caeec24a6c0c336e01b0f2b328ccba03d
+        root: /home/junyanch_google_com/autoresearch/workspace/sgl/v0.25_ablations/base_mech/researchers/base_mech
+        host: slurm2-c3nodeset-0
+        executable: /home/junyanch_google_com/autoresearch/workspace/sgl/v0.25_ablations/base_mech/researchers/base_mech/.venv/bin/python
+        cpu_count: 44
+        cpu_count_logical: 44
+        disk:
+          /:
+            total: '1040442621952'
+            used: '454845882368'
+        memory:
+          total: '371914428416'
+        writer_id: b34zbww6bagefnp1zwm4wtbeeqq07d4d
+version:
+  desc: null
+  value: v3c-excl
+commit:
+  desc: null
+  value: 574e477ca
+resolved_args:
+  desc: null
+  value:
+    context_length: '262144'
+    mem_fraction_static: '0.85'
+    hicache_size: '96'
+    tp_size: '8'
+    hicache_io_backend: direct
+    hicache_mem_layout: page_first_direct
+    hicache_write_policy: write_through
+    page_size: '64'
+version_kind:
+  desc: null
+  value:
+    v3c-excl: mechanism
+code_churn:
+  desc: null
+  value:
+    v3c-excl:
+      files: 2
+      added: 183
+      deleted: 1
+      net: 184

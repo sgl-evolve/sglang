@@ -35,7 +35,7 @@
 
 ## ============ EXECUTIVE SUMMARY (as of 2026-07-08 ~10:20Z) ============
 **Novel insight (the contribution), sim + write_back-validated:** for the long-reuse-distance multi-turn workload, bench_serving RE-QUEUES each turn to a FIFO tail → reuse distance ≫ cache. Under the frozen **write-through** policy, every device (L1) KV is eagerly mirrored to host (L2), so **L1 is a redundant subset of L2 → effective UNIQUE cache = host (8.4M) → hit capped ~0.62**. Making L1 **non-redundant** (exclusive/deferred-backup tiering) → effective cache = L1+L2 (10.7M) → **hit 0.73 (+11pp)** + better TTFT. Confirmed by: (a) my FIFO re-queue sim (8.4M→0.59≈baseline, 10.7M→0.73), (b) write_back diagnostic (config, private): hit 0.731, p50 491, p99 4292 on the same setup.
-**Mechanism (v3, engine code, BM_EXCL):** reuse-gated exclusive tiering (defer eager backup; back up reuse-proven nodes on device eviction). Result (per-prefill unbiased hit; metrics scrape lost to late server death): **hit ≈ 0.691 (+7pp), p50 494, p99 4258 (≈ write_back, better than baseline)** — works but below the 0.73 ceiling + a late-run stability issue → needs clean re-run + refine.
+**★ Mechanism (v3c, engine code, BM_EXCL) — WIN:** reuse-gated exclusive KV tiering — defer the eager write-through backup so L1 holds non-redundant content; on device eviction back up reuse-proven (hit≥keep, keep=1) nodes. After a stability fix (sanity-check parity: exclusive tiering does write-back-style leaf-first backup, so skip the write-through parent-first invariant like write_back does), v3c-excl (commit 574e477ca) on node 0-3: **hit 0.7331 (+11pp vs same-node baseline 0.61-0.63), TTFT p50 474 (−17%), p99 4084 (−17..-38%), req/s 3.02 (no regression), stable (0 crashes), lossless.** Matches the write_back diagnostic (0.731) but as a LOGGABLE engine mechanism (frozen write_through config; resolved_args unchanged). (v3/v3b earlier died late on the sanity assertion — fixed.)
 **Rigorous NEGATIVES:** warm-first scheduling ± cold-aging (v1/v2) = NEUTRAL (apparent gains were pure node variance, debunked same-node via diag2/diag3; access order is client-imposed FIFO → server scheduling can't shrink reuse distance). Mamba consensus-truncation, load_back-failure, retraction, extra_key: all ruled out with instrumentation.
 **Methodological lesson:** node variance ≈ 14% on req/s (ondem-3 2.64 vs 0-3 3.02) and ±30% on p99 → ALWAYS A/B on the SAME node.
 
@@ -112,6 +112,8 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 | v1-warmfirst | d843b607f | mechanism | 0.6224 | 637/5930 | 0.9999 | 2.94 | warm-first (node 0-3). Apparent gains vs s1-diag were NODE VARIANCE (see diag2). |
 | v2-warmage | 537bcd955 | mechanism | 0.6196 | 606/5092 | 0.9997 | 3.02 | warm-first+aging (0-3): aging fixed v1's p99 (vs v1 same node). |
 | diag2 | 3ebce16b5 | (screening) | 0.6288 | 573/4902 | ~1.0 | 3.02 | **BASELINE fcfs on SAME node 0-3** — de-confounder |
+| diag3 | 3ebce16b5 | (screening) | 0.6120 | ? /6594 | ~1.0 | 3.02 | 2nd same-node baseline (p99 ±30% run variance) |
+| **v3c-excl** | **574e477ca** | **mechanism** | **0.7331** | **474/4084** | 0.9996 | **3.02** | **★ WIN: exclusive KV tiering (engine code). +11pp hit, p50 −17%, p99 −17-38%, no throughput regression, stable, lossless. Matches write_back(config) 0.731.** |
 
 ## ⚠️ CRITICAL: warm-first is a NEGATIVE result (node-variance debunked)
 diag2 (baseline fcfs, node 0-3) vs v2 (warm-first+aging, node 0-3) — SAME NODE:

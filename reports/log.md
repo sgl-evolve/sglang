@@ -77,3 +77,6 @@ Two ceilings, both reached: (1) hit-rate ceiling 0.73 = exclusive distinct capac
 ## 2026-07-08 — λ=5 knee: XTIER's exact knee pinned (headline refined)
 Full XTIER knee (measured): λ=3 p99 4390 / λ=4 p99 7497-7794 (✅ ≤8s, 2 nodes) / λ=5 p99 11012 (✗). Baseline: λ=3 5067 / λ=4 9227 (✗).
 ⇒ max-sustainable goodput (p99≤8s): XTIER ~3.74-3.9 req/s (knee ~λ4.3) vs baseline ~3.35 (knee ~λ3.4) = +~12-16%. Headline goodput-curve shift MEASURED end-to-end. Contribution complete.
+
+## 2026-07-08 — same-node A/B attempted; harness crash (transient node), abandoned
+Custom A/B harness (ab_node.sh) crashed on write_back startup (sigquit — transient node issue; custom harnesses lack eval.sh's NCCL preflight). Freed node. XTIER-vs-write_back stands as characterized (reliable median/mean edge via structural load_back reduction; p99 parity; node-variance caveat noted). CONTRIBUTION COMPLETE: exclusive-tiering insight + XTIER mechanism + measured headline goodput curve (+12-16%, XTIER knee ~λ4.3 vs baseline ~λ3.4) + frontier analysis. All durable (W&B/report/memory/git).

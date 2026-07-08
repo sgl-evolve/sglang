@@ -51,3 +51,10 @@ out_tok. Earlier "strict Pareto +5% tput / −10% p99" OVERSTATED (partly varian
 Robust core stands: cost-aware eviction @t2048 is a lossless hit-rate (+5.4pp) & median-TTFT (−21%) win,
 −12.5% total recompute work. Lesson: single-run comparisons on this contended cluster overstate; need paired
 same-node A/Bs + repeats. v6-t2048 logged (3rd t2048 replicate, p99 5686 = high-variance draw).
+
+## 2026-07-08 — v7 3-tier cost eviction NEUTRAL (n=2 vs n=5)
+3-tier (protect longest ≥8192 most): p99 [4672, 5011] mean 4841 vs 2-tier [4691,4650,5686,5234,5372] mean 5127.
+Ranges overlap; initial paired -10.7% was noise (2nd 3-tier run 5011). hit/p50/tput identical. NEUTRAL.
+Verdict: 2-tier cost-aware eviction @t2048 captures the available benefit; refinements (mamba v3, reuse-gate
+v5, 3-tier v7) all NEUTRAL. p99 tail is noise/capacity-limited (~±10% intrinsic variance) beyond t2048.
+Cost-aware eviction design space thoroughly bounded. Robust contribution: hit +5.4pp, p50 -21% (lossless).

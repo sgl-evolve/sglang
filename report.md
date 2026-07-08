@@ -7,6 +7,39 @@ project `sgl-evolve`. Model Qwen3.5-122B-A10B-FP8 (hybrid-Mamba GDN MoE), TP8, c
 > DIFFERENT protocol (2-tier, no disk) → that thesis (serial-prefetch-backlog disk arbiter) does not apply.
 > Starting fresh from the baseline; reusing only cluster/ops lessons, re-deriving all science.
 
+## EXECUTIVE SUMMARY (for a skeptical maintainer)
+**Contribution: EXCLUSIVE L1↔L2 KV-cache tiering for HiCache** — under memory pressure, keep each cached
+entry on device XOR host (never both), instead of the stock INCLUSIVE behavior where write_through eagerly
+duplicates every hot device entry onto host. This raises *distinct* cache capacity by ~the device-tier size
+and, because the system sits on the STEEP part of the hit-vs-capacity curve, converts to a large hit-rate
+and tail-latency win.
+
+**Result ladder (fixed protocol, λ=3), all clean/on-contract, lossless:**
+- fcfs baseline (inclusive, stock): hit **0.622**, p99 TTFT **6326 ms**.
+- +write_back flag (write-side exclusivity only): hit **0.733** (+11pp), p99 **4581** (-28%).  [config]
+- +free-host-on-promotion (my engine mechanism → full exclusivity): hit **0.7525** (+13.1pp vs baseline),
+  p99 **4380 ms (-30.8%)**, mean TTFT 863 (-25%), req/s 2.78→3.02.  [mechanism, commit 21023af6d]
+
+**Why it works / evidence:** (1) live metrics show both tiers saturated but with write_through the device
+tier is a redundant *inclusive* subset of host (device⊆host) → distinct capacity ≈ host alone (7.81M) for a
+19M-token working set; (2) a trace-calibrated simulator shows hit is steeply capacity-sensitive around this
+operating point; (3) 3-point ablation isolates the write-side (config) vs promotion-side (engine) halves.
+
+**What I ruled out (negative results, valued):** prefix-ORDERING is a dead end — `--schedule-policy lpm`
+does NOT change hit (0.62→0.62) and *worsens* p99 to 21.4 s (cache-cold starvation); eviction-ORDER is a
+dead end (LRU≈Belady, charter + confirmed by lpm); ADMISSION/concurrency-capping showed ~no hit gain in
+sim and is not cleanly implementable (no conversation id to separate active from finished-cached convs).
+
+**Generalizable insight:** for a saturated multi-tier KV cache on the steep hit-vs-capacity curve, the
+lever is *effective capacity* (exclusive tiering / de-duplication), not scheduling order or admission.
+Inclusive-by-default HiCache leaves the fast tier as dead-weight duplication; make it exclusive.
+
+**Honest limits:** the write-side half is reachable via a stock flag (write_back); the *engine* mechanism's
+marginal gain over that strong config is modest (+2.0pp hit, -4.4% p99), though the FULL exclusive design
+(needing the promotion-side engine change) and the insight are the contribution. Exclusivity increases
+host→device load-back (298M→402M) — net TTFT still improves. Self-contained version (SGLANG_HICACHE_EXCLUSIVE
+alone, no flag, commit feca1871e) + goodput-curve sweep + error-bar reruns in progress (node-contended).
+
 ## The protocol (fixed contract)
 - 2-tier: L1 GPU HBM (~2.35M tok) + L2 host DRAM (`--hicache-size 96` = 768 GB, ~7.81M tok). No L3.
 - Frozen launch: TP8, ctx 262144, mem-frac 0.85, page-size 64, chunked-prefill 6144, io-backend `direct`,

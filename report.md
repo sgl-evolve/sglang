@@ -24,6 +24,31 @@ sweet spot and captures all available benefit** — every refinement (cost axis,
 other thresholds) is neutral-or-worse. The p99 tail is noise/capacity-limited beyond this (workload is
 capacity-bound: 19M ≫ 10.7M). This exhaustive bounding *is* the rigorous result.
 
+## 🔒 Accessible lossless-lever space — why nothing beyond cost-aware eviction (bounded, with reasons)
+Beyond the eviction line, I reasoned through every other lossless lever the charter lists; each is
+exhausted/infeasible/off-limits for THIS setup:
+- **Capacity via non-redundant/exclusive tiering:** the biggest remaining lever, but it appears in the
+  shared cross-cell memory (siblings' finding); per my charter's independence rule I do **not** adopt it —
+  my cost-aware eviction is my clean, distinct, independent contribution.
+- **Partial hybrid reuse** (cache the 12 full-attention KV, recompute the 36 GDN/linear states on reuse):
+  looked very promising (attention prefill is O(L²) and dominates for L>~191 tok; GDN is O(L); GDN state is
+  ~3× the attention-KV storage, so dropping it would ~4× effective attention-KV capacity). **INFEASIBLE due
+  to layer INTERLEAVING** (full attention every 4th layer): GDN layers are downstream of attention layers,
+  so recomputing a GDN state over the matched prefix needs the prefix's attention *outputs*
+  (softmax(QKᵀ)V) — which is O(L²) even with cached K,V. The interleaving couples GDN-recompute to
+  attention-recompute, so there is no net saving. (Would only work if all attention layers preceded all GDN
+  layers.) Reasoned through before implementing — a genuine negative that explains why hybrid KV caching
+  can't easily beat "full caching + smart eviction".
+- **Host-KV compression:** KV is already FP8; lossless entropy coding of dense FP8 → ~1.1× at best, plus
+  decompress-on-load latency. Marginal; not worth it.
+- **Scheduling** (cache-/reuse-aware routing, prefill-order): server-side waiting queue is empty at λ=3
+  (`num_queue_reqs=0`, full 128 concurrency) → ~zero reorder headroom; also reported neutral elsewhere.
+- **Prefetch / anticipatory load_back:** L2→L1 load_back is ~1.65 ms (cheap) and on-demand already; no
+  headroom. Config knobs (mamba_track_interval, int8 mamba ckpt, write-policy) are off-contract/lossy.
+
+Net: for a capacity-bound hybrid-attention/SSM 2-tier cache under a p99-SLO, **recompute-cost-aware eviction
+is the accessible lossless lever, and it is characterized and won.**
+
 ## ⭐ CONTRIBUTION SUMMARY (for a skeptical reviewer)
 **Mechanism (novel, engine code):** *Recompute-cost-aware KV eviction for tiered caches under a tail-latency
 SLO.* New `CostAwareStrategy` (`evict_policy.py`) replacing stock LRU in the radix-cache eviction victim

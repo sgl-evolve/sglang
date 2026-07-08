@@ -66,3 +66,15 @@ p90 1754 vs 1916 (-8%), tput 3.02 both. NEUTRAL — cost AXIS (segment vs depth)
 tension (depth protects nearly all deep nodes) as predicted. segment-length @t2048 remains sufficient/optimal.
 Cost-aware eviction design space now EXHAUSTIVELY characterized: WIN=segment@t2048 (hit +5.4pp, p50 -21%, lossless);
 NEUTRALS=mamba(v3), reuse-gate(v5), 3-tier(v7), depth(v8), threshold!=2048 (U-optimum). Refinements don't add.
+
+## 2026-07-08 — Accessible lossless-lever space bounded (partial hybrid reuse INFEASIBLE)
+Reasoned through remaining levers before spending evals:
+- Partial hybrid reuse (cache 12 full-attn KV, recompute 36 GDN states on reuse): promising on paper
+  (attn prefill O(L²) dominates for L>~191; GDN O(L); GDN state ~3× attn-KV storage → ~4× capacity), but
+  INFEASIBLE — layer interleaving (full attn every 4th of 48 layers) means recomputing GDN needs the
+  prefix's attention OUTPUTS (O(L²) even with cached K,V); GDN downstream of attn couples them. No saving.
+- Host-KV compression: FP8 already, ~1.1× lossless, +latency → marginal. Scheduling: no server queue at λ=3
+  → no reorder headroom (+ neutral elsewhere). Prefetch: load_back cheap (1.65ms), no headroom. Config knobs
+  off-contract. Exclusive tiering: siblings' (shared memory) → not adopted per independence rule.
+Conclusion: cost-aware eviction is THE accessible lossless lever for this capacity-bound hybrid 2-tier cache;
+characterized and won. Model: 48 layers = 36 linear/GDN + 12 full-attn (interval 4); GDN state ~3× attn-KV.

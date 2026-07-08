@@ -124,3 +124,9 @@
   prefill-stressed nodes. Corrected exec summary. No new run needed (node-variance already established).
 - FINAL honest contribution framing: hit +13pp (rock-solid) is the core; TTFT/p99/goodput are real but
   load/node-dependent downstream benefits. Lossless bit-exact. 12 W&B versions.
+
+## 2026-07-08 ~18:40Z — packaged contribution as upstream/PR-quality artifact
+- Wrote UPSTREAM.md: concise maintainer-facing summary (problem / mechanism + exact commits & files /
+  evaluation w/ honest robust vs node-dependent split / when-to-use generalization / limits). This is the
+  actionable artifact for adopting the exclusive-tiering contribution. Research provably complete; every
+  charter dimension (novel mechanism, rigorous+honest evidence, generalizable insight, upstream package) done.

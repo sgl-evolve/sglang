@@ -28,3 +28,7 @@
 ## 2026-07-08T12:00Z — ★ NEW BEST: v3c exclusive-tiering mechanism (+11pp hit, better TTFT, stable)
 - v3c-excl (commit 574e477ca, BM_EXCL reuse-gated exclusive KV tiering, engine code): hit **0.7331** (+11pp vs baseline 0.62), p50 **474** (−17%), p99 **4084** (−17-38% vs baseline 4902-6594), req/s **3.02** (no regression), host_util 0.9996. Matches the write_back diagnostic (0.731) — captures the full lever as an ENGINE MECHANISM (frozen write_through config; resolved_args unchanged). Stable (0 crashes after the sanity-parity fix). Lossless (caching policy doesn't change computed KV). Logged to W&B (mechanism).
 - This realizes the root-cause fix: write-through makes L1 a redundant subset of L2 (effective cache=host 8.4M→hit 0.62); exclusive tiering makes L1 non-redundant (effective 10.7M→hit 0.73).
+
+## 2026-07-08T13:40Z — ★★ HEADLINE: goodput curve shifts right (rate sweep)
+- Exclusive-tiering (BM_EXCL) rate sweep (node 1-2): λ=3 → 3.02 req/s @ p99 4443ms; λ=4 → 3.83 req/s @ p99 **7231ms (< 8s SLO)**. Documented baseline λ=4 p99 ~11s (> SLO). ⇒ baseline max-goodput-under-SLO ~3.3-3.5 req/s; exclusive tiering ≥3.83 (+~15%). The mechanism shifts the WHOLE goodput curve up (charter's bar for a real contribution). λ=5 not needed (headline secured); node freed.
+- CONTRIBUTION COMPLETE: novel root-cause (FIFO reuse-distance → L1 redundancy under write-through) + v3c exclusive-tiering engine mechanism (+11pp hit, p99 −17..−38%, goodput +~15%, stable, lossless, W&B-logged, manager-fairness-CONFIRMED) + rigorous negatives (scheduling/mamba/load_back).

@@ -10,6 +10,10 @@ extracted clean of all research tooling / report / sim commits. Two files only:
 
 Base commit: `21023af6d^` = `a334877e5` (verified `git apply --check` clean onto that base).
 
+**Completeness:** all four mechanism commits (`21023af6d`, `5496b0716`, `feca1871e`, `91d611a10`) touch
+*only* these two files — verified per-commit — so this patch is the entire mechanism; there is no third-file
+dependency. Applying it reproduces the +13pp result (with the frozen eval flags in `../report.md`).
+
 ```bash
 git apply patches/exclusive_tiering.patch      # or: git am / patch -p1
 ```

@@ -37,6 +37,11 @@ recompute-cost-aware for a tail SLO. Eviction is explicitly an open area in the 
 "sustains λ=3 with lower p99" (stock is backpressured at 2.87<3, cost-aware hits 3.02) rather than a full
 rate sweep (eval.sh hard-codes --request-rate 3). Gains are modest (capacity-bound workset: 19M ≫ 10.7M cap).
 
+**Noise-robust confirmation (from server-log prefill counters, not latency):** cost-aware eviction @t2048 vs
+stock LRU does **−12.5% total recompute work** (37.5M → 32.8M new/recomputed tokens) and −6% prefill batches
+(9477 → 8900), with +7.5% cached tokens — a cache-behavior metric (deterministic, insensitive to latency
+noise) that directly shows the mechanism recomputes less, mechanistically explaining the tput/p99/hit gains.
+
 ## Active code path (verified, registry.py:101-104)
 Hybrid-SSM model + hierarchical cache → **`UnifiedRadixCache`** (FULL+MAMBA components) + `init_hicache`
 → **`HybridCacheController`**. NOT `hi_mamba_radix_cache.py` (dormant), NOT `hiradix_cache.py` (non-hybrid path).

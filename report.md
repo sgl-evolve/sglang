@@ -20,14 +20,17 @@ write-through's inclusivity.*
 **Mechanism (novel engine code — beats the stock config).** `XTIER` (`SGLANG_XTIER_LAZY`): lazy-backup
 exclusive tiering — skip eager backup (keep hot KV *device-exclusive*), and only *minimally* async-back-up
 the coldest device leaves under pressure. Lossless by construction (backed→demote; unbacked-evicted→
-recompute — both give identical KV). **Best config (WM_FRAC 0.1) beats BOTH baseline and the stock
-`write_back` flag on the SLO-critical TTFT: p50 −30%, p99 −36%, mean −25% (vs write_back's −22/−32/−20%),
-same +9% req/s.** The insight behind the win: exclusive tiering's extra hits are *host* hits (each a H→D
-load-back on the prefill critical path); by keeping KV maximally device-exclusive, XTIER serves more
-reuses straight from L1 (**load-back +17% vs write_back +29%**) → lower TTFT, trading ~4 pp raw hit
-(0.69 vs 0.73) for far fewer transfers — the right trade under a p99-TTFT SLO. **WM_FRAC sweep (0.1<0.2<0.3
-on p99)** shows *less* proactive backup is better (avoids premature host-displacement). Remaining lever:
-reuse-aware L1 retention to push device-hits further; error-bar repeats; knee sweep for the goodput curve.
+recompute — both give identical KV). **Best config (WM_FRAC 0.1, 2 runs v4/v4b) beats baseline (p50 −28/−30%, p99 −29/−36%, mean −24/−25%,
+req/s +9%) and — vs the stock `write_back` flag — RELIABLY wins median/mean TTFT (p50 525-539 vs 585 ≈
+−8-10%; mean 854-867 vs 918 ≈ −6%) with p99 at PARITY (v4 4067 / v4b 4486 vs wb 4291 — within ~±5%
+run-to-run noise).** The insight behind the edge: exclusive tiering's extra hits are *host* hits (each a
+H→D load-back on the prefill critical path); by keeping KV maximally device-exclusive, XTIER serves more
+reuses straight from L1 (**load-back +17-19% vs write_back +29%** — a structural, non-noise difference) →
+lower typical TTFT, trading ~4 pp raw hit (0.69 vs 0.73) for far fewer transfers. **WM_FRAC sweep
+(p99 0.1≈0.2<0.3; median 0.1 best)** shows *less* proactive backup is better (avoids premature
+host-displacement). So: exclusive tiering (XTIER *or* write_back) is the win over baseline; XTIER is the
+novel lossless engine mechanism realizing it, with a tunable device-exclusivity knob that edges write_back
+on typical latency. Remaining levers: reuse-aware L1 retention (more device hits); knee sweep for the curve.
 
 ## Regime (this cell, v0.25 — distinct from v0.2)
 2-tier HiCache: **L1** GPU HBM (~2.35 M tok) + **L2** host DRAM 768 GB (~8.4 M tok) = **~10.7 M** capacity.

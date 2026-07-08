@@ -161,3 +161,11 @@
   prefix. FALSIFIABLE SCOPE CAVEAT (cost-side complement to the capacity band boundary): win shrinks/reverses
   on H<->D-bandwidth-bound deployments or short-prefix (cheap-prefill) workloads. Confirms hot-keep neutral =
   transfer not the limiter here. Added report subsection + UPSTREAM cost caveat.
+
+## 2026-07-08 ~20:25Z — Clean isolated mechanism patch (node-free upstream deliverable)
+- patches/exclusive_tiering.patch: git diff of ONLY the 2 engine files vs the TRUE mechanism base
+  (21023af6d^ = a334877e5), isolated from all tooling/report/sim commits. environ.py +11, urc.py +80/-12.
+  Verified `git apply --check` clean onto the base. (Corrected a stale-base trap: 349a6af6b predated an
+  upstream sync that added _default_hip to environ.py, so base..HEAD wrongly picked up +59 unrelated lines;
+  using 21023af6d^ isolates purely my change.) + patches/README.md apply instructions. Completes the
+  mergeable-PR packaging.

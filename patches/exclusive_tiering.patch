@@ -1,0 +1,159 @@
+diff --git a/python/sglang/srt/environ.py b/python/sglang/srt/environ.py
+index 3f78790c3..5b1dc76f6 100644
+--- a/python/sglang/srt/environ.py
++++ b/python/sglang/srt/environ.py
+@@ -416,6 +416,17 @@ class Envs:
+     # Disable with SGLANG_HICACHE_NIXL_USE_DIRECT_IO=0 or via the
+     # "use_direct_io": false key in --hicache-storage-backend-extra-config.
+     SGLANG_HICACHE_NIXL_USE_DIRECT_IO = EnvBool(True)
++    # Exclusive L1<->L2 tiering: after a host->device promotion (load_back) completes, free the host
++    # copy of the now device-resident path so an entry lives on device XOR host (not both). With
++    # write_back (which does no eager device->host backup), this makes the two tiers hold DISJOINT
++    # cached content, raising distinct cache capacity by the device tier size. Lossless: the device
++    # copy is committed before the host copy is freed; a later device eviction re-backs-up to host.
++    SGLANG_HICACHE_EXCLUSIVE = EnvBool(False)
++    # Frequency-aware hybrid exclusivity (v3): if >0, do NOT free the host copy on promotion for a node
++    # that has been promoted (loaded H->D) >= this many times ("hot") — keep it inclusive so its device
++    # eviction needs no re-backup (fewer H<->D transfers), while cold entries stay exclusive (capacity).
++    # 0 = pure exclusive (free host on every promotion). Requires SGLANG_HICACHE_EXCLUSIVE=1.
++    SGLANG_HICACHE_EXCLUSIVE_HOT_KEEP = EnvInt(0)
+     SGLANG_HUGEPAGE_SIZE = EnvStr("")
+     # Staging buffer for heterogeneous TP KV transfer
+     SGLANG_DISAGG_STAGING_BUFFER = EnvBool(False)
+diff --git a/python/sglang/srt/mem_cache/unified_radix_cache.py b/python/sglang/srt/mem_cache/unified_radix_cache.py
+index fa26bbee5..2f94e316a 100644
+--- a/python/sglang/srt/mem_cache/unified_radix_cache.py
++++ b/python/sglang/srt/mem_cache/unified_radix_cache.py
+@@ -91,6 +91,7 @@ class UnifiedTreeNode:
+         self.creation_time = get_and_increase_time_counter()
+         self.hash_value = None
+         self.hit_count = 0
++        self.load_back_count = 0  # #times this node's KV was promoted H->D (exclusive hot-keep, v3)
+         self.priority = priority
+         self.lru_prev: list[UnifiedTreeNode | None] = [None] * (
+             _NUM_COMPONENT_TYPES * 2
+@@ -365,6 +366,17 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
+         self.pp_size = params.pp_size
+         self.work_list: list[torch.distributed.Work] = []
+ 
++        # Exclusive L1<->L2 tiering (SGLANG_HICACHE_EXCLUSIVE): free the host copy after a
++        # host->device promotion so an entry lives on device XOR host (see _promote_free_host).
++        self.exclusive_tiering = envs.SGLANG_HICACHE_EXCLUSIVE.get()
++        self.exclusive_hot_keep = envs.SGLANG_HICACHE_EXCLUSIVE_HOT_KEEP.get()  # 0 = pure exclusive
++        if self.exclusive_tiering:
++            logger.info(
++                "UnifiedRadixCache: EXCLUSIVE L1<->L2 tiering ENABLED "
++                "(free host copy on promotion; pair with --hicache-write-policy write_back)"
++                + (f"; hot-keep threshold={self.exclusive_hot_keep}" if self.exclusive_hot_keep else "")
++            )
++
+         # HiCache D↔H defaults (overridden by init_hicache)
+         self.cache_controller: Optional[HybridCacheController] = None
+         self.write_through_threshold = 256
+@@ -610,9 +622,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
+         for component in self._components_tuple:
+             component.drive_eviction(params=params, tracker=tracker)
+ 
+-        if (
+-            self.cache_controller is not None
+-            and self.cache_controller.write_policy == "write_back"
++        if self.cache_controller is not None and (
++            self.cache_controller.write_policy == "write_back" or self.exclusive_tiering
+         ):
+             self.writing_check(write_back=True)
+ 
+@@ -1492,10 +1503,11 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
+         """
+         assert self._is_device_leaf(node), f"node {node.id} is not a D-leaf"
+         if not node.backuped:
+-            if (
+-                self.cache_controller is not None
+-                and self.cache_controller.write_policy == "write_back"
++            if self.cache_controller is not None and (
++                self.cache_controller.write_policy == "write_back" or self.exclusive_tiering
+             ):
++                # Exclusive tiering (or write_back): back up to host at eviction time (not eagerly),
++                # then demote — so the entry moves device->host rather than being dropped.
+                 written = self.write_backup(node, write_back=True)
+                 if written == 0:
+                     return
+@@ -1811,10 +1823,11 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
+         """Increment hit count; trigger write_backup when threshold reached."""
+         if node.evicted or chunked:
+             return
+-        if (
+-            self.cache_controller is not None
+-            and self.cache_controller.write_policy == "write_back"
++        if self.cache_controller is not None and (
++            self.cache_controller.write_policy == "write_back" or self.exclusive_tiering
+         ):
++            # Exclusive tiering (or write_back): no eager device->host backup — an entry stays
++            # device-only until eviction, so device holds content DISJOINT from host.
+             return
+         node.hit_count += 1
+         if (
+@@ -2403,8 +2416,52 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
+                 node, lock_params, host_lock_params = self.ongoing_load_back.pop(ack_id)
+                 self.dec_lock_ref(node, lock_params)
+                 self.dec_host_lock_ref(node, host_lock_params)
++                if self.exclusive_tiering:
++                    # Promotion completed (device copy committed) -> free the host copy so the
++                    # entry is device-exclusive, reclaiming host capacity (exclusive tiering).
++                    self._promote_free_host(node)
+             finish_count -= 1
+ 
++    def _promote_free_host(self, node: UnifiedTreeNode) -> None:
++        """Exclusive tiering: after a host->device promotion (load_back) completes, free the host copy
++        of the now device-resident path so an entry lives on device XOR host (not both), reclaiming
++        host capacity for other distinct entries.
++
++        Walks from the promoted node toward the root, freeing the host layer of each node that is
++        device-resident, host-present, and not host-locked / mid-write-back. Stops at the first
++        device-absent node (its host copy is the only copy and must be kept). Lossless: the device
++        copy is committed (loading_check synchronized the load event) before host is freed; a later
++        device eviction re-backs-up to host via the write_back eviction path (write_backup)."""
++        cur = node
++        while cur is not None and cur is not self.root_node:
++            cd_full = cur.component_data[BASE_COMPONENT_TYPE]
++            if cd_full.value is None:
++                # device absent -> host is the sole copy; keep it and stop.
++                break
++            if cd_full.host_value is None:
++                cur = cur.parent
++                continue
++            # skip if another op still references the host copy or a backup is in flight.
++            if cur.id in self.ongoing_write_through or any(
++                cd.host_lock_ref != 0 for cd in cur.component_data
++            ):
++                break
++            # frequency-aware hybrid (v3): keep HOT nodes inclusive (don't free host) so their device
++            # eviction needs no re-backup; cold nodes stay exclusive. count this promotion first.
++            cur.load_back_count += 1
++            if self.exclusive_hot_keep and cur.load_back_count >= self.exclusive_hot_keep:
++                cur = cur.parent
++                continue
++            for comp in self._components_tuple:
++                if comp.node_has_component_data(cur, target=EvictLayer.HOST):
++                    self._evict_component_and_detach_lru(
++                        cur, comp, target=EvictLayer.HOST
++                    )
++            self._record_remove_event(cur, medium=StorageMedium.CPU)
++            parent = cur.parent
++            self._update_evictable_leaf_sets(cur)
++            cur = parent
++
+     # ---- HiCache: Scheduler Entry Points ----
+ 
+     def init_load_back(
+@@ -2649,9 +2706,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
+         if self.session.any_holding_kv():
+             return
+ 
+-        write_back = (
+-            self.cache_controller is not None
+-            and self.cache_controller.write_policy == "write_back"
++        write_back = self.cache_controller is not None and (
++            self.cache_controller.write_policy == "write_back" or self.exclusive_tiering
+         )
+ 
+         errors: list[str] = []

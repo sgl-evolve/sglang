@@ -61,3 +61,9 @@
 - v2c_exclusive_rep: hit 0.7518, p99 4079 (best), mean 789. 7 W&B versions logged.
 - EXCLUSIVE n=4: hit 0.7509+/-0.0020 (+12.9pp, rock-solid), mean TTFT 841+/-47 (-27%, tight),
   p99 4575+/-506 (-28%; noisier = node variance). Hit-rate + mean-TTFT are the robust headline claims.
+
+## 2026-07-08 ~13:00Z — DEFINITIVE same-node A/B (resolves p99 confound)
+- Same node (node1-2), baseline(fcfs) then exclusive back-to-back, NO node variance:
+  hit 0.6163->0.7522 (+13.6pp), p99 6928->4354 (-37.2%), mean 1038->812 (-21.8%), p50 565->503,
+  req/s & out_tok/s unchanged (lossless). => true p99 improvement is -37% on identical hardware
+  (the multi-node -28% was node-variance-inflated). 9 W&B versions logged (added v_ab_baseline/exclusive).

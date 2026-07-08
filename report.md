@@ -27,7 +27,9 @@ and tail-latency win.
 **Goodput @ SLO — same-node curve (ondem-2, baseline vs exclusive at λ=3.5/4/4.5):** p99 TTFT (ms):
 λ3.5 base 8320 / exc **6615**; λ4 base 9002 / exc **8055**; λ4.5 base 12199 / exc 11271. On THIS
 (prefill-stressed) node, baseline exceeds the 8s SLO by λ3.5 (knee <λ3.5) while exclusive stays under to
-λ≈4.0 → **the goodput knee shifts up ~+14–18% sustainable req/s here**. HONEST caveat (same node-variance as
+λ≈4.0 → **the goodput knee shifts up ~+10–18% sustainable req/s** (screen/node-dependent: this ondem-2
+same-node screen ≈+14%, the rates-4/5/6 screen below ≈+10–15%, and the full-protocol matched pair confirms
+**+12% req/s at rate 4** — all mutually consistent). HONEST caveat (same node-variance as
 p99): the knee-shift magnitude is NODE-DEPENDENT — on a "fast" node whose baseline p99 is already low
 (e.g. ondem-3 baseline p99=4.66s @ λ3, vs ondem-2's high tail), the baseline knee is higher and the shift
 smaller. The ROBUST, node-independent driver is the **+13pp hit-rate** (≈13% less fresh-prefill compute);

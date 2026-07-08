@@ -32,7 +32,7 @@ nodes inclusive) was tried and is **neutral** (transfer cost isn't the limiter) 
   nodes and 0.7509±0.002 across n=4 runs. This ≈ 13% less fresh-prefill compute.
 - **Latency/goodput (grow with load; node-dependent):** mean TTFT −14…−22%; p99 TTFT lowered AND stabilized
   (~4.4–4.5s vs baseline high+variable 4.7–6.9s); on a prefill-stressed node the p99≤8s **goodput knee
-  shifts ~+14–18% sustainable req/s**. The magnitude scales with how prefill-stressed the operating point is.
+  shifts ~+10–18% sustainable req/s** (screen/node-dependent). The magnitude scales with prefill stress.
   Full-protocol confirmation at the knee (matched 1553-conv pair, offered rate 4.0): exclusive sustains
   **+12% req/s** (3.38→3.78, baseline queue-limited) at **−11% p99 TTFT** (9098→8091 ms), −15% mean TTFT,
   −17% p99 e2e — the whole latency curve shifts down under load.

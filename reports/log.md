@@ -178,3 +178,11 @@
   Full-scale confirmation of the headline goodput metric, corroborating the node-controlled snab screen.
   Honest provenance caveat: this pair's node isn't in the logs -> node-CONTROL claim still rests on the
   flock-held snab pair; full_l4 is corroborating full-scale evidence. Added to report + UPSTREAM.
+
+## 2026-07-08 ~21:10Z — Cross-document consistency audit of headline numbers (node-free)
+- Checked hit-rate / p99 / goodput-knee claims across report.md + UPSTREAM.md for drift after ~9 cycles of
+  edits. Hit-rate consistent (+12.9-13.1pp all -> "+13pp"; absolutes 0.7509-0.7525 = distinct runs). p99
+  already honest+consistent (explicit "-3 to -37% node-dependent", no single overstated figure). ONE real
+  drift fixed: goodput knee shift was "+14-18%" (2 places) vs "10-15%" (1 place) -> harmonized to
+  "+10-18% (screen/node-dependent)" in both docs, with the 3 screens + full-protocol +12% reconciled as
+  mutually consistent. No contradictions remain.

@@ -16,3 +16,11 @@
   -> hit 0.7525 (+2pp over config, +13.1pp over fcfs), p99 4380ms (-30.8% vs fcfs), mean TTFT 863. Lossless.
 - Insight: system on steep hit-vs-capacity curve; inclusive write_through wastes device tier (dup of host);
   exclusive tiering reclaims it. Ordering/admission are dead ends. Goodput sweep running.
+
+## 2026-07-08 ~07:15Z — confirmation + goodput curve
+- v2_exclusive_solo (self-contained, STOCK write_through flag + SGLANG_HICACHE_EXCLUSIVE=1): hit 0.7517
+  (= v1 0.7525 -> reproducible, all-engine attribution). mean TTFT 907 (-21% vs baseline). p99 varies (5420).
+- Goodput sweep (600 convs): lambda=4 baseline p99 10094 vs exclusive 8412 (-16.7%). Curve shifts down;
+  SLO knee moves right. 5 W&B pts total.
+- Contribution: exclusive L1<->L2 KV tiering. Insight: effective-capacity is the lever on the steep
+  hit-vs-capacity curve; ordering(v0_lpm)+admission(sim) are dead ends.

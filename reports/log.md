@@ -50,3 +50,10 @@ Opened a bolder line per charter ("when a line is exhausted, try a bolder mechan
 - reuse_gated_evict_sim (unproven-first): ≡ LRU exactly (0.7334) — unproven docs already age to LRU bottom.
 - requeue_sim capacity curve: cliff 8.4→10.7M (+14pp) = the excl win (free); beyond, ~+0.8pp/+1M → need ~+9M for ceiling = off-contract memory or infeasible ~2.4× lossless FP8 compression.
 CONCLUSION: eviction/scheduling/admission axis CLOSED with a mechanism-level+sim argument (Belady gap is large 7.3pp but provably UNOBSERVABLE online); capacity is the only lever and exclusive tiering already captures the cheap in-budget part → v3c is within-contract-OPTIMAL. Documented in report.md (screened negatives; not W&B versions per charter). No GPU spent (correct use of free screening).
+
+## 2026-07-08 ~16:35Z — Error bars (free, from existing repeated runs)
+Extracted hit/p99 spread from all existing summary.json + diag logs (no new pool):
+- HIT: baseline-family (n=6, frozen write-through) 0.622 ± 0.007 [0.612–0.633]; exclusive-tiering family (n=2 clean + v3/v3b≈0.73) 0.732 ± 0.001. Δ=+11.0pp NON-OVERLAPPING (base max 0.633 < excl min 0.731); effect ≈16× baseline SD → real, not noise. (Hit is low-variance: ratio over the fixed workload.)
+- P99: baseline 5470 ± 713ms (n=6, incl. diag3 outlier 6594 = the node variance I flagged) vs excl 4188ms (n=2) = −23% at mean; corroborates the controlled same-node A/B (−8..−17%).
+- req/s ≈3.02 = λ in every run (no throughput regression).
+Added to report.md executive summary. Charter "error bars" rigor point now addressed at zero pool cost.

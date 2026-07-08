@@ -14,10 +14,16 @@ duplicates every hot device entry onto host. This raises *distinct* cache capaci
 and, because the system sits on the STEEP part of the hit-vs-capacity curve, converts to a large hit-rate
 and tail-latency win.
 
-**HEADLINE — definitive SAME-NODE A/B (node1-2, baseline vs exclusive back-to-back, NO node variance):**
-hit **0.6163→0.7522 (+13.6pp)**, p99 TTFT **6928→4354 ms (−37.2%)**, mean TTFT **1038→812 ms (−21.8%)**,
-p50 565→503, req/s & out_tok/s unchanged (3.02 / 386 → lossless). This eliminates the node-to-node
-variance that made multi-node p99 noisy → the true p99 improvement is **−37%** on identical hardware.
+**HEADLINE (TWO same-node A/B pairs — honest ranges; replication corrected an earlier node-favorable claim):**
+- **hit_rate: +13pp, ROCK-SOLID/node-independent** — exclusive = **0.7522 on BOTH** node1-2 & ondem-3
+  (baseline 0.616/0.625). This is the primary, robust result (matches the n=4 multi-node 0.7509±0.002).
+- **mean TTFT: −14 to −22%** (node1-2 1038→812; ondem-3 937→809 → exclusive ~810 ms on both).
+- **p99 TTFT: exclusive is LOW & STABLE (~4.35–4.53 s, both nodes, always <SLO); baseline is HIGH & VARIABLE
+  (4.66–6.93 s)** → p99 reduction is **−3% to −37% depending on the baseline node** (the −37% on node1-2
+  reflects that node's anomalously high baseline p99 6.93s; ondem-3 baseline was 4.66s → −3%). So exclusive
+  tiering both lowers AND stabilizes the p99 tail; I do NOT claim a single −37% figure.
+- req/s & out_tok/s unchanged (3.02 / 386) → **lossless** (bit-exact vs stock, verified separately).
+  Lesson (rigor): the earlier single-pair "−37% p99" was node-favorable; a 2nd same-node pair corrected it.
 **Goodput @ SLO — definitive SAME-NODE curve (ondem-2, baseline vs exclusive at λ=3.5/4/4.5, no node
 variance):** p99 TTFT (ms): λ3.5 base 8320 / exc **6615**; λ4 base 9002 / exc **8055**; λ4.5 base 12199 /
 exc 11271. Baseline exceeds the 8s SLO already by λ3.5 (knee <λ3.5); exclusive stays under to λ≈4.0 (interp
@@ -180,7 +186,8 @@ vary device; deltas are directional — sim's absolute inclusive hit is low, but
 **Insight for a maintainer:** adopt exclusive (device-XOR-host) HiCache tiering — its payoff grows
 monotonically with the GPU/host cache ratio. It's largest when the fast tier is a big fraction of total
 cache (where inclusive duplication wastes the most), and never negative. On this HW (23% device) it's +13pp
-hit / −37% p99; on GPUs with more HBM-cache relative to host it would help more.
+hit (robust), −14 to −22% mean TTFT, and a lower+stabler p99 tail; on GPUs with more HBM-cache relative to
+host it would help more.
 
 ## The protocol (fixed contract)
 - 2-tier: L1 GPU HBM (~2.35M tok) + L2 host DRAM (`--hicache-size 96` = 768 GB, ~7.81M tok). No L3.

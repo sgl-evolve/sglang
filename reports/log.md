@@ -108,3 +108,11 @@
   that same-node A/B (n=1, p99 -37%) is the correct methodology for the TTFT claim; multi-node p99 is noisy.
 - Decision: contribution is complete+certified (same-node A/B + n=4 multi-node + goodput-knee robustly
   support the headline); a confirmatory replicate isn't worth chasing on the flaky/contended pool. NOT retrying.
+
+## 2026-07-08 ~18:00Z — 2nd same-node pair (ondem-3) -> INTEGRITY CORRECTION of headline
+- v_ab2 same-node pair on ondem-3: hit 0.6247->0.7522 (+12.75pp), p99 4664->4535 (-2.8%), mean 937->809 (-13.6%).
+- Combined with pair1 (node1-2: +13.6pp, p99 -37.2%, mean -21.8%): the "-37% p99" was NODE-FAVORABLE
+  (node1-2 baseline p99 6928 anomalously high). HONEST headline: hit +13pp ROBUST (exclusive=0.7522 on BOTH
+  nodes); mean TTFT -14..-22%; p99: exclusive LOW+STABLE ~4.35-4.53s (both, <SLO) vs baseline HIGH+VARIABLE
+  4.66-6.93s -> p99 reduction -3..-37% (baseline-node-dependent). Exclusive lowers AND stabilizes p99 tail.
+- Corrected report exec summary + maintainer insight. 12 W&B versions. Replication caught an overclaim -> fixed.

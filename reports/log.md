@@ -122,3 +122,9 @@ Checked whether keep_hits≥2 was actually measured: NO clean run (no keep_hits=
 - Code comment (unified_radix_cache.py): "measured NEGATIVE" → "screened/weakly-measured NEGATIVE (v3 ~0.691 died late; + reasoning)". Parses OK.
 - Report: added honest "Parameter sensitivity" note — keep_hits=1 wins (all logged wins, now default); keep_hits≥2 is reasoned + weakly-measured worse (v3 partial ~0.691), NOT a clean sweep (won't spend pool on a predicted-negative param I've already set).
 Completes the "parameter sensitivity" element of a complete contribution, honestly (no overclaim of a clean ablation I don't have).
+
+## 2026-07-08 ~22:00Z — CLEAN keep_hits ablation (v5-keep2, idle ondem-3, same-node λ=3) — logged to W&B
+Ran keep_hits=1 vs keep_hits=2 paired on genuinely-idle ondem-3 (other 3 nodes sibling-busy; used only idle capacity). RESULT (much stronger than my weakly-measured ~0.691 prior):
+- keep_hits=1: hit 0.726, p99 4570 (<SLO), req/s 3.02, median 466 — the WIN.
+- keep_hits=2: hit 0.391, p99 10071 (>SLO), req/s 3.00, median 958 — CATASTROPHIC (BELOW baseline 0.62; keep>=2 DELETES hit=1 reusable nodes before their delayed full-cycle reuse → lost from both tiers → recompute explosion).
+IMPACT: (1) mechanism is HIGHLY sensitive to the knob; (2) retroactively CONFIRMS the correct-by-default fix (default 2→1, prior turn) was CRITICAL not cosmetic — old default-2 = 0.391 disaster; (3) supersedes the weakly-measured "~0.691" (that was the crashed v3). Logged v5-keep2 to W&B (ablation negative, mechanism-tagged, 9 metrics, synced). Report parameter-sensitivity table updated with clean numbers. Used only idle capacity; my own mechanism's parameter (not a sibling line).

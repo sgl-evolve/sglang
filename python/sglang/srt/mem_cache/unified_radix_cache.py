@@ -386,7 +386,11 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # Targets the confirmed capacity cliff for long-reuse-distance multi-turn.
         import os as _os
         self._bm_excl = get_bool_env_var("BM_EXCL")
-        self._bm_excl_keep_hits = int(_os.environ.get("BM_EXCL_KEEP_HITS") or "2")
+        # Default 1 = the WINNING variant (back up a node on device eviction once it has
+        # >=1 proven reuse). keep_hits>=2 is a measured NEGATIVE: under the full-cycle
+        # reuse distance, docs are evicted at hit=1 before their delayed reuse, dropping
+        # them. All logged wins used keep_hits=1 explicitly; this makes it correct-by-default.
+        self._bm_excl_keep_hits = int(_os.environ.get("BM_EXCL_KEEP_HITS") or "1")
         self.prefetch_stop_policy = "best_effort"
         self.prefetch_threshold = 256
         self.prefetch_timeout_base = 1.0

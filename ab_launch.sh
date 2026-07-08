@@ -10,7 +10,7 @@ for att in $(seq 1 60); do
     exec 200>"$POOL/locks/$node.lock"
     if flock -n 200; then
       echo "[ab] attempt $att on $node"
-      srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$AB" 3,4
+      srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 bash "$AB" 3,4 "${SUF:-}"
       rc=$?; flock -u 200; exec 200>&-
       [ $rc -eq 0 ] && { echo "[ab] DONE"; exit 0; }
       echo "[ab] rc=$rc retry in 40s"; sleep 40; break

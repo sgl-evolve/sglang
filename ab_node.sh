@@ -8,7 +8,7 @@ ROOT=/home/junyanch_google_com/autoresearch
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
 SGL_WORKSPACE="$ROOT/workspace/sgl/v0.25_ablations/base_free"
 WORK=$SGL_WORKSPACE/researchers/base_free
-LAMS="${1:?lambdas csv}"; PORT=${PORT:-30000}
+LAMS="${1:?lambdas csv}"; SUF="${2:-}"; PORT=${PORT:-30000}
 export HF_TOKEN="$HF_API_KEY" HF_HOME=/rmeng_data/junyanch-data/hf_cache HF_HUB_OFFLINE=1
 export PATH="$WORK/.venv/bin:$PATH"; PY="$WORK/.venv/bin/python3"
 export PYTHONPATH="$WORK/python"; cd "$WORK"
@@ -30,7 +30,7 @@ echo "NCCL preflight OK"
 
 run_cfg(){ # $1=label  $2..=extra launch args ; XTIER via env exported by caller per label
   local label="$1"; shift; local extra=("$@")
-  local OUT="$WORK/runs/ab-$label"; mkdir -p "$OUT"
+  local OUT="$WORK/runs/ab-$label$SUF"; mkdir -p "$OUT"
   local LAUNCH=("$PY" -m sglang.launch_server --model-path "$MODEL" --tp 8 --trust-remote-code
     --context-length 262144 --chunked-prefill-size 6144 --mem-fraction-static 0.85
     --enable-hierarchical-cache --hicache-size 96 --page-size 64

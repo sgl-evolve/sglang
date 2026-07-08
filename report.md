@@ -63,4 +63,13 @@
 | ver | commit | tag | hit | TTFT p50/p99 | host_util | req/s | note |
 |---|---|---|---|---|---|---|---|
 | v0_official | stock | baseline | 0.6217 | 750/6326 | 0.9999 | 2.78 | given baseline |
-| s0-diag | ed175dc05 | (screening) | _running_ | | | | baseline behavior + loss counters |
+| s0-diag | ed175dc05 | (screening) | (killed) | | | | partial: delete/wb_fail≈0 |
+| s1-diag | 2f5c1510d | (screening) | **0.6272** | 920/4960 | 0.9999 | 2.64 | same-clone BASELINE anchor (BM_WARMFIRST off); reproduces golden 0.622 ✓ |
+
+## s1-diag DEFINITIVE findings (full run)
+- **My clone reproduces the baseline: hit 0.627 (golden 0.622).** p50 920 / p99 4960ms, reqps 2.64, host_util 0.9999.
+- **Mamba consensus-truncation RULED OUT:** kv_only ≈ consensus for the entire run (final 0.777 ≈ 0.775, gap ~0.2pp). The Mamba SSM-state is NOT limiting KV prefix reuse. (My earlier leading hypothesis was wrong — good to eliminate before building a mamba mechanism.)
+- **Not delete-path, not wb_fail:** dev_delete=64 nodes/359K tok (negligible), wb_fail=0. All device eviction = lossless demote-to-host (72M).
+- host_evict grew to 29M but did NOT reduce the incremental match ratio (stable→rising) → host eviction drops dead content, not reused prefixes.
+- NOTE: absolute kv_only ratio (0.78) is biased high (match_prefix re-fires for each waiting req every round, over-counting high-match continuations); the unbiased hit is 0.627. Reliable signal = kv_only≈consensus.
+- **Conclusion:** reuse loss is KV-tier, and the baseline fcfs scheduler is reuse-OBLIVIOUS (supports_fast_match_prefix=False → no reuse ordering). v1 tests whether reuse-aware (warm-first) scheduling recovers hit under concurrency.

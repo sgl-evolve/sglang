@@ -34,11 +34,8 @@ while :; do
       if [ "$dram_ok" -eq 1 ]; then
         echo "[grab] DRAM settled on $node — launching eval.sh $VER (BM_WARMFIRST=${BM_WARMFIRST:-unset} BM_WARM_THRESHOLD=${BM_WARM_THRESHOLD:-default})"
         EXTRA_STR=""; [ "$#" -gt 0 ] && EXTRA_STR=$(printf "%q " "$@")
-        ENVPFX=""
-        [ -n "${BM_WARMFIRST:-}" ] && ENVPFX="$ENVPFX export BM_WARMFIRST=$(printf %q "$BM_WARMFIRST");"
-        [ -n "${BM_WARM_THRESHOLD:-}" ] && ENVPFX="$ENVPFX export BM_WARM_THRESHOLD=$(printf %q "$BM_WARM_THRESHOLD");"
         srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 \
-          bash -c "$ENVPFX exec bash '$EVAL' '$NAME' '$VER' $EXTRA_STR"
+          bash -c "export BM_WARMFIRST='${BM_WARMFIRST:-}' BM_WARM_THRESHOLD='${BM_WARM_THRESHOLD:-}'; exec bash '$EVAL' '$NAME' '$VER' $EXTRA_STR"
         rc=$?
         flock -u 200; exec 200>&-
         echo "[grab] eval.sh exited rc=$rc on $node"

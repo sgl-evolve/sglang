@@ -175,7 +175,7 @@ class SchedulePolicy:
             logger.info(
                 "[BM_WARMFIRST] two-class warm-first prefill scheduling ENABLED "
                 "(threshold=%s tok)",
-                os.environ.get("BM_WARM_THRESHOLD", "512"),
+                os.environ.get("BM_WARM_THRESHOLD") or "512",
             )
 
     def calc_priority(
@@ -381,7 +381,7 @@ class SchedulePolicy:
         Compute each request's RESIDENT (device+host) reusable prefix, then place
         'warm' continuations (large resident prefix) ahead of 'cold' cold-starts,
         preserving arrival (FCFS) order within each class."""
-        WARM_THRESHOLD = int(os.environ.get("BM_WARM_THRESHOLD", "512"))
+        WARM_THRESHOLD = int(os.environ.get("BM_WARM_THRESHOLD") or "512")
         for r in waiting_queue:
             match_prefix_for_req(self.tree_cache, r)
         warm = [

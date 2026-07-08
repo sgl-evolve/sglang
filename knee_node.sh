@@ -26,7 +26,10 @@ mkdir -p "$WORK/.cache"
 MODEL=Qwen/Qwen3.5-122B-A10B-FP8
 MIX=/rmeng_data/junyanch-data/datasets/mooncake_mix_v1.jsonl
 DRAMG=$(awk '/MemAvailable/{printf "%d",$2/1048576}' /proc/meminfo)
-[ "${DRAMG:-0}" -lt 1300 ] && { echo "DRAM_TOO_LOW ${DRAMG}G on $(hostname)"; exit 2; }
+[ "${DRAMG:-0}" -lt 1450 ] && { echo "DRAM_TOO_LOW ${DRAMG}G on $(hostname)"; exit 2; }
+# GPU-idle gate: skip flock-free-but-node-busy collisions (a sibling server on this node → OOM in capture)
+GMAX=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | sort -n | tail -1)
+[ "${GMAX:-0}" -gt 5000 ] && { echo "GPU_BUSY ${GMAX}MiB on $(hostname) (sibling server) — skip"; exit 2; }
 # same FROZEN launch as eval.sh (+ EXTRA last-wins)
 LAUNCH=("$PY" -m sglang.launch_server
   --model-path "$MODEL" --tp 8 --trust-remote-code

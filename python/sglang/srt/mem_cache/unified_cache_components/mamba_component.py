@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import heapq
+import logging
 from typing import TYPE_CHECKING, Callable, Optional, Sequence
 
 import torch
+
+from sglang.srt.environ import envs
+
+logger = logging.getLogger(__name__)
 
 from sglang.srt.mem_cache.base_prefix_cache import (
     DecLockRefParams,
@@ -203,6 +209,27 @@ class MambaComponent(TreeComponent):
     def drive_eviction(
         self, params: EvictParams, tracker: dict[ComponentType, int]
     ) -> None:
+        # Cost-aware mamba eviction (mechanism): the Mamba state pool is the binding scarce resource
+        # for this hybrid model, and its eviction is otherwise strict-LRU — which discards the mamba
+        # state of long, expensive-to-recompute prefixes at the same rate as cheap ones. When enabled,
+        # pick eviction victims by the shared cost-aware priority (cheap/short prefixes first, LRU within
+        # each cost segment), mirroring the full-KV cost-aware eviction, so long prefixes stay reusable
+        # in BOTH pools. Falls back to strict-LRU on any error (never wastes a run). Lossless (order only).
+        if envs.SGLANG_ENABLE_COST_AWARE_MAMBA_EVICTION.get():
+            try:
+                self._drive_eviction_cost_aware(params, tracker)
+                return
+            except Exception as e:  # pragma: no cover - defensive fallback
+                logger.warning(
+                    "[sgl_mech] cost-aware mamba eviction failed (%s); "
+                    "falling back to strict-LRU for this call",
+                    e,
+                )
+        self._drive_eviction_lru(params, tracker)
+
+    def _drive_eviction_lru(
+        self, params: EvictParams, tracker: dict[ComponentType, int]
+    ) -> None:
         request = params.mamba_num
         ct = self.component_type
         lru = self.cache.lru_lists[ct]
@@ -224,6 +251,35 @@ class MambaComponent(TreeComponent):
                 )
                 self.cache._cascade_evict(x, self, tracker)
                 x = x_next
+
+    def _drive_eviction_cost_aware(
+        self, params: EvictParams, tracker: dict[ComponentType, int]
+    ) -> None:
+        request = params.mamba_num
+        ct = self.component_type
+        lru = self.cache.lru_lists[ct]
+        strat = self.cache.eviction_strategy
+        # Snapshot unlocked candidates and order by cost-aware priority (min = evicted first:
+        # cheap/short prefixes, LRU within a cost segment). Same primitives as the LRU walk, only order.
+        heap = [
+            (strat.get_priority(n), n)
+            for n in list(lru.cache.values())
+            if n.component_data[ct].lock_ref == 0
+        ]
+        heapq.heapify(heap)
+        while tracker[ct] < request and heap:
+            _, x = heapq.heappop(heap)
+            if not lru.in_list(x) or x.component_data[ct].lock_ref != 0:
+                continue  # already evicted by a cascade, or now locked
+            if x.component_data[ct].value is None:
+                continue
+            if x in self.cache.evictable_device_leaves:
+                self.cache._evict_device_leaf(x, tracker)
+            else:
+                self.cache._evict_component_and_detach_lru(
+                    x, self, target=EvictLayer.DEVICE, tracker=tracker
+                )
+                self.cache._cascade_evict(x, self, tracker)
 
     def acquire_component_lock(
         self,

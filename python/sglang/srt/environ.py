@@ -361,6 +361,9 @@ class Envs:
     SGLANG_ENABLE_COST_AWARE_EVICTION = EnvBool(True)
     # Prefix segments with >= this many tokens are "expensive" (protected segment). Tokens.
     SGLANG_COST_AWARE_EVICT_THRESHOLD = EnvInt(4096)
+    # Extend cost-aware eviction to the hybrid Mamba state pool (the binding hybrid resource, whose
+    # eviction is otherwise raw-LRU). Off by default so it can be ablated separately from full-KV.
+    SGLANG_ENABLE_COST_AWARE_MAMBA_EVICTION = EnvBool(False)
     SGLANG_DYNAMIC_CHUNKING_SMOOTH_FACTOR = EnvFloat(0.75)
     SGLANG_SCHEDULER_SKIP_ALL_GATHER = EnvBool(False)
     SGLANG_SCHEDULER_DECREASE_PREFILL_IDLE = EnvBool(False)

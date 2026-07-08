@@ -15,8 +15,10 @@ EXTRA=("$@")
 WORK=$SGL_WORKSPACE/researchers/$NAME
 PORT=${PORT:-30000}; OUT="$WORK/runs/knee-$LABEL"; mkdir -p "$OUT"
 export HF_TOKEN="$HF_API_KEY" HF_HOME=/rmeng_data/junyanch-data/hf_cache HF_HUB_OFFLINE=1
-# use venv python by ABSOLUTE path (robust to srun shell / PATH quirks)
+# activate venv (PATH for spawned TP workers, like eval.sh) AND use absolute $PY for the main launch
+source "$WORK/.venv/bin/activate" 2>/dev/null || true
 PY="$WORK/.venv/bin/python3"
+export PATH="$WORK/.venv/bin:$PATH"
 export PYTHONPATH="$WORK/python"; cd "$WORK"
 export TRITON_CACHE_DIR="$WORK/.cache/triton" CUDA_CACHE_PATH="$WORK/.cache/nv" \
        FLASHINFER_CACHE_DIR="$WORK/.cache/flashinfer" XDG_CACHE_HOME="$WORK/.cache"

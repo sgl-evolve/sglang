@@ -106,6 +106,14 @@ capacity for fewer transfers doesn't net a win ⇒ PURE exclusive (v1/v2) is nea
   (out-of-budget). Remaining ~5pp to the 0.807 ceiling needs lossless KV COMPRESSION (host tier) —
   high-risk kernel, likely low compressibility on FP8, low iteration throughput under node contention →
   documented as the bolder future line, not attempted.
+  - **★Frontier quality cost (measured): fp8-KV reaches the ceiling at a MODEST but real lossy cost.**
+    Greedy 24-doc verify vs bf16 no-cache (output-divergence proxy): exclusive (my mechanism) & stock both
+    20/24 (inherent hybrid-Mamba cache drift; my mechanism adds 0); **fp8-KV fresh 18/24** (6 diverge) → fp8
+    adds only ~2/24 divergence BEYOND the cache's inherent 4/24. So the ceiling (0.808) is reachable via
+    fp8-KV at a modest quality cost — but it IS lossy (not bit-exact) + a stock flag ⇒ out-of-contract as a
+    lossless win. (Caveat: divergence ≠ scored accuracy; a rigorous quality gate would need task-accuracy.)
+    My lossless exclusive tiering (0.752) is the zero-added-loss choice; fp8-KV trades ~2/24 extra divergence
+    for the residual ~5.6pp to the ceiling.
   - **★Frontier CLOSED (measured): fp8-KV (2× capacity) reaches the ceiling.** `--kv-cache-dtype fp8_e4m3`
     doubles KV tokens (device 2.35M→4.70M, confirmed) → hit **0.808** (= analytic ceiling 0.807), mean TTFT
     699 (−39% vs baseline), p50 425. BUT it is **LOSSY** (KV quantized, outputs change) + a stock flag ⇒

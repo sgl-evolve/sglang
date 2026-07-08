@@ -29,6 +29,8 @@ case "$MODE" in
            EXTRA=(--enable-hierarchical-cache --hicache-size 96 --hicache-io-backend direct --hicache-mem-layout page_first_direct --hicache-write-policy write_through);;
   nocache) unset SGLANG_HICACHE_EXCLUSIVE
            EXTRA=(--disable-radix-cache);;
+  fp8)     unset SGLANG_HICACHE_EXCLUSIVE
+           EXTRA=(--enable-hierarchical-cache --hicache-size 96 --hicache-io-backend direct --hicache-mem-layout page_first_direct --hicache-write-policy write_through --kv-cache-dtype fp8_e4m3);;
 esac
 echo ">>> mode=$MODE on $(hostname)"
 python3 -m sglang.launch_server "${COMMON[@]}" "${EXTRA[@]}" > "$OUT/server_$MODE.log" 2>&1 &

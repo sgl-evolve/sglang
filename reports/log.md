@@ -130,3 +130,10 @@
   evaluation w/ honest robust vs node-dependent split / when-to-use generalization / limits). This is the
   actionable artifact for adopting the exclusive-tiering contribution. Research provably complete; every
   charter dimension (novel mechanism, rigorous+honest evidence, generalizable insight, upstream package) done.
+
+## 2026-07-08 ~18:50Z — fp8-KV quality cost quantified (frontier rounded out)
+- Greedy 24-doc verify vs bf16 no-cache: exclusive & stock both 20/24 (my mechanism adds 0 divergence);
+  fp8-KV fresh 18/24 (6 diverge) -> fp8 adds only ~2/24 beyond the cache's inherent 4/24. So the hit ceiling
+  (0.808) is reachable via fp8-KV at a MODEST quality cost, but it IS lossy + a config flag (out-of-contract).
+  (Divergence != scored accuracy; proxy only.) Confirms: lossless exclusive tiering (0.752, 0 added loss) is
+  the right in-contract choice; the residual ~5.6pp to ceiling is a lossy tradeoff. Frontier fully characterized.

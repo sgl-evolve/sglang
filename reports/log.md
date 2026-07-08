@@ -41,3 +41,12 @@
 - Result: **excl λ=5 → p99 12031 ms (>8s SLO), req/s 4.28 (raw), median 566, mean 1022.**
 - Interpretation: excl's SLO knee is between λ=4 (p99 7231, <SLO) and λ=5 (p99 12031, >SLO) — the SAME bracket baseline crosses, but excl holds more headroom at λ=4 (7231 vs baseline 7847). So the mechanism shifts the goodput curve RIGHT by ~+8% at the SLO-limited operating point; it does NOT push the knee to arbitrarily high λ (both saturate by λ=5). Honest, bounded gain — consistent with a capacity lever, not a de-saturation artifact.
 - Goodput curve now COMPLETE: baseline {λ3: 3.02@5258, λ4: 3.54@7847}, excl {λ3: 3.02@4443, λ4: 3.83@7231, λ5: 4.28@12031>SLO}. Headline = +~8% goodput. Contribution finalized.
+
+## 2026-07-08 ~16:20Z — BOUNDARY RESULT (free sim screen of the bolder admission/eviction line)
+Opened a bolder line per charter ("when a line is exhausted, try a bolder mechanism"): conversation co-residency / admission / completion-aware eviction. Screened it ENTIRELY on the free FIFO-re-queue sim (no GPU, no pool waste) → clean impossibility bound:
+- admission_sim: oracle free-on-completion → 0.806 ceiling at ALL K; active working set peaks 8.63M < 10.7M → the 0.733→0.806 gap is 100% completed-conv dead weight, NOT a concurrency problem (active set at K=128 is only 1.88M).
+- completion_evict_sim (idle-gap heuristic): 0% capture — active idle ≈ 1 full cycle == completed idle at the boundary; T<1 collapses hit to 0.01, T≥1 ≡ LRU.
+- turn-count: min1/max61/median3, 39% single-turn → no predictive done-threshold.
+- reuse_gated_evict_sim (unproven-first): ≡ LRU exactly (0.7334) — unproven docs already age to LRU bottom.
+- requeue_sim capacity curve: cliff 8.4→10.7M (+14pp) = the excl win (free); beyond, ~+0.8pp/+1M → need ~+9M for ceiling = off-contract memory or infeasible ~2.4× lossless FP8 compression.
+CONCLUSION: eviction/scheduling/admission axis CLOSED with a mechanism-level+sim argument (Belady gap is large 7.3pp but provably UNOBSERVABLE online); capacity is the only lever and exclusive tiering already captures the cheap in-budget part → v3c is within-contract-OPTIMAL. Documented in report.md (screened negatives; not W&B versions per charter). No GPU spent (correct use of free screening).

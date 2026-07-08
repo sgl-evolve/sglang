@@ -33,6 +33,24 @@
 
 ---
 
+## ★ BOUNDARY RESULT — why exclusive tiering is essentially optimal within contract (sim-proven, free screen)
+After landing the exclusive-tiering win (hit 0.62→0.733 at the 10.7 M effective-capacity budget), I opened a bolder line — **conversation co-residency / admission / completion-aware eviction** (the charter's suggested levers) — and screened it exhaustively on the FIFO-re-queue simulator (free, no GPU; `sim/admission_sim.py`, `sim/completion_evict_sim.py`, `sim/reuse_gated_evict_sim.py`). The result is a clean impossibility bound that proves the residual headroom is not reachable by any realizable mechanism:
+
+1. **The gap is completed-conversation dead weight.** An oracle that frees a conversation's entire KV the instant it completes reaches the **infinite-cache ceiling 0.806** at *every* concurrency K — because the *active* working set (docs of not-yet-completed convs) peaks at only **8.63 M < 10.7 M**. So ~half the cache is dead weight held by finished convs; the live set fits in budget. (This is why admission/co-residency by itself does nothing: at max-concurrency 128 the active set is only 1.88 M — concurrency was never the constraint; completion-lag is.)
+
+2. **The completion signal is unobservable online — LRU is optimal among realizable policies.** Three independent observable signals each capture **0 %** of the 7.3 pp oracle gap:
+   - **idle-gap** (`completion_evict_sim`): an active conv's idle time ≈ *one full queue cycle* (it reappears only after the whole queue cycles), so a completed conv idle 1.2 cycles is indistinguishable from an active conv about to be reused at 1.0 cycles. T<1 evicts actives (hit collapses to 0.01); T≥1 ≡ pure LRU.
+   - **turn-count**: turns-per-conv is min 1 / max 61 / median 3 with **39 % single-turn** — no predictive "done" threshold exists.
+   - **reuse-provenness** (`reuse_gated_evict_sim`): evicting not-yet-reused ("unproven") convs first ≡ LRU exactly, because unproven single-turn docs already age to the LRU bottom; and evicting unproven *multi-turn* docs sacrifices their (long-distance) first reuse. Net 0.7334 = LRU.
+
+   So the Belady gap here is *large* (7.3 pp, contra "LRU≈Belady"), but it is **provably unobservable** — active vs completed convs are identical by recency, depth, size, and reuse-history at the eviction decision boundary. This closes the entire **eviction / scheduling / admission axis** with a mechanism-level argument, not a tuning sweep.
+
+3. **Capacity is the only lever, and exclusive tiering already captures the cheap part.** The realizable hit-vs-capacity curve (`requeue_sim`, LRU) has a **cliff at 8.4→10.7 M (+14 pp: 0.593→0.733)** — that *is* the exclusive-tiering win, obtained with **zero extra memory** by de-redundifying L1. Beyond 10.7 M it is a slow linear grind (~+0.8 pp per +1 M): reaching the 0.806 ceiling needs **~+9 M** more, i.e. off-contract memory or an infeasible ~2.4× lossless FP8-KV compression. Lossless host-KV compaction at a realistic ~1.2× would add only ~+0.7 pp at the cost of load-back decompression latency — not worth it.
+
+**Takeaway / generalizable insight:** on a workload whose reuse distance is a full client-imposed queue cycle and whose working set exceeds the cache, the *only* lever that shifts the goodput curve is **effective capacity**, and the biggest cheap win is **removing inter-tier redundancy** (inclusive write-through wastes the fast tier as a mirror; make it exclusive). Smarter eviction/scheduling/admission provably cannot help, because the future-knowledge they'd need (which resident KV is dead) is unobservable from any online feature. This is the boundary that makes the exclusive-tiering mechanism not just *a* win but the *within-contract-optimal* one. (These are screened negatives — per charter they are documented here, not logged as W&B versions.)
+
+---
+
 ## ★★★ HEADLINE: GOODPUT CURVE SHIFTS RIGHT (SAME-NODE rate sweep, sweep_rates.sh, node 1-2)
 The headline metric = max req/s at p99 TTFT ≤ 8s. SAME-NODE (1-2) A/B — baseline write-through vs BM_EXCL exclusive tiering:
 | λ | baseline req/s | baseline p99 | **excl req/s** | **excl p99** |

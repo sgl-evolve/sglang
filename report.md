@@ -55,13 +55,16 @@ After landing the exclusive-tiering win (hit 0.62→0.733 at the 10.7 M effectiv
 
 ---
 
-## ★★★ HEADLINE: GOODPUT CURVE SHIFTS RIGHT (SAME-NODE rate sweep, sweep_rates.sh, node 1-2)
-The headline metric = max req/s at p99 TTFT ≤ 8s. SAME-NODE (1-2) A/B — baseline write-through vs BM_EXCL exclusive tiering:
-| λ | baseline req/s | baseline p99 | **excl req/s** | **excl p99** |
-|---|---|---|---|---|
-| 3 | 3.02 | 5258 ms | 3.02 | **4443 ms (−15%)** |
-| 4 | 3.54 | 7847 ms (~SLO edge) | **3.83 (+8%)** | **7231 ms (−8%, <SLO)** |
-| 5 | not run¹ | not run¹ | 4.28 (raw) | **12031 ms (>SLO)** |
+## ★★★ HEADLINE: GOODPUT CURVE SHIFTS RIGHT (SAME-NODE A/B — now with error bars over 2 nodes)
+The headline metric = max req/s at p99 TTFT ≤ 8s. SAME-NODE A/B — baseline write-through vs BM_EXCL exclusive tiering — on node 1-2 (rate sweep) and repeated on node 0-3 (paired λ=4):
+| node | λ | baseline req/s | baseline p99 | **excl req/s** | **excl p99** | Δp99 | Δreq/s |
+|---|---|---|---|---|---|---|---|
+| 1-2 | 3 | 3.02 | 5258 ms | 3.02 | **4443 ms** | −15.5% | +0% |
+| 1-2 | 4 | 3.54 | 7847 ms (edge) | **3.83** | **7231 ms (<SLO)** | −7.9% | +8.1% |
+| 0-3 | 4 | 3.52 | **8684 ms (>SLO)** | **3.90** | **7397 ms (<SLO)** | −14.8% | +10.8% |
+| 1-2 | 5 | not run¹ | not run¹ | 4.28 (raw) | **12031 ms (>SLO)** | | |
+
+**★ Error bars on the knee (λ=4, n=2 independent same-node pairs): Δp99 = −11.3% ± 3.5 pp (−7.9, −14.8); Δreq/s = +9.5% ± 1.4 pp (+8.1, +10.8).** Both nodes agree in direction and magnitude → the goodput improvement is robust, not a node-specific fluke. **On node 0-3 the SLO shift is concrete: baseline λ=4 FAILS the 8 s SLO (8684 ms) while excl PASSES it (7397 ms)** — exclusive tiering converts a failing operating point into a passing one. (Node variance is again visible in the *absolute* baseline p99: 7847 on 1-2 vs 8684 on 0-3, +11% — which is exactly why the delta must be read within-node.)
 
 ¹ baseline λ=5 not measured; it is necessarily >SLO since baseline λ=4 is already at the 7847 ms edge (excl, which is strictly better, is already 12031 ms at λ=5).
 - At λ=4 (the knee), exclusive tiering sustains **+8% throughput (3.83 vs 3.54) at −8% p99 (7231 vs 7847), both under the 8s SLO** → goodput-under-SLO ~3.54→≥3.83 req/s. At λ=3, −15% p99. Plus the +11pp hit (less prefill recompute) that buys it. The whole curve shifts up/right (not a single-point/de-saturation trick — the charter's bar).
@@ -74,8 +77,9 @@ The headline metric = max req/s at p99 TTFT ≤ 8s. SAME-NODE (1-2) A/B — base
 **Lossless — by construction + corroborated.** A KV cache is lossless *by nature*: a hit replays the exact stored KV; a miss recomputes the exact KV from tokens (identical up to the same FP non-determinism the baseline already has). Exclusive tiering only changes *where/when* KV is placed and backed up — it never approximates, compresses, or serves stale KV — so it cannot change the output distribution (and the protocol samples stochastically at temp 0.6, so the right test is by-construction + coherence, not a raw output diff). Corroborated empirically: the sanity-check invariant passes every run (the parity fix), all 7037 requests complete cleanly (no gibberish/degenerate output a staleness bug would cause), the hit rate is coherent with the sim and the write_back diagnostic (0.733≈0.731), and the lossy-path counters never fire (dev_delete≈0, wb_fail=0 — every device eviction is a lossless demote-to-host or a reuse-gated backup).
 **Rigorous NEGATIVES:** warm-first scheduling ± cold-aging (v1/v2) = NEUTRAL (apparent gains were pure node variance, debunked same-node via diag2/diag3; access order is client-imposed FIFO → server scheduling can't shrink reuse distance). Mamba consensus-truncation, load_back-failure, retraction, extra_key: all ruled out with instrumentation.
 **Methodological lesson:** node variance ≈ 14% on req/s (ondem-3 2.64 vs 0-3 3.02) and ±30% on p99 → ALWAYS A/B on the SAME node.
-**Deferred rigor (honest limitation):** the *hit* gain has non-overlapping error bars (n=6 vs n=2+, free). The *p99/goodput* gain rests on the same-node A/B (n=1 pair per λ) + n=2 excl p99 + the mechanistic hit→recompute→knee link; formal p99 error bars would need 2–3 more paired same-node repeats (~2 h). On a 4-cell-contended shared pool with the win already confirmed, that incremental rigor did not justify the pool cost — deferred rather than churn shared capacity. The claim stands on the causal chain (bulletproof hit gain) + controlled A/B.
-**Error bars (free, from repeated runs — no extra pool):** across 6 baseline-family runs (v0_official + 5 diags/neutral-sched, all frozen write-through) hit = **0.622 ± 0.007** (range 0.612–0.633); across the exclusive-tiering family (v3c + the write_back-diagnostic = same 10.7 M-effective, +v3/v3b ≈ 0.73) hit = **0.732 ± 0.001**. **Δ = +11.0 pp, NON-OVERLAPPING** (baseline max 0.633 < excl min 0.731) — the effect is ~16× the baseline run-to-run SD, so it is real, not noise. Hit is inherently low-variance (a ratio over the fixed 1553-conv workload). p99 is noisier as expected: baseline **5470 ± 713 ms** (n=6) vs excl **4188 ms** (n=2) = **−23 %** at the mean (excl below baseline−1.8σ; corroborated by the controlled same-node A/B, −8..−17 %). req/s sustains ≈3.02 = λ (no throughput regression) in every run.
+**Rigor status (resolved):** the *hit* gain has non-overlapping error bars (n=6 vs n=2+, free). The *p99/goodput* gain now has error bars over **2 independent same-node A/B pairs at the knee** (λ=4: Δp99 −11.3%±3.5pp, Δreq/s +9.5%±1.4pp) — run on an idle certified node (0-3) so it added no contention. Remaining lower-value gap: n≥3 for a tight CI and λ=3 error bars (λ=3 is sub-knee, both far under SLO — low value). The claim rests on the bulletproof hit gain + the mechanistic hit→recompute→knee link + 2-node goodput agreement + the SLO-crossing on 0-3.
+**Error bars — HIT (free, repeated runs):** across 6 baseline-family runs (v0_official + 5 diags/neutral-sched, frozen write-through) hit = **0.622 ± 0.007** (range 0.612–0.633); exclusive-tiering family (v3c + write_back-diagnostic = same 10.7 M-effective, +v3/v3b ≈ 0.73) hit = **0.732 ± 0.001**. **Δ = +11.0 pp, NON-OVERLAPPING** (baseline max 0.633 < excl min 0.731) — ~16× the baseline SD, real not noise (hit is a low-variance ratio over the fixed workload).
+**Error bars — GOODPUT/p99 at the knee (λ=4, 2 independent same-node A/B pairs, nodes 1-2 & 0-3):** **Δp99 = −11.3 % ± 3.5 pp** (−7.9, −14.8) and **Δreq/s = +9.5 % ± 1.4 pp** (+8.1, +10.8) — both nodes agree in direction and magnitude. On node 0-3 the effect crosses the SLO: baseline λ=4 **fails** (8684 ms) while excl **passes** (7397 ms). req/s sustains ≈λ (no throughput regression) in every run. Node variance shows in the *absolute* baseline p99 (7847 vs 8684) → deltas read within-node.
 
 ## Analysis (offline, sim/)
 - Trace: 1553 convs / 7037 turns; each conv = 1 large doc (mean 12.3K tok, median 7K, max 192K) + ~4.5 QA turns; turn 0 prefills the doc, turns 1..n reuse it (verbatim re-send).

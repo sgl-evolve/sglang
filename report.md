@@ -53,8 +53,12 @@ p99 TTFT (ms) vs load, baseline (fcfs, inclusive) vs exclusive (self-contained m
 | λ | baseline p99 | exclusive p99 | Δ |
 |---|---|---|---|
 | 4 | 10094 | **8412** | **-16.7%** |
-| 5 | (running) | 12471 | |
+| 5 | 14950 | **12471** | **-16.6%** |
 | 6 | (running) | 16135 | |
+
+Consistent ~-17% p99 across the knee region → the whole curve shifts down uniformly. 8s-SLO knee:
+baseline crosses below λ=4 (10094 @ λ=4) ≈ λ≈3.7; exclusive crosses ≈ λ=4 (8412 @ λ=4) → exclusive
+sustains ~10–15% higher goodput under the SLO.
 
 At matched load, exclusive p99 is consistently lower → the whole curve shifts down. The 8s-SLO knee moves
 right: baseline crosses 8s BELOW λ=4 (10094 @ λ=4), exclusive crosses ~λ=4 (8412 @ λ=4) → exclusive

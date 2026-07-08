@@ -43,3 +43,8 @@ Launching v1-wsac96 (cap=96, sustainable) as primary mechanism test; investigati
 - v2-xtier (XTIER mechanism, LOSSLESS): hit 0.62→0.69 (+10%), p99 →4462ms (-29%), req/s 3.02 (+9%), MORE device-heavy (load_back +17% vs +29%). Logged W&B (mechanism). Below write_back's hit due to drop-recompute when proactive pass lags.
 - INSIGHT (the contribution): inclusive write_through wastes L1 mirroring L2 → capacity-bound thrash; EXCLUSIVE tiering recovers ~18% hit / -32% p99 / +9% goodput, lossless, latency-free. Hit ceiling ~0.73 (exclusive-capacity limit). write_back sync-evict is NOT a stall in 2-tier (fast host) → edges XTIER here; XTIER async is more robust for slower/heavier regimes.
 - v3-xtier-tuned launched (WM_FRAC 0.3/BATCH 256/PERIOD 2 → fewer drops → aim to beat write_back).
+
+## 2026-07-08 — v3-xtier-tuned: over-backup HURTS (honest negative-tuning)
+- v3 (WM_FRAC 0.3/BATCH 256/PERIOD 2, MORE proactive backup): hit 0.65 (+5%) < v2 0.69 (+10%) < write_back 0.73 (+18%). load_back +9% (fewest). Logged W&B (mechanism).
+- INSIGHT: proactive backup OVER-backs-up → displaces host content prematurely (host always full → each premature backup drops a host item → recompute) → LOWER hit. write_back's backup-ONLY-on-eviction is OPTIMAL for exclusive tiering here; XTIER's async proactive design only helps where the backup tier is slow/eviction heavy (not this fast-host 2-tier).
+- ⇒ To BEAT write_back: not more backup, but REUSE-AWARE DEVICE RETENTION (keep high-reuse docs in L1 → device hits → fewer load_backs → lower p99 at write_back's 0.73 hit). v4 candidate.

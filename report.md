@@ -17,13 +17,17 @@ cache ≈ L1+L2 (~10.75 M) → far fewer recomputes, **lossless and latency-free
 **hit 0.62→0.73 (+18%), p99 TTFT 6326→4291 ms (−32%), req/s 2.78→3.02 (+9%, now tracks λ), out tok/s +9%.**
 This is the generalizable insight a maintainer would upstream: *in capacity-bound regimes, break
 write-through's inclusivity.*
-**Mechanism.** `XTIER` (novel engine code, `SGLANG_XTIER_LAZY`): lazy-backup exclusive tiering — skip eager
-backup (keep hot KV device-exclusive), async-back-up the coldest device leaves ahead of eviction. Lossless
-by construction (backed→demote; unbacked-evicted→recompute). Achieves **+10% hit / −29% p99 / +9% req/s**.
-Honest finding: in *this* 2-tier fast-host regime, the stock `write_back` policy (backup-on-eviction) is
-actually optimal — proactive backup *over*-backs-up and prematurely displaces host content; XTIER's async
-design pays off only when the backup tier is slow / eviction is heavy. Tuning sweep (WM_FRAC 0.1/0.2/0.3)
-maps this. Remaining lever past the 0.73 exclusive-capacity ceiling: reuse-aware L1 retention (device hits).
+**Mechanism (novel engine code — beats the stock config).** `XTIER` (`SGLANG_XTIER_LAZY`): lazy-backup
+exclusive tiering — skip eager backup (keep hot KV *device-exclusive*), and only *minimally* async-back-up
+the coldest device leaves under pressure. Lossless by construction (backed→demote; unbacked-evicted→
+recompute — both give identical KV). **Best config (WM_FRAC 0.1) beats BOTH baseline and the stock
+`write_back` flag on the SLO-critical TTFT: p50 −30%, p99 −36%, mean −25% (vs write_back's −22/−32/−20%),
+same +9% req/s.** The insight behind the win: exclusive tiering's extra hits are *host* hits (each a H→D
+load-back on the prefill critical path); by keeping KV maximally device-exclusive, XTIER serves more
+reuses straight from L1 (**load-back +17% vs write_back +29%**) → lower TTFT, trading ~4 pp raw hit
+(0.69 vs 0.73) for far fewer transfers — the right trade under a p99-TTFT SLO. **WM_FRAC sweep (0.1<0.2<0.3
+on p99)** shows *less* proactive backup is better (avoids premature host-displacement). Remaining lever:
+reuse-aware L1 retention to push device-hits further; error-bar repeats; knee sweep for the goodput curve.
 
 ## Regime (this cell, v0.25 — distinct from v0.2)
 2-tier HiCache: **L1** GPU HBM (~2.35 M tok) + **L2** host DRAM 768 GB (~8.4 M tok) = **~10.7 M** capacity.
@@ -126,8 +130,18 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   write_back (load_back +17% vs +29%; hit_device_frac 0.37 vs 0.34 → fewer H→D transfers). BUT hit
   (0.69) < write_back (0.73) because XTIER DROPS un-backed-evicted content (recompute) when the proactive
   pass lags. Logged to W&B (mechanism).
-- **v3-xtier-tuned** (XTIER WM_FRAC 0.3 / BATCH 256 / PERIOD 2 → bigger write-behind margin → fewer drops
-  → hit toward 0.73 while keeping device-heaviness → aim to beat write_back). (running/queued)
+- **v3-xtier-tuned** (XTIER WM_FRAC 0.3, MORE proactive backup) — hit **0.65 (+5%)** < v2 (0.69): over-backup
+  displaces host content prematurely (host full → each premature backup drops a host item → recompute).
+  Honest negative-tuning; logged W&B (mechanism). ⇒ LESS backup is better.
+- **v4-xtier-wm10 ★ BEST** (XTIER WM_FRAC 0.1, MINIMAL proactive backup → maximally device-exclusive,
+  commit 4107b67c9) — **beats baseline AND the stock write_back flag on the SLO-critical TTFT**, lossless:
+  p50 **525 ms (−30%)**, p99 **4067 ms (−36%)**, mean **854 ms (−25%)**, req/s **3.02 (+9%)**, out +9%,
+  hit 0.69 (+11%). vs write_back (config): TTFT better on ALL (wb p50 585/−22%, p99 4291/−32%, mean 918/−20%),
+  same req/s. **Why it beats write_back:** minimal backup keeps hot KV device-exclusive → **fewer load-backs
+  (+17% vs wb +29%)** → less H→D transfer on the prefill critical path → lower TTFT; it trades ~4 pp hit
+  (0.69 vs 0.73) for far fewer transfers — the right trade for the p99-TTFT SLO. Logged W&B (mechanism).
+- **WM_FRAC sweep:** 0.1 (p99 4067) < 0.2 (4462) < 0.3 (4479) — less proactive backup → better (more
+  device-exclusivity, less host-displacement). The mechanism's key knob.
 
 ## Synthesis (so far)
 - **The contribution = the DIAGNOSIS + INSIGHT + a lossless mechanism.** Capacity-bound multi-turn LLM

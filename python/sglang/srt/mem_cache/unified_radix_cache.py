@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import threading
 import time
@@ -542,6 +543,21 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         )
         self.load_back_threshold = 10
         self.prefetch_stop_policy = server_args.hicache_storage_prefetch_policy
+
+        # --- XTIER: lazy-backup EXCLUSIVE tiering (base_free / evolve, default OFF) ---
+        # write_through mirrors hot KV into BOTH device+host (inclusive) so the distinct
+        # cache = host (~8.4M) and device (2.35M) is wasted as a mirror. XTIER keeps hot KV
+        # DEVICE-EXCLUSIVE (skip eager backup) → distinct cache ≈ device+host (~10.75M) →
+        # fewer recomputes. A proactive per-step pass async-backs-up the COLDEST device
+        # leaves (write_through path = non-blocking) so eviction stays stall-free (host copy
+        # ready → demote), and any un-backed leaf reached by eviction is just dropped→recompute
+        # (LOSSLESS by construction). Env-gated; 0 => exact stock write_through.
+        self.xtier_lazy = os.environ.get("SGLANG_XTIER_LAZY", "0") == "1"
+        # Trigger the proactive backup when device-free-fraction drops below this.
+        self.xtier_wm_frac = float(os.environ.get("SGLANG_XTIER_WM_FRAC", "0.15"))
+        # Max device leaves to async-back-up per scheduler step.
+        self.xtier_batch = int(os.environ.get("SGLANG_XTIER_BATCH", "32"))
+        self._xtier_device_total = None
 
         if storage_backend is not None:
             self._apply_storage_runtime_config(
@@ -1817,6 +1833,10 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         ):
             return
         node.hit_count += 1
+        if self.xtier_lazy:
+            # XTIER: defer backup — keep hot KV device-exclusive. The proactive pass
+            # (_xtier_proactive_backup) backs up the coldest device leaves under pressure.
+            return
         if (
             self.cache_controller is not None
             and not node.backuped
@@ -2460,12 +2480,59 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             last_best_match_device_node,
         )
 
+    def _xtier_proactive_backup(self) -> None:
+        """XTIER: when the device pool is under pressure, asynchronously back up the
+        COLDEST un-backed device leaves (write_through path = non-blocking) so eviction
+        can demote them stall-free instead of dropping+recomputing. Keeps HOT KV
+        device-exclusive (capacity gain). Deterministic across TP ranks (identical
+        radix/LRU) → consistent with the existing write_through ack machinery.
+        Kept cheap: throttled + pressure-gated + bounded scan; never raises."""
+        if not self.xtier_lazy or self.cache_controller is None:
+            return
+        try:
+            self._xtier_step = getattr(self, "_xtier_step", 0) + 1
+            if self._xtier_step % 4 != 0:  # throttle: at most every 4 scheduler steps
+                return
+            alloc = self.token_to_kv_pool_allocator
+            free = (
+                alloc.full_available_size()
+                if hasattr(alloc, "full_available_size")
+                else alloc.available_size()
+            )
+            if self._xtier_device_total is None:
+                self._xtier_device_total = getattr(alloc, "size", 0) or (
+                    free + self.full_evictable_size()
+                )
+            total = self._xtier_device_total
+            if not total or free >= self.xtier_wm_frac * total:
+                return  # device has headroom; no imminent eviction → keep all exclusive
+            if not self.evictable_device_leaves:
+                return
+            import heapq
+
+            # Only back up UN-backed leaves among the COLDEST `xtier_batch` device leaves —
+            # i.e. maintain a small backed cold-margin ready for stall-free demotion. This
+            # deliberately does NOT creep into hotter content, so hot KV stays exclusive
+            # (the capacity gain). Selection is deterministic across TP ranks (unique
+            # last_access_time), so it's consistent with the write_through ack machinery.
+            coldest = heapq.nsmallest(
+                self.xtier_batch,
+                self.evictable_device_leaves,
+                key=lambda n: self.eviction_strategy.get_priority(n),
+            )
+            for n in coldest:
+                if not n.backuped and n in self.evictable_device_leaves:
+                    self.write_backup(n)  # async (write_through); ack polled by writing_check
+        except Exception as e:  # never crash the scheduler over an optimization
+            logger.warning(f"[XTIER] proactive backup skipped: {e}")
+
     def check_hicache_events(self) -> None:
         """Called per scheduler step to poll async HiCache events."""
         # Reap the previous round's PP-sync sends before issuing new ones.
         self._drain_async_work()
         self.writing_check()
         self.loading_check()
+        self._xtier_proactive_backup()
         if self.enable_storage:
             self.drain_storage_control_queues()
         if self.enable_storage_metrics and self.storage_metrics_collector is not None:

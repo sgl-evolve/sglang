@@ -90,4 +90,36 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   seconds because turns are decode-bound (~32 s) → cold slots free slowly; worst in the turn-0-heavy early
   phase (all cold → cap = pure serialization). **Conclusion: cold-admission DEFERRAL cannot recover the
   21pp headroom under the p99≤8 s SLO — the latency cost dominates.** Pivot to LATENCY-FREE capacity lever.
-- (v2 → EXCLUSIVE tiering: screen write_back next)
+- **cfg-writeback** (write_back = exclusive tiering, CONFIG screen) — **VALIDATES the capacity thesis on
+  HW.** vs v0_official: **hit 0.62→0.73 (+18%)**, **p99 TTFT 6326→4291 ms (−32%)**, p50 750→585 (−22%),
+  mean 1146→918 (−20%), **req/s 2.78→3.02 (+9%, now tracks λ=3)**, out 355→387 tok/s (+9%). load_back
+  +29% (more host hits — cheap), hit_device_frac 0.40→0.34. **No eviction stall** (TTFT improved). Matches
+  the sim's exclusive prediction (8.4M→10.75M distinct → +~14pp hit). write_back is a stock flag (NOT the
+  contribution) but proves the direction: exclusive tiering recovers much of the capacity-eviction headroom
+  LOSSLESSLY, latency-free. Logged to W&B (config).
+- **v2-xtier** (XTIER lazy-backup exclusive tiering, MECHANISM, commit 4107b67c9) — **clear win vs
+  baseline, lossless:** hit 0.62→**0.69 (+10%)**, p99 TTFT 6326→**4462 ms (−29%)**, p50 750→595 (−21%),
+  mean 1146→941 (−18%), **req/s 2.78→3.02 (+9%)**, out 355→387 tok/s (+9%). MORE device-heavy than
+  write_back (load_back +17% vs +29%; hit_device_frac 0.37 vs 0.34 → fewer H→D transfers). BUT hit
+  (0.69) < write_back (0.73) because XTIER DROPS un-backed-evicted content (recompute) when the proactive
+  pass lags. Logged to W&B (mechanism).
+- **v3-xtier-tuned** (XTIER WM_FRAC 0.3 / BATCH 256 / PERIOD 2 → bigger write-behind margin → fewer drops
+  → hit toward 0.73 while keeping device-heaviness → aim to beat write_back). (running/queued)
+
+## Synthesis (so far)
+- **The contribution = the DIAGNOSIS + INSIGHT + a lossless mechanism.** Capacity-bound multi-turn LLM
+  serving: write-through KV tiering is INCLUSIVE (L1 mirrors L2's hot subset) → distinct cache = L2 only;
+  the ~19 M working set thrashes → 21 pp hit lost to concurrency eviction (turns 0-2 ~0 hit). **EXCLUSIVE
+  tiering** (L1 holds content NOT in L2) recovers most of it LOSSLESSLY & latency-free: **+18% hit,
+  −32% p99, +9% goodput** (validated write_back; matches offline sim 8.4→10.75 M distinct). This is the
+  generalizable insight a maintainer would upstream (write_back ≫ write_through in this regime).
+- **Lossless:** both mechanisms only change WHERE KV lives / WHEN it's backed up — never KV values or
+  which tokens are attended. Cache-reuse and recompute are byte-identical → outputs unchanged (bench
+  completes, out tok/s ↑). No quality regression.
+- **Hit ceiling ≈ 0.73** = the exclusive-capacity limit (infinite-cache ceiling 0.80 needs >10.75 M,
+  impossible losslessly). So the remaining lever past write_back is LATENCY (device-hit ratio), not hit.
+- **XTIER (novel mechanism)** realizes exclusive tiering in engine code with async write-behind (vs
+  write_back's sync evict). In THIS 2-tier regime write_back's sync isn't a stall (fast host) so it edges
+  XTIER; XTIER's async design is the more robust realization (matters when the backup tier is slower /
+  eviction heavier). Next: tune XTIER to erase the drop-gap; explore reuse-aware device retention to beat
+  write_back on load_back/latency.

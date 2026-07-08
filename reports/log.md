@@ -70,3 +70,6 @@ Same-harness knee sweep (one load, λ∈{3,4}), XTIER-v4 (exclusive) vs fresh ba
 - λ=4: XTIER p99 **7794ms ≤ 8s SLO SUSTAINED** / req/s 3.67  vs  baseline p99 **9227ms > 8s SLO VIOLATED** / 3.52
 ⇒ XTIER sustains λ=4 under the SLO where baseline fails → max-sustainable goodput ~3.35→≥3.67 req/s (+~10%).
 This is the charter's HEADLINE win (goodput-under-SLO curve shifts up), HW-measured. Knee harness needed GPU-idle+DRAM gates to survive the hostile shared pool.
+
+## 2026-07-08 — CONCLUSION: XTIER near the lossless frontier
+Two ceilings, both reached: (1) hit-rate ceiling 0.73 = exclusive distinct capacity L1+L2 (infinite=0.80 needs >cap, lossless-impossible); (2) device-hit ceiling — docs are radix ROOTS already retained by leaf-first eviction; demoted leaves are low-reuse QA tails → reuse-aware retention adds little. XTIER captures both → +~10% goodput-under-SLO, lossless. Further lossless gains need bigger physical tiers (out of budget). Contribution complete.

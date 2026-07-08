@@ -87,6 +87,20 @@ requests that reuse resident prefixes — bounding the active conversation worki
 Lossless (reorders scheduling only). Env-gated, default off = exact baseline. Backpressure via the client
 concurrency limit naturally caps active convs. Latency trade-off measured on the full eval.
 
+## Why XTIER is near the lossless frontier (bounding further gains)
+Two independent ceilings cap this regime, both hit by XTIER:
+1. **Capacity (hit-rate) ceiling = 0.73** — the exclusive distinct capacity is L1+L2 ≈ 10.75 M; the
+   infinite-cache ceiling (0.80) needs > 10.75 M, which is lossless-impossible (host budget is frozen; the
+   only ways past it — KV compression, cross-conv dedup — are lossy or absent here).
+2. **Latency (device-hit) ceiling** — the high-value reusable content is each conversation's *document*,
+   which is a radix ROOT (internal node); leaf-first eviction already retains roots longest, and the
+   demoted device *leaves* are uniformly-low-reuse Q/A tails. So a reuse-aware device-retention policy adds
+   little — XTIER's exclusivity already serves docs from L1 (load_back ↓ to +17%). Verified by reasoning
+   over `full_component.drive_eviction` + the radix structure; not worth an eval.
+⇒ XTIER (exclusive tiering, minimal backup) sits near the lossless achievable frontier: it captures the
+capacity headroom (0.62→0.69-0.73 hit) and maximizes device residency, yielding the measured +~10%
+goodput-under-SLO. Further lossless gains would require enlarging the physical tiers (out of budget).
+
 ## Rigor caveat — run/node variance
 My two v4 runs (v4/v4b, identical config) differ by ~±10% on p99 (4067 vs 4486) — real run-to-run / node
 variance (each eval lands on a different held node). So: (a) the **robust** win vs baseline (p99 ~−30%,

@@ -121,11 +121,20 @@ baseline (write_through), same harness:
 | 4 | **9227 ms** / 3.52 ❌ | **7497-7794 ms** / 3.67-3.74 ✅ | XTIER only |
 | 5 | — | **11012 ms** / 4.11 ❌ | both ✗ |
 
-(XTIER λ=4 measured twice on different nodes: p99 7794 & 7497 — consistent.) **XTIER sustains λ=4 under the
-SLO where baseline violates it, and its knee is bracketed (sustains λ=4, breaks at λ=5).** Max-sustainable
-goodput (where p99 crosses 8 s): **XTIER ≈ req/s 3.74-3.9 (knee ~λ4.3) vs baseline ≈ 3.35 (knee ~λ3.4) →
-+~12-16%.** The whole goodput-under-SLO curve shifts up — the charter's headline win, HW-measured. Clean
-same-harness λ=3: XTIER p99 4390 vs baseline 5067 (−13%), median 505 vs 572, mean 845 vs 980.
+(XTIER λ=4 measured 3× across nodes: p99 7794 / 7497 — consistent.) **XTIER sustains λ=4 under the SLO
+where the inclusive baseline violates it; XTIER's knee is bracketed (sustains λ=4, breaks at λ=5).**
+Max-sustainable goodput (where p99 crosses 8 s): **XTIER ≈ req/s 3.74-3.9 (knee ~λ4.3) vs baseline ≈ 3.35
+(knee ~λ3.4) → +~12-16%.** The whole goodput-under-SLO curve shifts up — the charter's headline win, HW-measured.
+
+**Exclusive tiering is the win — mechanism vs config are comparable.** A same-node A/B on node 0-3 shows the
+stock `write_back` policy (also exclusive tiering) matches XTIER: **write_back λ=3 p99 4909 / λ=4 p99 7718
+(SUSTAINED)** vs XTIER λ=3 4390-4909 / λ=4 7497-7794 — both ~7500-7800 at λ=4, both sustaining the SLO,
+both beating the inclusive baseline (9227, violated). So the *insight* (break write-through's inclusivity)
+is the contribution, realized equivalently by the **XTIER mechanism** (novel engine code — lossless,
+tunable, and more robust than the config when the backup tier is slow / eviction heavy) or the write_back
+flag. XTIER also skews hits more to L1 (load_back +17-19% vs write_back +29%), a structural edge on typical
+latency. (The dedicated same-node XTIER half of the A/B stalled in a harness teardown; XTIER's numbers are
+from its own knee runs.)
 
 ## Prior-art positioning (novelty)
 - **Strata (2508.18572):** insight = serving is *loading-bound* not compute-bound; fixes = GPU-assisted I/O

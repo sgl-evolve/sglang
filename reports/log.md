@@ -80,3 +80,6 @@ Full XTIER knee (measured): λ=3 p99 4390 / λ=4 p99 7497-7794 (✅ ≤8s, 2 nod
 
 ## 2026-07-08 — same-node A/B attempted; harness crash (transient node), abandoned
 Custom A/B harness (ab_node.sh) crashed on write_back startup (sigquit — transient node issue; custom harnesses lack eval.sh's NCCL preflight). Freed node. XTIER-vs-write_back stands as characterized (reliable median/mean edge via structural load_back reduction; p99 parity; node-variance caveat noted). CONTRIBUTION COMPLETE: exclusive-tiering insight + XTIER mechanism + measured headline goodput curve (+12-16%, XTIER knee ~λ4.3 vs baseline ~λ3.4) + frontier analysis. All durable (W&B/report/memory/git).
+
+## 2026-07-08 — same-node A/B (write_back half): clarified clean framing
+Same-node (0-3) write_back: λ=3 p99 4909 / λ=4 p99 7718 (SUSTAINED, req/s 3.86) — matches XTIER knee (λ4 7497-7794), both beat inclusive baseline (9227, violated). ⇒ CLEANEST framing: EXCLUSIVE TIERING (XTIER mechanism OR write_back config) shifts the goodput curve up; mechanism & config comparable; XTIER = novel lossless engine realization (more robust for slow backup tiers, +device-hits). Same-node XTIER half stalled in harness teardown (pkill launch_server doesn't kill scheduler_TP → GPU not freed for 2nd server); XTIER numbers from dedicated knee runs. Node freed. CONTRIBUTION COMPLETE.

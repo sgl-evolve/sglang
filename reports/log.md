@@ -13,3 +13,8 @@
 - DES with plain LRU + real arrival/concurrency gives hit≈0.81 (≈ceiling): active-set reuse distance is small, fits easily → baseline's 0.62 is a **HiCache MECHANISM inefficiency, not fundamental capacity**.
 - Code trace: only truly-lossy path = `_evict_device_leaf` DELETE of unbacked device leaf under write_through (fires when `write_backup`→0, i.e. host full & evict_host can't free). Everything else demotes to host (recoverable). Baseline metrics: 582M device-evict + 298M load-back for 62M hits ⇒ heavy L1↔L2 thrash.
 - Added always-on diag counters (dev_delete/demote tok, wb_fail, host_evict) → server.log. Committed ed175dc05. Launched screening eval **s0-diag** on held node ondem-3 (~2h). Purpose: reproduce 0.62 + localize the lost-reuse path before building the mechanism.
+
+## 2026-07-08T06:20Z — v1 warm-first logged (mixed result)
+- s1-diag (same-clone baseline) reproduces golden: hit 0.627, p50 920 / p99 4960ms, req/s 2.64. Mamba RULED OUT (kv_only≈consensus whole run); delete-path/wb_fail≈0.
+- v1 warm-first scheduling (BM_WARMFIRST, commit d843b607f): hit FLAT 0.622, p50 637 (−31%), p99 5930 (+20%), req/s 2.94 (+11%), out_tok/s 376 (+11%). Logged to W&B (mechanism). KEY FINDING: reuse NOT scheduling-recoverable → baseline near structural reuse ceiling; warm-first trades p99 tail for median+throughput.
+- v2 (warm-first + cold-aging, commit 537bcd955) running: bound p99 while keeping throughput.

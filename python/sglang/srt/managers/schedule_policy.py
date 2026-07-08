@@ -697,6 +697,21 @@ class PrefillAdder:
             self.reprocessed_log_hit_tokens += prefix_len
             self.reprocessed_log_input_tokens += extend_input_len
 
+        # base_mech per-prefill UNBIASED hit diagnostic (once per committed prefill).
+        # Buckets by whether the prefill reused a substantial resident prefix ("warm"
+        # continuation) to crack the avoidable-reuse-miss puzzle.
+        _bm = getattr(self.tree_cache, "_bm_diag", None)
+        if _bm is not None:
+            _bm["pf_count"] = _bm.get("pf_count", 0) + 1
+            _bm["pf_hit_tok"] = _bm.get("pf_hit_tok", 0) + prefix_len
+            _bm["pf_new_tok"] = _bm.get("pf_new_tok", 0) + extend_input_len
+            if prefix_len >= 512:
+                _bm["pf_warm_count"] = _bm.get("pf_warm_count", 0) + 1
+                _bm["pf_warm_hit_tok"] = _bm.get("pf_warm_hit_tok", 0) + prefix_len
+            elif extend_input_len > 0:
+                _bm["pf_cold_count"] = _bm.get("pf_cold_count", 0) + 1
+                _bm["pf_cold_new_tok"] = _bm.get("pf_cold_new_tok", 0) + extend_input_len
+
     def _get_dllm_remain_tokens(self) -> int:
         _rem_tokens = min(
             self.rem_dllm_tokens,

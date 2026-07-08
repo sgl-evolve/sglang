@@ -2518,13 +2518,18 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         if self._bm_diag_log_ctr % 800 == 0:
             d = self._bm_diag
             mp = d.get("m_presented", 0) or 1
+            pfn = (d.get("pf_hit_tok", 0) + d.get("pf_new_tok", 0)) or 1
             logger.info(
                 "[BM_DIAG] dev_delete=%d/%dtok dev_demote=%d/%dtok wb_ok=%d wb_fail=%d "
-                "host_evict=%dtok | match presented=%d kv_only=%d(%.3f) consensus=%d(%.3f)",
+                "host_evict=%dtok | match presented=%d kv_only=%d(%.3f) consensus=%d(%.3f) "
+                "| PREFILL(unbiased) n=%d hit=%.3f warm=%d/hit%d cold=%d/new%d",
                 d["dev_delete_cnt"], d["dev_delete_tok"], d["dev_demote_cnt"],
                 d["dev_demote_tok"], d["wb_ok_cnt"], d["wb_fail_cnt"], d["host_evict_tok"],
                 d.get("m_presented", 0), d.get("m_kv_only", 0), d.get("m_kv_only", 0)/mp,
                 d.get("m_consensus", 0), d.get("m_consensus", 0)/mp,
+                d.get("pf_count", 0), d.get("pf_hit_tok", 0)/pfn,
+                d.get("pf_warm_count", 0), d.get("pf_warm_hit_tok", 0),
+                d.get("pf_cold_count", 0), d.get("pf_cold_new_tok", 0),
             )
         if self.enable_storage:
             self.drain_storage_control_queues()

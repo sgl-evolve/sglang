@@ -72,6 +72,14 @@
 | v0_official | stock | baseline | 0.6217 | 750/6326 | 0.9999 | 2.78 | given baseline |
 | s0-diag | ed175dc05 | (screening) | (killed) | | | | partial: delete/wb_fail≈0 |
 | s1-diag | 2f5c1510d | (screening) | **0.6272** | 920/4960 | 0.9999 | 2.64 | same-clone BASELINE anchor (BM_WARMFIRST off); reproduces golden 0.622 ✓ |
+| v1-warmfirst | d843b607f | mechanism | 0.6224 | **637**/**5930** | 0.9999 | **2.94** | warm-first scheduling: hit FLAT, p50 −31%, p99 +20% (tail trade), req/s +11%, out_tok/s +11% |
+
+## v1 warm-first RESULT + interpretation (vs s1-diag same-clone baseline)
+- **hit FLAT (0.622 vs 0.627)** → reuse-aware scheduling does NOT recover reuse ⇒ reuse is NOT eviction/scheduling-limited; **baseline is near the structural reuse ceiling for this workload.** (Corroborates: s1-diag incremental match ratio was stable regardless of host fill; Mamba ruled out; delete/wb_fail≈0.) This contradicts the optimistic full-concat ceiling (0.81) — real reuse is capped lower.
+- **p50 −31% (637 vs 920), req/s +11% (2.94 vs 2.64), out_tok/s +11%** → warm-first fills the prefill batch with cheap continuations first → better batch efficiency → higher throughput + lower median. (Caveat: different node than baseline → possible variance; needs same-node A/B + rate sweep to confirm.)
+- **p99 +20% (5930 vs 4960)** → deferring cold huge-doc prefills grows the tail (a pure reorder trades tail for median, as the charter warns). Still < 8 s SLO.
+- **v2 (running):** warm-first + cold-aging (BM_AGE_LIMIT_S=2.0) to bound the p99 tail while keeping the median/throughput gains — testing whether the net is a clean goodput-under-SLO improvement.
+- **Open puzzle (headroom is REAL):** s1-diag prefill aggregate (unbiased, from server.log): sum_new=38.4M, sum_cached=61.7M (hit 0.617). Recompute 38.4M = ~19M unavoidable cold first-touch + **~19.4M AVOIDABLE reused-but-missed** (= the recoverable headroom, ~25% recompute reduction if captured). Cause NOT identified: ruled out eviction (kv_only stable), mamba (kv_only≈consensus), capacity/reuse-distance (~2M ≪ 10.7M cache), retokenization (only ~2.6pp), retraction (≈0). Also: load_back 294M ≫ host-hits 36.4M (8× — heavy L1↔L2 thrash). NEXT: per-request instrumentation to find which continuations miss their resident doc and why.
 
 ## s1-diag DEFINITIVE findings (full run)
 - **My clone reproduces the baseline: hit 0.627 (golden 0.622).** p50 920 / p99 4960ms, reqps 2.64, host_util 0.9999.

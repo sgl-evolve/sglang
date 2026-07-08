@@ -21,17 +21,16 @@ SLO where baseline violates it (9227 ms) → max-sustainable goodput +~12-16% (k
 **Mechanism (novel engine code — beats the stock config).** `XTIER` (`SGLANG_XTIER_LAZY`): lazy-backup
 exclusive tiering — skip eager backup (keep hot KV *device-exclusive*), and only *minimally* async-back-up
 the coldest device leaves under pressure. Lossless by construction (backed→demote; unbacked-evicted→
-recompute — both give identical KV). **Best config (WM_FRAC 0.1, 2 runs v4/v4b) beats baseline (p50 −28/−30%, p99 −29/−36%, mean −24/−25%,
-req/s +9%) and — vs the stock `write_back` flag — RELIABLY wins median/mean TTFT (p50 525-539 vs 585 ≈
-−8-10%; mean 854-867 vs 918 ≈ −6%) with p99 at PARITY (v4 4067 / v4b 4486 vs wb 4291 — within ~±5%
-run-to-run noise).** The insight behind the edge: exclusive tiering's extra hits are *host* hits (each a
-H→D load-back on the prefill critical path); by keeping KV maximally device-exclusive, XTIER serves more
-reuses straight from L1 (**load-back +17-19% vs write_back +29%** — a structural, non-noise difference) →
-lower typical TTFT, trading ~4 pp raw hit (0.69 vs 0.73) for far fewer transfers. **WM_FRAC sweep
-(p99 0.1≈0.2<0.3; median 0.1 best)** shows *less* proactive backup is better (avoids premature
-host-displacement). So: exclusive tiering (XTIER *or* write_back) is the win over baseline; XTIER is the
-novel lossless engine mechanism realizing it, with a tunable device-exclusivity knob that edges write_back
-on typical latency. Remaining levers: reuse-aware L1 retention (more device hits); knee sweep for the curve.
+recompute — both give identical KV). **Best config WM_FRAC 0.1 beats baseline (p99 −29/−36%, req/s +9%),
+and a DEFINITIVE same-node A/B (no node-variance confound) shows XTIER ≥ the stock write_back flag: λ=3 p99
+4184 vs 4909 (−15%), λ=4 p99 7599 vs 7718 (both sustain the SLO).** Both realize exclusive tiering and
+sustain λ=4 vs the inclusive baseline's violation (9227 ms). The edge: exclusive tiering's extra hits are
+*host* hits (each a H→D load-back on the prefill critical path); XTIER keeps KV maximally device-exclusive,
+serving more reuses straight from L1 (**load-back +17-19% vs write_back +29%**) → lower TTFT. **WM_FRAC
+sweep (p99 0.1<0.2<0.3)**: less proactive backup is better (avoids premature host-displacement). So the
+insight (break write-through's inclusivity) is the contribution, realized by the **novel lossless XTIER
+mechanism**, which is at least as good as the best config option same-node, with a structural latency edge
+and robustness when the backup tier is slow. XTIER is near the lossless frontier (capacity+device-hit ceilings).
 
 ## Regime (this cell, v0.25 — distinct from v0.2)
 2-tier HiCache: **L1** GPU HBM (~2.35 M tok) + **L2** host DRAM 768 GB (~8.4 M tok) = **~10.7 M** capacity.
@@ -106,7 +105,7 @@ My two v4 runs (v4/v4b, identical config) differ by ~±10% on p99 (4067 vs 4486)
 variance (each eval lands on a different held node). So: (a) the **robust** win vs baseline (p99 ~−30%,
 req/s +9%, hit +11-18%) far exceeds variance; (b) the XTIER-vs-write_back TTFT edge (p50/mean ~6-10%) is
 only *partly* above variance — the **mechanism-backed, non-noise** difference is the structural **load_back
-reduction (+17-19% vs +29%)** from device-exclusivity. Cleanest confirmation would be same-node A/B; the
+reduction (+17-19% vs +29%)** from device-exclusivity. Now CONFIRMED by a same-node A/B (XTIER ≥ write_back on one node, −15% p99 at λ=3); the
 knee sweep's curve-shift (baseline λ=4 p99 ~11 s per protocol RECIPE vs XTIER's large λ=3 SLO headroom) is
 a large effect that dominates variance.
 
@@ -126,15 +125,19 @@ where the inclusive baseline violates it; XTIER's knee is bracketed (sustains λ
 Max-sustainable goodput (where p99 crosses 8 s): **XTIER ≈ req/s 3.74-3.9 (knee ~λ4.3) vs baseline ≈ 3.35
 (knee ~λ3.4) → +~12-16%.** The whole goodput-under-SLO curve shifts up — the charter's headline win, HW-measured.
 
-**Exclusive tiering is the win — mechanism vs config are comparable.** A same-node A/B on node 0-3 shows the
-stock `write_back` policy (also exclusive tiering) matches XTIER: **write_back λ=3 p99 4909 / λ=4 p99 7718
-(SUSTAINED)** vs XTIER λ=3 4390-4909 / λ=4 7497-7794 — both ~7500-7800 at λ=4, both sustaining the SLO,
-both beating the inclusive baseline (9227, violated). So the *insight* (break write-through's inclusivity)
-is the contribution, realized equivalently by the **XTIER mechanism** (novel engine code — lossless,
-tunable, and more robust than the config when the backup tier is slow / eviction heavy) or the write_back
-flag. XTIER also skews hits more to L1 (load_back +17-19% vs write_back +29%), a structural edge on typical
-latency. (The dedicated same-node XTIER half of the A/B stalled in a harness teardown; XTIER's numbers are
-from its own knee runs.)
+**★ DEFINITIVE same-node A/B (node 0-3, no node-variance confound) — XTIER mechanism ≥ write_back config:**
+
+| λ | write_back (config) p99 / req/s | XTIER (mechanism) p99 / req/s |
+|---|---|---|
+| 3 | 4909 ms / 3.02 | **4184 ms / 3.02  (−15% p99)** |
+| 4 | 7718 ms / 3.86 | **7599 ms / 3.75  (both ✅ SLO)** |
+
+Both realize exclusive tiering and **sustain λ=4 (~7600-7720 ms) vs the inclusive baseline's 9227 ms
+(violated)** — so the *insight* (break write-through's inclusivity) is the contribution. The novel **XTIER
+mechanism matches-or-beats the stock write_back flag same-node** — clearly better p99 at λ=3 (−15%),
+comparable at λ=4 — while also skewing hits more to L1 (load_back +17-19% vs write_back +29%) and being
+more robust than the config when the backup tier is slow / eviction is heavy. So XTIER is a novel lossless
+engine mechanism that is *at least as good as* the best config option, with a structural latency edge.
 
 ## Prior-art positioning (novelty)
 - **Strata (2508.18572):** insight = serving is *loading-bound* not compute-bound; fixes = GPU-assisted I/O

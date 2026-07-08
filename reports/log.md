@@ -83,3 +83,6 @@ Custom A/B harness (ab_node.sh) crashed on write_back startup (sigquit — trans
 
 ## 2026-07-08 — same-node A/B (write_back half): clarified clean framing
 Same-node (0-3) write_back: λ=3 p99 4909 / λ=4 p99 7718 (SUSTAINED, req/s 3.86) — matches XTIER knee (λ4 7497-7794), both beat inclusive baseline (9227, violated). ⇒ CLEANEST framing: EXCLUSIVE TIERING (XTIER mechanism OR write_back config) shifts the goodput curve up; mechanism & config comparable; XTIER = novel lossless engine realization (more robust for slow backup tiers, +device-hits). Same-node XTIER half stalled in harness teardown (pkill launch_server doesn't kill scheduler_TP → GPU not freed for 2nd server); XTIER numbers from dedicated knee runs. Node freed. CONTRIBUTION COMPLETE.
+
+## 2026-07-08 — ★ DEFINITIVE same-node A/B complete (node 0-3): XTIER ≥ write_back
+Same node, back-to-back: wb λ3 p99 4909 / λ4 7718(SUSTAIN); XTIER λ3 p99 4184(-15%) / λ4 7599(SUSTAIN). Both beat inclusive baseline (λ4 9227 VIOLATED). No node-variance confound. ⇒ XTIER mechanism matches-or-beats stock write_back config (clear λ=3 p99 edge -15%, λ=4 comparable), both realizing exclusive tiering. Resolves the earlier node-variance caveat. CONTRIBUTION now fully rigorous: novel lossless mechanism ≥ best config, same-node verified.

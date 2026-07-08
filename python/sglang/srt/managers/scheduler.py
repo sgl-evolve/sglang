@@ -2871,10 +2871,13 @@ class Scheduler(
             mamba_allocator.alloc_group_begin(len(self.waiting_queue))
         # WSAC: count COLD-start prefills already in flight in the running batch, so we
         # can cap how many concurrent new documents compete with resident reusable KV.
+        # `wsac_observe` also counts (without deferring) when only logging, so a
+        # diagnostic run (MAX_COLD=0, LOG>0) reveals the natural cold concurrency.
         wsac_on = self.wsac_max_cold > 0
+        wsac_observe = wsac_on or self.wsac_log > 0
         cold_active = (
             sum(1 for r in self.running_batch.reqs if getattr(r, "wsac_cold", False))
-            if wsac_on
+            if wsac_observe
             else 0
         )
         wsac_deferred = 0
@@ -2914,7 +2917,7 @@ class Scheduler(
             # bounds the number of concurrent new conversations so resident documents
             # survive to their next turn. Lossless: the deferred req stays in the queue.
             req_cold = False
-            if wsac_on:
+            if wsac_observe:
                 # Populate num_matched_prefix_tokens if the schedule policy (e.g. FCFS)
                 # did not (UnifiedRadixCache has no fast-match). match_prefix_for_req with
                 # req=None is side-effect-free (no alloc/lock) — safe before deferral.
@@ -2923,12 +2926,13 @@ class Scheduler(
                 req_cold = (
                     req.num_matched_prefix_tokens < self.wsac_cold_ratio * prompt_len
                 )
-                have_runnable = (
-                    len(self.running_batch.reqs) + len(adder.can_run_list)
-                ) > 0
-                if req_cold and have_runnable and cold_active >= self.wsac_max_cold:
-                    wsac_deferred += 1
-                    continue
+                if wsac_on:
+                    have_runnable = (
+                        len(self.running_batch.reqs) + len(adder.can_run_list)
+                    ) > 0
+                    if req_cold and have_runnable and cold_active >= self.wsac_max_cold:
+                        wsac_deferred += 1
+                        continue
 
             req.init_next_round_input(self.tree_cache)
             n_before = len(adder.can_run_list)
@@ -2937,7 +2941,7 @@ class Scheduler(
                 has_chunked_req=(self.chunked_req is not None),
                 truncation_align_size=self.truncation_align_size,
             )
-            if wsac_on and len(adder.can_run_list) > n_before:
+            if wsac_observe and len(adder.can_run_list) > n_before:
                 req.wsac_cold = req_cold
                 if req_cold:
                     cold_active += 1

@@ -2758,7 +2758,9 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         write_back = (
             self.cache_controller is not None
             and self.cache_controller.write_policy == "write_back"
-        )
+        ) or self._bm_excl  # BM_EXCL does write-back-style leaf-first backup-on-evict;
+        # the transient "leaf backed, parent still device-resident" is benign (parent is
+        # backed up on its own eviction, keep_hits=1), same as stock write_back.
 
         errors: list[str] = []
         E = errors.append

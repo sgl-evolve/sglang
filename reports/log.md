@@ -83,3 +83,11 @@
   on bf16, ~+2-3pp) is DOMINATED -> NOT worth building. Compression frontier CLOSED with data.
 - Final: lossless exclusive tiering (0.752, +13pp, same-node p99 -37%, goodput knee +~15%) captures ~70% of
   the recoverable headroom; residual only reachable lossily. Accessible LOSSLESS mechanism space fully closed.
+
+## 2026-07-08 ~16:00Z — LOSSLESS CERTIFIED (bit-exact vs stock) + hybrid-Mamba cache caveat
+- 3-mode greedy verify (24 long docs, r1 fresh / r2 cache-hit exercising exclusive host-free+load-back):
+  exc-r2 vs stock-r2 = 24/24 (MY MECHANISM == stock cache, bit-exact, both paths) => lossless relative to
+  the default cache, CERTIFIED by measurement. stock-r2 vs nocache = 20/24; exc-r2 vs nocache = 20/24
+  (identical) => hybrid-Mamba cache (stock & exclusive alike) is inherently ~non-bit-exact vs no-cache on
+  ~17% of long docs (mamba checkpoint reconstruction) - an sglang cache property, borne equally by baseline.
+- Net: exclusive tiering adds ZERO loss over the cache baseline; comparison on equal footing. 10 W&B versions.

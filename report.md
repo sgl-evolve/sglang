@@ -158,6 +158,11 @@ load-back path; tools/lossless_verify*.sh):
   recompute (float non-associativity) rather than a fresh full-sequence compute. STOCK shows the IDENTICAL
   4/24 pattern ([6,8,12,17]) ⇒ this is a property of sglang's hybrid cache, NOT of exclusive tiering. My
   mechanism only relocates the exact KV/checkpoint bytes, so it inherits stock's behavior exactly.
+- Complete 3-mode table (matches/24): exc-r2 vs stock-r2 = **24/24** (my mechanism == stock cache);
+  stock-r2 vs nocache = 20/24; exc-r2 vs nocache = **20/24 (identical to stock)** ⇒ exclusive & stock
+  diverge from true no-cache on the SAME 4 docs by the same amount. Net: **exclusive adds ZERO loss over
+  the cache baseline (v0_official), and the residual cache-vs-no-cache drift is an sglang hybrid-cache
+  property borne equally by the baseline** ⇒ the exclusive-vs-baseline comparison is on equal footing.
 
 ## The protocol (fixed contract)
 - 2-tier: L1 GPU HBM (~2.35M tok) + L2 host DRAM (`--hicache-size 96` = 768 GB, ~7.81M tok). No L3.

@@ -416,6 +416,12 @@ class Envs:
     # Disable with SGLANG_HICACHE_NIXL_USE_DIRECT_IO=0 or via the
     # "use_direct_io": false key in --hicache-storage-backend-extra-config.
     SGLANG_HICACHE_NIXL_USE_DIRECT_IO = EnvBool(True)
+    # Exclusive L1<->L2 tiering: after a host->device promotion (load_back) completes, free the host
+    # copy of the now device-resident path so an entry lives on device XOR host (not both). With
+    # write_back (which does no eager device->host backup), this makes the two tiers hold DISJOINT
+    # cached content, raising distinct cache capacity by the device tier size. Lossless: the device
+    # copy is committed before the host copy is freed; a later device eviction re-backs-up to host.
+    SGLANG_HICACHE_EXCLUSIVE = EnvBool(False)
     SGLANG_HUGEPAGE_SIZE = EnvStr("")
     # Staging buffer for heterogeneous TP KV transfer
     SGLANG_DISAGG_STAGING_BUFFER = EnvBool(False)

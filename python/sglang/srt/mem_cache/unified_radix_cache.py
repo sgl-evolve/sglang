@@ -365,6 +365,15 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self.pp_size = params.pp_size
         self.work_list: list[torch.distributed.Work] = []
 
+        # Exclusive L1<->L2 tiering (SGLANG_HICACHE_EXCLUSIVE): free the host copy after a
+        # host->device promotion so an entry lives on device XOR host (see _promote_free_host).
+        self.exclusive_tiering = envs.SGLANG_HICACHE_EXCLUSIVE.get()
+        if self.exclusive_tiering:
+            logger.info(
+                "UnifiedRadixCache: EXCLUSIVE L1<->L2 tiering ENABLED "
+                "(free host copy on promotion; pair with --hicache-write-policy write_back)"
+            )
+
         # HiCache D↔H defaults (overridden by init_hicache)
         self.cache_controller: Optional[HybridCacheController] = None
         self.write_through_threshold = 256
@@ -2403,7 +2412,45 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 node, lock_params, host_lock_params = self.ongoing_load_back.pop(ack_id)
                 self.dec_lock_ref(node, lock_params)
                 self.dec_host_lock_ref(node, host_lock_params)
+                if self.exclusive_tiering:
+                    # Promotion completed (device copy committed) -> free the host copy so the
+                    # entry is device-exclusive, reclaiming host capacity (exclusive tiering).
+                    self._promote_free_host(node)
             finish_count -= 1
+
+    def _promote_free_host(self, node: UnifiedTreeNode) -> None:
+        """Exclusive tiering: after a host->device promotion (load_back) completes, free the host copy
+        of the now device-resident path so an entry lives on device XOR host (not both), reclaiming
+        host capacity for other distinct entries.
+
+        Walks from the promoted node toward the root, freeing the host layer of each node that is
+        device-resident, host-present, and not host-locked / mid-write-back. Stops at the first
+        device-absent node (its host copy is the only copy and must be kept). Lossless: the device
+        copy is committed (loading_check synchronized the load event) before host is freed; a later
+        device eviction re-backs-up to host via the write_back eviction path (write_backup)."""
+        cur = node
+        while cur is not None and cur is not self.root_node:
+            cd_full = cur.component_data[BASE_COMPONENT_TYPE]
+            if cd_full.value is None:
+                # device absent -> host is the sole copy; keep it and stop.
+                break
+            if cd_full.host_value is None:
+                cur = cur.parent
+                continue
+            # skip if another op still references the host copy or a backup is in flight.
+            if cur.id in self.ongoing_write_through or any(
+                cd.host_lock_ref != 0 for cd in cur.component_data
+            ):
+                break
+            for comp in self._components_tuple:
+                if comp.node_has_component_data(cur, target=EvictLayer.HOST):
+                    self._evict_component_and_detach_lru(
+                        cur, comp, target=EvictLayer.HOST
+                    )
+            self._record_remove_event(cur, medium=StorageMedium.CPU)
+            parent = cur.parent
+            self._update_evictable_leaf_sets(cur)
+            cur = parent
 
     # ---- HiCache: Scheduler Entry Points ----
 

@@ -1501,10 +1501,11 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         """
         assert self._is_device_leaf(node), f"node {node.id} is not a D-leaf"
         if not node.backuped:
-            if (
-                self.cache_controller is not None
-                and self.cache_controller.write_policy == "write_back"
+            if self.cache_controller is not None and (
+                self.cache_controller.write_policy == "write_back" or self.exclusive_tiering
             ):
+                # Exclusive tiering (or write_back): back up to host at eviction time (not eagerly),
+                # then demote — so the entry moves device->host rather than being dropped.
                 written = self.write_backup(node, write_back=True)
                 if written == 0:
                     return
@@ -1820,10 +1821,11 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         """Increment hit count; trigger write_backup when threshold reached."""
         if node.evicted or chunked:
             return
-        if (
-            self.cache_controller is not None
-            and self.cache_controller.write_policy == "write_back"
+        if self.cache_controller is not None and (
+            self.cache_controller.write_policy == "write_back" or self.exclusive_tiering
         ):
+            # Exclusive tiering (or write_back): no eager device->host backup — an entry stays
+            # device-only until eviction, so device holds content DISJOINT from host.
             return
         node.hit_count += 1
         if (

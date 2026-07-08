@@ -61,6 +61,12 @@
   - hit ≈ 0.627 (flat) → reuse is NOT eviction/scheduling-limited (corroborates s1-diag: incremental kv_only stable regardless of host fill) → baseline near structural reuse ceiling for this workload → PIVOT: (a) per-turn hit instrumentation to find the residual doc-miss cause, (b) different lever (goodput curve / admission working-set).
   - p99 > baseline (cold prefills deferred) → warm-first trades tail → confirms pure-reorder can't shift the SLO curve (charter's point); need a work-reducing (hit) mechanism instead.
 
+## Puzzle-diagnostic decision tree (per-prefill instrumentation, run after v2)
+Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected continuations ≈ 5484 (turns>0). Read pf_warm_count / pf_warm_hit / pf_cold_new:
+- **pf_warm_count ≪ 5484** (few prefills reuse ≥512): continuations are NOT matching their resident doc → a match/tier bug (deeper than mamba/extra_key/eviction, all ruled out). Investigate host_hit_length computation / tree traversal / load_back gating. → potential BIG hit-recovery mechanism.
+- **pf_warm_count ≈ 5484 but pf_warm_hit ≪ (5484 × ~doc_len)**: docs PARTIALLY reused (tail pages evicted) → keep full docs resident (placement) mechanism.
+- **pf_hit ≈ 0.62, pf_cold_new large (≈ my 19M cold est)**: the 0.78 ceiling was optimistic (more effective cold than modeled) → baseline near-optimal on hit → pivot fully to throughput/scheduling (v1/v2 line) or document near-optimality as the finding.
+
 ## Candidate mechanisms (choose after s1-diag discriminator)
 **M-mamba (if kv_only >> consensus): Mamba/KV co-residency for hybrid models.** Mamba SSM-state evicts independently of its KV (separate pools+LRU; device tombstone mamba_component.py:220, host tombstone :548), truncating the consensus prefix match even when KV is host-resident. Fix: couple Mamba eviction to KV — never drop a node's Mamba state (device+host) while its KV prefix is retained & reusable (and prefer evicting Mamba of nodes whose KV is also being evicted). Novel: no prior serving cache co-manages SSM-state + KV residency for hybrid Mamba/attention models. Generalizable to all Qwen3.5-MoE / hybrid models. Must respect the small Mamba budget (1351 device slots) — evaluate for OOM.
 **M-host (if kv_only ≈ consensus ≈ 0.62): conversation-coherent host retention.** Reused KV dropped from host under pressure/ramp. Fix: conversation-/reuse-aware host admission + retention that keeps an active conversation's prefix co-resident across its turns (charter thesis). 
@@ -72,7 +78,18 @@
 | v0_official | stock | baseline | 0.6217 | 750/6326 | 0.9999 | 2.78 | given baseline |
 | s0-diag | ed175dc05 | (screening) | (killed) | | | | partial: delete/wb_fail≈0 |
 | s1-diag | 2f5c1510d | (screening) | **0.6272** | 920/4960 | 0.9999 | 2.64 | same-clone BASELINE anchor (BM_WARMFIRST off); reproduces golden 0.622 ✓ |
-| v1-warmfirst | d843b607f | mechanism | 0.6224 | **637**/**5930** | 0.9999 | **2.94** | warm-first scheduling: hit FLAT, p50 −31%, p99 +20% (tail trade), req/s +11%, out_tok/s +11% |
+| v1-warmfirst | d843b607f | mechanism | 0.6224 | 637/5930 | 0.9999 | 2.94 | warm-first (node 0-3). Apparent gains vs s1-diag were NODE VARIANCE (see diag2). |
+| v2-warmage | 537bcd955 | mechanism | 0.6196 | 606/5092 | 0.9997 | 3.02 | warm-first+aging (0-3): aging fixed v1's p99 (vs v1 same node). |
+| diag2 | 3ebce16b5 | (screening) | 0.6288 | 573/4902 | ~1.0 | 3.02 | **BASELINE fcfs on SAME node 0-3** — de-confounder |
+
+## ⚠️ CRITICAL: warm-first is a NEGATIVE result (node-variance debunked)
+diag2 (baseline fcfs, node 0-3) vs v2 (warm-first+aging, node 0-3) — SAME NODE:
+- req/s 3.02 vs 3.02, out_tok/s 386.67 vs 386.65 → **IDENTICAL throughput**.
+- hit 0.629 vs 0.620 (warm-first slightly WORSE), p50 573 vs 606, p99 4902 vs 5092 (warm-first slightly worse).
+- **The v1/v2 "+11-14% throughput / −31% p50" vs s1-diag was 100% NODE VARIANCE** (ondem-3 slower than 0-3: 2.64 vs 3.02 req/s baseline). Same-node, reuse-aware scheduling (warm-first ± aging) is NEUTRAL-to-slightly-NEGATIVE.
+- **Finding: for this workload, prefill scheduling order does NOT affect goodput/hit** — fcfs is already fine; the bottleneck is the hit-rate (near-ceiling with a ~16M unexplained doc-reuse miss), NOT scheduling. LESSON: always A/B on the SAME node (node variance ≈ 14% on req/s).
+- Per-prefill (diag2, unbiased, matches summary hit 0.624 ✓): warm=3686 prefills→61.8M reuse; cold_new=36.2M. The 36.2M cold = ~19M unavoidable turn-0 + ~16M avoidable missed-continuation (the puzzle).
+- NEXT hypothesis: **load_back FAILURE under device pressure** — host-resident doc recomputed because `load_back`'s `evict()` can't free enough (running KV locked). Instrument load_back failure tokens.
 
 ## v1 warm-first RESULT + interpretation (vs s1-diag same-clone baseline)
 - **hit FLAT (0.622 vs 0.627)** → reuse-aware scheduling does NOT recover reuse ⇒ reuse is NOT eviction/scheduling-limited; **baseline is near the structural reuse ceiling for this workload.** (Corroborates: s1-diag incremental match ratio was stable regardless of host fill; Mamba ruled out; delete/wb_fail≈0.) This contradicts the optimistic full-concat ceiling (0.81) — real reuse is capped lower.

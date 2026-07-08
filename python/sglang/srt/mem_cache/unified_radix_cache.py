@@ -1746,6 +1746,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         if (kv_tokens < self.load_back_threshold and not comp_xfers) or (
             mem_quota is not None and kv_tokens > mem_quota + result.delta
         ):
+            self._bm_diag["lb_fail_thresh_cnt"] = self._bm_diag.get("lb_fail_thresh_cnt", 0) + 1
+            self._bm_diag["lb_fail_thresh_tok"] = self._bm_diag.get("lb_fail_thresh_tok", 0) + kv_tokens
             self.dec_lock_ref(best_match_node, ancestor_lock_params)
             self.dec_host_lock_ref(best_match_node, host_anchor_params)
             return False
@@ -1758,6 +1760,11 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             needed = kv_tokens - avail
             result = self.evict(EvictParams(num_tokens=needed))
             if result.num_tokens_evicted < needed:
+                # LOSSY: host-resident prefix NOT loaded (device pool couldn't be
+                # freed enough) -> the request recomputes it. Candidate cause of the
+                # avoidable-reuse miss under device pressure.
+                self._bm_diag["lb_fail_evict_cnt"] = self._bm_diag.get("lb_fail_evict_cnt", 0) + 1
+                self._bm_diag["lb_fail_evict_tok"] = self._bm_diag.get("lb_fail_evict_tok", 0) + kv_tokens
                 self.dec_lock_ref(best_match_node, ancestor_lock_params)
                 self.dec_host_lock_ref(best_match_node, host_anchor_params)
                 return False
@@ -2522,7 +2529,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             logger.info(
                 "[BM_DIAG] dev_delete=%d/%dtok dev_demote=%d/%dtok wb_ok=%d wb_fail=%d "
                 "host_evict=%dtok | match presented=%d kv_only=%d(%.3f) consensus=%d(%.3f) "
-                "| PREFILL(unbiased) n=%d hit=%.3f warm=%d/hit%d cold=%d/new%d",
+                "| PREFILL(unbiased) n=%d hit=%.3f warm=%d/hit%d cold=%d/new%d "
+                "| LB_FAIL evict=%d/%dtok thresh=%d/%dtok",
                 d["dev_delete_cnt"], d["dev_delete_tok"], d["dev_demote_cnt"],
                 d["dev_demote_tok"], d["wb_ok_cnt"], d["wb_fail_cnt"], d["host_evict_tok"],
                 d.get("m_presented", 0), d.get("m_kv_only", 0), d.get("m_kv_only", 0)/mp,
@@ -2530,6 +2538,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 d.get("pf_count", 0), d.get("pf_hit_tok", 0)/pfn,
                 d.get("pf_warm_count", 0), d.get("pf_warm_hit_tok", 0),
                 d.get("pf_cold_count", 0), d.get("pf_cold_new_tok", 0),
+                d.get("lb_fail_evict_cnt", 0), d.get("lb_fail_evict_tok", 0),
+                d.get("lb_fail_thresh_cnt", 0), d.get("lb_fail_thresh_tok", 0),
             )
         if self.enable_storage:
             self.drain_storage_control_queues()

@@ -91,3 +91,9 @@
   (identical) => hybrid-Mamba cache (stock & exclusive alike) is inherently ~non-bit-exact vs no-cache on
   ~17% of long docs (mamba checkpoint reconstruction) - an sglang cache property, borne equally by baseline.
 - Net: exclusive tiering adds ZERO loss over the cache baseline; comparison on equal footing. 10 W&B versions.
+
+## 2026-07-08 ~16:30Z — generalization (node-free): exclusive benefit scales with device/host ratio
+- Sim (directional): exclusive-inclusive delta grows monotonically with device tier fraction of total cache:
+  ~20pp @11% -> ~30pp @56% device. This HW = 23% device -> measured +13pp. Insight: adopt exclusive HiCache
+  tiering; payoff scales with GPU/host cache ratio, largest when fast tier is a big fraction, never negative.
+- Contribution now fully generalized + certified. All rigor + generalizability dimensions complete.

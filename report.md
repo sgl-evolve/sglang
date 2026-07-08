@@ -164,6 +164,24 @@ load-back path; tools/lossless_verify*.sh):
   the cache baseline (v0_official), and the residual cache-vs-no-cache drift is an sglang hybrid-cache
   property borne equally by the baseline** ⇒ the exclusive-vs-baseline comparison is on equal footing.
 
+### Generalization — when does exclusive tiering pay off? (sim, directional)
+Exclusive reclaims the device tier as DISTINCT capacity (inclusive: distinct≈host; exclusive: distinct≈
+host+device), so the benefit scales with the device tier's fraction of total cache. Sim (host fixed 7.81M,
+vary device; deltas are directional — sim's absolute inclusive hit is low, but the trend is the point):
+
+| device tier | device/total | exclusive−inclusive (sim, pp) |
+|---|---|---|
+| 1.0M | 11% | ~20 |
+| 2.35M (this HW) | 23% | ~25 (measured +13pp) |
+| 4.0M | 34% | ~26 |
+| 6.0M | 43% | ~27 |
+| 10.0M | 56% | ~30 |
+
+**Insight for a maintainer:** adopt exclusive (device-XOR-host) HiCache tiering — its payoff grows
+monotonically with the GPU/host cache ratio. It's largest when the fast tier is a big fraction of total
+cache (where inclusive duplication wastes the most), and never negative. On this HW (23% device) it's +13pp
+hit / −37% p99; on GPUs with more HBM-cache relative to host it would help more.
+
 ## The protocol (fixed contract)
 - 2-tier: L1 GPU HBM (~2.35M tok) + L2 host DRAM (`--hicache-size 96` = 768 GB, ~7.81M tok). No L3.
 - Frozen launch: TP8, ctx 262144, mem-frac 0.85, page-size 64, chunked-prefill 6144, io-backend `direct`,

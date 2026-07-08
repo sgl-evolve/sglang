@@ -57,6 +57,44 @@ Ground truth from server `/metrics` + logs during the fixed bench:
   MAMBA component eviction uses a RAW LRU walk (ignores strategy) → cost-aware does NOT reach mamba. This is
   the main uncertainty for v1, and the seed for a v2 (cost/reuse-aware **mamba** eviction on the binding pool).
 
+## Measurement protocol note (IMPORTANT — eval noise)
+Cache metrics (hit_rate/evict/load_back/host_util) reproduce baseline.json EXACTLY and are clean.
+**Latency (p50/p99/tput) is contention-sensitive**: running two evals in parallel (even on different
+exclusive nodes) contaminates p99 via shared NFS (model weights + DeepGEMM JIT cache `~/.cache/deep_gemm`,
+shared across all cells). v0-diag (parallel, cold cache) gave p99 20103ms while its cache metrics matched
+baseline — pure contention artifact. **Fix: run A/B strictly SERIAL, same node, warm cache, back-to-back**
+(one flock over both arms), toggling only `SGLANG_ENABLE_COST_AWARE_EVICTION`. Startup log in each
+server.log confirms which strategy is active.
+
+## Clean control — v0-ctl (stock LRU, same-node A/B arm, on-contract, no fallback)
+Reproduces baseline.json well (env comparable): p50 **736** / p90 2369 / p99 **5189** / mean 1100 ms;
+hit 0.6269; host_util 1.0; tput 2.87; out_tok/s 367; tpot 252; load_back 302M; evict 582M.
+(baseline.json golden: p50 750 / p99 6326 / hit 0.622 / tput 2.78 — my clean env matches/slightly better.)
+
 ## Versions
-- **v1** (`7bac2815d`, `mechanism`): recompute-cost-aware eviction (CostAwareStrategy; threshold 4096).
-  Status: committed+pushed; eval queued behind v0-diag on the shared pool. A/B vs v0-diag (same env).
+- **v1** (`f142702d3`, `mechanism`): recompute-cost-aware eviction (CostAwareStrategy; threshold 4096 tok).
+  A/B = same node ondem-3, serial, warm cache, back-to-back vs v0-ctl; toggle confirmed via server.log
+  (v0-ctl="stock lru", v1="CostAwareStrategy threshold=4096"). Both on-contract, no fallback, rc=0.
+
+  | metric | v0-ctl (stock LRU) | v1 (cost-aware) | Δ |
+  |---|---|---|---|
+  | hit_rate (token-wtd) | 0.6269 | **0.6808** | **+8.6%** |
+  | req throughput (req/s) | 2.87 | **3.02** | **+5.2%** (v1 sustains λ=3; ctl lagged) |
+  | p99 TTFT (ms) | 5189 | **4820** | **−7.1%** |
+  | p90 TTFT (ms) | 2369 | **2054** | **−13.3%** |
+  | out_tok/s | 367.5 | 386.6 | +5.2% |
+  | mean TTFT (ms) | 1100 | 1134 | +3.2% |
+  | p50 TTFT (ms) | 736 | 939 | **+27.5% (regression)** |
+  | cached-prefix hit p90/p99 (tok) | 25.7k/58.2k | 31.1k/79.3k | longer prefixes retained |
+  | evict tokens | 582.1M | 590.1M | +1.4% |
+  | load_back tokens | 301.9M | 353.1M | +17% (more L2→L1 reuse) |
+
+  **Takeaway:** the designed cost-aware tradeoff — shift work from the expensive tail to the cheap median.
+  Protecting long (≥4096 tok) prefixes from eviction raises token-weighted hit-rate (+8.6%) and lets v1
+  fully sustain λ=3 (tput 3.02 vs ctl 2.87), cutting p90/p99 TTFT (−13%/−7%); the price is a higher p50
+  (+27%, more short-prefix misses). Favorable for goodput-under-p99-SLO (lower tail + higher sustained
+  rate). **Lossless by construction** (eviction order only; prefix reuse is bit-exact recompute-or-reuse).
+  Notably beats the "LRU≈Belady, eviction is a dead end" expectation — because that holds for COUNT-based
+  hit-rate, whereas token-value-aware eviction wins on TOKEN-weighted hit-rate + tail latency.
+  **Next:** threshold sweep (2048/8192) to trade off p50 vs tail; then depth/recency-continuous cost, and
+  extend cost-awareness to the MAMBA pool (binding hybrid resource, currently raw-LRU).

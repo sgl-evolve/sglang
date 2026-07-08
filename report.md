@@ -24,11 +24,14 @@ and tail-latency win.
   tiering both lowers AND stabilizes the p99 tail; I do NOT claim a single −37% figure.
 - req/s & out_tok/s unchanged (3.02 / 386) → **lossless** (bit-exact vs stock, verified separately).
   Lesson (rigor): the earlier single-pair "−37% p99" was node-favorable; a 2nd same-node pair corrected it.
-**Goodput @ SLO — definitive SAME-NODE curve (ondem-2, baseline vs exclusive at λ=3.5/4/4.5, no node
-variance):** p99 TTFT (ms): λ3.5 base 8320 / exc **6615**; λ4 base 9002 / exc **8055**; λ4.5 base 12199 /
-exc 11271. Baseline exceeds the 8s SLO already by λ3.5 (knee <λ3.5); exclusive stays under to λ≈4.0 (interp
-knee λ3.98) → **exclusive lifts the p99≤8s goodput knee by ~+14–18% sustainable req/s**, same-node, no
-confound. (Earlier multi-node full-protocol λ=4 agreed: −11% p99, +12% req/s.)
+**Goodput @ SLO — same-node curve (ondem-2, baseline vs exclusive at λ=3.5/4/4.5):** p99 TTFT (ms):
+λ3.5 base 8320 / exc **6615**; λ4 base 9002 / exc **8055**; λ4.5 base 12199 / exc 11271. On THIS
+(prefill-stressed) node, baseline exceeds the 8s SLO by λ3.5 (knee <λ3.5) while exclusive stays under to
+λ≈4.0 → **the goodput knee shifts up ~+14–18% sustainable req/s here**. HONEST caveat (same node-variance as
+p99): the knee-shift magnitude is NODE-DEPENDENT — on a "fast" node whose baseline p99 is already low
+(e.g. ondem-3 baseline p99=4.66s @ λ3, vs ondem-2's high tail), the baseline knee is higher and the shift
+smaller. The ROBUST, node-independent driver is the **+13pp hit-rate** (≈13% less fresh-prefill compute);
+its latency/goodput payoff GROWS with load and is largest on prefill-stressed nodes/rates (near the knee).
 
 **Result ladder (fixed protocol, λ=3), all clean/on-contract, lossless:**
 - fcfs baseline (inclusive, stock): hit **0.622**, p99 TTFT **6326 ms**.

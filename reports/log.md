@@ -116,3 +116,11 @@
   nodes); mean TTFT -14..-22%; p99: exclusive LOW+STABLE ~4.35-4.53s (both, <SLO) vs baseline HIGH+VARIABLE
   4.66-6.93s -> p99 reduction -3..-37% (baseline-node-dependent). Exclusive lowers AND stabilizes p99 tail.
 - Corrected report exec summary + maintainer insight. 12 W&B versions. Replication caught an overclaim -> fixed.
+
+## 2026-07-08 ~18:20Z — honest goodput characterization (from existing data; no new run)
+- Goodput-knee (+~15% req/s, ondem-2) is node-dependent, SAME as p99: on a fast node (ondem-3 baseline
+  p99 4.66s @ l3) the baseline knee is higher -> smaller shift. ROBUST driver = +13pp hit (node-independent,
+  ~13% less fresh-prefill compute); latency/goodput payoff GROWS with load, largest near the knee on
+  prefill-stressed nodes. Corrected exec summary. No new run needed (node-variance already established).
+- FINAL honest contribution framing: hit +13pp (rock-solid) is the core; TTFT/p99/goodput are real but
+  load/node-dependent downstream benefits. Lossless bit-exact. 12 W&B versions.

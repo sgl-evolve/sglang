@@ -24,3 +24,12 @@
   SLO knee moves right. 5 W&B pts total.
 - Contribution: exclusive L1<->L2 KV tiering. Insight: effective-capacity is the lever on the steep
   hit-vs-capacity curve; ordering(v0_lpm)+admission(sim) are dead ends.
+
+## 2026-07-08 ~07:50Z — resume; v3 queued; mamba-rebalance considered+deferred
+- v3_exclusive_hotkeep2 (frequency-aware hybrid, commit 91d611a10) QUEUED via retry_eval, waiting for a
+  node (base_free monopolizes all 4 pool nodes, 4h50m holds).
+- Investigated host-pool split: full-attn KV host pool and Mamba host pool are SEPARATE allocations; mamba
+  holds ~2.7x more prefixes/GB (smaller per-prefix state) -> full-attn pool is the binding hit constraint,
+  mamba has slack. A host-budget REBALANCE (grow full-attn, shrink mamba) could raise hit, BUT reuse needs
+  BOTH components cached (no recompute-mamba path) and budget-ceiling/contract implications are murky
+  (risk of "more memory" not "smarter engine"). DEFERRED as risky/uncertain future work.

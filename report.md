@@ -97,6 +97,27 @@ capacity for fewer transfers doesn't net a win ⇒ PURE exclusive (v1/v2) is nea
     left as future work. The accessible, in-contract, lossless mechanism space is EXHAUSTED at exclusive
     tiering (hit 0.750, the effective-capacity ceiling short of KV compression).
 
+### Capacity model (sim, node-free) — validates the mechanism + quantifies the compression frontier
+Trace-driven sim (cache_sim2.py) hit vs distinct-cache capacity C, at λ=3:
+
+| regime | C (M tok) | sim hit | measured |
+|---|---|---|---|
+| inclusive (host-only 7.81M) | 7.8 | 0.48* | 0.622 (baseline) |
+| exclusive (host+dev 10.16M) | 10.2 | 0.725 | 0.750 (v1/v2) |
+| compressed ×1.2 | 12.2 | 0.740 | — |
+| compressed ×1.4 | 14.2 | 0.753 | — |
+| compressed ×1.6 | 16.3 | 0.769 | — |
+| infinite | 25 | **0.806** | 0.807 (analytic ceiling) |
+
+- Sim **nails the analytic ceiling** (0.806 vs 0.807) and **matches exclusive** (0.725 vs measured 0.750)
+  → the capacity→hit model is validated; exclusive tiering's win IS an effective-capacity gain.
+- (*) sim inclusive (0.48) under-predicts the measured baseline (0.62) because under write_through the
+  DEVICE tier still serves ~40% of hits as a fast hot subset — so device isn't fully "wasted"; exclusivity's
+  gain is the NET distinct-capacity increase (device holds distinct entries, not duplicates).
+- **Exclusive tiering captures ~70% of the total recoverable headroom** (0.622→0.750 of the 0.622→0.807
+  range). The residual ~30% needs KV compression ≥1.6× — implausible lossless on high-entropy FP8 (and
+  with a decompression cost on the 400M-tok/run load-back path) → compression is genuinely low-EV, confirmed.
+
 ## The protocol (fixed contract)
 - 2-tier: L1 GPU HBM (~2.35M tok) + L2 host DRAM (`--hicache-size 96` = 768 GB, ~7.81M tok). No L3.
 - Frozen launch: TP8, ctx 262144, mem-frac 0.85, page-size 64, chunked-prefill 6144, io-backend `direct`,

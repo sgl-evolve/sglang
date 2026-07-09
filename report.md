@@ -951,7 +951,24 @@ C/W ≈ 0.41) and v_random_base (random + baseline, C/W ≈ 0.41) will test this
 matches LRU under write_back and baseline tiers as well, the universality claim strengthens:
 eviction order is irrelevant across the entire tiering spectrum.
 
-**7. Implication for system design.**
+**7. Variance reduction as secondary benefit of exclusive tiering.**
+Exclusive tiering reduces cross-node hit-rate variance by **20×**:
+
+| tiering mode | μ(hit) | σ(hit) | CV | range |
+|---|---|---|---|---|
+| Baseline (inclusive) | 0.6224 | 0.0067 | 1.07% | 1.56pp |
+| Write_back | 0.7309 | 0.0007 | 0.10% | 0.25pp |
+| Exclusive | 0.7520 | 0.0003 | 0.04% | 0.08pp |
+
+Under inclusive tiering, effective capacity depends on the eviction race between device and host —
+which entries get evicted from device first, and how quickly the synchronous write_through copies
+complete (hardware-dependent PCIe timing, DRAM speed). This race introduces node-specific variation
+in how much of the device cache is "wasted" on redundant copies. Under exclusive tiering, capacity
+is deterministically device + host (no redundancy), removing this hardware-dependent variance source.
+The 20× reduction makes exclusive tiering more **predictable** — critical for SLO-bound production
+serving where tail behavior matters.
+
+**8. Implication for system design.**
 In capacity-bound multi-tier KV caches, the primary design lever is EFFECTIVE CAPACITY (how much
 distinct data the tiers hold), not eviction intelligence. Inclusive tiering wastes the fast tier as a
 redundant copy of the slow tier; exclusive tiering recovers this as usable capacity. The insight

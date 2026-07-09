@@ -1,0 +1,10 @@
+{
+  "context_length": "262144",
+  "mem_fraction_static": "0.85",
+  "hicache_size": "96",
+  "tp_size": "8",
+  "hicache_io_backend": "direct",
+  "hicache_mem_layout": "page_first_direct",
+  "hicache_write_policy": "write_through",
+  "page_size": "64"
+}

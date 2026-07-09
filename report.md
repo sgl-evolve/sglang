@@ -155,9 +155,13 @@ Per-version eval is λ=3 (frozen); higher-λ behavior came from the sanctioned r
 only --request-rate varied).
 
 **Noise-robust confirmation (from server-log prefill counters, not latency):** cost-aware eviction @t2048 vs
-stock LRU does **−12.5% total recompute work** (37.5M → 32.8M new/recomputed tokens) and −6% prefill batches
-(9477 → 8900), with +7.5% cached tokens — a cache-behavior metric (deterministic, insensitive to latency
-noise) that directly shows the mechanism recomputes less, mechanistically explaining the tput/p99/hit gains.
+stock LRU does **−12.5% total recompute work** at the λ=3 point (37.5M → 32.8M new/recomputed tokens) and −6%
+prefill batches (9477 → 8900), with +7.5% cached tokens. **Across the full n=2 rate sweep (λ=3-6) this is
+even cleaner: −14.8% total prefilled new-tokens (stock 151.2M/152.6M → cost 129.7M/129.1M, NON-OVERLAPPING,
+within-condition spread <1%) and −9.8% prefill batches (37.5k → 33.8k).** This is a deterministic
+cache-behavior metric — immune to the cross-run latency noise that makes p99 hard — and it is the robust core
+evidence: same memory budget (device-KV-util 0.33 vs 0.33), −14.8% compute → +11.7% max throughput in the
+compute-bound knee regime. The mechanism *recomputes less*, mechanistically explaining the tput/hit/p50 gains.
 
 ## Active code path (verified, registry.py:101-104)
 Hybrid-SSM model + hierarchical cache → **`UnifiedRadixCache`** (FULL+MAMBA components) + `init_hicache`

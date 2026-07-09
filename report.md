@@ -903,15 +903,32 @@ The charter's observation that "LRU ≈ Belady (< 0.1pp headroom)" is confirmed 
 policy (recency: LRU; frequency: LFU; segmented: SLRU; hybrid: queue-aware, cost-aware, GDSF; random;
 pathological: FIFO, MRU, FILO) achieves a measurable hit-rate gain over LRU.
 
-**2. Capacity as the binding constraint.**
+**2. Capacity as the binding constraint — the h(C) curve.**
 The working set W ≈ 19M tokens. Under inclusive tiering (baseline), distinct cache capacity
 C_incl ≈ 7.81M (device duplicates host). Under exclusive tiering, C_excl ≈ 10.16M. The hit rate is
-a function of C/W — specifically, the integral of the reuse-mass CDF up to C. On the measured CDF,
-the slope at C = 7.8M is approximately +5pp per additional million tokens. Moving from 7.8M to 10.2M
-(exclusive tiering) captures +13pp by traversing the STEEP portion of this curve. No eviction policy
-can increase C; it can only reorder WHO gets evicted. When every eviction order yields the same total
-number of resident entries (= C), and the reuse probabilities are approximately symmetric across
-conversations, the expected hit rate is determined by C alone.
+a function of C — specifically, the integral of the reuse-mass CDF up to C.
+
+Calibrated simulation (λ_eff=30, reproducing measured hits to ±3pp) traces the full h(C) curve:
+
+| C (M tokens) | sim hit_rate | marginal slope (pp/M) | region |
+|---|---|---|---|
+| 2–5 | 0.28–0.36 | +0.5–7.7 | sub-capacity (most convs evicted) |
+| 6 | 0.41 | +4.9 | onset of capacity benefit |
+| 7 | 0.49 | +8.0 | steep knee begins |
+| **7.81** (baseline) | **0.60** | **+13.7** | **steepest point — baseline sits HERE** |
+| 8.5 | 0.68 | +11.2 | still steep |
+| 9 | 0.69 | +2.2 | knee inflection |
+| **10.16** (exclusive) | **0.72** | **+2.3** | exclusive tiering captures this band |
+| 12 | 0.77 | +2.6 | diminishing returns |
+| 14 | 0.81 | +1.9 | approaching ceiling |
+| 16+ | 0.81 | 0 | plateau (WS fully resident) |
+
+The baseline (C=7.81M) sits at the **steepest point** of the curve (+13.7pp/M). This is exactly
+why exclusive tiering's +2.35M capacity addition yields a disproportionately large hit-rate gain —
+it traverses the most capacity-sensitive region. No eviction policy can increase C; it can only
+reorder WHO gets evicted. When every eviction order yields the same total resident entries (= C),
+and the reuse probabilities are approximately symmetric across conversations, the expected hit rate
+is determined by C alone.
 
 **3. Why pathological policies (MRU, FILO, random) don't hurt.**
 A surprising empirical result: even MRU (evict most recently used) and random eviction achieve the

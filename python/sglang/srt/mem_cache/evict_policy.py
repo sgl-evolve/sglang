@@ -132,3 +132,32 @@ class SizeWeightedLRUStrategy(EvictionStrategy):
     def get_priority(self, node: TreeNode) -> Tuple[float, float]:
         size = CostAwareStrategy._node_size(node)
         return (-size, node.last_access_time)
+
+
+class LFUDAStrategy(EvictionStrategy):
+    """LFU with dynamic aging: effective_freq = hit_count - age_factor.
+    Prevents stale-but-once-popular nodes from dominating the cache.
+    Env: SGLANG_LFUDA_HALFLIFE (int, default 500) — global access counter
+    interval at which old frequency counts are halved."""
+
+    def __init__(self):
+        import os
+
+        self._halflife = int(os.environ.get("SGLANG_LFUDA_HALFLIFE", "500"))
+
+    def get_priority(self, node: TreeNode) -> Tuple[float, float]:
+        age = max(0, (node.last_access_time - node.creation_time))
+        decay = age / max(1, self._halflife)
+        effective_freq = max(0, node.hit_count - decay)
+        return (effective_freq, node.last_access_time)
+
+
+class CostFreqStrategy(EvictionStrategy):
+    """Combined cost+frequency: protect nodes that are both costly to recompute
+    AND frequently accessed.  score = cost * (1 + hit_count).  Cheap-and-cold
+    nodes evicted first."""
+
+    def get_priority(self, node: TreeNode) -> Tuple[float, float]:
+        cost = CostAwareStrategy._node_cost(node)
+        score = cost * (1 + node.hit_count)
+        return (float(score), node.last_access_time)

@@ -126,4 +126,12 @@ run_one "v41-xtier-wm20" "SGLANG_XTIER_LAZY=1 SGLANG_XTIER_WM_FRAC=0.20" ""
 # --- Cost eviction + SRPF ---
 run_one "v42-cost-srpf" "" "--radix-eviction-policy cost_aware --schedule-policy srpf"
 
+# --- Frequency-decay eviction (LFUDA) ---
+run_one "v43-lfuda" "" "--radix-eviction-policy lfuda"
+run_one "v44-xtier-lfuda" "SGLANG_XTIER_LAZY=1 SGLANG_XTIER_WM_FRAC=0.1" "--radix-eviction-policy lfuda"
+
+# --- Cost+Frequency combined eviction ---
+run_one "v45-cost-freq" "" "--radix-eviction-policy cost_freq"
+run_one "v46-xtier-cost-freq" "SGLANG_XTIER_LAZY=1 SGLANG_XTIER_WM_FRAC=0.1" "--radix-eviction-policy cost_freq"
+
 echo "===== BATCH COMPLETE $(date) ====="

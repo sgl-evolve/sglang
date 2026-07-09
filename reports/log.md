@@ -363,3 +363,22 @@ any interconnect, ≥13B on high-bandwidth. Updated paper.md §5.
     small entries on device eviction, freeing host space for larger entries
 - **Version count:** 32 with summary.json (above 30-version threshold). ~40 expected after queued evals.
 - **v_cost_lru_t4096 report section added** (commit 9ad84c817).
+
+## 2026-07-09 ~20:30Z — theory section + 3 more mechanisms (11 evals queued total)
+
+- **Report: theoretical analysis section added** (commit 5736c0c22). Formal argument for why eviction
+  order is NEUTRAL in capacity-bound KV caches: (1) deterministic in-order reuse → LRU ≈ Belady;
+  (2) capacity is the binding constraint (C/W ≈ 0.53); (3) radix tree structural constraint (only
+  leaves evictable → full eviction cascade regardless of order); (4) approximate equal per-conversation
+  value → C/(N·S) hit rate independent of which conversations cached.
+- **New mechanisms implemented and queued:**
+  - GDSFStrategy (Greedy Dual Size Frequency: priority = freq × cost / size, commit fa260e8f3)
+  - TwoQStrategy (2Q: FIFO admission for new, LRU for re-accessed, commit f4e4e24dd)
+  - SJF scheduling (shortest total input first, commit 811fd7414)
+- **3 more evals queued:** v_gdsf_excl (PID 3480255), v_sjf_excl (PID 3484720), v_2q_excl (PID 3489237).
+  Total: 11 evals waiting for nodes.
+- **All 4 certified nodes still held by sibling base_free (~7h remaining).** 32 completed + 11 queued = 43.
+- **Mechanism coverage vs charter:** 13 eviction policies (LRU, LFU, SLRU, queue-aware, cost-aware,
+  random, size-weighted, FIFO, MRU, FILO, GDSF, 2Q, + selective discard variants), 4 scheduling policies
+  (FCFS, LPM, device-first, SJF), proactive backup, component-differentiated tiering. Charter mechanism
+  list comprehensively covered.

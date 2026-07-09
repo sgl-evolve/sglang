@@ -153,23 +153,31 @@ class FullComponent(TreeComponent):
     def drive_host_eviction(
         self, num_tokens: int, tracker: dict[ComponentType, int]
     ) -> None:
-        """Evict host leaves to free KV host pool space."""
-        heap = [
-            (self.cache.eviction_strategy.get_priority(n), n)
-            for n in self.cache.evictable_host_leaves
-        ]
-        heapq.heapify(heap)
+        """Evict host leaves to free KV host pool space.
+
+        BM_SELECTIVE_HOST: when set, preferentially evict host nodes whose
+        data is also on device (redundant — evicting them loses nothing)
+        before evicting host-only nodes (last copy — evicting them forces
+        recompute). Under write-through, this preserves more unique content
+        on the host tier."""
         ct = self.component_type
+        _sel = getattr(self.cache, "_bm_selective_host", False)
+        if _sel:
+            def _host_priority(n):
+                has_dev = n.component_data[ct].value is not None
+                band = 0 if has_dev else 1
+                return (band, self.cache.eviction_strategy.get_priority(n))
+        else:
+            _host_priority = self.cache.eviction_strategy.get_priority
+        heap = [(_host_priority(n), n) for n in self.cache.evictable_host_leaves]
+        heapq.heapify(heap)
         while tracker[ct] < num_tokens and heap:
             _, x = heapq.heappop(heap)
             if x not in self.cache.evictable_host_leaves:
                 continue
             self.cache._evict_host_leaf(x, tracker)
             if x.parent is not None and x.parent in self.cache.evictable_host_leaves:
-                heapq.heappush(
-                    heap,
-                    (self.cache.eviction_strategy.get_priority(x.parent), x.parent),
-                )
+                heapq.heappush(heap, (_host_priority(x.parent), x.parent))
 
     def acquire_component_lock(
         self,

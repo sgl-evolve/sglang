@@ -423,6 +423,7 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 logger.info(
                     f"BM_EVICT_STRATEGY={_bm_evict} (threshold={_thresh})"
                 )
+        self._bm_selective_host = get_bool_env_var("BM_SELECTIVE_HOST")
         self.prefetch_stop_policy = "best_effort"
         self.prefetch_threshold = 256
         self.prefetch_timeout_base = 1.0

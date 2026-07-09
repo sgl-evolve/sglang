@@ -207,6 +207,16 @@ Decomposition reproduces node 1-2: write_back +10.0pp (82% of gain), engine +2.2
 | v_baseline_03 | 0-3 | 0.6303 | 5172 | 949 | 1.2 | 2.0 |
 | **mean ± σ** | | **0.6257 ± 0.004** | **5546 ± 736** | **1007 ± 91** | **1.1** | **1.9** |
 
+**STATISTICAL SIGNIFICANCE (Welch's t-test, pooled across nodes):**
+- **hit_rate:** exclusive vs baseline +12.6pp, t=70.3, **p < 1e-5** (95% CI [12.1, 13.2]pp, Cohen's d=49.7).
+  write_back vs baseline +10.5pp, t=57.6, **p < 1e-5** (CI [10.0, 11.1]pp).
+  exclusive vs write_back +2.1pp, t=50.2, **p < 1e-8** (CI [2.0, 2.2]pp). **DEFINITIVE.**
+- **mean TTFT:** exclusive vs baseline −17%, **p = 0.028** (significant at α=0.05). write_back similar (p=0.023).
+  exclusive vs write_back +0.8%, p=0.85 → **NEUTRAL** (consistent with the same-node triple).
+- **p99 TTFT:** exclusive vs baseline −16%, **p = 0.107** (NOT significant at α=0.05). The p99 is TOO NOISY
+  across nodes (σ=736ms baseline, σ=560ms exclusive) to claim statistical significance when pooled. This is
+  why the same-node triples are essential: they control for node variance and show consistent −10 to −16% p99.
+
 **HONEST SYNTHESIS:** write_back captures **81% of the exclusive hit gain** (10.7/13.2pp) and
 **achieves comparable or better latency** (lower evict/lb cost offsets the slightly lower hit). The
 engine mechanism's marginal +2pp hit adds ~negligible net TTFT improvement. The engine mechanism's

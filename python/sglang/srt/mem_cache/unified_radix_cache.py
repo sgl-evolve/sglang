@@ -431,6 +431,27 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # (write-through = redundancy is fine, faster recovery).
         _ae = _os.environ.get("BM_ADAPTIVE_EXCL", "").strip()
         self._bm_adaptive_excl = float(_ae) if _ae else 0.0
+        _amt = _os.environ.get("BM_ADMIT_MIN_TOKENS", "").strip()
+        self._bm_admit_min_tokens = int(_amt) if _amt else 0
+        _wt = _os.environ.get("BM_WT_THRESHOLD", "").strip()
+        self._bm_wt_threshold = int(_wt) if _wt else 0
+        _hhe = _os.environ.get("BM_HOST_EVICT_STRATEGY", "").lower().strip()
+        self._bm_host_evict_strategy = None
+        if _hhe:
+            from sglang.srt.mem_cache.evict_policy import (
+                CostAwareStrategy,
+                GDSFStrategy,
+                SizeWeightedLRUStrategy,
+            )
+            _host_map = {
+                "cost_aware": lambda: CostAwareStrategy(
+                    threshold=int(_os.environ.get("BM_HOST_COST_THRESHOLD", "0"))
+                ),
+                "gdsf": GDSFStrategy,
+                "size_weighted": SizeWeightedLRUStrategy,
+            }
+            if _hhe in _host_map:
+                self._bm_host_evict_strategy = _host_map[_hhe]()
         self.prefetch_stop_policy = "best_effort"
         self.prefetch_threshold = 256
         self.prefetch_timeout_base = 1.0
@@ -1949,16 +1970,25 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # Adaptive exclusivity: defer backup when host is under pressure.
         if self._bm_adaptive_excl > 0.0 and self.cache_controller is not None:
             pool = self.cache_controller.mem_pool_host
-            cap = pool.get_size() if hasattr(pool, "get_size") else 1
-            avail = pool.available_size() if hasattr(pool, "available_size") else cap
+            cap = getattr(pool, "size", 1)
+            avail = pool.available_size()
             util = 1.0 - (avail / max(cap, 1))
             if util >= self._bm_adaptive_excl:
                 return
+        wt = self._bm_wt_threshold if self._bm_wt_threshold > 0 else self.write_through_threshold
         if (
             self.cache_controller is not None
             and not node.backuped
-            and node.hit_count >= self.write_through_threshold
+            and node.hit_count >= wt
         ):
+            if self._bm_admit_min_tokens > 0:
+                from sglang.srt.mem_cache.unified_cache_components.tree_component import (
+                    BASE_COMPONENT_TYPE,
+                )
+                v = node.component_data[BASE_COMPONENT_TYPE].value
+                tok = len(v) if v is not None else 0
+                if tok < self._bm_admit_min_tokens:
+                    return
             self.write_backup(node)
 
     def write_backup_storage(self, node: UnifiedTreeNode) -> None:

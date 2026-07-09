@@ -101,3 +101,25 @@ class CostAwareLRUStrategy(EvictionStrategy):
     def get_priority(self, node: "TreeNode") -> Tuple[int, float]:
         is_expensive = 1 if _prefix_len(node) >= self.threshold else 0
         return (is_expensive, node.last_access_time)
+
+
+class RandomStrategy(EvictionStrategy):
+    """Random eviction: nodes are evicted in arbitrary order (creation_time as
+    a stable pseudo-random proxy — deterministic across runs, unlike random()).
+    Serves as a LOWER-BOUND control to quantify whether ordered policies matter."""
+
+    _counter = 0
+
+    def get_priority(self, node: "TreeNode") -> float:
+        h = hash((node.id, id(node))) & 0xFFFFFFFF
+        return float(h)
+
+
+class SizeWeightedLRUStrategy(EvictionStrategy):
+    """Size-weighted LRU: evict SMALLER entries first (fewer tokens in the node).
+    Larger entries (long shared prefixes) survive longer since they are more
+    expensive to recompute and likely serve more follow-up turns."""
+
+    def get_priority(self, node: "TreeNode") -> Tuple[int, float]:
+        size_bucket = min(len(node.key) // 64, 3)
+        return (size_bucket, node.last_access_time)

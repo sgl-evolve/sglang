@@ -82,7 +82,10 @@ TTFT SLO (max sustainable req/s with p99 TTFT ≤ 8s). Lossless gate: outputs ==
   operating range**, driven by the node-independent +13pp hit-rate.
 - **Negatives (ruled out with evidence).** Eviction-order (LRU≈Belady), schedule ordering (lpm),
   admission/concurrency caps, and scheduling-based co-residency do **not** recover hit-rate here
-  (capacity-bound). A frequency-aware hybrid (keep hot nodes inclusive) is TTFT-neutral.
+  (capacity-bound). A frequency-aware hybrid (keep hot nodes inclusive) is TTFT-neutral. Recompute-cost-aware
+  eviction (`cost_lru`: evict cheap-to-recompute shallow nodes first, from GDSF theory) is **negative** (hit
+  −1.4pp, p99 +11% same-node) — recency already protects expensive entries; depth bias starves short-doc
+  conversations.
 
 ## 5. Generalization (two-sided, falsifiable)
 **Capacity side — when it helps.** The benefit equals the workload's reuse-mass CDF slope over the reclaimed

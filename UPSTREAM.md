@@ -72,13 +72,24 @@ negative. Largest under memory pressure + high load (near the SLO knee). **Falsi
 already covers the working set (over-provisioned host ⇒ no gain). The calibrated sim self-validates
 (predicts +11.8pp at this HW vs measured +13pp).
 
+**Workload sensitivity** (`sim/workload_sensitivity.py`): short-doc-only workloads (<4K) see zero benefit
+(working set fits in host); long-doc workloads (+3pp); mixed workloads see the largest benefit (+12pp,
+cross-document eviction pressure amplifies the effect). Exclusive tiering **delays cache-pressure onset**
+by ~22% higher load. Under sustained pressure, the benefit grows: +12pp → +19pp at 2.5× load.
+
+**Hardware predictions** (same workload, sim): 8×H200 (141G HBM, D=4M) → **+15.5pp**; 8×B200 (192G HBM,
+D=5.5M) → **+19.6pp**. With 1.5TB host → +3.8pp; 3TB host → 0pp. Benefit scales with GPU HBM and shrinks
+with host DRAM; the contribution grows more valuable on next-gen hardware.
+
 **Cost caveat (deployment guidance):** exclusive wins by saving *prefill compute*, not by moving less data —
 it actually loads back ~34% MORE tokens H→D and, because eviction now writes D→H first, drives the H↔D bus
 bidirectionally (`evict_mean_ms` 1.1→20.7, `load_back_mean_ms` 1.8→19.0 in same-node A/B). The +13pp hit
-removes ~13% of fresh prefill, which dominates on a large model with long prefixes. So enable it where
-**prefill compute is the bottleneck**; on a slow host interconnect or a short-prefix workload (cheap
-prefill), the extra transfer traffic can erode or reverse the gain. (The hot-keep hybrid cuts load-back but
-is TTFT-neutral here — transfer isn't the limiter in this regime, so keep `HOT_KEEP=0`.)
+removes ~13% of fresh prefill, which dominates on a large model with long prefixes. **Break-even bandwidth**:
+net savings (416ms/req) exceed extra transfer cost (37ms/req) by 11×, giving a break-even at ~27 GB/s — far
+below PCIe 4.0 (32 GB/s). Scales with model size: 42 GB/s for 70B, 133 GB/s for 13B. **Enable for models
+≥70B on any interconnect; ≥13B on high-bandwidth systems.** On small models with short prefixes, the extra
+transfer traffic can erode or reverse the gain. (The hot-keep hybrid cuts load-back but is TTFT-neutral
+here — transfer isn't the limiter in this regime, so keep `HOT_KEEP=0`.)
 
 ## Limits / not pursued
 - Residual headroom to the analytic hit ceiling (~0.81) requires MORE capacity, reachable only by *lossy*

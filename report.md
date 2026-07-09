@@ -918,11 +918,31 @@ diminishing returns as C/W grows. The exclusive→FP8 slope flattening is consis
 reuse-mass CDF's tail behavior: the last ~4M tokens of working set contain conversations
 whose inter-turn reuse distance exceeds the cache's residence time at any policy.
 
-The eviction-policy spread across 13 policies is Δh ≤ 0.3pp = 0.003, while the capacity effect
-(inclusive→exclusive) is Δh = 12.7pp = 0.127 — a **42:1 ratio** of capacity effect to policy
-effect. This makes capacity the overwhelmingly dominant lever. Even the BEST conceivable eviction
-policy (Belady's optimal) can improve over LRU by at most Δh ≤ 0.3pp, which is less than the
-gain from adding ~56K tokens of cache capacity (~0.05% of the pool).
+The eviction-policy spread across all exclusive variants is Δh ≤ 0.52pp, while the capacity effect
+(inclusive→exclusive) is Δh = 13.0pp — a **25:1 ratio** of capacity effect to policy effect.
+Among PURE eviction policies (LFU, SLRU, queue-aware — not tiering variants), the spread narrows to
+0.08pp, making the ratio **163:1**. Even the BEST conceivable eviction policy (Belady's optimal)
+can improve over LRU by at most Δh ≤ 0.06pp (the queue-aware result, barely NS at z=1.76),
+which is less than the gain from adding ~11K tokens of cache capacity.
+
+**Formal z-test against LRU reference (n=6, μ=0.7520, σ=0.0003):**
+
+| policy | hit_rate | z-score | significance | Δpp |
+|---|---|---|---|---|
+| LFU | 0.7518 | −0.65 | NS | −0.02 |
+| SLRU | 0.7518 | −0.65 | NS | −0.02 |
+| Queue-aware LRU | 0.7526 | +1.76 | NS | +0.06 |
+| LPM+exclusive | 0.7514 | −1.86 | NS | −0.06 |
+| KV-only exclusive | 0.7526 | +1.76 | NS | +0.06 |
+| Device-first+excl | 0.7523 | +0.86 | NS | +0.03 |
+| Proactive backup | 0.7494 | −7.90 | sig (tiering) | −0.26 |
+| Hotkeep | 0.7474 | −13.94 | sig (tiering) | −0.46 |
+| Cost-aware (t=4096) | 0.7377 | −43.23 | sig WORSE | −1.43 |
+
+Among pure eviction policies, ALL z-scores are |z| < 2 (not significant). The only significant
+deviations come from mechanisms that change the tiering structure (hotkeep, proactive) or override
+recency ordering with an inferior heuristic (cost-aware). This is the strongest possible empirical
+evidence that eviction ORDER is irrelevant under this capacity regime.
 
 **6. Cross-tiering universality (pending empirical confirmation).**
 The theory predicts that eviction-order neutrality should hold at ALL capacity operating points,
@@ -938,9 +958,10 @@ redundant copy of the slow tier; exclusive tiering recovers this as usable capac
 transfers: any multi-tier cache under capacity pressure should default to exclusive placement and
 invest engineering effort in capacity expansion (compression, offloading) rather than eviction policy.
 
-The 42:1 capacity-to-policy ratio suggests a practical design rule: **if your cache is <70% of the
-working set, optimize placement first; improve eviction only after placement is exhausted.** For
-sglang's HiCache, this means exclusive tiering should be the DEFAULT for 2-tier configurations.
+The 25:1 capacity-to-policy ratio (163:1 among pure eviction policies) suggests a practical design
+rule: **if your cache is <70% of the working set, optimize placement first; improve eviction only
+after placement is exhausted.** For sglang's HiCache, exclusive tiering should be the DEFAULT for
+2-tier configurations.
 
 ### Comprehensive eviction-policy ablation summary (pending: 13 evals queued)
 

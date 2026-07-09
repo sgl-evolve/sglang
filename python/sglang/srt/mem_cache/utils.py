@@ -18,19 +18,14 @@ from typing import Any, Callable, List, Optional, Tuple
 
 from sglang.srt.environ import envs
 from sglang.srt.mem_cache.evict_policy import (
-    CostAwareStrategy,
-    DepthAwareLRUStrategy,
     EvictionStrategy,
     FIFOStrategy,
     FILOStrategy,
-    FreqDecayStrategy,
-    GDSFStrategy,
     LFUStrategy,
     LRUStrategy,
     MRUStrategy,
     PriorityStrategy,
     SLRUStrategy,
-    SizeWeightedLRUStrategy,
 )
 from sglang.srt.mem_cache.triton_ops.mla_buffer import (
     get_mla_kv_buffer_kernel as get_mla_kv_buffer_kernel,

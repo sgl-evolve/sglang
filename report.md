@@ -101,9 +101,9 @@ would mislead. This is why the p99 verdict upgraded from "noisy" (early single-r
 Repeating stock revealed high run-variance (stock tput 2.87↔3.02, p99 5189↔6393); the initial v0-ctl was a
 low-tput draw, so the tput/p99 gains were partly variance. The **robust, non-overlapping wins are hit_rate
 (+5.4pp) and median TTFT (−21%)**; p99 is −13% on average but noisy (overlapping); throughput is marginal
-(both meet the p99≤8s SLO and ~sustain λ=3 at the frozen load). The mechanism's value (higher hit-rate,
-lower median, lower average tail) would raise goodput at λ>3 — but per-version λ is frozen at 3, so the
-goodput-curve shift is *inferred, not directly measured*.
+(both meet the p99≤8s SLO and ~sustain λ=3 at the frozen load). At higher load, the mechanism's value is
+**directly measured** by the n=2 rate sweep (see HEADLINE): **+11.7% max throughput** at saturation
+(reproducible), while the p99-SLO *knee* shift is noise-limited/inconclusive.
 
 **Evidence:** (a) reproducible — v0-ctl reproduces the golden baseline; hit-rate/p50 wins non-overlapping
 across 5 stock+cost-aware runs; (b) noise-robust cache metric: −12.5% total recompute work (37.5M→32.8M
@@ -122,9 +122,11 @@ KV (prefix caching is exact), so model outputs are independent of eviction polic
 *hit-count*, layer-overlap) both optimize count-hit-rate / loading-latency; neither makes eviction
 recompute-cost-aware for a tail SLO. Eviction is explicitly an open area in the HiCache blog.
 
-**Limitations:** per-version eval is fixed at λ=3 (frozen); the goodput-curve shift is inferred from
-"sustains λ=3 with lower p99" (stock is backpressured at 2.87<3, cost-aware hits 3.02) rather than a full
-rate sweep (eval.sh hard-codes --request-rate 3). Gains are modest (capacity-bound workset: 19M ≫ 10.7M cap).
+**Limitations:** gains are modest (capacity-bound workset 19M ≫ 10.7M cap). The p99-SLO *knee* (goodput
+under the SLO) is noise-limited on this cluster (n=2 rate sweep disagrees on its direction), so the robust
+system-level claim is **+11.7% max throughput** (compute-efficiency), not a goodput-under-SLO-knee shift.
+Per-version eval is λ=3 (frozen); higher-λ behavior came from the sanctioned rate sweep (launch flags frozen,
+only --request-rate varied).
 
 **Noise-robust confirmation (from server-log prefill counters, not latency):** cost-aware eviction @t2048 vs
 stock LRU does **−12.5% total recompute work** (37.5M → 32.8M new/recomputed tokens) and −6% prefill batches

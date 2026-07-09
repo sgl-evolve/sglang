@@ -126,6 +126,10 @@ recompute-cost-aware for a tail SLO / compute-efficiency. Eviction is explicitly
 (registered in `_EVICTION_POLICY_FACTORIES` alongside lru/lfu/slru; `_make_cost_aware_strategy()` reads the
 `SGLANG_COST_AWARE_*` knobs). A maintainer can merge it as a new selectable policy; the env-override of the
 default `lru` (SGLANG_ENABLE_COST_AWARE_EVICTION, default on) exists only for the mechanism-only ablation eval.
+Hardened with 22 CPU-only unit tests (`test/registered/unit/mem_cache/test_evict_policy.py`,
+`TestCostAwareStrategy`/`ReuseGating`/`ThreeTier`/`DepthMode`/`Ordering`, CI-registered) covering the
+tier boundary, reuse gating, 3-tier ordering, depth mode, and stale-`prefix_len`/missing-`key` fallbacks —
+so the `get_priority` ordering contract is regression-guarded for review.
 
 **Limitations:** gains are modest (capacity-bound workset 19M ≫ 10.7M cap). The p99-SLO *knee* (goodput
 under the SLO) is noise-limited on this cluster (n=2 rate sweep disagrees on its direction), so the robust

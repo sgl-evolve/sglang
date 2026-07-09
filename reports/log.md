@@ -113,3 +113,15 @@ p99 at knee too variable (stock λ4 10370 vs 8293). CORRECTED earlier n=1 "+8.3%
 FINAL honest headline: cost-aware eviction @t2048 = +11.7% max throughput (reproducible) + hit +6.0pp + p50 -16%
 (both non-overlapping) + -12.5% recompute; all lossless. p99-SLO-knee shift not robust (cluster p99 noise).
 Lesson: even rate-sweep knee needs n>=2; max-tput (compute-bound) is the clean reproducible metric.
+
+## 2026-07-09 — Upstream hardening: unit tests for CostAwareStrategy (no eval)
+Added 22 CPU-only unit tests to test/registered/unit/mem_cache/test_evict_policy.py (CI-registered,
+following the existing per-strategy pattern): TestCostAwareStrategy (tier boundary at threshold, LRU within
+tier, cheap-recent evicted before expensive-old, missing-key -> 0 cost, default threshold 4096),
+ReuseGating (unproven long prefix demoted to cheap tier; proven protected; cheap unaffected),
+ThreeTier (short/long/longest -> tier 0/1/2 ordering), DepthMode (deep short turn protected; segment mode
+would not; max() floor at segment cost), Ordering (sort a mixed set). All 41 tests in the file pass
+(19 pre-existing + 22 new). Commit 5997f8f37, pushed evolve/sgl_mech. Contribution now fully upstream-ready:
+engine mechanism + registered `--radix-eviction-policy cost_aware` + report + reproducible n=2 sweep + tests.
+No eval churn (stewardship: shared pool contended/noisy). Accessible clean lossless-lever space remains
+exhaustively bounded; holding available for genuinely-novel independent ideas.

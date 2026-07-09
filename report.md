@@ -806,12 +806,37 @@ under plain exclusive; this doesn't help KV and slightly reduces effective host 
 **Honest negative. Component-differentiated tiering is architecturally sound but does not measurably improve
 performance because the Mamba D→H cost at eviction is dominated by the much more numerous KV page copies.**
 
+### v_cost_lru_t4096 — cost-aware LRU eviction + exclusive (commit c3adccec0, mechanism) — NEGATIVE
+`SGLANG_HICACHE_EXCLUSIVE=1 SGLANG_EVICT_COST_THRESHOLD=4096 --radix-eviction-policy cost_lru`.
+Hypothesis: evict entries whose prefix depth < 4096 tokens first (cheap to recompute), protecting deep
+(expensive) entries. A GDSF-style size/cost heuristic different from recency or frequency.
+
+| metric | exclusive LRU (4-run mean ± σ) | **v_cost_lru_t4096** |
+|---|---|---|
+| hit_rate | 0.7509 ± 0.002 | **0.7377** (−1.3pp, WORSE) |
+| p99 TTFT ms | 4575 ± 506 | 4821 (+5%, within noise) |
+| mean TTFT ms | 841 ± 47 | 846 (within noise) |
+| load_back_mean_ms | 19.0 | **29.1** (+53%) |
+| evict_mean_ms | 20.7 | 21.3 (flat) |
+| req/s | 3.02 | 3.02 |
+
+**NEGATIVE.** Cost-aware eviction LOWERS hit rate by 1.3pp vs LRU. Root cause: the threshold creates an
+artificial boundary — short-doc conversations (prefix < 4096 tokens) are always evicted first regardless of
+recency, even when their cache entries would be reused sooner than the "protected" deep entries. This
+overrides LRU's natural reuse-distance ordering, starving short conversations of cache. The +53% load_back
+time (29.1 vs 19.0ms) reflects larger entries surviving longer → more costly H→D transfers.
+
+**Lesson:** eviction priority should be recency-based (LRU), not depth-based. In a multi-turn workload,
+ALL active conversations (short-doc and long-doc alike) benefit from cache residency; depth is NOT a proxy
+for reuse value. This is the 5th eviction policy tested (LRU, queue-aware, SLRU, LFU, cost-aware) and the
+only one that's actively WORSE than LRU — confirming that departing from recency HURTS, not just fails to help.
+
 ### Lines EXHAUSTED (comprehensive mechanism-space analysis)
 
 | mechanism category | tested | result | reason |
 |---|---|---|---|
 | **L1↔L2 placement** | exclusive tiering | **WIN** (+13pp hit, −30% TTFT) | capacity unlocked |
-| **Eviction order** | LRU, queue-aware, SLRU, LFU | all NEUTRAL | capacity-bound, not policy-bound |
+| **Eviction order** | LRU, queue-aware, SLRU, LFU, cost-aware | 4 NEUTRAL, 1 NEGATIVE | capacity-bound, not policy-bound |
 | **Scheduling** | LPM, LPM+exclusive | NEGATIVE (starvation) | prefix ordering starves cold reqs |
 | **Transfer D↔H** | proactive backup (measured) | evict −32%, load −20%, TTFT neutral | not the bottleneck at λ=3 |
 | **Admission** | not implementable | requires conv-id (unavailable in serving path) | no grouping signal |

@@ -1,0 +1,14 @@
+diag2
+diag3
+diag4-writeback
+s1-diag
+v1-warmfirst
+v2-warmage
+v3-excl
+v3b-excl
+v3c-excl
+v5-keep2
+v26-sjf
+v44-excl-rep3
+v27-sjf-excl
+v45-baseline-rep3

@@ -97,6 +97,14 @@ exhausted/infeasible/off-limits for THIS setup:
 - **Capacity via non-redundant/exclusive tiering:** the biggest remaining lever, but it appears in the
   shared cross-cell memory (siblings' finding); per my charter's independence rule I do **not** adopt it —
   my cost-aware eviction is my clean, distinct, independent contribution.
+- **Cost-aware write-back admission** (a distinct WRITE-path mechanism: skip backing up cheap short prefixes
+  to L2 instead of backing up everything, since L2 is the binding capacity tier at host_util→1.0): bounded
+  out *analytically*. Cost-aware **eviction** already makes L2's steady-state composition long-prefix-dominated
+  (cheap nodes are evicted first), so write-admission converges to the SAME L2 contents — it only avoids the
+  transient cheap-node churn and saves write bandwidth (not the bottleneck in the compute-bound knee). Expected
+  effect: neutral/redundant with cost-aware eviction. Not worth a scarce eval to log a predicted-neutral
+  version (integrity: don't manufacture predicted negatives). Distinct from HiCache's hit-count-based selective
+  write (config knob); this would be a cost-based engine mechanism, but the redundancy argument bounds it either way.
 - **Partial hybrid reuse** (cache the 12 full-attention KV, recompute the 36 GDN/linear states on reuse):
   looked very promising (attention prefill is O(L²) and dominates for L>~191 tok; GDN is O(L); GDN state is
   ~3× the attention-KV storage, so dropping it would ~4× effective attention-KV capacity). **INFEASIBLE due

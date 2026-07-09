@@ -135,6 +135,7 @@ class CacheAwarePolicy(Enum):
 
     LPM = "lpm"  # longest prefix match
     DFS_WEIGHT = "dfs-weight"  # depth-first search weighting
+    SRPF = "srpf"  # shortest remaining prefill first (novel)
 
 
 class CacheAgnosticPolicy(Enum):
@@ -201,6 +202,10 @@ class SchedulePolicy:
                 )
             elif policy == CacheAwarePolicy.DFS_WEIGHT:
                 SchedulePolicy._sort_by_dfs_weight(waiting_queue, self.tree_cache)
+            elif policy == CacheAwarePolicy.SRPF:
+                SchedulePolicy._sort_by_shortest_remaining_prefill(
+                    waiting_queue, temporary_deprioritized
+                )
             else:
                 raise ValueError(f"Unknown CacheAware Policy: {policy=}")
         else:
@@ -221,8 +226,7 @@ class SchedulePolicy:
                 raise ValueError(f"Unknown CacheAgnostic Policy: {policy=}")
 
     def _determine_active_policy(self, waiting_queue: List[Req]) -> Policy:
-        if self.policy == CacheAwarePolicy.LPM and len(waiting_queue) > 128:
-            # Turn off the expensive prefix matching and sorting when the #queue is large.
+        if self.policy in (CacheAwarePolicy.LPM, CacheAwarePolicy.SRPF) and len(waiting_queue) > 128:
             return CacheAgnosticPolicy.FCFS
         return self.policy
 
@@ -300,6 +304,22 @@ class SchedulePolicy:
         waiting_queue.sort(
             key=lambda r: (
                 -r.num_matched_prefix_tokens
+                if r.rid not in temporary_deprioritized
+                else float("inf")
+            )
+        )
+
+    @staticmethod
+    def _sort_by_shortest_remaining_prefill(
+        waiting_queue: List[Req], temporary_deprioritized: Set[int]
+    ) -> None:
+        """SRPF: sort by remaining (uncached) prefill tokens — smallest first.
+        Reduces TTFT variance: requests needing the least new compute go first,
+        completing quickly and freeing batch slots for the next. Deprioritized
+        requests (in-batch prefix caching) sort last."""
+        waiting_queue.sort(
+            key=lambda r: (
+                len(r.origin_input_ids) - r.num_matched_prefix_tokens
                 if r.rid not in temporary_deprioritized
                 else float("inf")
             )

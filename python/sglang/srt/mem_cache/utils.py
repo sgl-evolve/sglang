@@ -31,6 +31,7 @@ from sglang.srt.mem_cache.evict_policy import (
     RandomStrategy,
     SLRUStrategy,
     SizeWeightedLRUStrategy,
+    TwoQStrategy,
 )
 from sglang.srt.mem_cache.triton_ops.mla_buffer import (
     get_mla_kv_buffer_kernel as get_mla_kv_buffer_kernel,
@@ -70,6 +71,7 @@ _EVICTION_POLICY_FACTORIES: dict[str, Callable[[], EvictionStrategy]] = {
     "random": RandomStrategy,
     "size_lru": SizeWeightedLRUStrategy,
     "gdsf": GDSFStrategy,
+    "two_q": TwoQStrategy,
 }
 
 

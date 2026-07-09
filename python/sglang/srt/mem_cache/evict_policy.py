@@ -135,3 +135,14 @@ class GDSFStrategy(EvictionStrategy):
         cost = max(_prefix_len(node), 1)
         size = max(len(node.key), 1)
         return float(freq * cost) / size
+
+
+class TwoQStrategy(EvictionStrategy):
+    """2Q: FIFO admission queue for new entries (hit_count=0), LRU for
+    re-accessed entries (hit_count>=1). New entries evicted first by creation
+    order; only entries that prove reuse value survive to the LRU pool."""
+
+    def get_priority(self, node: "TreeNode") -> Tuple[int, float]:
+        if node.hit_count == 0:
+            return (0, node.creation_time)
+        return (1, node.last_access_time)

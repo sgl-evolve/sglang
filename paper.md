@@ -165,4 +165,5 @@ correctness argument and a falsifiable two-sided generalization law. It is the l
 tier budget; going further requires trading exactness for bytes.
 
 *Artifacts: `patches/exclusive_tiering.patch` (applyable), `UPSTREAM.md` (PR summary), `report.md` (full
-working record), `sim/generalization_band.py` (band law), W&B run `sgl_free` (project sgl-evolve).*
+working record), `sim/generalization_band.py` (band law), `sim/workload_sensitivity.py` (composition +
+concurrency sensitivity), W&B run `sgl_free` (project sgl-evolve).*

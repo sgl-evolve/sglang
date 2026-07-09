@@ -125,3 +125,22 @@ would not; max() floor at segment cost), Ordering (sort a mixed set). All 41 tes
 engine mechanism + registered `--radix-eviction-policy cost_aware` + report + reproducible n=2 sweep + tests.
 No eval churn (stewardship: shared pool contended/noisy). Accessible clean lossless-lever space remains
 exhaustively bounded; holding available for genuinely-novel independent ideas.
+
+## 2026-07-09 — Knee-regime evidence: the p99-SLO knee is prefill-COMPUTE-bound (bounds scheduling axis, no eval)
+Re-read charter: its stated target is concurrency-regime KV-locality (reuse-aware scheduling/admission) and the
+HEADLINE metric is the KNEE (λ>=4), not λ=3. My earlier "scheduling has no headroom" was from λ=3 (queue=0) —
+a gap. Mined existing n=2 rate-sweep server logs (λ=4-6) to test it properly. Findings (stock sweep, peak
+queue depth 20-68, max 68):
+- device KV-util 0.333 mean / 0.70 peak, mamba-util 0.180 -> NOT memory-bound at the knee.
+- #pending-token ~449,643 (half a million tokens of prefill backed up) -> prefill-COMPUTE-bound.
+- 95% of queued prefills COLD (#cached-token==0) -> reuse already captured (warm follow-ups zip through);
+  backlog is genuinely-unique cold long-document first-turn prefill (must compute once).
+=> A lossless scheduling REORDER (SPF/reuse-priority/admission) cannot reduce total cold-prefill compute, only
+reorder who waits -> cannot lift knee goodput here. Bounds the charter's suggested scheduling axis OUT *with
+data* (upgrades my prior assertion). The lever that DOES help = cut warm-recompute: cost-aware eviction does
+-14.2% total prefilled new-tokens across the sweep (151.2M->129.7M) at the SAME memory budget (device-KV-util
+0.33 vs 0.33, peak 0.70 vs 0.69) -> directly explains +11.7% max-throughput. Airtight attribution: same
+memory, less compute, more goodput. Two-regime insight: aggregate hit-rate capacity-bound (ceiling 0.67),
+knee compute-bound; in BOTH the accessible lossless lever is reducing recompute = cost-aware eviction.
+Wrote into report.md design-space section. No eval consumed (mined existing runs/). Contribution unchanged but
+its insight/rigor materially strengthened (paper-quality bounding of the scheduling axis).

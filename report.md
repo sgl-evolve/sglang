@@ -71,6 +71,7 @@ Fine-grid knee-resolver (2026-07-09, same node ondem-2, same flock, tools/knee_r
 - +free-host-on-promotion (my engine mechanism → full exclusivity): hit **0.752** (+12.8pp vs baseline,
   n=5, σ=0.003), p99 **4662** (σ=560), mean TTFT 834 (σ=49).  [mechanism, commit 21023af6d]
 - Same-node 1-2 triple: baseline 0.626→write_back 0.730→exclusive 0.752 (+10.4pp/+2.1pp decomposition).
+- Same-node 0-3 triple: baseline 0.630→write_back 0.731→exclusive 0.753 (+10.0pp/+2.2pp decomposition).
 
 **Why it works / evidence:** (1) live metrics show both tiers saturated but with write_through the device
 tier is a redundant *inclusive* subset of host (device⊆host) → distinct capacity ≈ host alone (7.81M) for a
@@ -90,6 +91,15 @@ between-turn conversations indistinguishable from dead ones) → degenerates to 
 (probationary < 2 hits, protected ≥ 2) doesn't distinguish dead from active conversations at scale.
 THREE eviction policies tested → all converge on ~0.75 hit, confirming the ~5pp oracle gap is
 unrealizable without future-knowledge.
+**Device-first scheduling** (v_devfirst_excl, v_devfirst_excl2, commit 4b1e5a314, mechanism):
+`--schedule-policy device-first` (new CacheAwarePolicy) prioritizes waiting requests whose matched
+prefix is already on device (L1) over requests needing H→D load_back, to reduce cascade evictions.
+Under write_through (v_devfirst_excl, node 1-2): hit 0.626, p99 6855, mean 1013 → NEUTRAL/slightly
+worse than baseline (p99 +14%, within node variance σ≈876) — prefix matching overhead with no benefit
+when eviction is cheap (1ms). Under exclusive (v_devfirst_excl2, node ondem-3): hit 0.752, p99 4407,
+mean 789 → NEUTRAL vs exclusive without device-first (multi-run mean hit 0.752, p99 4765±349). The
+cascade-eviction hypothesis was correct in theory (load_back_mean dropped 19→17.7ms) but the effect is
+dominated by prefill compute (200–500ms) → **scheduling order is NOT the lever in this regime**.
 
 **Generalizable insight:** for a saturated multi-tier KV cache on the steep hit-vs-capacity curve, the
 lever is *effective capacity* (exclusive tiering / de-duplication), not scheduling order or admission.
@@ -123,6 +133,20 @@ The full +13pp exclusive-tiering benefit decomposes into TWO halves: (1) write-s
 | req/s | 3.02 | 3.02 | 3.02 |
 
 All three runs on the SAME NODE (1-2) via flock, making latency comparisons directly valid.
+
+**★ SECOND same-node 3-point ablation (node 0-3, all flock-held):**
+
+| metric | baseline (wt, incl) | write_back (config) | exclusive (mechanism) |
+|---|---|---|---|
+| version | v_baseline_03 | v_writeback_ablation | v_excl_kv_only2 |
+| node | **0-3** | **0-3** | **0-3** |
+| hit_rate | 0.6303 | **0.7307** (+10.0pp) | **0.7526** (+12.2pp) |
+| p99 TTFT ms | 5172 | **4104** (−20.7%) | **4630** (−10.5%) |
+| mean TTFT ms | 949 | **774** (−18.4%) | **799** (−15.8%) |
+| evict_mean_ms | 1.19 | **10.3** | **19.7** |
+| load_back_mean_ms | 1.96 | **5.6** | **17.9** |
+
+Decomposition reproduces node 1-2: write_back +10.0pp (82% of gain), engine +2.2pp (18%).
 
 **Decomposition (from the same-node 1-2 triple):**
 - **write_back flag → +10.4pp hit** (0.6262→0.7304): write-side exclusivity alone. This is a STOCK
@@ -173,14 +197,15 @@ All three runs on the SAME NODE (1-2) via flock, making latency comparisons dire
 | v_writeback_12 | 1-2 | 0.7304 | 4996 | 818 | 10.4 | 5.7 |
 | **mean ± σ** | | **0.7311 ± 0.001** | **4587 ± 316** | **827 ± 60** | **10.3** | **5.5** |
 
-**All baseline runs (3 runs):**
+**All baseline runs (4 runs):**
 
 | run | node | hit_rate | p99 | mean | evict_ms | lb_ms |
 |---|---|---|---|---|---|---|
 | v0_official | ? | 0.6217 | 6326 | 1146 | 1.0 | 1.7 |
 | v_ab2_baseline | (A/B pair) | 0.6247 | 4664 | 937 | 1.0 | 1.9 |
 | v_baseline_node03 | 1-2 | 0.6262 | 6022 | 997 | 1.2 | 2.0 |
-| **mean ± σ** | | **0.6242 ± 0.002** | **5671 ± 876** | **1027 ± 108** | **1.1** | **1.9** |
+| v_baseline_03 | 0-3 | 0.6303 | 5172 | 949 | 1.2 | 2.0 |
+| **mean ± σ** | | **0.6257 ± 0.004** | **5546 ± 736** | **1007 ± 91** | **1.1** | **1.9** |
 
 **HONEST SYNTHESIS:** write_back captures **81% of the exclusive hit gain** (10.7/13.2pp) and
 **achieves comparable or better latency** (lower evict/lb cost offsets the slightly lower hit). The
@@ -284,7 +309,9 @@ capacity for fewer transfers doesn't net a win ⇒ PURE exclusive (v1/v2) is nea
   (out-of-budget), **queue-aware eviction** (v_queue_aware_excl, NEUTRAL — queue too transient to
   distinguish dead from between-turn conversations), **SLRU** (v_slru_excl, NEUTRAL — hit_count
   segmentation doesn't help under capacity-bound regime). Three eviction policies tested (LRU, queue-aware,
-  SLRU) all converge on ~0.75 hit → eviction ORDER confirmed dead. Remaining ~5pp to the 0.807 ceiling
+  SLRU) all converge on ~0.75 hit → eviction ORDER confirmed dead; **device-first scheduling**
+  (v_devfirst_excl/excl2, NEUTRAL — cascade evictions real but dominated by prefill compute).
+  Remaining ~5pp to the 0.807 ceiling
   needs future-predicting eviction (impossible without oracle) or lossless KV COMPRESSION — both closed.
   - **★Frontier quality cost (measured): fp8-KV reaches the ceiling at a MODEST but real lossy cost.**
     Greedy 24-doc verify vs bf16 no-cache (output-divergence proxy): exclusive (my mechanism) & stock both

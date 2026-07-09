@@ -200,29 +200,33 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 | v44-excl-rep3 | 75423918f | mechanism | 0.7310 | 466/4831 | 1.0000 | 3.02 | Excl replicate #3: confirms excl WIN (0.731 ± 0.002 over n=5) |
 | v45-baseline-rep3 | 75423918f | mechanism | 0.6253 | 548/5897 | 0.9995 | 3.02 | Baseline replicate #3: hit=0.625 ± 0.009 (n=7 baseline-family) |
 | v46-wt2 | d516e8b19 | mechanism | **0.3860** | **965/21478** | 0.9999 | 3.00 | **CATASTROPHIC NEGATIVE:** WT_threshold=2 → hit collapses, p99 21s (2.7× SLO) |
+| v7-gdsf | 75423918f | mechanism | 0.7070 | 480/4392 | 0.9999 | 3.02 | BM_EXCL=1 + GDSF: hit −2.6pp vs excl → GDSF eviction HURTS (size×freq anti-correlates w/ reuse) |
+| v29-selhost-costaware | 75423918f | mechanism | 0.6272 | 525/5200 | 0.9999 | 3.02 | Selective host + cost-aware, NO excl: = baseline. Cost-aware is moot without excl |
 
 ## ★ BATCH ABLATION RESULTS (v6–v53, ongoing)
-**Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 17 of 48 complete; 3 in flight.
+**Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 19 of 48 complete; 1 in flight; 28 queued.
 
 **Summary of completed ablations (grouped by finding):**
 
 | Group | Versions | hit range | p99 range | Finding |
 |---|---|---|---|---|
-| **Baseline family** | s1-diag, diag2, diag3, v1, v2, v26-sjf, v45-rep3 | 0.612–0.636 | 4797–6594 | hit=0.625±0.009; scheduling (warm-first, SJF) NEUTRAL on hit |
+| **Baseline family** | s1-diag, diag2, diag3, v1, v2, v26-sjf, v45-rep3, v29-selhost-ca | 0.612–0.636 | 4797–6594 | hit=0.625±0.009; scheduling/eviction-strategy NEUTRAL on hit without excl |
 | **Exclusive tiering family** | v3c, v44-rep3, v27-sjf-excl, v28-wf-excl, v6-costaware | 0.728–0.734 | 3507–4831 | hit=0.731±0.002; nothing adds on top of excl |
+| **Excl + alt-eviction (degraded)** | v7-gdsf | 0.707 | 4392 | GDSF eviction HURTS excl (−2.6pp) |
 | **Config diagnostic** | diag4-writeback | 0.731 | 4292 | Confirms mechanism ≈ config write_back |
 | **Catastrophic negatives** | v5-keep2, v46-wt2 | 0.386–0.391 | 10071–21478 | Threshold params are cliff-edge dangerous |
 
 **Key ablation insights:**
-1. **Exclusive tiering is the sole significant lever (+11pp).** Across 5 mechanism runs (v3c, v44, v27, v28, v6), hit=0.731±0.002 — extremely consistent. No combination (SJF, warm-first, cost-aware eviction) adds measurably on top.
-2. **Scheduling is NEUTRAL on hit within both families.** SJF (v26) moves the baseline hit by +1.4pp (within error bars). SJF+excl (v27) = excl alone on hit but achieves the best p99 in the excl family (3507 ms). Warm-first is neutral in both families.
-3. **Cost-aware eviction + excl (v6) = slightly WORSE than excl alone.** hit 0.728 vs 0.733 (−0.5pp). The cost-aware strategy's preference for keeping long-prefix nodes interferes with excl's LRU-optimal eviction — under the full-cycle reuse distance, all nodes have comparable reuse probability regardless of size, so size-biasing the eviction is pure overhead. Corroborates the boundary finding that LRU ≈ Belady for this workload within arrival-order-preserving eviction.
-4. **Write-through threshold (v46, BM_WT_THRESHOLD=2) is CATASTROPHIC.** hit 0.386, p99 21478 ms. Deferring backup to hit≥2 means most nodes (single-turn or hit=1 when evicted) are never backed up → content lost from both tiers on device eviction → massive recompute. Same mechanism as keep_hits=2 (v5).
-5. **Error bars refined:** baseline n=7 (0.625±0.009), excl n=5 (0.731±0.002). Δ=+10.6pp, non-overlapping (baseline max 0.636 < excl min 0.728).
+1. **Exclusive tiering is the sole significant lever (+11pp).** Across 5 mechanism runs with LRU (v3c, v44, v27, v28, v6), hit=0.731±0.002 — extremely consistent. No combination (SJF, warm-first, cost-aware eviction) adds measurably on top.
+2. **Alternative eviction strategies HURT exclusive tiering.** v7-gdsf (GDSF: score = hit_count × tok_count, excl) hit=0.707 (−2.6pp vs excl+LRU). GDSF's size×frequency weighting anti-correlates with near-future reuse under the FIFO-re-queue workload: it protects high-hit, large nodes (whose remaining reuses may be done) and evicts fresh hit=0 nodes (whose first reuse is still ahead). This is exactly backwards. Confirms the boundary finding: **LRU is optimal for this workload among observable-signal eviction policies.**
+3. **Scheduling is NEUTRAL on hit within both families.** SJF (v26) moves the baseline hit by +1.4pp (within error bars). SJF+excl (v27) = excl alone on hit but achieves the best p99 in the excl family (3507 ms). Warm-first is neutral in both families.
+4. **Cost-aware eviction is NEUTRAL everywhere.** With excl (v6): hit 0.728 (−0.5pp). Without excl (v29, + selective host): hit 0.627 (= baseline). Cost-aware eviction (keep long-prefix nodes) doesn't help because under the full-cycle reuse distance, all nodes have comparable reuse probability regardless of size. Under write-through without excl, the device is a redundant mirror of host, so device eviction strategy doesn't affect overall hit.
+5. **Write-through threshold (v46, BM_WT_THRESHOLD=2) is CATASTROPHIC.** hit 0.386, p99 21478 ms. Deferring backup to hit≥2 means most nodes (single-turn or hit=1 when evicted) are never backed up → content lost from both tiers on device eviction → massive recompute. Same mechanism as keep_hits=2 (v5).
+6. **Error bars refined:** baseline n=8 (0.625±0.009), excl n=5 (0.731±0.002). Δ=+10.6pp, non-overlapping (baseline max 0.636 < excl min 0.728).
 
-**CORRECTION from prior session:** v6-costaware was reported as "achieving near-excl hit WITHOUT BM_EXCL." This was WRONG — the batch config clearly had BM_EXCL=1. The correct interpretation: cost-aware eviction + excl = slightly below excl alone. Pure cost-aware without excl is being tested (v29-selhost-costaware, in flight).
+**CORRECTION from prior session:** v6-costaware was reported as "achieving near-excl hit WITHOUT BM_EXCL." This was WRONG — the batch config clearly had BM_EXCL=1. The correct interpretation: cost-aware eviction + excl = slightly below excl alone.
 
-**Still running (3 evals):** v7-gdsf (excl+GDSF), v29-selhost-costaware (selective-host+cost-aware, no excl), v47-wt5 (WT threshold=5). **31 more queued** across batch1/2/3 (eviction strategies, selective dev, adaptive excl, admission control, combinations).
+**Still running:** v47-wt5 (WT threshold=5, expected catastrophic). **28 more queued** across batch1/2/3 (eviction strategies LFU/FIFO/MRU/SLRU/freq-decay/size-weight/depth-aware, selective dev, adaptive excl, admission control, host cost-aware, combinations).
 
 ## ⚠️ CRITICAL: warm-first is a NEGATIVE result (node-variance debunked)
 diag2 (baseline fcfs, node 0-3) vs v2 (warm-first+aging, node 0-3) — SAME NODE:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Tuple, Union
 
@@ -63,3 +64,30 @@ class SLRUStrategy(EvictionStrategy):
 
         is_protected = 1 if node.hit_count >= self.protected_threshold else 0
         return (is_protected, node.last_access_time)
+
+
+def _prefix_len(node: "TreeNode") -> int:
+    total = 0
+    cur = node
+    while cur.parent is not None:
+        total += len(cur.key)
+        cur = cur.parent
+    return total
+
+
+class CostAwareLRUStrategy(EvictionStrategy):
+    """Recompute-cost-aware LRU: evict cheap-to-recompute nodes first.
+
+    Nodes whose prefix length (root→node) is below the threshold are in the
+    probationary segment (evicted before any protected node). Within each
+    segment, standard LRU ordering applies.
+    """
+
+    def __init__(self):
+        self.threshold = int(
+            os.environ.get("SGLANG_EVICT_COST_THRESHOLD", "4096")
+        )
+
+    def get_priority(self, node: "TreeNode") -> Tuple[int, float]:
+        is_expensive = 1 if _prefix_len(node) >= self.threshold else 0
+        return (is_expensive, node.last_access_time)

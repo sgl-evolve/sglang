@@ -856,6 +856,38 @@ improves KV-cache performance in this 2-tier setup. The INSIGHT: under capacity 
 placement policy (inclusive vs exclusive) is the dominant lever — eviction policy, scheduling, and
 transfer optimization are all secondary or at hardware limits.
 
+### Internal behavior decomposition — WHERE the hit-rate gain comes from
+
+Cross-tier analysis of device vs host contribution reveals three invariants that explain HOW exclusive
+tiering works:
+
+| metric | baseline (n=5) | write_back (n=9) | exclusive (n=12) |
+|---|---|---|---|
+| total hit_rate | 0.6224 | 0.7317 | 0.7520 |
+| device hit (% of prompts) | 25.1% | 25.2% | 25.4% |
+| host hit (% of prompts) | 37.2% | 47.9% | 49.8% |
+| evicted_tokens | 582M | 581M | 582M |
+| load_back_tokens | 298M | 384M | 401M |
+| eviction amplification | 9.36× | 7.95× | 7.74× |
+
+**Invariant 1: device hit fraction is constant (~25%).** The device cache is always full and serves
+the same absolute volume of tokens regardless of tiering mode. The device tier's contribution to
+hit rate is saturated by its fixed capacity.
+
+**Invariant 2: the ENTIRE hit-rate gain comes from host hits.** Baseline 37.2% → exclusive 49.8%
+(+12.6pp). Exclusive tiering doesn't help the device — it reclaims host capacity that was wasted on
+device mirrors, making the host tier serve more unique data.
+
+**Invariant 3: total eviction volume is constant (~581M tokens).** The eviction throughput is
+determined by the arrival rate and total cache capacity, independent of tiering policy. What changes
+is the eviction DESTINATION: under baseline, eviction merely drops a device entry (its host mirror
+persists); under exclusive, eviction writes D→H (the entry has no host copy yet).
+
+These invariants confirm the capacity-band theory: exclusive tiering works by converting the device
+tier from a redundant cache of the host into an independent capacity extension. The load-back cost
+increase (+34%) is the price paid for this — every host-only entry that gets reused must be loaded
+back to device, whereas under inclusive tiering the device already had a copy.
+
 ### Theoretical analysis — why eviction ORDER is neutral in capacity-bound KV caches
 
 The comprehensive eviction-policy ablation (10+ policies, all converging on hit ≈ 0.75) is NOT a

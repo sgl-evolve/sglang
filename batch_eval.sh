@@ -134,4 +134,7 @@ run_one "v44-xtier-lfuda" "SGLANG_XTIER_LAZY=1 SGLANG_XTIER_WM_FRAC=0.1" "--radi
 run_one "v45-cost-freq" "" "--radix-eviction-policy cost_freq"
 run_one "v46-xtier-cost-freq" "SGLANG_XTIER_LAZY=1 SGLANG_XTIER_WM_FRAC=0.1" "--radix-eviction-policy cost_freq"
 
+# --- Adaptive XTIER (wm_frac auto-adjusts based on unbacked eviction rate) ---
+run_one "v47-xtier-adaptive" "SGLANG_XTIER_LAZY=1 SGLANG_XTIER_WM_FRAC=0.1 SGLANG_XTIER_ADAPTIVE=1" ""
+
 echo "===== BATCH COMPLETE $(date) ====="

@@ -1537,6 +1537,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 return
             else:
                 # Write-through: node has no backup, delete entirely.
+                if self.xtier_adaptive:
+                    self._xtier_unbacked_evicts += 1
                 self._record_remove_event(node, medium=StorageMedium.GPU)
                 for comp in self._components_tuple:
                     self._evict_component_and_detach_lru(
@@ -2510,6 +2512,16 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             self._xtier_step = getattr(self, "_xtier_step", 0) + 1
             if self._xtier_step % self.xtier_period != 0:  # throttle
                 return
+            if self.xtier_adaptive:
+                self._xtier_adapt_counter += 1
+                if self._xtier_adapt_counter >= self._xtier_adapt_window:
+                    rate = self._xtier_unbacked_evicts / self._xtier_adapt_window
+                    if rate > 0.5:
+                        self.xtier_wm_frac = min(0.30, self.xtier_wm_frac + 0.02)
+                    elif rate < 0.1:
+                        self.xtier_wm_frac = max(0.02, self.xtier_wm_frac - 0.02)
+                    self._xtier_adapt_counter = 0
+                    self._xtier_unbacked_evicts = 0
             alloc = self.token_to_kv_pool_allocator
             free = (
                 alloc.full_available_size()

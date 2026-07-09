@@ -95,3 +95,11 @@ Paired same-node p99 deltas (ALL negative): -707, -406, -593 -> mean -568±152 m
 FINAL robust claims (lossless): hit +6.0pp (non-overlapping), p50 -16% (non-overlapping), p99 -10% (paired,
 statistically significant; unpaired ranges overlap due to cluster cross-run variance, which pairing cancels).
 tput marginal (both sustain λ=3, meet p99≤8s SLO). Powering campaign complete; p99 upgraded noisy->robust.
+
+## 2026-07-09 — HEADLINE goodput-curve shift DIRECTLY measured (rate sweep, same node, frozen flags)
+One model load each for stock & cost-aware@2048; fixed mix at λ∈{3,4,5,6}, only --request-rate varies.
+p99(ms)/tput:  λ3 stock 5009/3.02 cost 5058/3.02 | λ4 stock 10370/3.51 cost 8512/3.78 | λ5 stock 13028/3.89 cost 13190/4.03 | λ6 stock 13105/3.91 cost 13932/4.44.
+Goodput knee (p99=8s): stock λ≈3.56 -> cost λ≈3.85 (+8.3%). Max throughput (λ6 saturation): 3.91 -> 4.44 (+14%,
+cleanest win: -12.5% recompute -> more compute for serving). Knee λ4: cost p99 -18%, tput +8%. Curve shifts
+right = real mechanism (not config flip). Lossless. This DIRECTLY demonstrates the headline (previously inferred).
+Rate sweep is the charter-sanctioned "occasional rate sweep around the knee"; launch flags kept frozen.

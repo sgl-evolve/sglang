@@ -424,6 +424,13 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                     f"BM_EVICT_STRATEGY={_bm_evict} (threshold={_thresh})"
                 )
         self._bm_selective_host = get_bool_env_var("BM_SELECTIVE_HOST")
+        # Adaptive exclusivity: switch between write-through and exclusive
+        # dynamically based on host utilization. When host is nearly full
+        # (util > threshold), defer backups (exclusive mode = more unique
+        # capacity). When host has space (util < threshold), back up eagerly
+        # (write-through = redundancy is fine, faster recovery).
+        _ae = _os.environ.get("BM_ADAPTIVE_EXCL", "").strip()
+        self._bm_adaptive_excl = float(_ae) if _ae else 0.0
         self.prefetch_stop_policy = "best_effort"
         self.prefetch_threshold = 256
         self.prefetch_timeout_base = 1.0
@@ -1939,6 +1946,14 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # device eviction, reuse-gated (see _evict_device_leaf).
         if self._bm_excl:
             return
+        # Adaptive exclusivity: defer backup when host is under pressure.
+        if self._bm_adaptive_excl > 0.0 and self.cache_controller is not None:
+            pool = self.cache_controller.mem_pool_host
+            cap = pool.get_size() if hasattr(pool, "get_size") else 1
+            avail = pool.available_size() if hasattr(pool, "available_size") else cap
+            util = 1.0 - (avail / max(cap, 1))
+            if util >= self._bm_adaptive_excl:
+                return
         if (
             self.cache_controller is not None
             and not node.backuped

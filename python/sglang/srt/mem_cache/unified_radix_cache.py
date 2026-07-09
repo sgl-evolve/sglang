@@ -571,6 +571,10 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # XTIER backup selection: "cold" (default) = back up eviction-coldest leaves;
         # "costly" = back up highest-recompute-cost leaves first (protects deep prefixes).
         self.xtier_backup_select = os.environ.get("SGLANG_XTIER_BACKUP_SELECT", "cold")
+        # XTIER reuse gate: only back up nodes with hit_count >= this value.
+        # Filters out one-shot insertions (turn-0 docs that may never be reused).
+        # 0 = disabled (back up everything eligible). 1 = only reused content.
+        self.xtier_reuse_gate = int(os.environ.get("SGLANG_XTIER_REUSE_GATE", "0"))
 
         if storage_backend is not None:
             self._apply_storage_runtime_config(
@@ -2539,7 +2543,9 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             n_backed_up = 0
             for n in coldest:
                 if not n.backuped and n in self.evictable_device_leaves:
-                    self.write_backup(n)  # async (write_through); ack polled by writing_check
+                    if self.xtier_reuse_gate > 0 and n.hit_count < self.xtier_reuse_gate:
+                        continue
+                    self.write_backup(n)
                     n_backed_up += 1
             if os.environ.get("SGLANG_XTIER_LOG", "0") != "0" and getattr(
                 self, "pp_rank", 0

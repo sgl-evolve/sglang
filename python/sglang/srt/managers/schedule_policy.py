@@ -216,6 +216,12 @@ class SchedulePolicy:
                 and len(waiting_queue) > 1
             ):
                 self._sort_warm_first(waiting_queue)
+            elif (
+                self.enable_hierarchical_cache
+                and get_bool_env_var("BM_SJF")
+                and len(waiting_queue) > 1
+            ):
+                self._sort_sjf(waiting_queue)
             return
 
         if isinstance(policy, CacheAwarePolicy):
@@ -407,6 +413,18 @@ class SchedulePolicy:
             return  # all one class -> keep FCFS order (no-op)
         cold = [r for r in waiting_queue if not is_warm(r)]
         waiting_queue[:] = warm + cold
+
+    def _sort_sjf(self, waiting_queue: List[Req]) -> None:
+        """base_mech: shortest-job-first scheduling (BM_SJF).
+
+        Sort by the number of NEW tokens to prefill (input_len - matched_prefix),
+        so short prefills run first. Reduces mean TTFT by not blocking short jobs
+        behind long ones. Stable sort preserves FCFS among equal-length jobs."""
+        for r in waiting_queue:
+            match_prefix_for_req(self.tree_cache, r)
+        waiting_queue.sort(
+            key=lambda r: len(r.origin_input_ids) - (r.num_matched_prefix_tokens or 0)
+        )
 
     @staticmethod
     def _sort_by_priority_and_fcfs(

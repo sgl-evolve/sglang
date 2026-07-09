@@ -330,4 +330,9 @@ production load: maximal benefit, growing with pressure.
 - 8×B200 (D=5.5M, H=7.81M): +19.6pp (biggest HBM → biggest win)
 - Any + 1.5TB host (H=12M): +3.8pp (more host → less pressure)
 - Any + 3TB host (H=24M ≥ WS): 0.0pp (host covers working set)
-- => Benefit SCALES with next-gen GPU HBM growth. Updated paper.md §5.
+- => Benefit SCALES with next-gen GPU HBM growth.
+
+**Break-even bandwidth** (cost-side quantification): net prefill savings 416ms vs extra transfer cost 37ms
+→ break-even at 27 GB/s (11× below current ~300 GB/s). Model-size sensitivity: 7B→265 GB/s (marginal on
+PCIe), 13B→133 GB/s, 70B→42 GB/s, 122B→27 GB/s, 405B→11 GB/s. Exclusive tiering cost-effective for ≥70B on
+any interconnect, ≥13B on high-bandwidth. Updated paper.md §5.

@@ -113,8 +113,11 @@ HBM and the same host DRAM see *increasing* benefit — the contribution grows m
 **Cost side — when it stops.** Exclusive wins by saving prefill compute, *despite* moving ~2× more H↔D data:
 eviction now writes D→H first (`evict_mean_ms` 1.1→20.7) and more reuse is host-only (load_back_tokens
 +34%, `load_back_mean_ms` 1.8→19.0). The +13pp hit removes ~13% of fresh prefill, which dominates on a large
-model with long prefixes. So the net win holds only while prefill compute is the bottleneck; on a slow host
-interconnect or a short-prefix (cheap-prefill) workload the extra transfer traffic can erode or reverse it.
+model with long prefixes. **Break-even analysis**: the net savings (13% × 3200ms mean-miss-prefill = 416ms)
+exceed the extra transfer cost (+37ms per request) by 11×, giving a break-even H↔D bandwidth of ~27 GB/s —
+far below PCIe 4.0 (32 GB/s). The break-even scales with model size: ~42 GB/s for 70B, ~133 GB/s for 13B,
+~265 GB/s for 7B. Exclusive tiering is cost-effective for models ≥70B on any interconnect, and for ≥13B on
+high-bandwidth systems. On small models with short prefixes (cheap prefill), the transfer cost can dominate.
 
 ## 6. Frontier
 The residual gap from 0.75 to the analytic hit ceiling (~0.81) requires *more bytes*, reachable only by lossy

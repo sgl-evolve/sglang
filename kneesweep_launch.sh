@@ -7,17 +7,18 @@ POOL=/home/junyanch_google_com/autoresearch/workspace/sgl/v0.25_ablations/_pool
 KS=/home/junyanch_google_com/autoresearch/workspace/sgl/v0.25_ablations/sgl_mech/researchers/sgl_mech/kneesweep.sh
 PREF="${1:-slurm2-a3nodesetondem-3}"
 RATES="${RATES:-3.0 3.6 4.0}"
+TAGSUF="${TAGSUF:-}"   # e.g. "2" for the n=2 repeat -> knee-stock2 / knee-cost2
 run(){
   local node="$1" jid="$2"
-  echo "[ksL] === STOCK fine sweep on $node (rates: $RATES) ==="
+  echo "[ksL] === STOCK fine sweep on $node (rates: $RATES) tag=knee-stock$TAGSUF ==="
   srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 \
     --export=ALL,RATES="$RATES",SGLANG_ENABLE_COST_AWARE_EVICTION=0 \
-    bash "$KS" knee-stock
+    bash "$KS" "knee-stock$TAGSUF"
   echo "[ksL] stock rc=$?"
-  echo "[ksL] === COST-AWARE@2048 fine sweep on $node (rates: $RATES) ==="
+  echo "[ksL] === COST-AWARE@2048 fine sweep on $node (rates: $RATES) tag=knee-cost$TAGSUF ==="
   srun --jobid="$jid" --overlap -N1 -w "$node" --gres=gpu:8 \
     --export=ALL,RATES="$RATES",SGLANG_ENABLE_COST_AWARE_EVICTION=1,SGLANG_COST_AWARE_EVICT_THRESHOLD=2048,SGLANG_COST_AWARE_EVICT_THRESHOLD2=0,SGLANG_COST_AWARE_REUSE_MIN=0,SGLANG_COST_AWARE_COST_MODE=segment,SGLANG_ENABLE_COST_AWARE_MAMBA_EVICTION=0 \
-    bash "$KS" knee-cost
+    bash "$KS" "knee-cost$TAGSUF"
   echo "[ksL] cost rc=$?"
 }
 try_node(){

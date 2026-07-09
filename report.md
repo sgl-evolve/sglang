@@ -944,6 +944,22 @@ waiting for its next turn. LRU is already the best age-based heuristic (evicts t
 most-likely-dead entry); further policy sophistication cannot close this gap. The productive
 lever is capacity (exclusive tiering adds +2.35M, reclaiming more space for the ~30 live entries).
 
+**Belady gap vs concurrency (C=10.2M, sim):**
+
+| λ_eff | LRU | Belady | gap |
+|---|---|---|---|
+| 10–20 | 0.806 | 0.806 | 0pp (no pressure) |
+| 25 | 0.738 | 0.806 | +6.8pp |
+| **30** | **0.723** | **0.806** | **+8.3pp** (operating point) |
+| 40 | 0.714 | 0.806 | +9.2pp |
+| 50 | 0.718 | 0.806 | +8.9pp |
+
+Belady ALWAYS achieves the 0.806 ceiling regardless of concurrency — it perfectly identifies
+dead entries. The gap grows with concurrency as dead-entry pollution increases, plateauing at
+~9pp (LAM≥30). This confirms the gap is structural: it requires future knowledge, not policy
+sophistication. At LAM<20, no gap exists (cache fits the working set); at LAM≥25, the gap
+appears and grows as more dead entries compete for finite cache space.
+
 **2. Capacity as the binding constraint — the h(C) curve.**
 The working set W ≈ 19M tokens. Under inclusive tiering (baseline), distinct cache capacity
 C_incl ≈ 7.81M (device duplicates host). Under exclusive tiering, C_excl ≈ 10.16M. The hit rate is

@@ -63,3 +63,41 @@ class SLRUStrategy(EvictionStrategy):
 
         is_protected = 1 if node.hit_count >= self.protected_threshold else 0
         return (is_protected, node.last_access_time)
+
+
+class CostAwareStrategy(EvictionStrategy):
+    """Recompute-cost-aware eviction: prefer to evict small (cheap-to-recompute)
+    nodes first, keeping large (expensive) ones longer.  Within the same cost
+    band, fall back to LRU.  The cost proxy is the node's KV token count
+    (proportional to prefill FLOPs).  Targets the p99 tail which is dominated
+    by large-document cache misses."""
+
+    def __init__(self, threshold: int = 0):
+        self.threshold = threshold
+
+    def get_priority(self, node: TreeNode) -> Tuple[int, float]:
+        from sglang.srt.mem_cache.unified_cache_components.tree_component import (
+            BASE_COMPONENT_TYPE,
+        )
+
+        v = node.component_data[BASE_COMPONENT_TYPE].value
+        tok = len(v) if v is not None else 0
+        band = 0 if tok < self.threshold else 1
+        return (band, node.last_access_time)
+
+
+class GDSFStrategy(EvictionStrategy):
+    """Greedy-Dual-Size-Frequency: evict the node with the lowest
+    (frequency * size) / cost score, approximated here as
+    hit_count * tok_count (bigger + more reused = higher priority = evict last).
+    Ties broken by LRU."""
+
+    def get_priority(self, node: TreeNode) -> Tuple[float, float]:
+        from sglang.srt.mem_cache.unified_cache_components.tree_component import (
+            BASE_COMPONENT_TYPE,
+        )
+
+        v = node.component_data[BASE_COMPONENT_TYPE].value
+        tok = len(v) if v is not None else 0
+        score = (node.hit_count + 1) * tok
+        return (-score, node.last_access_time)

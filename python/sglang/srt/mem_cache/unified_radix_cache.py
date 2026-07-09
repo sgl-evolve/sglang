@@ -393,6 +393,30 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # more reuses still coming, so keep>=2 DELETES it before its delayed reuse -> recompute
         # -> lower hit). All logged wins used keep_hits=1 explicitly; default 1 = correct-by-default.
         self._bm_excl_keep_hits = int(_os.environ.get("BM_EXCL_KEEP_HITS") or "1")
+        # base_mech mechanism: env-gated eviction strategy override.
+        # BM_EVICT_STRATEGY={cost_aware,gdsf,lfu,fifo,mru,slru} overrides the
+        # default LRU eviction in engine code (mechanism, not config).
+        _bm_evict = _os.environ.get("BM_EVICT_STRATEGY", "").lower().strip()
+        if _bm_evict:
+            _thresh = int(_os.environ.get("BM_COST_THRESHOLD", "0"))
+            from sglang.srt.mem_cache.evict_policy import (
+                CostAwareStrategy,
+                GDSFStrategy,
+            )
+
+            _strat_map = {
+                "cost_aware": lambda: CostAwareStrategy(threshold=_thresh),
+                "gdsf": GDSFStrategy,
+                "lfu": lambda: get_eviction_strategy("lfu"),
+                "fifo": lambda: get_eviction_strategy("fifo"),
+                "mru": lambda: get_eviction_strategy("mru"),
+                "slru": lambda: get_eviction_strategy("slru"),
+            }
+            if _bm_evict in _strat_map:
+                self.eviction_strategy = _strat_map[_bm_evict]()
+                logger.info(
+                    f"BM_EVICT_STRATEGY={_bm_evict} (threshold={_thresh})"
+                )
         self.prefetch_stop_policy = "best_effort"
         self.prefetch_threshold = 256
         self.prefetch_timeout_base = 1.0

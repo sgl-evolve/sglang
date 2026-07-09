@@ -18,9 +18,11 @@ from typing import Any, Callable, List, Optional, Tuple
 
 from sglang.srt.environ import envs
 from sglang.srt.mem_cache.evict_policy import (
+    CostAwareStrategy,
     EvictionStrategy,
     FIFOStrategy,
     FILOStrategy,
+    GDSFStrategy,
     LFUStrategy,
     LRUStrategy,
     MRUStrategy,

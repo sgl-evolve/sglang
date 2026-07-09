@@ -934,6 +934,16 @@ evicts only tail pages while preserving the valuable shared prefix.
 - Dead-entry gap (requires future knowledge): **5.4pp (29%)**
 - Eviction policy variation: **<0.1pp (<0.5%)** — NEGLIGIBLE
 
+**Root cause of the Belady gap: dead-entry pollution.**
+At C=10.2M with mean conversation size 13K tokens, the cache holds ~784 conversations
+simultaneously. Only ~30 are "active" (between turns, will be reused). The remaining **~96%**
+are dead entries — finished conversations whose KV will never be reused but remain cached
+until evicted. No online policy can distinguish dead from alive: a recently-finished
+single-turn conversation looks identical to a recently-arrived multi-turn conversation that's
+waiting for its next turn. LRU is already the best age-based heuristic (evicts the oldest,
+most-likely-dead entry); further policy sophistication cannot close this gap. The productive
+lever is capacity (exclusive tiering adds +2.35M, reclaiming more space for the ~30 live entries).
+
 **2. Capacity as the binding constraint — the h(C) curve.**
 The working set W ≈ 19M tokens. Under inclusive tiering (baseline), distinct cache capacity
 C_incl ≈ 7.81M (device duplicates host). Under exclusive tiering, C_excl ≈ 10.16M. The hit rate is

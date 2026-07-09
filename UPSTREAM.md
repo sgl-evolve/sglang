@@ -96,6 +96,10 @@ here — transfer isn't the limiter in this regime, so keep `HOT_KEEP=0`.)
   KV quantization (`--kv-cache-dtype fp8_e4m3` doubles capacity → hit 0.808 but changes outputs) — a config
   flag, out of scope for a lossless mechanism. Lossless KV compression is dominated by it (only ~1.4× on
   bf16 → +2–3pp, and needs a new variable-size host allocator) → not worth building.
-- Ordering (`--schedule-policy lpm`), admission/concurrency caps, eviction-order tuning, and
-  scheduling-based "co-residency" were all tried and do NOT recover hit-rate here (capacity-bound;
-  LRU≈Belady) — co-residency is served by *placement* (this mechanism), not scheduling.
+- **13 eviction policies tested** (LRU, LFU, SLRU, queue-aware, cost-aware, random, FIFO, MRU, FILO,
+  size-weighted, GDSF, 2Q, plus scheduling variants) — ALL converge on hit ≈ 0.752. Belady OPT gap
+  analysis: exclusive tiering captures 71% of total headroom; the residual 29% is dead-entry pollution
+  (finished conversations occupying cache) that no online policy can solve.
+- Ordering (`--schedule-policy lpm`), admission/concurrency caps, and scheduling-based "co-residency"
+  were all tried and do NOT recover hit-rate here — co-residency is served by *placement* (this
+  mechanism), not scheduling.

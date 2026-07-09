@@ -893,15 +893,46 @@ back to device, whereas under inclusive tiering the device already had a copy.
 The comprehensive eviction-policy ablation (10+ policies, all converging on hit ≈ 0.75) is NOT a
 coincidence. It follows from the structure of the workload and the cache's operating point.
 
-**1. Deterministic, in-order reuse and the LRU ≈ Belady correspondence.**
-Each conversation in the LooGLE workload has a fixed number of turns (4–11), and turns arrive in
-strict order (turn i+1 reuses turn i's full KV prefix). Under FCFS scheduling with Poisson arrivals,
-all cached conversations have similar expected time-to-next-reuse (the inter-arrival gap is memoryless).
-LRU evicts the entry accessed longest ago, which correlates well with the entry reused furthest in the
-future (Belady's criterion), because inter-turn gaps are approximately i.i.d. across conversations.
-The charter's observation that "LRU ≈ Belady (< 0.1pp headroom)" is confirmed empirically: no online
-policy (recency: LRU; frequency: LFU; segmented: SLRU; hybrid: queue-aware, cost-aware, GDSF; random;
-pathological: FIFO, MRU, FILO) achieves a measurable hit-rate gain over LRU.
+**1. Belady OPT gap analysis — all practical policies are equally sub-optimal.**
+A calibrated discrete-event simulator (`sim/belady_opt.py`) computes Belady's OPT (evict the
+entry whose next use is furthest in the future) alongside LRU at each capacity point:
+
+| C (M) | LRU | Belady | gap | notes |
+|---|---|---|---|---|
+| 6.0 | 0.412 | 0.751 | +33.9pp | severe pressure |
+| 7.0 | 0.492 | 0.783 | +29.1pp | |
+| **7.8** | **0.601** | **0.800** | **+19.8pp** | **baseline capacity** |
+| 8.5 | 0.680 | 0.806 | +12.6pp | Belady ≈ ceiling from here |
+| 10.0 | 0.717 | 0.806 | +8.9pp | |
+| **10.2** | **0.723** | **0.806** | **+8.3pp** | **exclusive capacity** |
+| 12.0 | 0.769 | 0.806 | +3.8pp | |
+| 15.0 | 0.806 | 0.806 | 0pp | capacity ≥ working set |
+
+Belady achieves the hit-rate ceiling (0.806) at **C ≥ 8.5M** — meaning with perfect future
+knowledge, only 8.5M tokens of cache suffice to hold all reusable content. This is between
+baseline (7.8M) and exclusive (10.2M): exclusive tiering provides MORE capacity than Belady
+needs. Yet the real system achieves only 0.752 (not 0.806) because no online policy can
+distinguish dead conversations (all turns served, will never be reused) from live ones. Dead
+entries occupy cache space that Belady would allocate to live conversations.
+
+Crucially, ALL 13 tested practical policies converge on the SAME sub-Belady result (0.752 ±
+0.0003) — they are equally unable to predict which conversations are finished. The gap to
+Belady is a "dead-entry pollution" problem that no online eviction policy can solve. The
+empirical policy spread (0.08pp) is three orders of magnitude smaller than the gap to Belady
+(~5.4pp from the measured 0.752).
+
+The real system (0.752) exceeds the sim's LRU (0.723) because the radix tree's page-level
+partial eviction is smarter than the sim's all-or-nothing conversation-level model — it
+evicts only tail pages while preserving the valuable shared prefix.
+
+**Decomposition of total headroom:**
+- Theoretical ceiling: 0.806 (Belady at C=10.2M, or unlimited C)
+- Measured exclusive LRU: 0.752
+- Measured baseline LRU: 0.622
+- Total headroom: 0.806 − 0.622 = **18.4pp**
+- Exclusive tiering captures: **13.0pp (71%)**
+- Dead-entry gap (requires future knowledge): **5.4pp (29%)**
+- Eviction policy variation: **<0.1pp (<0.5%)** — NEGLIGIBLE
 
 **2. Capacity as the binding constraint — the h(C) curve.**
 The working set W ≈ 19M tokens. Under inclusive tiering (baseline), distinct cache capacity

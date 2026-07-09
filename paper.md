@@ -30,10 +30,12 @@ reclaims the GPU tier as distinct capacity (+79 lines, env-gated, default off). 
 fixed protocol: +13pp hit-rate (robust across nodes and n=6 runs, σ=0.0003), measured bit-exact lossless, a
 3-point ablation isolating the engine mechanism from a config, a downstream goodput improvement, and a
 **comprehensive 13-policy eviction ablation** proving the remaining mechanism space is exhausted (capacity:policy
-ratio = 25:1). (3) A generalizable insight: the benefit equals the workload's reuse-mass CDF slope over
-the reclaimed capacity band — falsifiable, self-validating in simulation, and bounded on the cost side by
-H↔D bandwidth. (4) A secondary finding: exclusive tiering reduces cross-node hit-rate variance by 20×,
-improving SLO predictability.
+ratio = 25:1). (3) A **Belady OPT gap analysis**: exclusive tiering captures 71% of the total headroom to
+the theoretical ceiling; the residual 29% requires future knowledge (dead-entry pollution), and eviction
+policy accounts for <0.5%. (4) A generalizable insight: the benefit equals the workload's reuse-mass CDF
+slope over the reclaimed capacity band — falsifiable, self-validating in simulation, and bounded on the cost
+side by H↔D bandwidth. (5) A secondary finding: exclusive tiering reduces cross-node hit-rate variance by
+20×, improving SLO predictability.
 
 ## 2. Background
 For this hybrid-Mamba config the live cache is `UnifiedRadixCache` + `HybridCacheController`. Each
@@ -89,6 +91,11 @@ TTFT SLO (max sustainable req/s with p99 TTFT ≤ 8s). Lossless gate: outputs ==
   sole *negative* (−1.43pp). Capacity:policy effect ratio = **25:1** (all variants) / **163:1** (pure eviction).
   Cross-tiering controls (random under baseline and write_back tiers) confirm universality: eviction order is
   irrelevant at ALL capacity operating points [pending final results].
+- **Belady OPT gap analysis.** Sim-computed Belady's optimal achieves the 0.806 ceiling at C ≥ 8.5M (between
+  baseline 7.8M and exclusive 10.2M). Yet all 13 practical policies converge on 0.752, not 0.806 — the 5.4pp
+  gap is "dead-entry pollution" (finished conversations occupying cache) that no online policy can solve.
+  Total headroom decomposition: exclusive tiering captures **71%** (13.0 of 18.4pp), the Belady gap takes
+  **29%** (5.4pp, requires future knowledge), and eviction policy accounts for **<0.5%** (<0.1pp).
 - **20× variance reduction.** Exclusive tiering reduces cross-node hit-rate variance from σ=0.0067 (inclusive)
   to σ=0.0003 — a 20× reduction. Inclusive tiering amplifies node-specific PCIe/DRAM timing variation via the
   device↔host eviction race; exclusive tiering eliminates this by making capacity deterministic (device+host).

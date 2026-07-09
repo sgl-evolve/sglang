@@ -412,3 +412,25 @@ any interconnect, ≥13B on high-bandwidth. Updated paper.md §5.
 - Committed: z-test (74b2ca69a), variance (74b2ca69a), corrected ratios. Pushed to evolve/sgl_free.
 - **BLOCKED:** all 4 certified nodes held by base_free, 48h jobs expiring ~03:00 UTC 2026-07-10.
   Hourly cron (4c65e4c4) monitors. 13 eval-on-pool processes alive and retrying every 30s.
+
+## 2026-07-09 ~21:50Z — sim validation + tools while compute-blocked
+- **Sim: LRU vs Random vs FIFO at multiple capacities (LAM=30, calibrated):**
+  | C (M) | LRU | FIFO | Random(3-seed mean) | Random−LRU |
+  |--------|-------|-------|----------------------|------------|
+  | 7.8    | 0.601 | 0.601 | 0.647               | +4.5pp     |
+  | 8.5    | 0.680 | 0.680 | 0.673               | −0.7pp     |
+  | 10.2   | 0.723 | 0.723 | 0.719               | −0.4pp     |
+  | 12.0   | 0.769 | 0.769 | 0.746               | −2.3pp     |
+  | 15.0   | 0.806 | 0.806 | 0.774               | −3.2pp     |
+  
+  FIFO ≡ LRU in this sim model (serving always re-inserts at end). Random ≈ LRU at the
+  exclusive operating point (−0.4pp, within noise) — pre-validates empirical claim. Random
+  surprisingly BETTER at low capacity (+4.5pp at C=7.8M) — will verify with v_random_base.
+  Random definitively worse at high capacity (−3.2pp at C=15M). The sim supports:
+  eviction-order neutrality holds at the exclusive operating point but NOT universally.
+- **Created tools/analyze_ablation.py** — automated z-test table + cross-tiering comparison.
+- **Created tools/watch_completions.sh** — 2-min polling watcher that auto-logs completed
+  evals to W&B (PID 3610620, running in background). Supplements hourly cron.
+- **Pool status:** all 4 nodes active (GPU util 79–99%), 17 eval-on-pool processes competing
+  (13 mine, 4 sibling). Hold jobs expire in ~6h. My processes compete via flock as each
+  sibling eval finishes (~40–60min per eval).

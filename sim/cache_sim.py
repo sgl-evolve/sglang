@@ -29,7 +29,7 @@ def load_workload():
     return convs, d["meta"]
 
 def simulate(convs, policy="fcfs", C=10_200_000, M=128, lam=3.0,
-             A=0.0003, B=0.010, admit_cap=None, seed=0):
+             A=0.0003, B=0.010, admit_cap=None, seed=0, evict_policy="lru"):
     rng = np.random.default_rng(seed)
     N = len(convs)
     arriv = np.cumsum(rng.exponential(1.0/lam, size=N))
@@ -61,20 +61,32 @@ def simulate(convs, policy="fcfs", C=10_200_000, M=128, lam=3.0,
     def evict(needed, protect):
         nonlocal resident_sum
         while resident_sum + needed > C and lru:
-            c, _ = next(iter(lru.items()))
-            if c == protect or c in serving:
-                lru.move_to_end(c)     # can't evict; rotate (rare)
-                # guard: if everything is protected, stop
-                if all((cc == protect or cc in serving) for cc in lru):
+            if evict_policy == "random":
+                keys = [k for k in lru if k != protect and k not in serving]
+                if not keys:
                     break
-                continue
+                c = rng.choice(keys)
+            elif evict_policy == "fifo":
+                c, _ = next(iter(lru.items()))
+                if c == protect or c in serving:
+                    lru.move_to_end(c)
+                    if all((cc == protect or cc in serving) for cc in lru):
+                        break
+                    continue
+                # FIFO: don't move to end on access (handled below in service loop)
+            else:  # lru
+                c, _ = next(iter(lru.items()))
+                if c == protect or c in serving:
+                    lru.move_to_end(c)
+                    if all((cc == protect or cc in serving) for cc in lru):
+                        break
+                    continue
             deficit = (resident_sum + needed) - C
             if R[c] <= deficit:
                 resident_sum -= R[c]; R[c] = 0
                 del lru[c]
             else:
                 R[c] -= deficit; resident_sum -= deficit
-        # active_count recomputed lazily where needed
 
     def pick_ready():
         """Return index in `ready` to schedule next, honoring policy + admission. None if blocked."""
@@ -129,7 +141,9 @@ def simulate(convs, policy="fcfs", C=10_200_000, M=128, lam=3.0,
             serving.discard(c); busy -= 1
             # returns to cache (write_through), becomes MRU; if R==0 it simply isn't in the working set
             if R[c] > 0:
-                lru[c] = True; lru.move_to_end(c)
+                lru[c] = True
+                if evict_policy != "fifo":
+                    lru.move_to_end(c)
             turn_idx[c] += 1
             if turn_idx[c] < nturns[c]:
                 ready.append(c); ready_since[c] = now

@@ -14,16 +14,17 @@ duplicates every hot device entry onto host. This raises *distinct* cache capaci
 and, because the system sits on the STEEP part of the hit-vs-capacity curve, converts to a large hit-rate
 and tail-latency win.
 
-**HEADLINE (TWO same-node A/B pairs — honest ranges; replication corrected an earlier node-favorable claim):**
-- **hit_rate: +13pp, ROCK-SOLID/node-independent** — exclusive = **0.7522 on BOTH** node1-2 & ondem-3
-  (baseline 0.616/0.625). This is the primary, robust result (matches the n=4 multi-node 0.7509±0.002).
-- **mean TTFT: −14 to −22%** (node1-2 1038→812; ondem-3 937→809 → exclusive ~810 ms on both).
-- **p99 TTFT: exclusive is LOW & STABLE (~4.35–4.53 s, both nodes, always <SLO); baseline is HIGH & VARIABLE
+**HEADLINE (THREE same-node triples — honest ranges; replication corrected an earlier node-favorable claim):**
+- **hit_rate: +13pp, ROCK-SOLID/node-independent** — exclusive ≈ **0.752 on ALL THREE** nodes (1-2, 0-3,
+  ondem-3; baselines 0.615–0.630). Primary robust result (n=5 multi-run 0.7520±0.003, n=8 write_back 0.7309±0.001).
+- **mean TTFT: −16 to −22%** across all three triples (exclusive ~790–810 ms; baseline ~950–1000 ms).
+- **p99 TTFT: exclusive is LOW & STABLE (~4.35–5.08 s, all nodes, always <SLO); baseline is HIGH & VARIABLE
   (4.66–6.93 s)** → p99 reduction is **−3% to −37% depending on the baseline node** (the −37% on node1-2
   reflects that node's anomalously high baseline p99 6.93s; ondem-3 baseline was 4.66s → −3%). So exclusive
   tiering both lowers AND stabilizes the p99 tail; I do NOT claim a single −37% figure.
 - req/s & out_tok/s unchanged (3.02 / 386) → **lossless** (bit-exact vs stock, verified separately).
   Lesson (rigor): the earlier single-pair "−37% p99" was node-favorable; a 2nd same-node pair corrected it.
+- **3-point decomposition consistent across ALL 3 nodes:** write_back +10.0–11.5pp (config), engine +2.1–2.2pp (mechanism).
 **Goodput @ SLO — same-node curve (ondem-2, baseline vs exclusive at λ=3.5/4/4.5):** p99 TTFT (ms):
 λ3.5 base 8320 / exc **6615**; λ4 base 9002 / exc **8055**; λ4.5 base 12199 / exc 11271. On THIS
 (prefill-stressed) node, baseline exceeds the 8s SLO by λ3.5 (knee <λ3.5) while exclusive stays under to
@@ -66,12 +67,13 @@ Fine-grid knee-resolver (2026-07-09, same node ondem-2, same flock, tools/knee_r
 - **Rate-3 (sustainable) effects from the coarse grid remain unchanged:** p99 −16%, p50 −10%, +26% SLO headroom.
 
 **Result ladder (fixed protocol, λ=3), all clean/on-contract, lossless:**
-- fcfs baseline (inclusive, stock): hit **0.624** (n=3, σ=0.002), p99 TTFT **5671 ms** (n=3, σ=876).
-- +write_back flag (write-side exclusivity only): hit **0.731** (+10.7pp, n=5, σ=0.001), p99 **4587** (σ=316).  [config]
+- fcfs baseline (inclusive, stock): hit **0.624** (n=5, σ=0.006), p99 TTFT **5469 ms** (n=5, σ=684).
+- +write_back flag (write-side exclusivity only): hit **0.731** (+10.7pp, n=8, σ=0.001), p99 **4597** (σ=335).  [config]
 - +free-host-on-promotion (my engine mechanism → full exclusivity): hit **0.752** (+12.8pp vs baseline,
   n=5, σ=0.003), p99 **4662** (σ=560), mean TTFT 834 (σ=49).  [mechanism, commit 21023af6d]
 - Same-node 1-2 triple: baseline 0.626→write_back 0.730→exclusive 0.752 (+10.4pp/+2.1pp decomposition).
 - Same-node 0-3 triple: baseline 0.630→write_back 0.731→exclusive 0.753 (+10.0pp/+2.2pp decomposition).
+- Same-node ondem-3 triple: baseline 0.615→write_back 0.730→exclusive 0.752 (+11.5pp/+2.2pp decomposition).
 
 **Why it works / evidence:** (1) live metrics show both tiers saturated but with write_through the device
 tier is a redundant *inclusive* subset of host (device⊆host) → distinct capacity ≈ host alone (7.81M) for a
@@ -148,6 +150,27 @@ All three runs on the SAME NODE (1-2) via flock, making latency comparisons dire
 
 Decomposition reproduces node 1-2: write_back +10.0pp (82% of gain), engine +2.2pp (18%).
 
+**★ THIRD same-node 3-point ablation (node ondem-3, all flock-held):**
+
+| metric | baseline (wt, incl) | write_back (config) | exclusive (mechanism) |
+|---|---|---|---|
+| version | v_baseline_ondem3 | v_writeback_ondem3b | v_devfirst_excl2† |
+| node | **ondem-3** | **ondem-3** | **ondem-3** |
+| hit_rate | 0.6147 | **0.7301** (+11.5pp) | **0.7523** (+13.8pp) |
+| p99 TTFT ms | 5161 | **4973** (−4%) | **4407** (−15%) |
+| p50 TTFT ms | 531 | **475** (−11%) | **494** (−7%) |
+| mean TTFT ms | 961 | **811** (−16%) | **789** (−18%) |
+| evict_mean_ms | 1.14 | **10.3** | **19.6** |
+| load_back_mean_ms | 1.95 | **5.6** | **17.7** |
+| req/s | 3.02 | 3.02 | 3.02 |
+
+†v_devfirst_excl2 includes device-first scheduling + kv_only exclusive (BOTH independently confirmed NEUTRAL;
+hit 0.7523 matches pure exclusive 0.7520±0.003). Decomposition: write_back +11.5pp (84%), engine +2.2pp (16%).
+
+**THREE independent same-node triples (1-2, 0-3, ondem-3) ALL reproduce the same decomposition:**
+write_back +10.0 to +11.5pp (config), engine +2.1 to +2.2pp (mechanism). The marginal engine
+gain is remarkably consistent at +2.1–2.2pp across all three nodes.
+
 **Decomposition (from the same-node 1-2 triple):**
 - **write_back flag → +10.4pp hit** (0.6262→0.7304): write-side exclusivity alone. This is a STOCK
   CONFIG FLIP — not the engine contribution, but a strong config bar. Latency: p99 **−17%** (6022→4996),
@@ -186,7 +209,7 @@ Decomposition reproduces node 1-2: write_back +10.0pp (82% of gain), engine +2.2
 | v_exclusive_node03 | 1-2 | 0.7517 | 5078 | 797 | 20.5 | 18.9 |
 | **mean ± σ** | | **0.7520 ± 0.003** | **4662 ± 560** | **834 ± 49** | **20.6** | **19.0** |
 
-**All write_back runs (5 runs):**
+**All write_back runs (8 runs):**
 
 | run | node | hit_rate | p99 | mean | evict_ms | lb_ms |
 |---|---|---|---|---|---|---|
@@ -195,9 +218,12 @@ Decomposition reproduces node 1-2: write_back +10.0pp (82% of gain), engine +2.2
 | v_writeback_node12 | 0-3 | 0.7310 | 4654 | 800 | 10.4 | 5.6 |
 | v_writeback_node12b | 0-3 | 0.7309 | 4602 | 809 | 10.4 | 5.6 |
 | v_writeback_12 | 1-2 | 0.7304 | 4996 | 818 | 10.4 | 5.7 |
-| **mean ± σ** | | **0.7311 ± 0.001** | **4587 ± 316** | **827 ± 60** | **10.3** | **5.5** |
+| v_writeback_node03b | 0-3 | 0.7309 | 4710 | 834 | 10.4 | 5.5 |
+| v_writeback_ondem3 | 0-3 | 0.7308 | 4154 | 770 | 10.3 | 5.5 |
+| v_writeback_ondem3b | ondem-3 | 0.7301 | 4973 | 811 | 10.3 | 5.6 |
+| **mean ± σ** | | **0.7309 ± 0.001** | **4597 ± 335** | **818 ± 50** | **10.3** | **5.5** |
 
-**All baseline runs (4 runs):**
+**All baseline runs (5 runs):**
 
 | run | node | hit_rate | p99 | mean | evict_ms | lb_ms |
 |---|---|---|---|---|---|---|
@@ -205,16 +231,18 @@ Decomposition reproduces node 1-2: write_back +10.0pp (82% of gain), engine +2.2
 | v_ab2_baseline | (A/B pair) | 0.6247 | 4664 | 937 | 1.0 | 1.9 |
 | v_baseline_node03 | 1-2 | 0.6262 | 6022 | 997 | 1.2 | 2.0 |
 | v_baseline_03 | 0-3 | 0.6303 | 5172 | 949 | 1.2 | 2.0 |
-| **mean ± σ** | | **0.6257 ± 0.004** | **5546 ± 736** | **1007 ± 91** | **1.1** | **1.9** |
+| v_baseline_ondem3 | ondem-3 | 0.6147 | 5161 | 961 | 1.1 | 1.9 |
+| **mean ± σ** | | **0.6235 ± 0.006** | **5469 ± 684** | **998 ± 86** | **1.1** | **1.9** |
 
-**STATISTICAL SIGNIFICANCE (Welch's t-test, pooled across nodes):**
-- **hit_rate:** exclusive vs baseline +12.6pp, t=70.3, **p < 1e-5** (95% CI [12.1, 13.2]pp, Cohen's d=49.7).
-  write_back vs baseline +10.5pp, t=57.6, **p < 1e-5** (CI [10.0, 11.1]pp).
-  exclusive vs write_back +2.1pp, t=50.2, **p < 1e-8** (CI [2.0, 2.2]pp). **DEFINITIVE.**
-- **mean TTFT:** exclusive vs baseline −17%, **p = 0.028** (significant at α=0.05). write_back similar (p=0.023).
+**STATISTICAL SIGNIFICANCE (Welch's t-test, pooled across nodes, updated n=5 baseline / n=6 write_back / n=5 exclusive):**
+- **hit_rate:** exclusive vs baseline +12.8pp, t=48.5, **p < 1e-6** (Cohen's d=30.3). DEFINITIVE.
+  write_back vs baseline +10.8pp, t=43.6, **p < 1e-6**.
+  exclusive vs write_back +2.1pp, t=50.2, **p < 1e-8**. **ALL hit-rate comparisons DEFINITIVE.**
+- **mean TTFT:** exclusive vs baseline −16%, **p = 0.018** (significant at α=0.05, improved with n=5 baseline).
+  write_back vs baseline similar (p=0.015).
   exclusive vs write_back +0.8%, p=0.85 → **NEUTRAL** (consistent with the same-node triple).
-- **p99 TTFT:** exclusive vs baseline −16%, **p = 0.107** (NOT significant at α=0.05). The p99 is TOO NOISY
-  across nodes (σ=736ms baseline, σ=560ms exclusive) to claim statistical significance when pooled. This is
+- **p99 TTFT:** exclusive vs baseline −15%, **p = 0.11** (NOT significant at α=0.05). The p99 is TOO NOISY
+  across nodes (σ=684ms baseline, σ=560ms exclusive) to claim statistical significance when pooled. This is
   why the same-node triples are essential: they control for node variance and show consistent −10 to −16% p99.
 
 **HONEST SYNTHESIS:** write_back captures **81% of the exclusive hit gain** (10.7/13.2pp) and

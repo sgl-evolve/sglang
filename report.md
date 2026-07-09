@@ -614,6 +614,35 @@ At higher rates (near the knee), eviction contention may be worse and the benefi
 to cross-node sweep limitations. **Honest negative on TTFT; valid mechanism kept in tree for future study
 at higher loads.**
 
+### v_excl_kv_only2 — component-differentiated exclusive tiering (commit 70bd88812, mechanism) — NEUTRAL
+
+`SGLANG_HICACHE_EXCLUSIVE=1 SGLANG_HICACHE_EXCLUSIVE_KV_ONLY=1`. Novel mechanism: apply device-XOR-host
+exclusivity ONLY to attention KV pages, keeping Mamba (ssm_state + conv_state) inclusive (present on both
+device and host). Rationale: Mamba entries are ~24× larger than KV pages (~17.6 MB vs ~732 KB), and Mamba
+recompute is O(n) (linear recurrence) vs attention O(n²). Keeping Mamba inclusive on host means the
+expensive synchronous D→H backup at eviction time is skipped for Mamba — only KV needs the write_backup.
+Code changes: `_promote_free_host` skips Mamba host eviction; `write_backup` skips redundant Mamba D→H
+when Mamba already on host; sanity check relaxed for the valid Mamba-host-without-KV-host state.
+
+| metric | exclusive LRU (4-run mean ± σ) | **v_excl_kv_only2** |
+|---|---|---|
+| hit_rate | 0.7509 ± 0.002 | **0.7526** (within noise) |
+| p99 TTFT ms | 4575 ± 506 | 4630 (within noise) |
+| mean TTFT ms | 841 ± 47 | 799 (within noise) |
+| p50 TTFT ms | ~520 | 486 |
+| evict_mean_ms | 20.7 | 19.7 (−5%, negligible) |
+| load_back_mean_ms | 19.0 | 17.9 (−6%, negligible) |
+| host_util | 0.993 | **0.865** (Mamba host occupies ~13% of pool) |
+| req/s | 3.02 | 3.02 |
+
+**NEUTRAL.** Hit rate identical (Mamba and KV use separate host pools — keeping Mamba on host doesn't free
+KV capacity). Eviction speedup (−1ms) too small to matter — Mamba's share of the total eviction D→H cost
+is small because Mamba entries are already batched per-node (few entries, large per-entry). The lower
+host_util (0.865 vs 0.993) reflects Mamba host data that stays allocated during the promote-evict cycle
+under plain exclusive; this doesn't help KV and slightly reduces effective host pool pressure for KV pages.
+**Honest negative. Component-differentiated tiering is architecturally sound but does not measurably improve
+performance because the Mamba D→H cost at eviction is dominated by the much more numerous KV page copies.**
+
 ### Lines EXHAUSTED (comprehensive mechanism-space analysis)
 
 | mechanism category | tested | result | reason |
@@ -628,6 +657,7 @@ at higher loads.**
 | **Proactive demotion** | analyzed (watermark) | net neutral | capacity cost cancels transfer savings |
 | **Batch eviction** | analyzed (per-leaf → batched writes) | <0.5ms savings | PCIe serializes regardless |
 | **KV swap (bidirectional)** | analyzed (full-duplex PCIe) | ~2% TTFT | marginal, complex |
+| **Component-differentiated tiering** | KV-exclusive Mamba-inclusive (v_excl_kv_only2) | NEUTRAL | Mamba host kept on promotion; hit 0.7526=same, p50 486/p99 4630 within noise; evict −1ms negligible |
 
 **Contribution summary**: exclusive tiering is the SOLE accessible lossless mechanism that materially
 improves KV-cache performance in this 2-tier setup. The INSIGHT: under capacity pressure, the L1↔L2

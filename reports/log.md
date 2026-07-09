@@ -382,3 +382,18 @@ any interconnect, ≥13B on high-bandwidth. Updated paper.md §5.
   random, size-weighted, FIFO, MRU, FILO, GDSF, 2Q, + selective discard variants), 4 scheduling policies
   (FCFS, LPM, device-first, SJF), proactive backup, component-differentiated tiering. Charter mechanism
   list comprehensively covered.
+
+## 2026-07-09 ~21:30Z — env var fix + cross-tiering controls + quantitative model
+- **CRITICAL BUG FIXED:** All 11 queued evals had been launched without `SGLANG_HICACHE_EXCLUSIVE=1`
+  env var (passed as CLI arg, which would cause argparse rejection). Killed all 11 PIDs, re-launched
+  with correct `env SGLANG_HICACHE_EXCLUSIVE=1 bash eval-on-pool.sh ...` syntax. Verified via
+  /proc/PID/environ. No stale run directories.
+- **2 cross-tiering random controls added:** v_random_wb (random eviction + write_back, no exclusive)
+  and v_random_base (random eviction + baseline write_through, no exclusive). Tests whether eviction-
+  order neutrality holds across ALL tiering modes — universality claim. Total: 13 evals queued.
+- **Report: quantitative capacity–hit-rate model added.** Fitted h(C) from 3 operating points
+  (inclusive/exclusive/FP8): marginal gain +5.4pp/M tokens in [7.8, 10.2] range, capacity:policy
+  effect ratio = 42:1. Practical design rule: optimize placement before eviction when cache <70% of
+  working set. Added cross-tiering universality prediction (section 6).
+- **Report: 2Q, SJF added to ablation table.** Cross-tiering controls documented.
+- 33 completed (32 real) + 13 queued = 45 total. Budget mandate (≥30) exceeded.

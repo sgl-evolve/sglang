@@ -32,6 +32,11 @@ EVALS=(
   "v39-hostcost-excl BM_EXCL=1 BM_HOST_EVICT_STRATEGY=cost_aware BM_HOST_COST_THRESHOLD=2048"
   # Combined: excl + host-cost-aware + selective
   "v40-excl-hostcost-sel BM_EXCL=1 BM_HOST_EVICT_STRATEGY=cost_aware BM_HOST_COST_THRESHOLD=2048 BM_SELECTIVE_HOST=1"
+  # Selective device eviction (evict backed-up nodes first)
+  "v41-seldev BM_SELECTIVE_DEV=1"
+  "v42-seldev-excl BM_SELECTIVE_DEV=1 BM_EXCL=1"
+  # Kitchen-sink: excl + selective host + selective dev + cost-aware host
+  "v43-full-stack BM_EXCL=1 BM_SELECTIVE_HOST=1 BM_SELECTIVE_DEV=1 BM_HOST_EVICT_STRATEGY=cost_aware BM_HOST_COST_THRESHOLD=2048"
 )
 
 for spec in "${EVALS[@]}"; do

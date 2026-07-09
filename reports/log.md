@@ -183,3 +183,18 @@ sub-knee λ=3.0 cost -11.5% (consistent w/ paired -10%). Contribution unchanged.
 gave clean p99 despite parallel sibling -> "strictly serial" rule was over-conservative for warm-cache regime; per-node
 JIT isolation makes parallel evals safe. Added to report.md as "Direct fine-grained knee sweep" subsection. Pool: ran
 on idle node, released flock cleanly (good citizen).
+
+## 2026-07-09 — n=2 fine knee sweep COMPLETE (clean, paired): p99-SLO-knee CROSSING noise-limited, NOT shifted (n=2 confirmed, honest)
+Ran the fine PAIRED knee sweep a 2nd time (λ∈{3.0,3.6,3.8,4.0}, stock-then-cost@2048, idle ondem-2, node-local
+DG + anchor gate; anchors 5438/6610ms both clean). All 16 points lossless (succ=7037). Combined n=2 p99 (ms):
+  stock n1/n2: 5438/6610, 7125/7261, 7670/8001, 9335/10004
+  cost  n1/n2: 4811/4792, 7046/7118, 8124/7754, 9172/8665
+Knee crossing (p99=8s): mean stock λ3.820 vs cost λ3.816 -> Δλ=-0.004 NEGLIGIBLE; at the crossing (λ=3.8) the
+cost-vs-stock delta FLIPS sign across sweeps (+5.9% then -3.1%) = noise-dominated -> NO direct knee-crossing
+shift (n=2 CONFIRMED). BUT at λ=3.0/3.6/4.0 cost p99 is lower in BOTH sweeps (only 3.8 flips); sub-knee λ=3.0
+robust -11.5%/-27.5%. So cost modestly lowers p99 across the range but not enough (vs ~1s cross-run noise; the
+λ=3.0 anchors alone differ 1.2s between clean sweeps) to move the crossing λ. Robust knee argument STAYS the
+deterministic proxy (backlog -17.5%/queue -13.6% @λ4) + max-tput +11.7%. Updated report.md knee subsection + 
+CONTRIBUTION.md §7 to n=2. Methodology: node-local DG gave clean p99 for BOTH sweeps in parallel w/ siblings.
+Pool: idle node, flock released, node-local DG cleaned (good citizen). Contribution UNCHANGED; primary-metric
+direct measurement now n=2 and honestly bounded.

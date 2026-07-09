@@ -75,11 +75,16 @@ goodput. Commits: mechanism `f142702d3`; error-bar correction `a9665d9f7`; upstr
   memory; per the independence charter I do **not** adopt it.
 
 ## 7. Honest limitations
-Gains are modest — the workload is capacity-bound. The **precise p99-knee Δλ is noise-limited**: a fine paired
-sweep (λ=3.0/3.6/3.8/4.0, clean, anchor-validated) gave stock knee λ≈3.84 vs cost λ≈3.78 with per-λ p99 deltas
-that **alternate sign** (−11.5/−1.1/+5.9/−1.7%) — i.e. no robust *direct* p99 knee shift in either direction.
-The knee *direction* rests on the deterministic scheduler-state proxy (§5), not on p99 latency. Two earlier
-overclaims (a single-run "Pareto +5%/−10%" and an n=1 "+8.3% knee") were **retracted** after powering/repeats.
+Gains are modest — the workload is capacity-bound. The **precise p99-SLO-knee *crossing* is noise-limited**: a
+fine paired sweep λ=3.0/3.6/3.8/4.0, clean and anchor-validated, **repeated n=2**, gives mean stock knee λ≈3.82
+vs cost λ≈3.82 (Δλ≈−0.004) — and right at the crossing (λ=3.8) the cost-vs-stock p99 delta **flips sign between
+the two sweeps** (+5.9% then −3.1%), i.e. noise-dominated exactly where the SLO is crossed. So there is **no
+robust direct knee-crossing shift** (n=2 confirmed). What IS consistent: at λ=3.0/3.6/4.0 cost p99 is lower in
+*both* sweeps (only λ=3.8 flips), and sub-knee λ=3.0 is robust (−11.5%/−27.5%) — the mechanism modestly lowers
+p99 across the range, just not enough (vs ~1 s cross-run p99 noise) to move the crossing λ. The knee *direction*
+therefore rests on the deterministic scheduler-state proxy (§5), not on p99 latency. Three overclaims were
+**retracted/avoided** after powering/repeats: a single-run "Pareto +5%/−10%", an n=1 "+8.3% knee", and (this
+sweep) any direct knee-crossing shift.
 
 ## 8. Novelty & reproducibility
 Strata (cache-aware scheduling + GPU-IO) and HiCache (hit-count-selective write-through, layer overlap) both

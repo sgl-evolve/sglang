@@ -2826,7 +2826,11 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 if cd.value is not None and not full_dev:
                     E(f"node {nid} {ct} device present but Full.value=None")
                 if cd.host_value is not None and not full_hst:
-                    E(f"node {nid} {ct} host present but Full.host_value=None")
+                    # KV-only exclusive: Mamba host kept after KV host freed on promotion
+                    if self.exclusive_kv_only and ct == ComponentType.MAMBA and full_dev:
+                        pass
+                    else:
+                        E(f"node {nid} {ct} host present but Full.host_value=None")
 
             # Every node must keep Full data on at least one layer.
             if not full_dev and not full_hst:

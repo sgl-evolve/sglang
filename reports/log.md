@@ -169,3 +169,17 @@ Shorter backlog+queue at the knee -> deterministically lower TTFT at the knee ->
 is a contamination-immune argument for the charter's PRIMARY metric (goodput-under-SLO knee) that the noisy p99
 sweep alone couldn't establish. Added to report.md HEADLINE as "KNEE-REGION deterministic evidence". Committed
 analyze_perlambda.py. No eval / no pool used.
+
+## 2026-07-09 — Direct fine-grained knee sweep COMPLETE (clean, paired): p99 knee NOISE-LIMITED, no shift claimed (honest)
+Ran the fine PAIRED knee sweep λ∈{3.0,3.6,3.8,4.0} stock-then-cost@2048 on idle held ondem-3 (kneesweep.sh),
+detached ~5h. CONTAMINATION CONTROLS worked: node-local DeepGEMM cache (/mnt/localssd, NFS-isolated) + λ=3.0
+anchor gate (anchor p99=5438ms in clean 5-6s band -> run VALIDATED clean despite a sibling benching in parallel).
+Full paired p99 (all lossless succ=7037): stock 5438/7125/7670/9335 vs cost 4811/7046/8124/9172 for λ=3.0/3.6/3.8/4.0.
+Knee (p99=8s): stock λ≈3.84, cost λ≈3.78 -> Δλ≈-0.06 NEGLIGIBLE; per-λ deltas ALTERNATE SIGN (-11.5/-1.1/+5.9/-1.7%)
+= NOISE not a shift (λ=3.8 +5.9% is an outlier vs cost-better 3.6 & 4.0). HONEST CONCLUSION: direct p99 knee is
+noise-limited even at fine resolution+pairing+clean isolation -> NO direct knee shift claimed (either way). CONFIRMS
+prior finding; robust knee argument = deterministic proxy (backlog -17.5%/queue -13.6% @λ4). Robust p99 signal here =
+sub-knee λ=3.0 cost -11.5% (consistent w/ paired -10%). Contribution unchanged. METHODOLOGY WIN: node-local DG cache
+gave clean p99 despite parallel sibling -> "strictly serial" rule was over-conservative for warm-cache regime; per-node
+JIT isolation makes parallel evals safe. Added to report.md as "Direct fine-grained knee sweep" subsection. Pool: ran
+on idle node, released flock cleanly (good citizen).

@@ -66,10 +66,11 @@ Fine-grid knee-resolver (2026-07-09, same node ondem-2, same flock, tools/knee_r
 - **Rate-3 (sustainable) effects from the coarse grid remain unchanged:** p99 −16%, p50 −10%, +26% SLO headroom.
 
 **Result ladder (fixed protocol, λ=3), all clean/on-contract, lossless:**
-- fcfs baseline (inclusive, stock): hit **0.622**, p99 TTFT **6326 ms**.
-- +write_back flag (write-side exclusivity only): hit **0.733** (+11pp), p99 **4581** (-28%).  [config]
-- +free-host-on-promotion (my engine mechanism → full exclusivity): hit **0.7525** (+13.1pp vs baseline),
-  p99 **4380 ms (-30.8%)**, mean TTFT 863 (-25%), req/s 2.78→3.02.  [mechanism, commit 21023af6d]
+- fcfs baseline (inclusive, stock): hit **0.624** (n=3, σ=0.002), p99 TTFT **5671 ms** (n=3, σ=876).
+- +write_back flag (write-side exclusivity only): hit **0.731** (+10.7pp, n=5, σ=0.001), p99 **4587** (σ=316).  [config]
+- +free-host-on-promotion (my engine mechanism → full exclusivity): hit **0.752** (+12.8pp vs baseline,
+  n=5, σ=0.003), p99 **4662** (σ=560), mean TTFT 834 (σ=49).  [mechanism, commit 21023af6d]
+- Same-node 1-2 triple: baseline 0.626→write_back 0.730→exclusive 0.752 (+10.4pp/+2.1pp decomposition).
 
 **Why it works / evidence:** (1) live metrics show both tiers saturated but with write_through the device
 tier is a redundant *inclusive* subset of host (device⊆host) → distinct capacity ≈ host alone (7.81M) for a
@@ -95,48 +96,47 @@ lever is *effective capacity* (exclusive tiering / de-duplication), not scheduli
 Inclusive-by-default HiCache leaves the fast tier as dead-weight duplication; make it exclusive.
 
 **Honest limits:** the write-side half is reachable via a stock flag (write_back); the *engine* mechanism's
-marginal gain over that strong config is modest (+2.0pp hit, -4.4% p99), though the FULL exclusive design
-(needing the promotion-side engine change) and the insight are the contribution. Exclusivity increases
-host→device load-back (298M→402M) — net TTFT still improves. Self-contained version (SGLANG_HICACHE_EXCLUSIVE
-alone, no flag, commit feca1871e) + goodput-curve sweep + error-bar reruns in progress (node-contended).
+marginal gain over that strong config is modest (+2.1pp hit, ~neutral p99 — see same-node triple below),
+though the FULL exclusive design (needing the promotion-side engine change) and the insight are the
+contribution. Exclusivity increases host→device load-back (301M→401M) and per-op eviction cost (1.2→20.5ms);
+net TTFT still improves (mean −20% vs baseline). Self-contained version (SGLANG_HICACHE_EXCLUSIVE alone,
+no flag, commit feca1871e) + goodput-curve sweep + error-bar reruns completed.
 
 ### Write-back ablation decomposition — isolating the engine mechanism's marginal value
 The full +13pp exclusive-tiering benefit decomposes into TWO halves: (1) write-side exclusivity
 (stock `write_back` flag: don't eagerly copy D→H on cache hit), and (2) promotion-side exclusivity
 (my engine mechanism: free host copy on H→D load-back). The 3-point ablation isolates each.
 
-**3-point ablation (baseline & exclusive same-node A/B; write_back cross-node):**
+**★ DEFINITIVE same-node 3-point ablation (node 1-2, all flock-held):**
 
 | metric | baseline (wt, incl) | write_back (config) | exclusive (mechanism) |
 |---|---|---|---|
-| version | v_ab2_baseline | v_writeback_ablation | v_ab_exclusive |
-| node | (same-node pair) | 0-3 | (same-node pair) |
-| hit_rate | 0.6247 | **0.7307** (+10.6pp) | **0.7522** (+12.8pp) |
-| p99 TTFT ms | 4664 | **4104** (−12%) | **4354** (−6.6%) |
-| p50 TTFT ms | 551 | **475** (−14%) | **503** (−8.7%) |
-| mean TTFT ms | 937 | **774** (−17%) | **812** (−13%) |
-| evict_mean_ms | 1.02 | **10.3** | **20.7** |
-| load_back_mean_ms | 1.65 | **5.6** | **19.0** |
-| load_back tok | ~298M | **384M** | **402M** |
+| version | v_baseline_node03 | v_writeback_12 | v_exclusive_node03 |
+| node | **1-2** | **1-2** | **1-2** |
+| hit_rate | 0.6262 | **0.7304** (+10.4pp) | **0.7517** (+12.6pp) |
+| p99 TTFT ms | 6022 | **4996** (−17%) | **5078** (−15.7%) |
+| p50 TTFT ms | 523 | **468** (−10.5%) | **493** (−5.7%) |
+| mean TTFT ms | 997 | **818** (−18%) | **797** (−20.1%) |
+| evict_mean_ms | 1.19 | **10.4** | **20.5** |
+| load_back_mean_ms | 1.98 | **5.7** | **18.9** |
+| load_back tok | 301M | **384M** | **401M** |
 | req/s | 3.02 | 3.02 | 3.02 |
 
-*(Baseline/exclusive are a controlled same-node A/B pair. Write_back ran on node 0-3 separately —
-hit_rate is node-independent (all runs 0.730–0.733), so the hit decomposition is valid cross-node;
-latency comparison between write_back and exclusive is directional only.)*
+All three runs on the SAME NODE (1-2) via flock, making latency comparisons directly valid.
 
-**Decomposition:**
-- **write_back flag → +10.6pp hit** (0.6247→0.7307): write-side exclusivity alone. This is a STOCK
-  CONFIG FLIP — not the engine contribution, but a strong config bar. Latency: p99 **−12%** (4664→4104),
-  evict_mean 1→10ms (D→H at eviction instead of drop), load_back 5.6ms (host copy still present at
+**Decomposition (from the same-node 1-2 triple):**
+- **write_back flag → +10.4pp hit** (0.6262→0.7304): write-side exclusivity alone. This is a STOCK
+  CONFIG FLIP — not the engine contribution, but a strong config bar. Latency: p99 **−17%** (6022→4996),
+  evict_mean 1.2→10.4ms (D→H at eviction instead of drop), load_back 5.7ms (host copy still present at
   load-back time → fast).
-- **exclusive engine → +2.2pp hit more** (0.7307→0.7522): promotion-side exclusivity (free host on
-  load-back). The engine mechanism's MARGINAL capacity gain is modest: ~2.2M more distinct tokens
+- **exclusive engine → +2.1pp hit more** (0.7304→0.7517): promotion-side exclusivity (free host on
+  load-back). The engine mechanism's MARGINAL capacity gain is modest: ~2.1M more distinct tokens
   (entries that would stay duplicated under write_back get freed on promotion). Latency effect is
-  **OPPOSITE of the hit effect**: p99 4104→4354 (+250ms, +6%). Why: exclusive forces ALL reuse through
-  host → load-back (host copy was freed), so load_back_mean doubles (5.6→19ms) and volume rises (384M→402M).
-- **Net:** the engine mechanism's +2.2pp hit saves ~2.2% more fresh prefill compute; the doubled
-  load-back cost per promotion eats ~half of that. Net TTFT is ~NEUTRAL vs write_back alone (mean
-  812 vs 774 is within node variance). The +2pp hit is real; its latency benefit is offset by transfer cost.
+  **NEUTRAL**: p99 4996→5078 (+1.6%, noise), mean 818→797 (−2.6%); evict doubles (10.4→20.5ms) and
+  load_back triples (5.7→18.9ms) but the saved prefill compute from +2pp hit roughly offsets.
+- **Net:** the engine mechanism's +2.1pp hit saves ~2.1% fresh prefill compute; the doubled
+  eviction and tripled load-back cost nearly cancel. Mean TTFT improves slightly (818→797, −2.6%);
+  p99 is within noise. The +2pp hit is real; its TTFT benefit is modest.
 
 **Same-node pair (node 1-2, controlled via flock):**
 
@@ -162,14 +162,16 @@ latency comparison between write_back and exclusive is directional only.)*
 | v_exclusive_node03 | 1-2 | 0.7517 | 5078 | 797 | 20.5 | 18.9 |
 | **mean ± σ** | | **0.7520 ± 0.003** | **4662 ± 560** | **834 ± 49** | **20.6** | **19.0** |
 
-**All write_back runs (3 runs):**
+**All write_back runs (5 runs):**
 
 | run | node | hit_rate | p99 | mean | evict_ms | lb_ms |
 |---|---|---|---|---|---|---|
 | s_writeback | ? | 0.7326 | 4581 | 933 | 10.0 | 5.1 |
 | v_writeback_ablation | 0-3 | 0.7307 | 4104 | 774 | 10.3 | 5.6 |
 | v_writeback_node12 | 0-3 | 0.7310 | 4654 | 800 | 10.4 | 5.6 |
-| **mean ± σ** | | **0.7314 ± 0.001** | **4446 ± 293** | **836 ± 83** | **10.2** | **5.4** |
+| v_writeback_node12b | 0-3 | 0.7309 | 4602 | 809 | 10.4 | 5.6 |
+| v_writeback_12 | 1-2 | 0.7304 | 4996 | 818 | 10.4 | 5.7 |
+| **mean ± σ** | | **0.7311 ± 0.001** | **4587 ± 316** | **827 ± 60** | **10.3** | **5.5** |
 
 **All baseline runs (3 runs):**
 

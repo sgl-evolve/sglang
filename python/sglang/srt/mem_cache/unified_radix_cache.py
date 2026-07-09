@@ -424,6 +424,7 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                     f"BM_EVICT_STRATEGY={_bm_evict} (threshold={_thresh})"
                 )
         self._bm_selective_host = get_bool_env_var("BM_SELECTIVE_HOST")
+        self._bm_selective_dev = get_bool_env_var("BM_SELECTIVE_DEV")
         # Adaptive exclusivity: switch between write-through and exclusive
         # dynamically based on host utilization. When host is nearly full
         # (util > threshold), defer backups (exclusive mode = more unique

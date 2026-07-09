@@ -133,12 +133,20 @@ class FullComponent(TreeComponent):
         self, params: EvictParams, tracker: dict[ComponentType, int]
     ) -> None:
         request = params.num_tokens
+        ct = self.component_type
+        _sel_dev = getattr(self.cache, "_bm_selective_dev", False)
+        if _sel_dev:
+            def _dev_prio(n):
+                backed = n.component_data[ct].host_value is not None
+                band = 0 if backed else 1
+                return (band, self.cache.eviction_strategy.get_priority(n))
+        else:
+            _dev_prio = self.cache.eviction_strategy.get_priority
         heap = [
-            (self.cache.eviction_strategy.get_priority(n), n)
+            (_dev_prio(n), n)
             for n in self.cache.evictable_device_leaves
         ]
         heapq.heapify(heap)
-        ct = self.component_type
         while tracker[ct] < request and heap:
             _, x = heapq.heappop(heap)
             if x not in self.cache.evictable_device_leaves:
@@ -147,7 +155,7 @@ class FullComponent(TreeComponent):
             if x.parent is not None and x.parent in self.cache.evictable_device_leaves:
                 heapq.heappush(
                     heap,
-                    (self.cache.eviction_strategy.get_priority(x.parent), x.parent),
+                    (_dev_prio(x.parent), x.parent),
                 )
 
     def drive_host_eviction(

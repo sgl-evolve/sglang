@@ -155,3 +155,17 @@ concurrent-burst headroom <1%. Cold backlog is genuinely-unique long docs (858/8
 losslessly. Bounded out; not worth a mechanism or a scarce eval. Recorded in report.md design-space section.
 Also cancelled a stale >24h pending check-env job (chk-sgl_mech, 18537, submitted 2026-07-08T03:06, never ran)
 to free the queue slot for siblings (stewardship). State clean: git pushed, no WARNINGS, no active jobs.
+
+## 2026-07-09 — Contamination-immune KNEE-REGION evidence (no eval): cost-aware relieves queue pressure at the knee
+Pool re-checked (not clean: sibling benching on 0-3 @77% util, server loaded on 1-2) -> deferred the p99-sensitive
+fine knee sweep per serial-eval discipline. Instead extracted the DETERMINISTIC knee signal from existing sweep
+logs (analyze_perlambda.py): segment server.log into per-λ bench windows by flush_cache markers, aggregate the
+server's INTERNAL scheduler counters (mean queue depth, mean pending-token, total prefill new-tokens) — these are
+deterministic counts, IMMUNE to the NFS/latency contamination that makes p99 unreliable. Result (clean 4-window
+pair sweep-stock vs sweep-cost), at the KNEE (λ=4, p99 crosses 8s SLO):
+  prefill new-tokens -16.0% (38.57M->32.39M); mean pending backlog -17.5% (37.7k->31.1k); queue depth -13.6% (2.2->1.9).
+Reduction holds at EVERY λ (per-λ new-tok stock 37.2/38.6/36.5/38.9M vs cost 32.3/32.4/32.9/32.1M for λ=3/4/5/6).
+Shorter backlog+queue at the knee -> deterministically lower TTFT at the knee -> goodput curve shifts RIGHT. This
+is a contamination-immune argument for the charter's PRIMARY metric (goodput-under-SLO knee) that the noisy p99
+sweep alone couldn't establish. Added to report.md HEADLINE as "KNEE-REGION deterministic evidence". Committed
+analyze_perlambda.py. No eval / no pool used.

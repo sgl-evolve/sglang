@@ -983,6 +983,11 @@ class Scheduler(
         # Periodic admission diagnostics (0 = off; N = log every N prefill passes).
         self.wsac_log = int(os.environ.get("SGLANG_WSAC_LOG", "0"))
         self._wsac_pass = 0
+        # Pressure-gated admission (PGAC): only defer cold prefills when the
+        # host cache utilization exceeds this threshold. Unlike WSAC's hard cap,
+        # this adapts to actual cache pressure. 0 => disabled.
+        self.pgac_threshold = float(os.environ.get("SGLANG_PGAC_THRESHOLD", "0"))
+        self.pgac_cold_ratio = float(os.environ.get("SGLANG_PGAC_COLD_RATIO", "0.3"))
         # The running decoding batch for continuous batching
         self.running_batch: ScheduleBatch = ScheduleBatch(reqs=[], batch_is_full=False)
         # The current forward batch
@@ -2918,9 +2923,6 @@ class Scheduler(
             # survive to their next turn. Lossless: the deferred req stays in the queue.
             req_cold = False
             if wsac_observe:
-                # Populate num_matched_prefix_tokens if the schedule policy (e.g. FCFS)
-                # did not (UnifiedRadixCache has no fast-match). match_prefix_for_req with
-                # req=None is side-effect-free (no alloc/lock) — safe before deferral.
                 match_prefix_for_req(self.tree_cache, req)
                 prompt_len = max(1, len(req.origin_input_ids))
                 req_cold = (
@@ -2933,6 +2935,25 @@ class Scheduler(
                     if req_cold and have_runnable and cold_active >= self.wsac_max_cold:
                         wsac_deferred += 1
                         continue
+
+            # PGAC: pressure-gated admission — defer cold prefills only when the
+            # host cache is under active eviction pressure (util > threshold).
+            if self.pgac_threshold > 0 and not wsac_on:
+                try:
+                    cc = self.tree_cache.cache_controller
+                    if cc is not None:
+                        h_used = cc.mem_pool_host.size - cc.mem_pool_host.available_size()
+                        h_util = h_used / max(1, cc.mem_pool_host.size)
+                        if h_util >= self.pgac_threshold:
+                            match_prefix_for_req(self.tree_cache, req)
+                            p_len = max(1, len(req.origin_input_ids))
+                            is_cold = req.num_matched_prefix_tokens < self.pgac_cold_ratio * p_len
+                            have_runnable = (len(self.running_batch.reqs) + len(adder.can_run_list)) > 0
+                            if is_cold and have_runnable:
+                                wsac_deferred += 1
+                                continue
+                except Exception:
+                    pass
 
             req.init_next_round_input(self.tree_cache)
             n_before = len(adder.can_run_list)

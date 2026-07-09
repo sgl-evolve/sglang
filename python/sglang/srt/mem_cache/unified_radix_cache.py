@@ -386,6 +386,13 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 + ("; KV-only (Mamba stays inclusive)" if self.exclusive_kv_only else "")
             )
 
+        self.wb_discard_threshold = envs.SGLANG_HICACHE_WB_DISCARD_THRESHOLD.get()
+        if self.wb_discard_threshold > 0:
+            logger.info(
+                "UnifiedRadixCache: selective write-back discard ENABLED, threshold=%d tokens",
+                self.wb_discard_threshold,
+            )
+
         self.proactive_backup_limit = envs.SGLANG_HICACHE_PROACTIVE_BACKUP.get()
         if self.proactive_backup_limit > 0:
             logger.info(
@@ -1533,6 +1540,20 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             if self.cache_controller is not None and (
                 self.cache_controller.write_policy == "write_back" or self.exclusive_tiering
             ):
+                # Selective discard: small entries (below threshold) are dropped instead of
+                # written back to host — cheap to recompute, frees host for larger entries.
+                if self.wb_discard_threshold > 0 and len(node.key) <= self.wb_discard_threshold:
+                    self._record_remove_event(node, medium=StorageMedium.GPU)
+                    for comp in self._components_tuple:
+                        self._evict_component_and_detach_lru(
+                            node, comp, target=EvictLayer.ALL, tracker=tracker
+                        )
+                    self.evictable_device_leaves.discard(node)
+                    parent = node.parent
+                    self._remove_leaf_from_parent(node)
+                    self._update_evictable_leaf_sets(parent)
+                    self._iteratively_delete_tombstone_leaf(node, tracker)
+                    return
                 # Exclusive tiering (or write_back): back up to host at eviction time (not eagerly),
                 # then demote — so the entry moves device->host rather than being dropped.
                 written = self.write_backup(node, write_back=True)

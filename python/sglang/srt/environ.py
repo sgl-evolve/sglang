@@ -442,6 +442,11 @@ class Envs:
     # (Mamba D→H skipped at eviction time; Mamba entries are ~24× larger than KV pages).
     # Requires SGLANG_HICACHE_EXCLUSIVE=1.
     SGLANG_HICACHE_EXCLUSIVE_KV_ONLY = EnvBool(False)
+    # Selective write-back discard: on device eviction, entries with <= this many
+    # tokens are DROPPED instead of written back to host. Frees host capacity for
+    # larger, higher-value entries (small residuals are cheap to recompute).
+    # 0 = disabled (all evicted entries are written back). Requires exclusive_tiering or write_back.
+    SGLANG_HICACHE_WB_DISCARD_THRESHOLD = EnvInt(0)
     SGLANG_HUGEPAGE_SIZE = EnvStr("")
     # Staging buffer for heterogeneous TP KV transfer
     SGLANG_DISAGG_STAGING_BUFFER = EnvBool(False)

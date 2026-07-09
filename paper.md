@@ -110,10 +110,26 @@ needs a variable-size allocator + a decompression kernel on the load-back path).
 the maximum lossless hit-rate for a fixed tier budget.**
 
 ## 7. Related work
-HiCache/LMCache-style host offloading grows aggregate capacity; we instead remove intra-cache duplication so
-existing tiers hold disjoint content — orthogonal and composable. Inclusive-vs-exclusive is a classic CPU
-cache-hierarchy axis; we bring it to LLM KV caches, where it is lossless and the reuse structure makes the
-capacity-band analysis exact. Eviction-policy work (LRU/Belady) is a non-lever here (capacity-bound).
+**Hierarchical KV caching.** HiCache (sglang) manages KV across GPU/host/storage tiers with write-through,
+write-back, and write-through-selective policies; its blog and documentation focus on GPU-assisted I/O and
+prefetch strategies but do **not** analyze the inclusive/exclusive tiering axis. LMCache and Mooncake provide
+KV storage/transfer backends for disaggregated serving. All grow aggregate capacity or improve transfers; we
+address *intra-cache duplication* within a fixed capacity budget — orthogonal and composable.
+
+**Cache-aware scheduling.** Strata (arXiv 2508.18572, deployed on sglang) introduces cache-aware request
+scheduling that overlaps loading stalls with complementary compute; it targets the loading-bound regime. Our
+result shows that in the capacity-bound regime (working set ≫ cache, no loading stall), scheduling has no
+leverage on hit-rate even at the knee — the sufficient mechanism is *placement* (exclusive tiering), not
+scheduling. The two approaches are complementary: Strata's scheduling could compose with exclusive placement.
+
+**CPU cache hierarchy.** Inclusive-vs-exclusive is a classical CPU cache axis (Intel inclusive L3 vs AMD
+exclusive L3; NICA/NINE policies). We transplant it to LLM KV caches, where it is particularly natural:
+KV pages are independently relocatable (no coherence snooping), the radix-tree topology is single-threaded
+per rank, and the workload's reuse structure makes the capacity-band analysis exact.
+
+**KV compression.** Lossy approaches (CacheGen, KIVI, `--kv-cache-dtype fp8`) trade output quality for bytes.
+We show exclusive tiering captures 70% of the recoverable headroom without any quality loss; the residual
+requires lossy quantization — confirming placement, not compression, is the right lossless lever.
 
 ## 8. Limitations
 Single model / workload / HW (the protocol is fixed and cannot be varied in-contract; generalization is via a

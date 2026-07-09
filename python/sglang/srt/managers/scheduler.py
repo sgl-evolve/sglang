@@ -473,6 +473,7 @@ class Scheduler(
         self.token_to_kv_pool_allocator = result.token_to_kv_pool_allocator
         self.disable_radix_cache = result.disable_radix_cache
         self.tree_cache = result.tree_cache
+        self.queue_aware_eviction = getattr(self.tree_cache, "queue_aware_eviction", False)
 
         if (c := self.tp_worker.model_runner.canary_manager) is not None:
             c.attach_radix_cache(self.tree_cache)
@@ -2309,6 +2310,8 @@ class Scheduler(
             if self._abort_on_queued_limit(req):
                 return
             self._prefetch_kvcache(req)
+            if self.queue_aware_eviction:
+                self._inc_queue_ref(req)
             self.waiting_queue.append(req)
             req.time_stats.set_wait_queue_entry_time()
         elif self.disaggregation_mode == DisaggregationMode.PREFILL:
@@ -2325,6 +2328,26 @@ class Scheduler(
                 req.time_stats.set_retract_time()
         else:
             raise ValueError(f"Invalid {self.disaggregation_mode=}")
+
+    def _inc_queue_ref(self, req: Req):
+        """Lightweight prefix match + increment queue_ref on the matched node."""
+        token_ids = getattr(req, "full_untruncated_fill_ids", None)
+        if token_ids is None or len(token_ids) == 0:
+            req._queue_ref_node = None
+            return
+        node = self.tree_cache.find_best_match_node(token_ids)
+        if node is not None and node is not self.tree_cache.root_node:
+            node.queue_ref += 1
+            req._queue_ref_node = node
+        else:
+            req._queue_ref_node = None
+
+    def _dec_queue_ref(self, req: Req):
+        """Decrement queue_ref when request leaves the waiting queue."""
+        node = getattr(req, "_queue_ref_node", None)
+        if node is not None:
+            node.queue_ref = max(0, node.queue_ref - 1)
+            req._queue_ref_node = None
 
     def _set_or_validate_priority(self, req: Req) -> bool:
         """Set the default priority value, or abort the request based on the priority scheduling mode."""
@@ -2382,7 +2405,9 @@ class Scheduler(
                     self.tree_cache.release_aborted_request(candidate_req.rid)
                 elif self.enable_hierarchical_cache:
                     self.tree_cache.terminate_prefetch(candidate_req.rid)
-                self.waiting_queue.pop(idx)
+                popped_req = self.waiting_queue.pop(idx)
+                if self.queue_aware_eviction:
+                    self._dec_queue_ref(popped_req)
                 req_to_abort = candidate_req
                 message = "The request is aborted by a higher priority request."
 
@@ -2426,6 +2451,9 @@ class Scheduler(
                 deleted_reqs.add(req)
 
         if deleted_reqs:
+            if self.queue_aware_eviction:
+                for req in deleted_reqs:
+                    self._dec_queue_ref(req)
             self.waiting_queue = [
                 req for req in self.waiting_queue if req not in deleted_reqs
             ]
@@ -2932,6 +2960,9 @@ class Scheduler(
             return None
 
         can_run_set = set(can_run_list)
+        if self.queue_aware_eviction:
+            for req in can_run_list:
+                self._dec_queue_ref(req)
         self.waiting_queue = [x for x in self.waiting_queue if x not in can_run_set]
         if adder.preempt_list:
             for req in adder.preempt_list:
@@ -3851,6 +3882,8 @@ class Scheduler(
             # This only works for requests that have not started anything.
             # We still need to send something back to TokenizerManager to clean up the state.
             req = self.waiting_queue.pop(i)
+            if self.queue_aware_eviction:
+                self._dec_queue_ref(req)
             if self.enable_hicache_storage:
                 # to release prefetch events associated with the request
                 self.tree_cache.release_aborted_request(req.rid)

@@ -75,6 +75,16 @@ def _prefix_len(node: "TreeNode") -> int:
     return total
 
 
+class QueueAwareLRUStrategy(EvictionStrategy):
+    """Evict dead conversations first: nodes with queue_ref == 0 (no pending
+    turn in the scheduler's waiting queue) are evicted before nodes with
+    queue_ref > 0 (active conversations). Within each segment, LRU applies."""
+
+    def get_priority(self, node: "TreeNode") -> Tuple[int, float]:
+        is_active = 1 if getattr(node, "queue_ref", 0) > 0 else 0
+        return (is_active, node.last_access_time)
+
+
 class CostAwareLRUStrategy(EvictionStrategy):
     """Recompute-cost-aware LRU: evict cheap-to-recompute nodes first.
 

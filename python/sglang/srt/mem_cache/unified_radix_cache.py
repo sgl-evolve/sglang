@@ -102,6 +102,7 @@ class UnifiedTreeNode:
         self.id = UnifiedTreeNode.counter
         UnifiedTreeNode.counter += 1
         self.write_through_pending_id: Optional[int] = None
+        self.queue_ref: int = 0
 
     def component(self, component_type: ComponentType) -> ComponentData:
         return self.component_data[component_type]
@@ -316,7 +317,13 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self.enable_kv_cache_events = params.enable_kv_cache_events
         self.kv_event_queue = []
         self.eviction_policy = params.eviction_policy.lower()
-        self.eviction_strategy = get_eviction_strategy(self.eviction_policy)
+        self.queue_aware_eviction = envs.SGLANG_HICACHE_QUEUE_AWARE.get()
+        if self.queue_aware_eviction:
+            from sglang.srt.mem_cache.evict_policy import QueueAwareLRUStrategy
+            self.eviction_strategy = QueueAwareLRUStrategy()
+            logger.info("Queue-aware LRU eviction enabled (SGLANG_HICACHE_QUEUE_AWARE=1)")
+        else:
+            self.eviction_strategy = get_eviction_strategy(self.eviction_policy)
 
         if self.token_to_kv_pool_allocator:
             self.device = self.token_to_kv_pool_allocator.device
@@ -569,6 +576,17 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
 
     def register_sidecar_pool(self, spec: SidecarPoolSpec) -> None:
         self.sidecar_pool_specs.append(spec)
+
+    def find_best_match_node(self, token_ids) -> "UnifiedTreeNode":
+        """Lightweight prefix match: find the deepest matching node without locking or allocation."""
+        if self.disable or len(token_ids) == 0:
+            return self.root_node
+        key = RadixKey(token_ids=token_ids)
+        key = key.page_aligned(self.page_size)
+        if len(key) == 0:
+            return self.root_node
+        _, best_match_node, _, _ = self._match_prefix_helper(key)
+        return best_match_node
 
     def match_prefix(self, params: MatchPrefixParams) -> MatchResult:
         result = self.session.try_match_prefix(params)

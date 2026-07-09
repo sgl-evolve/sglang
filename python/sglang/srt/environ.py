@@ -427,6 +427,10 @@ class Envs:
     # eviction needs no re-backup (fewer H<->D transfers), while cold entries stay exclusive (capacity).
     # 0 = pure exclusive (free host on every promotion). Requires SGLANG_HICACHE_EXCLUSIVE=1.
     SGLANG_HICACHE_EXCLUSIVE_HOT_KEEP = EnvInt(0)
+    # Queue-aware eviction: protect radix nodes whose conversation has a pending turn in the
+    # scheduler's waiting queue. Nodes without pending turns (dead conversations) are evicted
+    # first, so active conversations' KV survives longer. Composes with SGLANG_HICACHE_EXCLUSIVE.
+    SGLANG_HICACHE_QUEUE_AWARE = EnvBool(False)
     SGLANG_HUGEPAGE_SIZE = EnvStr("")
     # Staging buffer for heterogeneous TP KV transfer
     SGLANG_DISAGG_STAGING_BUFFER = EnvBool(False)

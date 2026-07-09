@@ -26,6 +26,7 @@ from sglang.srt.mem_cache.evict_policy import (
     LRUStrategy,
     MRUStrategy,
     PriorityStrategy,
+    QueueAwareLRUStrategy,
     SLRUStrategy,
 )
 from sglang.srt.mem_cache.triton_ops.mla_buffer import (
@@ -62,6 +63,7 @@ _EVICTION_POLICY_FACTORIES: dict[str, Callable[[], EvictionStrategy]] = {
     "priority": PriorityStrategy,
     "slru": SLRUStrategy,
     "cost_lru": CostAwareLRUStrategy,
+    "queue_aware_lru": QueueAwareLRUStrategy,
 }
 
 

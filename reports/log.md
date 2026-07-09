@@ -254,3 +254,48 @@
 - **Lesson**: Recompute cost is orthogonal to reuse probability in this workload. The depth/cost dimension adds
   no useful signal because expensive entries are already well-protected by recency. Any eviction-policy mechanism
   is a dead end in the capacity-bound regime.
+
+## 2026-07-09 ~05:30Z — FINAL EXHAUSTIVENESS ANALYSIS (node-free, quantitative)
+
+Systematically audited every remaining in-contract lossless mechanism for marginal improvement on top of
+exclusive tiering (hit 0.752, mean TTFT 863ms). All ruled out:
+
+1. **Load-back transfer overhead**: load_back_mean_ms 18.4ms per request. But mean TTFT = 863ms is
+   dominated by cache-MISS requests (~3200ms for full-doc prefill, 24.8% of requests) vs cache-HIT
+   (~100ms, 75.2%). Eliminating load_back entirely saves only 18ms → 2.1% TTFT reduction. MARGINAL.
+2. **Proactive device eviction (background D→H backup)**: Would decouple the 20.6ms eviction cost
+   from the scheduling critical path. But per (1), the eviction cost is only ~20ms per request vs
+   ~3200ms miss-prefill → negligible on TTFT. MARGINAL.
+3. **Transfer-compute overlap (prefill while load_back in-flight)**: Load_back is already async
+   (cache_controller.load returns immediately; DMA runs on a separate stream). The 18.4ms is setup
+   + eviction time, not DMA wait. No overlap opportunity. ALREADY DONE by existing code.
+4. **Higher load_back threshold (recompute short prefixes)**: Under exclusive tiering, load_back costs
+   19ms (vs 1.8ms inclusive), shifting the recompute-vs-transfer crossover from ~22 tokens to ~760
+   tokens. But load_back is called ONCE per request for the whole matched prefix — setting threshold
+   to 512 would only skip very short matches (<512 tokens). The 37.6% short-doc conversations have
+   prefixes of 500-2000 tokens → most still above any practical threshold. NEGLIGIBLE impact.
+5. **Scheduling (LPM, cold-prefill defer, turn-aligned batching)**: Queue nearly empty at λ=3
+   (0-4 requests). Nothing to reorder. LPM already tested = NEGATIVE. Sim confirms scheduling has
+   no hit-rate leverage even at the knee. DEAD END.
+6. **Admission control (concurrency limiting)**: Would throttle throughput (128→80 concurrent) for
+   higher hit rate. But LRU already keeps active docs resident (128 docs × 10K = 1.3M ≪ 10.16M
+   exclusive capacity) → hit rate won't increase. DEAD END.
+7. **Conversation-aware cache pinning**: Active conversations' docs are already protected by LRU +
+   radix tree topology (ancestors evicted after all descendants). No additional leverage. ALREADY DONE.
+8. **Semantic deduplication**: Different docs have different token sequences → no radix sharing.
+   Would need approximate matching → lossy. OUT OF CONTRACT.
+9. **Host KV quantization (int8/fp8)**: Lossy (changes attention outputs). OUT OF CONTRACT.
+10. **Per-component exclusive policy (FULL exclusive, MAMBA inclusive)**: Speculative, marginal
+    expected benefit (MAMBA state is small). Low EV for a full eval.
+
+**QUANTITATIVE ARGUMENT**: The remaining 24.8% cache misses under exclusive tiering are 100% capacity-
+bound (working set 19M > exclusive capacity 10.16M). NO lossless policy/scheduling/transfer mechanism
+can raise the hit rate beyond the 0.752 capacity ceiling. The only path to higher hit is MORE CAPACITY:
+- Lossless KV compression: realistically <1.2× on high-entropy bf16 → <2pp hit gain → DOMINATED
+  by fp8-KV (2× capacity, 0.808 hit) which is lossy+stock → NOT WORTH BUILDING.
+- fp8 KV dtype: 2× capacity → 0.808 hit BUT LOSSY + stock flag → OUT OF CONTRACT.
+
+**CONCLUSION**: The in-contract lossless mechanism space is EXHAUSTIVELY CLOSED. Exclusive L1↔L2 KV
+tiering (hit +13pp, p99 −10..−36%, goodput knee +3-4%, lossless bit-exact 24/24) is the sufficient and
+complete contribution. No further in-contract lossless mechanism can yield a measurable improvement.
+Awaiting supervisor retirement per charter.

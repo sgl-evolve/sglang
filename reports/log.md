@@ -240,11 +240,11 @@
   probationary segment (evicted before any deep node), within each segment LRU.
 - **Mechanism**: `CostAwareLRUStrategy` in evict_policy.py + registered as `--radix-eviction-policy cost_lru`.
   `_prefix_len(node)` walks root→node summing key lengths. Threshold via `SGLANG_EVICT_COST_THRESHOLD=4096`.
-- **Result (on node 1-2 with exclusive tiering)**:
+- **Result (on node 1-2 with exclusive tiering; same-node comparison vs v_ab_exclusive)**:
   - hit_rate: 0.738 (−1.4pp vs exclusive LRU 0.752) — WORSE
-  - p99 TTFT: 4821ms (+17% vs exclusive LRU 4111ms) — WORSE
-  - p50 TTFT: 506ms (+4% vs exclusive LRU 488ms)
-  - load_back_mean_ms: 29.1ms (+58% vs 18.4ms)
+  - p99 TTFT: 4821ms (+11% vs same-node exclusive LRU 4354ms) — WORSE
+  - p50 TTFT: 506ms (vs exclusive LRU 503ms on same node)
+  - load_back_mean_ms: 29.1ms (+53% vs 19.0ms same-node)
   - req/s: 3.02 (same)
 - **Root cause**: Cost-aware eviction overrides recency with depth, keeping stale-but-expensive entries at the
   expense of fresh-but-cheap entries. But recency IS the right reuse predictor in this workload — LRU already

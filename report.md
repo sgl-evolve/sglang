@@ -80,9 +80,9 @@ operating point; (3) 3-point ablation isolates the write-side (config) vs promot
 does NOT change hit (0.62→0.62) and *worsens* p99 to 21.4 s (cache-cold starvation); eviction-ORDER is a
 dead end (LRU≈Belady, charter + confirmed by lpm); ADMISSION/concurrency-capping showed ~no hit gain in
 sim and is not cleanly implementable (no conversation id to separate active from finished-cached convs);
-**recompute-cost-aware eviction** (`cost_lru`, threshold 4096 tok) is NEGATIVE — hit −1.4pp, p99 +17%, lb +58%
-vs exclusive LRU: overriding recency with depth starves short-doc conversations, confirming eviction-policy
-mechanisms are a dead end in the capacity-bound regime.
+**recompute-cost-aware eviction** (`cost_lru`, threshold 4096 tok) is NEGATIVE — hit −1.4pp, p99 +11%, lb +53%
+vs same-node exclusive LRU: overriding recency with depth starves short-doc conversations, confirming
+eviction-policy mechanisms are a dead end in the capacity-bound regime.
 
 **Generalizable insight:** for a saturated multi-tier KV cache on the steep hit-vs-capacity curve, the
 lever is *effective capacity* (exclusive tiering / de-duplication), not scheduling order or admission.

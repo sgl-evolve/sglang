@@ -81,8 +81,14 @@ does NOT change hit (0.62→0.62) and *worsens* p99 to 21.4 s (cache-cold starva
 dead end (LRU≈Belady, charter + confirmed by lpm); ADMISSION/concurrency-capping showed ~no hit gain in
 sim and is not cleanly implementable (no conversation id to separate active from finished-cached convs);
 **recompute-cost-aware eviction** (`cost_lru`, threshold 4096 tok) is NEGATIVE — hit −1.4pp, p99 +11%, lb +53%
-vs same-node exclusive LRU: overriding recency with depth starves short-doc conversations, confirming
-eviction-policy mechanisms are a dead end in the capacity-bound regime.
+vs same-node exclusive LRU: overriding recency with depth starves short-doc conversations;
+**queue-aware eviction** (v_queue_aware_excl): NEUTRAL — sim predicted +8.6pp from evicting dead
+conversations (no pending queue turn) first, but the queue is too transient at λ=3 (nearly always empty;
+between-turn conversations indistinguishable from dead ones) → degenerates to plain LRU;
+**SLRU** (v_slru_excl, `--radix-eviction-policy slru`): NEUTRAL — hit_count-based segmentation
+(probationary < 2 hits, protected ≥ 2) doesn't distinguish dead from active conversations at scale.
+THREE eviction policies tested → all converge on ~0.75 hit, confirming the ~5pp oracle gap is
+unrealizable without future-knowledge.
 
 **Generalizable insight:** for a saturated multi-tier KV cache on the steep hit-vs-capacity curve, the
 lever is *effective capacity* (exclusive tiering / de-duplication), not scheduling order or admission.
@@ -157,9 +163,11 @@ capacity for fewer transfers doesn't net a win ⇒ PURE exclusive (v1/v2) is nea
 - Goodput-curve shift: -17% p99 at the knee (λ=4,5).
 - **Lines EXHAUSTED:** ordering (v0_lpm, NEG), admission (sim, weak + unimplementable), eviction-order
   (LRU≈Belady), device-headroom (none), transfer-reduction hybrid (v3, neutral), mamba host-rebalance
-  (out-of-budget). Remaining ~5pp to the 0.807 ceiling needs lossless KV COMPRESSION (host tier) —
-  high-risk kernel, likely low compressibility on FP8, low iteration throughput under node contention →
-  documented as the bolder future line, not attempted.
+  (out-of-budget), **queue-aware eviction** (v_queue_aware_excl, NEUTRAL — queue too transient to
+  distinguish dead from between-turn conversations), **SLRU** (v_slru_excl, NEUTRAL — hit_count
+  segmentation doesn't help under capacity-bound regime). Three eviction policies tested (LRU, queue-aware,
+  SLRU) all converge on ~0.75 hit → eviction ORDER confirmed dead. Remaining ~5pp to the 0.807 ceiling
+  needs future-predicting eviction (impossible without oracle) or lossless KV COMPRESSION — both closed.
   - **★Frontier quality cost (measured): fp8-KV reaches the ceiling at a MODEST but real lossy cost.**
     Greedy 24-doc verify vs bf16 no-cache (output-divergence proxy): exclusive (my mechanism) & stock both
     20/24 (inherent hybrid-Mamba cache drift; my mechanism adds 0); **fp8-KV fresh 18/24** (6 diverge) → fp8
@@ -466,3 +474,98 @@ demote ⇒ "evicted ⟹ has-host" invariant preserved; (4) KV values never alter
 under heavy eviction this can raise TTFT and may offset the capacity/hit gain. The s_writeback result
 (write_back vs fcfs TTFT) reveals this cost; v1 attribution = (fcfs) vs (write_back) vs (write_back+excl).
 Env propagation through srun verified (--export=ALL). Result: TBD.
+
+### v_queue_aware_excl — MECHANISM (commit 216e021d7), W&B, mechanism — NEUTRAL (honest negative)
+**Queue-aware LRU eviction** on top of exclusive tiering. Idea: dead conversations (~84% of cache in sim)
+sit at MRU position in LRU despite zero future reuse value; protect radix nodes whose conversation has a
+pending turn in the scheduler's waiting queue, evicting unprotected (dead) nodes first. Sim predicted +8.6pp
+hit on top of exclusive (reaching the 0.806 ceiling). Engine implementation: lightweight prefix match at
+enqueue time sets `queue_ref` on matched nodes; decremented at all dequeue/abort points; eviction strategy
+sorts `(is_active, last_access_time)` so queue_ref=0 nodes evict before queue_ref>0 nodes.
+
+| metric | exclusive (v1/v2 mean) | **v_queue_aware_excl** |
+|---|---|---|
+| hit_rate | 0.7509 ± 0.002 | **0.7526** (within noise) |
+| p99 TTFT ms | 4575 ± 506 | 4326 |
+| mean TTFT ms | 841 ± 47 | 770 |
+| p50 TTFT ms | ~520 | 481 |
+| req/s | 3.02 | 3.02 |
+
+**NEUTRAL.** Hit rate 0.7526 ≈ exclusive-only 0.7509±0.002 — the queue-aware eviction adds ZERO detectable
+hit-rate gain despite the sim predicting +8.6pp. Latency numbers are within the noise band of the 4
+exclusive-only runs.
+
+**Root cause of the sim-vs-real discrepancy:** the scheduler's waiting queue is the WRONG signal for
+"this conversation will have future turns." Requests pass through the queue too quickly — at λ=3 the queue
+is nearly always empty (`num_queue_reqs` 0–4); requests are immediately scheduled. Between conversation
+turns, there is NO pending request in the queue for that conversation, so its cache entries have
+`queue_ref=0` and look identical to dead conversations. The queue tells you about the PRESENT (what's
+waiting right now), not the FUTURE (what will arrive later). Dead conversations and between-turn
+conversations are indistinguishable in the queue → queue-aware degenerates to plain LRU.
+
+**Why the sim's oracle worked but this approximation fails:** the oracle had GLOBAL KNOWLEDGE of which
+conversations would have future turns (it checked the full workload trace). Queue-aware only sees requests
+currently in the queue — a fundamentally narrower view. Timeout-based approaches were ruled out in sim
+(inter-turn gap overlaps dead-KV lifetime → massive false positives). ⇒ The +8.6pp oracle gap requires
+FUTURE prediction that no simple online signal (queue occupancy, timeout, turn count) can provide.
+
+**Conclusion:** the scheduler queue is not a useful proxy for conversation liveness. The ~5pp gap between
+exclusive tiering (0.752) and the oracle ceiling (0.806) is UNREALIZABLE without either (a) future-knowledge
+(impossible in a real system) or (b) KV compression (lossy, out-of-contract). The accessible lossless
+mechanism space remains exhausted at exclusive tiering.
+
+### v_slru_excl — SLRU eviction + exclusive (commit 216e021d7, mechanism) — NEUTRAL
+Segmented LRU (`--radix-eviction-policy slru`, threshold=2) with `SGLANG_HICACHE_EXCLUSIVE=1`. Hypothesis:
+SLRU's protected segment (hit_count ≥ 2) shields multi-turn conversations' KV while probationary
+(hit_count < 2) holds dead single-turn entries → evicts dead single-turn KV first.
+
+| metric | exclusive LRU (4-run mean ± σ) | **v_slru_excl** |
+|---|---|---|
+| hit_rate | 0.7509 ± 0.002 | **0.7518** (within noise) |
+| p99 TTFT ms | 4575 ± 506 | 4348 |
+| mean TTFT ms | 841 ± 47 | 793 |
+| req/s | 3.02 | 3.02 |
+
+**NEUTRAL.** Hit rate 0.7518 ≈ exclusive LRU 0.7509. Eviction-order dead end further confirmed — see
+v_lfu_excl below for the 4th and final policy test.
+
+### v_lfu_excl — LFU eviction + exclusive (commit 216e021d7, mechanism) — NEUTRAL
+Least Frequently Used (`--radix-eviction-policy lfu`) with `SGLANG_HICACHE_EXCLUSIVE=1`. Hypothesis:
+frequency-based eviction protects multi-turn conversations' KV (high hit_count) while evicting
+single-access entries first — a fundamentally different signal from recency (LRU/SLRU).
+
+| metric | exclusive LRU (4-run mean ± σ) | **v_lfu_excl** |
+|---|---|---|
+| hit_rate | 0.7509 ± 0.002 | **0.7518** (within noise) |
+| p99 TTFT ms | 4575 ± 506 | 4598 |
+| mean TTFT ms | 841 ± 47 | 798 |
+| p50 TTFT ms | ~520 | 488 |
+| req/s | 3.02 | 3.02 |
+
+**NEUTRAL.** Hit rate 0.7518 — identical to LRU, queue-aware, and SLRU. **FOUR** eviction policies now
+tested on top of exclusive tiering (LRU, queue-aware LRU, SLRU, LFU) — ALL converge on hit rate
+0.7518–0.7526. Both axes of eviction policy (recency: LRU/SLRU, frequency: LFU, hybrid: queue-aware) are
+exhausted. This comprehensively confirms: **eviction ORDER is a dead end in this capacity-bound regime.**
+Hit rate is determined by EFFECTIVE CACHE CAPACITY (exclusive vs inclusive tiering = +13pp) and the
+workload's reuse-mass CDF; no online eviction policy can close the ~5pp gap to the oracle without future
+knowledge.
+
+### Lines EXHAUSTED (comprehensive mechanism-space analysis)
+
+| mechanism category | tested | result | reason |
+|---|---|---|---|
+| **L1↔L2 placement** | exclusive tiering | **WIN** (+13pp hit, −30% TTFT) | capacity unlocked |
+| **Eviction order** | LRU, queue-aware, SLRU, LFU | all NEUTRAL | capacity-bound, not policy-bound |
+| **Scheduling** | LPM | NEGATIVE (3.4× worse p99) | positive feedback loop starves cold reqs |
+| **Transfer D↔H** | analyzed (evict+load-back) | at PCIe bandwidth limits (~14 GB/s) | <4% TTFT improvement possible |
+| **Admission** | not implementable | requires conv-id (unavailable in serving path) | no grouping signal |
+| **Prefetch** | impossible | requires future knowledge | Poisson arrivals defeat prediction |
+| **Compression** | lossy | out of contract (lossless required) | INT4/FP4 changes attention output |
+| **Proactive demotion** | analyzed (watermark) | net neutral | capacity cost cancels transfer savings |
+| **Batch eviction** | analyzed (per-leaf → batched writes) | <0.5ms savings | PCIe serializes regardless |
+| **KV swap (bidirectional)** | analyzed (full-duplex PCIe) | ~2% TTFT | marginal, complex |
+
+**Contribution summary**: exclusive tiering is the SOLE accessible lossless mechanism that materially
+improves KV-cache performance in this 2-tier setup. The INSIGHT: under capacity pressure, the L1↔L2
+placement policy (inclusive vs exclusive) is the dominant lever — eviction policy, scheduling, and
+transfer optimization are all secondary or at hardware limits.

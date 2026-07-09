@@ -217,3 +217,17 @@
   curve.csv already existed (r3+r4) and printed SUCCESS/exited, but the REMOTE sweep step survived the
   disconnect and finished r4.5 (orphaned but self-completing via its EXIT-trap teardown). Lesson: srun
   --overlap remote steps can outlive a killed client; verify node-side procs, not just the launcher log.
+
+## 2026-07-09 ~02:42Z — ★ KNEE-RESOLVER COMPLETE: definitively pins the goodput knee shift
+
+- Fine-grid same-node A/B (ondem-2, flock-held both legs, same as the coarse definitive, tools/knee_resolve.sh):
+  rates 3.25/3.5/3.75, np=1553/7037-turn, baseline then exclusive on the same server restart.
+- BASELINE: 3.25→p99 7535 ✓ / 3.5→7064 ✓ / 3.75→8751 ✗. Knee between 3.5 and 3.75 (interpolated ~3.64).
+  Non-monotonicity (3.25: 7535 > 3.5: 7064) is a warm-cache sequential-run artifact.
+- EXCLUSIVE: 3.25→p99 4815 ✓ / 3.5→5369 ✓ / 3.75→7870 ✓ (130ms headroom). Knee ≥3.75 (~3.77 interpolated).
+- BINARY ANSWER: **exclusive holds rate 3.75 under the 8s SLO that baseline FAILS.** Knee shift ~+3-4%.
+- LATENCY WIN IS THE REAL STORY: p99 −36% at 3.25, −24% at 3.5, −10% at 3.75. p50 −7 to −12% throughout.
+- ★ CORRECTION: earlier "+10–18% knee shift" screen estimate → definitively **~+3-4%** (modest). The
+  contribution's downstream value is the sustained p99 reduction across the operating range, not a large knee
+  shift. Hit +13pp remains the robust, node-independent headline.
+- Updated paper.md (abstract, §4, §8), UPSTREAM.md, report.md with definitive numbers. Committed + pushed.

@@ -1,0 +1,4 @@
+label,rate,p99_ttft_ms,p50_ttft_ms,req_throughput,completed
+knee_exc,3.25,4815.31,506.63,3.27,7037
+knee_exc,3.5,5368.96,523.68,3.52,7037
+knee_exc,3.75,7869.54,544.64,3.77,7037

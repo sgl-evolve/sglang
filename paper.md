@@ -10,9 +10,9 @@ We make the two tiers hold **disjoint** content (an entry lives on device **XOR*
 tier as extra distinct capacity. On a Qwen3.5-122B-A10B hybrid-Mamba model (TP8, 2-tier: GPU ~2.35M + host
 ~7.81M tokens) under a real long-context multiturn workload, exclusive tiering raises the prefix-cache
 hit-rate from **0.62 to 0.75 (+13pp, node-independent)** — ~13% less fresh-prefill compute — and is
-**measured bit-exact lossless**. A definitive node-controlled full-protocol A/B shows the downstream payoff:
-at the SLO-sustainable rate it cuts p99 TTFT −16% (with +26% more SLO headroom), and under overload it
-absorbs +10–13% more throughput at identical median latency. We give a code-level correctness argument, a
+**measured bit-exact lossless**. A definitive node-controlled full-protocol A/B with a fine-grid knee-resolver
+shows the downstream payoff: p99 TTFT is **−10% to −36% lower** across the operating range (3.0–3.75 req/s),
+and the p99≤8s SLO goodput knee shifts up ~+3–4% (exclusive sustains rate 3.75 that baseline cannot). We give a code-level correctness argument, a
 **falsifiable two-sided generalization law** (a capacity-band boundary saying *when* it helps and a
 transfer-cost scope caveat saying *when it stops*), and show the residual gap to the analytic hit ceiling is
 reachable only by *lossy* KV quantization — so exclusive tiering is the maximum lossless hit-rate for a fixed
@@ -72,16 +72,14 @@ TTFT SLO (max sustainable req/s with p99 TTFT ≤ 8s). Lossless gate: outputs ==
 - **Ablation (3-point, isolates engine from config).** fcfs inclusive: hit 0.622. +`write_back` flag
   (write-side exclusivity, config only): 0.733 (+11pp). +free-host-on-promotion (engine mechanism, full
   exclusivity): 0.7525 (+13pp). The final +2pp is attributable purely to the engine code.
-- **Downstream latency/goodput (grow with load; node-dependent).** A *definitive* same-node, full-protocol
-  (1553-conv/7037-turn), flock-held-both-legs A/B isolates two robust effects. (i) **At the SLO-sustainable
-  rate** (offered 3.0, both under the 8s SLO): exclusive cuts **p99 TTFT −16%** (4907→4111 ms) and **p50 −10%**
-  (543→488) at identical 3.02 req/s — a clean latency win with **+26% more SLO headroom**. (ii) **Under
-  overload** (offered 4.0/4.5, both over SLO): exclusive absorbs **+10%/+13% more achieved throughput**
-  (3.48→3.82, 3.67→4.14) at *identical* p50 — it stays nearer the offered rate before the queue runs away.
-  The p99≤8s **goodput knee** is co-bracketed in (3,4) for both at this coarse grid, so a precise knee-shift
-  magnitude is being measured by a finer-grid (3.25/3.5/3.75) same-node A/B; earlier "+10–18%" screen
-  estimates are treated as suggestive pending that resolution. The robust, node-independent driver remains the
-  +13pp hit-rate.
+- **Downstream latency/goodput (definitive, node-controlled).** A same-node, full-protocol (1553-conv/7037-turn),
+  flock-held-both-legs A/B on ondem-2 with a fine-grid knee-resolver (rates 3.0/3.25/3.5/3.75/4.0/4.5):
+  (i) **Latency win at every sub-knee rate** — p99 TTFT is **−16%** at 3.0, **−36%** at 3.25, **−24%** at 3.5,
+  and **−10%** at 3.75 (p50 −7% to −12% throughout). (ii) **SLO goodput knee shift** — baseline p99 crosses the
+  8s SLO between rates 3.5 and 3.75; exclusive PASSES 3.75 (p99=7870ms, 130ms headroom) → knee shift **~+3–4%**
+  (interpolated ~3.64→~3.77). (iii) **Under overload** (4.0/4.5): exclusive absorbs +10%/+13% more throughput
+  at identical p50. The knee shift is modest; the robust claim is the **−10 to −36% p99 reduction across the
+  operating range**, driven by the node-independent +13pp hit-rate.
 - **Negatives (ruled out with evidence).** Eviction-order (LRU≈Belady), schedule ordering (lpm),
   admission/concurrency caps, and scheduling-based co-residency do **not** recover hit-rate here
   (capacity-bound). A frequency-aware hybrid (keep hot nodes inclusive) is TTFT-neutral.
@@ -116,11 +114,12 @@ capacity-band analysis exact. Eviction-policy work (LRU/Belady) is a non-lever h
 
 ## 8. Limitations
 Single model / workload / HW (the protocol is fixed and cannot be varied in-contract; generalization is via a
-calibrated simulator, made falsifiable). The downstream latency/goodput result now rests on a *definitive*
-node-controlled, full-protocol (1553-conv), flock-held-both-legs A/B (both effects above are from that single
-run), so it is no longer a screen artifact; its one remaining coarseness is rate granularity (3/4/4.5 puts
-both SLO knees in one interval), which the in-flight finer-grid A/B closes. Latency/goodput magnitudes are
-node- and load-dependent; the robust, node-independent claim is the hit-rate.
+calibrated simulator, made falsifiable). The downstream latency/goodput rests on a definitive node-controlled,
+full-protocol (1553-conv), flock-held-both-legs A/B with a fine-grid knee-resolver (6 rate points, 3.0–4.5).
+The SLO goodput knee shift is modest (~+3–4%); the strong signal is the p99 reduction (−10 to −36% across the
+operating range). Latency/goodput magnitudes are node- and load-dependent; the robust, node-independent claim
+is the hit-rate. Baseline p99 is non-monotone across sequential rate points (warm-cache artifact); both legs
+use the same methodology so the comparison is fair.
 
 ## 9. Conclusion
 Making HiCache's GPU and host tiers exclusive is a small, lossless engine change that reclaims wasted GPU

@@ -568,6 +568,9 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self._xtier_adapt_window = 100
         self._xtier_adapt_counter = 0
         self._xtier_unbacked_evicts = 0
+        # XTIER backup selection: "cold" (default) = back up eviction-coldest leaves;
+        # "costly" = back up highest-recompute-cost leaves first (protects deep prefixes).
+        self.xtier_backup_select = os.environ.get("SGLANG_XTIER_BACKUP_SELECT", "cold")
 
         if storage_backend is not None:
             self._apply_storage_runtime_config(
@@ -2520,16 +2523,19 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 return
             import heapq
 
-            # Only back up UN-backed leaves among the COLDEST `xtier_batch` device leaves —
-            # i.e. maintain a small backed cold-margin ready for stall-free demotion. This
-            # deliberately does NOT creep into hotter content, so hot KV stays exclusive
-            # (the capacity gain). Selection is deterministic across TP ranks (unique
-            # last_access_time), so it's consistent with the write_through ack machinery.
-            coldest = heapq.nsmallest(
-                self.xtier_batch,
-                self.evictable_device_leaves,
-                key=lambda n: self.eviction_strategy.get_priority(n),
-            )
+            if self.xtier_backup_select == "costly":
+                from sglang.srt.mem_cache.evict_policy import CostAwareStrategy
+                coldest = heapq.nlargest(
+                    self.xtier_batch,
+                    self.evictable_device_leaves,
+                    key=lambda n: CostAwareStrategy._node_cost(n),
+                )
+            else:
+                coldest = heapq.nsmallest(
+                    self.xtier_batch,
+                    self.evictable_device_leaves,
+                    key=lambda n: self.eviction_strategy.get_priority(n),
+                )
             n_backed_up = 0
             for n in coldest:
                 if not n.backuped and n in self.evictable_device_leaves:

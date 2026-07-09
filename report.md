@@ -86,6 +86,17 @@ with per-node JIT isolation, correcting the blanket "strictly serial" rule for t
 | v7 | 3-tier cost segmentation (protect longest most) | NEUTRAL (n=2; p99 within noise band) |
 | v8 | depth cost (cumulative prefix, protect deep tails) | NEUTRAL (cost axis doesn't matter; over-protection tension) |
 
+**Why not depth-cost at the winning threshold (depth@2048)?** (a fair reviewer question, since v8 tested
+depth@8192). Depth cost = cumulative `prefix_len`, which is ≫2048 for essentially all cached content in this
+long-doc/multiturn workload → depth@2048 marks nearly every node tier-1 (protected) → the strategy degenerates
+to ~LRU (no cost differentiation) and cannot beat segment@2048. Depth only differentiates the eviction order at
+a high threshold (≈8192), which v8 tested = neutral (there it under-protects, like segment@8192). So depth cost
+is bounded at BOTH ends — over-protective (≈LRU) low, under-protective high — and never beats segment@2048.
+Mechanistically this makes sense: a *deep* node (short late conversation turn) is *cheap* to recompute (short
+segment), so protecting it by depth runs against the recompute-cost objective; segment cost already protects the
+expensive part (the long shared doc prefix), and the cheap recent turns it drops recompute cheaply. Segment cost
+is the cost-correct formulation.
+
 **Conclusion:** the mechanism is *recompute-cost-aware eviction*; **segment-length cost @ threshold ~2048 is the
 sweet spot and captures all available benefit** — every refinement (cost axis, tiering, reuse-gating, mamba,
 other thresholds) is neutral-or-worse. The p99 tail is noise/capacity-limited beyond this (workload is

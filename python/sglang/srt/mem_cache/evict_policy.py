@@ -101,3 +101,53 @@ class GDSFStrategy(EvictionStrategy):
         tok = len(v) if v is not None else 0
         score = (node.hit_count + 1) * tok
         return (-score, node.last_access_time)
+
+
+class FreqDecayStrategy(EvictionStrategy):
+    """Frequency-decay LRU: recent accesses count more than old ones.
+    Priority = -sum(decay^(now-t_i) for each access), so nodes with recent
+    frequent accesses are kept longest.  Approximated cheaply using hit_count
+    and last_access_time: score = hit_count * exp(-alpha * age)."""
+
+    def __init__(self, alpha: float = 0.001):
+        self.alpha = alpha
+
+    def get_priority(self, node: TreeNode) -> float:
+        import math
+
+        age = max(0.0, node.last_access_time)
+        score = (node.hit_count + 1) * math.exp(self.alpha * age)
+        return -score
+
+
+class SizeWeightedLRUStrategy(EvictionStrategy):
+    """Size-weighted LRU: prefer to evict smaller nodes first (they are cheaper
+    to recompute). Priority = last_access_time / log2(tok+2), so among
+    equally-old nodes, smaller ones are evicted first."""
+
+    def get_priority(self, node: TreeNode) -> float:
+        import math
+
+        from sglang.srt.mem_cache.unified_cache_components.tree_component import (
+            BASE_COMPONENT_TYPE,
+        )
+
+        v = node.component_data[BASE_COMPONENT_TYPE].value
+        tok = len(v) if v is not None else 0
+        size_weight = math.log2(tok + 2)
+        return node.last_access_time / size_weight
+
+
+class DepthAwareLRUStrategy(EvictionStrategy):
+    """Depth-aware LRU: prefer to keep nodes deeper in the tree (they represent
+    longer matched prefixes = more recompute saved on hit). Priority penalizes
+    shallow nodes: (depth_band, last_access_time)."""
+
+    def get_priority(self, node: TreeNode) -> Tuple[int, float]:
+        depth = 0
+        cur = node
+        while cur.parent is not None:
+            depth += 1
+            cur = cur.parent
+        band = min(depth, 3)
+        return (band, node.last_access_time)

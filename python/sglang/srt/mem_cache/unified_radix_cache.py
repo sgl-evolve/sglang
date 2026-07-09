@@ -401,12 +401,18 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             _thresh = int(_os.environ.get("BM_COST_THRESHOLD", "0"))
             from sglang.srt.mem_cache.evict_policy import (
                 CostAwareStrategy,
+                DepthAwareLRUStrategy,
+                FreqDecayStrategy,
                 GDSFStrategy,
+                SizeWeightedLRUStrategy,
             )
 
             _strat_map = {
                 "cost_aware": lambda: CostAwareStrategy(threshold=_thresh),
                 "gdsf": GDSFStrategy,
+                "freq_decay": lambda: FreqDecayStrategy(alpha=0.001),
+                "size_weighted": SizeWeightedLRUStrategy,
+                "depth_aware": DepthAwareLRUStrategy,
                 "lfu": lambda: get_eviction_strategy("lfu"),
                 "fifo": lambda: get_eviction_strategy("fifo"),
                 "mru": lambda: get_eviction_strategy("mru"),

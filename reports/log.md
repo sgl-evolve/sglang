@@ -144,3 +144,14 @@ memory, less compute, more goodput. Two-regime insight: aggregate hit-rate capac
 knee compute-bound; in BOTH the accessible lossless lever is reducing recompute = cost-aware eviction.
 Wrote into report.md design-space section. No eval consumed (mined existing runs/). Contribution unchanged but
 its insight/rigor materially strengthened (paper-quality bounding of the scheduling axis).
+
+## 2026-07-09 — Concurrent prefill coalescing ruled out with dataset analysis (no eval); freed stale check job
+Fresh lossless lever aimed at the compute-bound cold-prefill knee: coalesce duplicate COLD prefills of a shared
+long prefix that arrive before either caches it. Probed the fixed workload (mooncake_mix_v1.jsonl, 1553 recs):
+only 888 UNIQUE docs; duplication dominated by empty ShareGPT doc (0 chars ×538) + one 4.2k-tok doc
+(leval_gsm100 ×100). MAX theoretical dedup saving = 837k tok = 4.4% of cold-prefill tokens, and that assumes
+radix did nothing; radix already dedups sequential reuse + cost-aware protects the 4.2k prefix -> real
+concurrent-burst headroom <1%. Cold backlog is genuinely-unique long docs (858/888 unique) -> irreducible
+losslessly. Bounded out; not worth a mechanism or a scarce eval. Recorded in report.md design-space section.
+Also cancelled a stale >24h pending check-env job (chk-sgl_mech, 18537, submitted 2026-07-08T03:06, never ran)
+to free the queue slot for siblings (stewardship). State clean: git pushed, no WARNINGS, no active jobs.

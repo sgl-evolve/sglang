@@ -82,6 +82,14 @@ exhausted/infeasible/off-limits for THIS setup:
   — which cost-aware eviction does (**−14.2% total prefilled new-tokens across the sweep, 151.2M→129.7M, at
   the SAME memory budget** — device-KV-util 0.33 vs 0.33, peak 0.70 vs 0.69), directly explaining the +11.7%
   max-throughput shift. Attribution is airtight: same memory, less compute, more goodput.
+- **Concurrent prefill coalescing** (dedup duplicate COLD prefills of a shared long prefix that arrive before
+  either populates the cache — a lossless mechanism aimed squarely at the compute-bound cold-prefill knee):
+  bounded out with a **dataset analysis** (no eval). Of 1553 records only 888 documents are unique; the
+  duplication is dominated by an **empty ShareGPT doc (0 chars, 538 copies)** and **one 4.2k-tok doc
+  (leval_gsm100, 100 copies)**. **Max theoretical dedup saving = 837k tok = 4.4%** of cold-prefill tokens —
+  and that assumes radix caching did *nothing*. Radix already dedups sequential reuse (later copies hit the
+  cache; cost-aware protects the 4.2k prefix), so the *concurrent-burst-before-first-caches* headroom is
+  **<1%**. The cold backlog is genuinely-unique long documents (858/888 unique) → irreducible losslessly.
 - **Prefetch / anticipatory load_back:** L2→L1 load_back is ~1.65 ms (cheap) and on-demand already; no
   headroom. Config knobs (mamba_track_interval, int8 mamba ckpt, write-policy) are off-contract/lossy.
 

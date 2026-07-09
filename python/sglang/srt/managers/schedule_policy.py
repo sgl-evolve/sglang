@@ -145,6 +145,7 @@ class CacheAgnosticPolicy(Enum):
     LOF = "lof"  # longest output first
     RANDOM = "random"
     ROUTING_KEY = "routing-key"  # prioritize by routing key frequency in running batch
+    SJF = "sjf"  # shortest job (input) first
 
 
 class SchedulePolicy:
@@ -222,6 +223,8 @@ class SchedulePolicy:
             elif policy == CacheAgnosticPolicy.ROUTING_KEY:
                 if running_batch is not None:
                     SchedulePolicy._sort_by_routing_key(waiting_queue, running_batch)
+            elif policy == CacheAgnosticPolicy.SJF:
+                SchedulePolicy._sort_by_shortest_job(waiting_queue)
             else:
                 raise ValueError(f"Unknown CacheAgnostic Policy: {policy=}")
 
@@ -365,6 +368,11 @@ class SchedulePolicy:
     def _sort_randomly(waiting_queue: List[Req]) -> None:
         """Shuffles the waiting queue randomly."""
         random.shuffle(waiting_queue)
+
+    @staticmethod
+    def _sort_by_shortest_job(waiting_queue: List[Req]) -> None:
+        """Sorts by total input length ascending (shortest prefill first)."""
+        waiting_queue.sort(key=lambda r: len(r.origin_input_ids))
 
     @staticmethod
     def _sort_by_priority_and_fcfs(

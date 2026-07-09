@@ -719,6 +719,7 @@ class ServerArgs:
                 "priority",
                 "routing-key",
                 "device-first",
+                "sjf",
             ],
         ),
     ] = "fcfs"

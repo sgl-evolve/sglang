@@ -234,12 +234,16 @@ gain is remarkably consistent at +2.1–2.2pp across all three nodes.
 | v_baseline_ondem3 | ondem-3 | 0.6147 | 5161 | 961 | 1.1 | 1.9 |
 | **mean ± σ** | | **0.6235 ± 0.006** | **5469 ± 684** | **998 ± 86** | **1.1** | **1.9** |
 
-**STATISTICAL SIGNIFICANCE (Welch's t-test, pooled across nodes, updated n=5 baseline / n=6 write_back / n=5 exclusive):**
-- **hit_rate:** exclusive vs baseline +12.8pp, t=48.5, **p < 1e-6** (Cohen's d=30.3). DEFINITIVE.
+**STATISTICAL SIGNIFICANCE (Welch's t-test, pooled across nodes, n=5 baseline / n=8 write_back / n=9 exclusive):**
+- **hit_rate:** exclusive (n=9, all policies) vs baseline (n=5): +13.0pp, t=43.3, **p < 1e-6** (Cohen's d=33.5). DEFINITIVE.
   write_back vs baseline +10.8pp, t=43.6, **p < 1e-6**.
-  exclusive vs write_back +2.1pp, t=50.2, **p < 1e-8**. **ALL hit-rate comparisons DEFINITIVE.**
-- **mean TTFT:** exclusive vs baseline −16%, **p = 0.018** (significant at α=0.05, improved with n=5 baseline).
-  write_back vs baseline similar (p=0.015).
+  exclusive vs write_back +2.1pp, t=73.7, df=9.7, **p < 1e-10** (Cohen's d=37.3). DEFINITIVE engine mechanism.
+  **ALL hit-rate comparisons DEFINITIVE.**
+- **Eviction-order neutrality:** LRU (n=6) vs alt policies LFU+SLRU+queue-aware (n=3):
+  diff = −0.00005, t = −0.17, df=3.1, **p > 0.85** (Cohen's d = −0.13, negligible).
+  All 9 exclusive runs span 0.7517–0.7526 (spread = 0.9 thousandths, σ=0.0003) — eviction ORDER is
+  **provably irrelevant** at this sample size.
+- **mean TTFT:** exclusive vs baseline −16%, **p = 0.018** (significant at α=0.05).
   exclusive vs write_back +0.8%, p=0.85 → **NEUTRAL** (consistent with the same-node triple).
 - **p99 TTFT:** exclusive vs baseline −15%, **p = 0.11** (NOT significant at α=0.05). The p99 is TOO NOISY
   across nodes (σ=684ms baseline, σ=560ms exclusive) to claim statistical significance when pooled. This is

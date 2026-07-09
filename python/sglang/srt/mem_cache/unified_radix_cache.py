@@ -384,6 +384,13 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 + (f"; hot-keep threshold={self.exclusive_hot_keep}" if self.exclusive_hot_keep else "")
             )
 
+        self.proactive_backup_limit = envs.SGLANG_HICACHE_PROACTIVE_BACKUP.get()
+        if self.proactive_backup_limit > 0:
+            logger.info(
+                "UnifiedRadixCache: proactive eviction backup ENABLED, max %d leaves/round",
+                self.proactive_backup_limit,
+            )
+
         # HiCache D↔H defaults (overridden by init_hicache)
         self.cache_controller: Optional[HybridCacheController] = None
         self.write_through_threshold = 256
@@ -1545,6 +1552,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 self._update_evictable_leaf_sets(parent)
                 self._iteratively_delete_tombstone_leaf(node, tracker)
                 return
+        if node.write_through_pending_id is not None:
+            self.writing_check(write_back=True)
         self._evict_to_host(node, tracker)
 
     def _evict_host_leaf(
@@ -2557,6 +2566,39 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         if self.cache_controller is not None:
             return self.cache_controller.start_loading()
         return 0
+
+    def proactive_evict_backup(self) -> int:
+        """Pre-start D→H copies for LRU device leaves between scheduling rounds.
+
+        Called after batch launch so the async copies overlap with GPU compute.
+        Next scheduling round, writing_check() finishes them and _evict_device_leaf
+        finds nodes already backed up → skips the synchronous D→H wait.
+        """
+        if self.proactive_backup_limit <= 0 or self.cache_controller is None:
+            return 0
+        if not (
+            self.cache_controller.write_policy == "write_back"
+            or self.exclusive_tiering
+        ):
+            return 0
+
+        candidates = sorted(
+            self.evictable_device_leaves,
+            key=lambda n: self.eviction_strategy.get_priority(n),
+        )
+
+        backed = 0
+        for node in candidates:
+            if backed >= self.proactive_backup_limit:
+                break
+            if node.backuped:
+                continue
+            if any(cd.lock_ref > 0 for cd in node.component_data):
+                continue
+            written = self.write_backup(node, write_back=True)
+            if written > 0:
+                backed += 1
+        return backed
 
     # ---- Query / Inspection APIs ----
     # These APIs exist for compatibility with other RadixTree implementations.

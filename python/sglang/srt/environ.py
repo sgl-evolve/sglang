@@ -431,6 +431,11 @@ class Envs:
     # scheduler's waiting queue. Nodes without pending turns (dead conversations) are evicted
     # first, so active conversations' KV survives longer. Composes with SGLANG_HICACHE_EXCLUSIVE.
     SGLANG_HICACHE_QUEUE_AWARE = EnvBool(False)
+    # Proactive eviction backup: pre-start D→H copies for LRU device leaves
+    # between scheduling rounds (overlap with GPU compute), so the next round's
+    # evictions find them already backed up and skip the synchronous D→H wait.
+    # Value = max number of leaves to pre-backup per round (0 = disabled).
+    SGLANG_HICACHE_PROACTIVE_BACKUP = EnvInt(0)
     SGLANG_HUGEPAGE_SIZE = EnvStr("")
     # Staging buffer for heterogeneous TP KV transfer
     SGLANG_DISAGG_STAGING_BUFFER = EnvBool(False)

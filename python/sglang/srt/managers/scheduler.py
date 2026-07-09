@@ -1538,6 +1538,8 @@ class Scheduler(
             if batch:
                 result = self.run_batch(batch)
                 self.process_batch_result(batch, result)
+                if self.enable_hierarchical_cache:
+                    self.tree_cache.proactive_evict_backup()
             else:
                 # When the server is idle, do self-check and re-init some states.
                 self.on_idle()
@@ -1595,6 +1597,10 @@ class Scheduler(
             elif batch is None:
                 # When the server is idle, do self-check and re-init some states
                 self.on_idle()
+
+            # Proactive eviction backup: pre-start D→H copies while GPU computes
+            if self.enable_hierarchical_cache and batch is not None:
+                self.tree_cache.proactive_evict_backup()
 
             # Run sample of the current batch
             # It depends on the result of the last batch (e.g., grammar), so we run it after the last batch is processed.

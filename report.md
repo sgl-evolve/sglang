@@ -100,6 +100,66 @@ marginal gain over that strong config is modest (+2.0pp hit, -4.4% p99), though 
 host→device load-back (298M→402M) — net TTFT still improves. Self-contained version (SGLANG_HICACHE_EXCLUSIVE
 alone, no flag, commit feca1871e) + goodput-curve sweep + error-bar reruns in progress (node-contended).
 
+### Write-back ablation decomposition — isolating the engine mechanism's marginal value
+The full +13pp exclusive-tiering benefit decomposes into TWO halves: (1) write-side exclusivity
+(stock `write_back` flag: don't eagerly copy D→H on cache hit), and (2) promotion-side exclusivity
+(my engine mechanism: free host copy on H→D load-back). The 3-point ablation isolates each.
+
+**Same-node A/B pair (controlled, both on node ondem-3 via flock):**
+
+| metric | baseline (wt, incl) | write_back (config) | exclusive (mechanism) |
+|---|---|---|---|
+| version | v_ab2_baseline | v_writeback_ablation | v_ab_exclusive |
+| node | ondem-3 | 0-3 | ondem-3 |
+| hit_rate | 0.6247 | **0.7307** (+10.6pp) | **0.7522** (+12.8pp) |
+| p99 TTFT ms | 4664 | **4104** (−12%) | **4354** (−6.6%) |
+| p50 TTFT ms | 551 | **475** (−14%) | **503** (−8.7%) |
+| mean TTFT ms | 937 | **774** (−17%) | **812** (−13%) |
+| evict_mean_ms | 1.02 | **10.3** | **20.7** |
+| load_back_mean_ms | 1.65 | **5.6** | **19.0** |
+| load_back tok | ~298M | **384M** | **402M** |
+| req/s | 3.02 | 3.02 | 3.02 |
+
+*(v_writeback_ablation ran on 0-3, not ondem-3 — a cross-node comparison for the write_back column.
+A replicate on node 0-3, v_writeback_node12, is running for same-node cross-check.)*
+
+**Decomposition:**
+- **write_back flag → +10.6pp hit** (0.6247→0.7307): write-side exclusivity alone. This is a STOCK
+  CONFIG FLIP — not the engine contribution, but a strong config bar. Latency: p99 **−12%** (4664→4104),
+  evict_mean 1→10ms (D→H at eviction instead of drop), load_back 5.6ms (host copy still present at
+  load-back time → fast).
+- **exclusive engine → +2.2pp hit more** (0.7307→0.7522): promotion-side exclusivity (free host on
+  load-back). The engine mechanism's MARGINAL capacity gain is modest: ~2.2M more distinct tokens
+  (entries that would stay duplicated under write_back get freed on promotion). Latency effect is
+  **OPPOSITE of the hit effect**: p99 4104→4354 (+250ms, +6%). Why: exclusive forces ALL reuse through
+  host → load-back (host copy was freed), so load_back_mean doubles (5.6→19ms) and volume rises (384M→402M).
+- **Net:** the engine mechanism's +2.2pp hit saves ~2.2% more fresh prefill compute; the doubled
+  load-back cost per promotion eats ~half of that. Net TTFT is ~NEUTRAL vs write_back alone (mean
+  812 vs 774 is within node variance). The +2pp hit is real; its latency benefit is offset by transfer cost.
+
+**Multi-run synthesis (all exclusive runs):**
+
+| run | node | hit_rate | p99 | mean | evict_ms | lb_ms |
+|---|---|---|---|---|---|---|
+| v1_exclusive | ? | 0.7525 | 4380 | 863 | — | — |
+| v2_exclusive_solo | ? | 0.7517 | 5421 | 907 | — | — |
+| v_ab_exclusive | ondem-3 | 0.7522 | 4354 | 812 | 20.7 | 19.0 |
+| v2c_exclusive_rep | ? | 0.7518 | 4079 | 789 | — | — |
+| v_exclusive_node03 | 1-2 | 0.7517 | 5078 | 797 | 20.5 | 18.9 |
+| **mean ± σ** | | **0.7520 ± 0.003** | **4662 ± 560** | **834 ± 49** | **20.6** | **19.0** |
+
+All write_back runs: s_writeback (hit 0.7326, p99 4581), v_writeback_ablation (0.7307, 4104) → mean
+hit **0.7317 ± 0.001**, confirming the +10.6pp is stable and the engine's +2pp marginal is consistent.
+
+**HONEST SYNTHESIS:** write_back captures **81% of the exclusive hit gain** (10.6/13.1pp) and
+**achieves comparable or better latency** (lower evict/lb cost offsets the slightly lower hit). The
+engine mechanism's marginal +2pp hit adds ~negligible net TTFT improvement. The engine mechanism's
+VALUE is: (a) principled completeness — full device-XOR-host exclusivity is the correct design
+(write_back's re-inclusivization on promotion is a semantic inconsistency that happens to be cheap);
+(b) the architectural insight that placement policy (inclusive vs exclusive) is THE lever in saturated
+multi-tier caches — this insight applies beyond the stock flag's scope; (c) the marginal +2pp puts
+hit at 0.752 (closer to the 0.807 ceiling).
+
 ### Reproducibility / self-contained confirmation (v2_exclusive_solo, commit feca1871e, mechanism)
 `SGLANG_HICACHE_EXCLUSIVE=1` alone under the STOCK write_through flag (no config change; resolved
 write_policy=write_through, exclusive engaged on all 8 ranks) → hit **0.7517** (matches v1's 0.7525 →

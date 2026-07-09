@@ -120,7 +120,12 @@ KV (prefix caching is exact), so model outputs are independent of eviction polic
 
 **Novelty vs prior art:** Strata (cache-aware *scheduling* + GPU-IO) and HiCache (write-through-selective by
 *hit-count*, layer-overlap) both optimize count-hit-rate / loading-latency; neither makes eviction
-recompute-cost-aware for a tail SLO. Eviction is explicitly an open area in the HiCache blog.
+recompute-cost-aware for a tail SLO / compute-efficiency. Eviction is explicitly an open area in the HiCache blog.
+
+**Upstreamable:** shipped as a first-class eviction policy — `--radix-eviction-policy cost_aware`
+(registered in `_EVICTION_POLICY_FACTORIES` alongside lru/lfu/slru; `_make_cost_aware_strategy()` reads the
+`SGLANG_COST_AWARE_*` knobs). A maintainer can merge it as a new selectable policy; the env-override of the
+default `lru` (SGLANG_ENABLE_COST_AWARE_EVICTION, default on) exists only for the mechanism-only ablation eval.
 
 **Limitations:** gains are modest (capacity-bound workset 19M ≫ 10.7M cap). The p99-SLO *knee* (goodput
 under the SLO) is noise-limited on this cluster (n=2 rate sweep disagrees on its direction), so the robust

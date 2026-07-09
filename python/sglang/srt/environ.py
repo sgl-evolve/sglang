@@ -436,6 +436,12 @@ class Envs:
     # evictions find them already backed up and skip the synchronous D→H wait.
     # Value = max number of leaves to pre-backup per round (0 = disabled).
     SGLANG_HICACHE_PROACTIVE_BACKUP = EnvInt(0)
+    # Component-differentiated exclusive tiering: apply exclusive (device XOR host)
+    # ONLY to attention KV, keeping Mamba state inclusive. Mamba recompute is O(n)
+    # (cheap) vs attention O(n²), so Mamba can trade host capacity for faster eviction
+    # (Mamba D→H skipped at eviction time; Mamba entries are ~24× larger than KV pages).
+    # Requires SGLANG_HICACHE_EXCLUSIVE=1.
+    SGLANG_HICACHE_EXCLUSIVE_KV_ONLY = EnvBool(False)
     SGLANG_HUGEPAGE_SIZE = EnvStr("")
     # Staging buffer for heterogeneous TP KV transfer
     SGLANG_DISAGG_STAGING_BUFFER = EnvBool(False)

@@ -377,11 +377,13 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # host->device promotion so an entry lives on device XOR host (see _promote_free_host).
         self.exclusive_tiering = envs.SGLANG_HICACHE_EXCLUSIVE.get()
         self.exclusive_hot_keep = envs.SGLANG_HICACHE_EXCLUSIVE_HOT_KEEP.get()  # 0 = pure exclusive
+        self.exclusive_kv_only = envs.SGLANG_HICACHE_EXCLUSIVE_KV_ONLY.get()
         if self.exclusive_tiering:
             logger.info(
                 "UnifiedRadixCache: EXCLUSIVE L1<->L2 tiering ENABLED "
                 "(free host copy on promotion; pair with --hicache-write-policy write_back)"
                 + (f"; hot-keep threshold={self.exclusive_hot_keep}" if self.exclusive_hot_keep else "")
+                + ("; KV-only (Mamba stays inclusive)" if self.exclusive_kv_only else "")
             )
 
         self.proactive_backup_limit = envs.SGLANG_HICACHE_PROACTIVE_BACKUP.get()
@@ -1596,6 +1598,14 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         for comp in self._components_tuple:
             if comp.component_type == BASE_COMPONENT_TYPE:
                 continue
+            # KV-only exclusive: Mamba host is kept inclusive (not freed on promotion),
+            # so it may already exist on host — skip redundant D→H to avoid host-leak.
+            if (
+                self.exclusive_kv_only
+                and comp.component_type == ComponentType.MAMBA
+                and node.component_data[ComponentType.MAMBA].host_value is not None
+            ):
+                continue
             t = comp.build_hicache_transfers(node, CacheTransferPhase.BACKUP_HOST)
             if t:
                 comp_xfers[comp.component_type] = t
@@ -2480,6 +2490,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 cur = cur.parent
                 continue
             for comp in self._components_tuple:
+                if self.exclusive_kv_only and comp.component_type == ComponentType.MAMBA:
+                    continue
                 if comp.node_has_component_data(cur, target=EvictLayer.HOST):
                     self._evict_component_and_detach_lru(
                         cur, comp, target=EvictLayer.HOST

@@ -231,3 +231,26 @@
   contribution's downstream value is the sustained p99 reduction across the operating range, not a large knee
   shift. Hit +13pp remains the robust, node-independent headline.
 - Updated paper.md (abstract, §4, §8), UPSTREAM.md, report.md with definitive numbers. Committed + pushed.
+
+## 2026-07-09 ~03:55Z — NEGATIVE: recompute-cost-aware eviction (v_cost_lru_t4096, commit c3adccec0)
+
+- **Hypothesis**: In the bimodal workload (37% short docs <4K tok, 40% long docs >16K tok), evicting
+  cheap-to-recompute short-doc KV first should preserve expensive long-doc KV, reducing total recompute work.
+  Independent derivation from GDSF caching theory — segment-based eviction: nodes with prefix_len < 4096 in
+  probationary segment (evicted before any deep node), within each segment LRU.
+- **Mechanism**: `CostAwareLRUStrategy` in evict_policy.py + registered as `--radix-eviction-policy cost_lru`.
+  `_prefix_len(node)` walks root→node summing key lengths. Threshold via `SGLANG_EVICT_COST_THRESHOLD=4096`.
+- **Result (on node 1-2 with exclusive tiering)**:
+  - hit_rate: 0.738 (−1.4pp vs exclusive LRU 0.752) — WORSE
+  - p99 TTFT: 4821ms (+17% vs exclusive LRU 4111ms) — WORSE
+  - p50 TTFT: 506ms (+4% vs exclusive LRU 488ms)
+  - load_back_mean_ms: 29.1ms (+58% vs 18.4ms)
+  - req/s: 3.02 (same)
+- **Root cause**: Cost-aware eviction overrides recency with depth, keeping stale-but-expensive entries at the
+  expense of fresh-but-cheap entries. But recency IS the right reuse predictor in this workload — LRU already
+  protects expensive entries when they're accessed frequently. Adding depth bias starves short-doc conversations
+  (never cached), increasing total recompute without reducing expensive recomputes. Confirms LRU ≈ Belady:
+  eviction order is near-optimal, the bottleneck is CAPACITY, not policy.
+- **Lesson**: Recompute cost is orthogonal to reuse probability in this workload. The depth/cost dimension adds
+  no useful signal because expensive entries are already well-protected by recency. Any eviction-policy mechanism
+  is a dead end in the capacity-bound regime.

@@ -397,3 +397,18 @@ any interconnect, ≥13B on high-bandwidth. Updated paper.md §5.
   working set. Added cross-tiering universality prediction (section 6).
 - **Report: 2Q, SJF added to ablation table.** Cross-tiering controls documented.
 - 33 completed (32 real) + 13 queued = 45 total. Budget mandate (≥30) exceeded.
+
+## 2026-07-09 ~20:15Z — deep analysis while compute-blocked
+- **Formal z-test analysis:** LRU reference (n=6, μ=0.7520, σ=0.0003). All pure eviction policies NS
+  (|z|<2): LFU z=−0.65, SLRU z=−0.65, queue-aware z=+1.76, LPM+excl z=−1.86. Cost-aware z=−43.23
+  (WORSE). Capacity:policy ratio corrected from 42:1 to **25:1** (all variants) / **163:1** (pure eviction).
+- **20× variance reduction finding:** baseline σ_hit=0.0067 (CV=1.07%) → exclusive σ_hit=0.0003
+  (CV=0.04%). Exclusive tiering eliminates node-specific eviction-race variance → more predictable
+  for SLO-bound production. Novel secondary finding.
+- **TTFT decomposition (not yet in report):** write_back captures most TTFT improvement (−17.8% p99);
+  exclusive adds +2.1pp hit at TTFT-neutral (per-op cost increase cancels hit-rate benefit at λ=3).
+  Write_back is TTFT-optimal; exclusive is capacity-optimal. Full analysis deferred to post-ablation.
+- **All metrics extracted from 33 runs.** Comprehensive structured table available.
+- Committed: z-test (74b2ca69a), variance (74b2ca69a), corrected ratios. Pushed to evolve/sgl_free.
+- **BLOCKED:** all 4 certified nodes held by base_free, 48h jobs expiring ~03:00 UTC 2026-07-10.
+  Hourly cron (4c65e4c4) monitors. 13 eval-on-pool processes alive and retrying every 30s.

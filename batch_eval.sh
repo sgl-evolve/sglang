@@ -137,4 +137,8 @@ run_one "v46-xtier-cost-freq" "SGLANG_XTIER_LAZY=1 SGLANG_XTIER_WM_FRAC=0.1" "--
 # --- Adaptive XTIER (wm_frac auto-adjusts based on unbacked eviction rate) ---
 run_one "v47-xtier-adaptive" "SGLANG_XTIER_LAZY=1 SGLANG_XTIER_WM_FRAC=0.1 SGLANG_XTIER_ADAPTIVE=1" ""
 
+# --- DFS-weight scheduling (built-in) ---
+run_one "v48-cfg-dfs" "" "--schedule-policy dfs-weight"
+run_one "v49-xtier-dfs" "SGLANG_XTIER_LAZY=1 SGLANG_XTIER_WM_FRAC=0.1" "--schedule-policy dfs-weight"
+
 echo "===== BATCH COMPLETE $(date) ====="

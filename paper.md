@@ -95,6 +95,16 @@ straddles the steep knee, and is **provably 0** once the host tier alone already
 (H ≳ working set) — over-provisioned-host deployments should not expect a gain. This subsumes the
 device/host-ratio trend and transfers to any workload.
 
+**Workload-axis sensitivity (sim).** The benefit depends on the workload's document-length composition and
+the effective concurrency: (i) *Composition*: short-only (<4K) and mid-only (4K–16K) workloads see **zero
+benefit** (WS 1.1M and 4.3M fit in host alone); long-only (>16K) sees +3.3pp (WS 14.8M, 1.46× oversubscribed);
+the mixed 1:1:1 workload sees +11.8pp (WS 20.2M, 1.99×) because cross-document eviction pressure amplifies the
+capacity-band effect. (ii) *Concurrency*: exclusive tiering **delays the onset of cache pressure** — the
+inclusive hit-rate collapses at sim λ=18 (host capacity exceeded by the active working set) while exclusive stays
+at the 0.806 ceiling until λ=22, a ~22% load increase. Under sustained high pressure (λ ≥ 30), both degrade but
+the exclusive advantage grows: +12pp at λ=30 (the measured operating point), +19pp at λ=75. The falsifiable
+boundary is: exclusive helps iff the active working set at the offered load exceeds host capacity.
+
 **Cost side — when it stops.** Exclusive wins by saving prefill compute, *despite* moving ~2× more H↔D data:
 eviction now writes D→H first (`evict_mean_ms` 1.1→20.7) and more reuse is host-only (load_back_tokens
 +34%, `load_back_mean_ms` 1.8→19.0). The +13pp hit removes ~13% of fresh prefill, which dominates on a large

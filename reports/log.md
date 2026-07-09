@@ -299,3 +299,26 @@ can raise the hit rate beyond the 0.752 capacity ceiling. The only path to highe
 tiering (hit +13pp, p99 −10..−36%, goodput knee +3-4%, lossless bit-exact 24/24) is the sufficient and
 complete contribution. No further in-contract lossless mechanism can yield a measurable improvement.
 Awaiting supervisor retirement per charter.
+
+## 2026-07-09 ~08:30Z — WORKLOAD-AXIS SENSITIVITY (sim, node-free; strengthens generalization)
+
+New sim/workload_sensitivity.py: two-axis sensitivity analysis extending the capacity-band law.
+
+**Axis 1 — Document-length composition** (at calibrated λ=30):
+- Short-only (<4K, 602 convs, WS 1.1M): **Δ=0.0pp** — WS fits in host (WS/C=0.11)
+- Mid-only (4K-16K, 425 convs, WS 4.3M): **Δ=0.0pp** — WS fits in host (WS/C=0.42)
+- Long-only (>16K, 526 convs, WS 14.8M): **Δ=+3.3pp** — oversubscribed (WS/C=1.46)
+- Short+Mid (<16K, 1027 convs, WS 5.4M): **Δ=0.0pp** — WS fits in host (WS/C=0.53)
+- ALL mixed (1553 convs, WS 20.2M): **Δ=+11.8pp** — heavy pressure (WS/C=1.99)
+- => Mixed workloads see MAXIMAL benefit because cross-document eviction pressure amplifies the band effect.
+
+**Axis 2 — Concurrency scaling** (full mixed workload):
+- λ ≤ 17: both at ceiling (0.806), zero benefit (active WS < host capacity)
+- λ = 18: ONSET — inclusive drops to 0.76, exclusive stays at ceiling (+4.6pp)
+- λ = 19-20: exclusive maintains ceiling while inclusive degrades (+8.9 to +11.4pp)
+- λ = 22+: both capacity-bound, benefit GROWS: +8.4pp@22, +11.8pp@30, +14.6pp@40, +19.1pp@75
+- => Exclusive **delays cache-pressure onset** by ~22% higher load (λ=18→22 in sim).
+
+FALSIFIABLE BOUNDARY (refined): exclusive helps iff the ACTIVE working set at the offered load exceeds
+host capacity. Under low load or short-doc workloads: zero benefit. Under mixed long-doc workloads at
+production load: maximal benefit, growing with pressure. Updated paper.md §5.

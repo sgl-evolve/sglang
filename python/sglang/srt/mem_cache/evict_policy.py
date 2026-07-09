@@ -123,3 +123,15 @@ class SizeWeightedLRUStrategy(EvictionStrategy):
     def get_priority(self, node: "TreeNode") -> Tuple[int, float]:
         size_bucket = min(len(node.key) // 64, 3)
         return (size_bucket, node.last_access_time)
+
+
+class GDSFStrategy(EvictionStrategy):
+    """GDSF (Greedy Dual Size Frequency): a web-caching classic adapted for KV.
+    Priority = (hit_count * recompute_cost) / node_size. Higher priority nodes
+    are evicted last. Combines frequency, cost (prefix depth), and size."""
+
+    def get_priority(self, node: "TreeNode") -> float:
+        freq = max(node.hit_count, 1)
+        cost = max(_prefix_len(node), 1)
+        size = max(len(node.key), 1)
+        return float(freq * cost) / size

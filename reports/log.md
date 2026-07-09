@@ -336,3 +336,30 @@ production load: maximal benefit, growing with pressure.
 → break-even at 27 GB/s (11× below current ~300 GB/s). Model-size sensitivity: 7B→265 GB/s (marginal on
 PCIe), 13B→133 GB/s, 70B→42 GB/s, 122B→27 GB/s, 405B→11 GB/s. Exclusive tiering cost-effective for ≥70B on
 any interconnect, ≥13B on high-bandwidth. Updated paper.md §5.
+
+## 2026-07-09 ~19:30Z — 3rd same-node triple (ondem-3) COMPLETE + mechanism expansion (8 new evals queued)
+
+- **3rd same-node triple completed:** baseline 0.6147 → write_back 0.7301 → exclusive 0.7523 on node
+  ondem-3. Decomposition: write_back +11.5pp (84% of gain), engine +2.2pp (16%). All THREE triples
+  (1-2, 0-3, ondem-3) reproduce the same decomposition, with the engine marginal gain remarkably
+  consistent at +2.1–2.2pp across all nodes. Statistical significance: hit_rate p<1e-5 all comparisons.
+- **Updated synthesis:** n=5 baseline (σ=0.006), n=8 write_back (σ=0.001), n=5 exclusive (σ=0.003).
+  Report, commit 5aa976ee7, pushed.
+- **Comprehensive eviction policy ablation launched (8 evals queued, all waiting for nodes ~7h):**
+  1. v_exclusive_rep3 — exclusive replicate (n=6)
+  2. v_random_excl — random eviction (lower-bound control)
+  3. v_size_lru_excl — size-weighted LRU (new mechanism, commit 83988110c)
+  4. v_fifo_excl — FIFO eviction
+  5. v_mru_excl — MRU eviction (adversarial control)
+  6. v_filo_excl — FILO eviction (device-as-write-buffer test)
+  7. v_discard128_excl — selective write-back discard threshold=128 (new mechanism, commit 1c62d00c6)
+  8. v_discard512_excl — selective write-back discard threshold=512
+  These 8 experiments test 4 new eviction policies + 2 new mechanisms, expanding the eviction-order
+  ablation from 5 policies to 9. Expected: all NEUTRAL (confirming capacity-bound), but honest negatives
+  are valuable science (esp. random=LRU would be a strong statement).
+- **New mechanisms implemented:**
+  - RandomStrategy + SizeWeightedLRUStrategy (evict_policy.py)
+  - SGLANG_HICACHE_WB_DISCARD_THRESHOLD (environ.py + unified_radix_cache.py) — selective discard of
+    small entries on device eviction, freeing host space for larger entries
+- **Version count:** 32 with summary.json (above 30-version threshold). ~40 expected after queued evals.
+- **v_cost_lru_t4096 report section added** (commit 9ad84c817).

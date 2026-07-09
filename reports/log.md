@@ -321,4 +321,13 @@ New sim/workload_sensitivity.py: two-axis sensitivity analysis extending the cap
 
 FALSIFIABLE BOUNDARY (refined): exclusive helps iff the ACTIVE working set at the offered load exceeds
 host capacity. Under low load or short-doc workloads: zero benefit. Under mixed long-doc workloads at
-production load: maximal benefit, growing with pressure. Updated paper.md §5.
+production load: maximal benefit, growing with pressure.
+
+**Deployment predictions** (same workload, calibrated sim):
+- 1×H100 (D=0.3M, H=7.81M): +2.6pp (small device → small benefit)
+- 8×H100 (D=2.35M, H=7.81M): +11.8pp (this HW, matches measured +13pp)
+- 8×H200 (D=4.0M, H=7.81M): +15.5pp (larger HBM → bigger win)
+- 8×B200 (D=5.5M, H=7.81M): +19.6pp (biggest HBM → biggest win)
+- Any + 1.5TB host (H=12M): +3.8pp (more host → less pressure)
+- Any + 3TB host (H=24M ≥ WS): 0.0pp (host covers working set)
+- => Benefit SCALES with next-gen GPU HBM growth. Updated paper.md §5.

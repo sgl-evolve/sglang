@@ -105,6 +105,11 @@ at the 0.806 ceiling until λ=22, a ~22% load increase. Under sustained high pre
 the exclusive advantage grows: +12pp at λ=30 (the measured operating point), +19pp at λ=75. The falsifiable
 boundary is: exclusive helps iff the active working set at the offered load exceeds host capacity.
 
+**Deployment predictions (sim).** The band law predicts benefit for other hardware: 1×H100 (D=0.3M) +2.6pp;
+8×H200 (D=4.0M) +15.5pp; 8×B200 (D=5.5M) +19.6pp — benefit scales with device tier size. With 1.5TB host
+(H=12M), benefit shrinks to +3.8pp; with 3TB host (H=24M ≥ WS), benefit is zero. Next-gen GPUs with larger
+HBM and the same host DRAM see *increasing* benefit — the contribution grows more valuable over time.
+
 **Cost side — when it stops.** Exclusive wins by saving prefill compute, *despite* moving ~2× more H↔D data:
 eviction now writes D→H first (`evict_mean_ms` 1.1→20.7) and more reuse is host-only (load_back_tokens
 +34%, `load_back_mean_ms` 1.8→19.0). The +13pp hit removes ~13% of fresh prefill, which dominates on a large

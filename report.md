@@ -6,28 +6,31 @@ ctx 262144. Fixed mix bench (ShareGPT+LEval+LooGLE 1:1:1, 1553 convs / ~19M tok)
 **Headline metric = goodput under p99 TTFT ≤ 8 s SLO** (a mechanism must shift the whole curve up; a config
 flip or de-saturation trick cannot). Every version must be an engine-CODE `mechanism` (config-only is off-contract).
 
-## 🎯 HEADLINE: goodput-curve shift DIRECTLY measured (rate sweep, same node, frozen launch flags)
-The charter's headline metric is *max sustainable req/s under p99 TTFT ≤ 8 s*. Per-version evals are at λ=3;
-here I ran the sanctioned "occasional rate sweep around the knee" (one model load each for stock and
-cost-aware@2048, benching the fixed mix at λ∈{3,4,5,6}; only --request-rate varies, all launch flags frozen):
+## 🎯 HEADLINE: rate sweep (n=2, same node, frozen launch flags, only --request-rate varies λ∈{3,4,5,6})
+Two independent sweeps each for stock and cost-aware@2048 (one model load per config per sweep). Full curves
+(tput | p99 ms):
 
-| λ (req/s) | STOCK p99 (ms) / tput | COST-AWARE@2048 p99 (ms) / tput |
-|---|---|---|
-| 3 | 5009 / 3.02 | 5058 / 3.02 |
-| 4 | **10370** / 3.51 | **8512** / 3.78 |
-| 5 | 13028 / 3.89 | 13190 / 4.03 |
-| 6 | 13105 / 3.91 | 13932 / **4.44** |
+| λ | stock #1 | stock #2 | cost #1 | cost #2 |
+|---|---|---|---|---|
+| 3 | 3.02 / 5009 | 3.02 / 5872 | 3.02 / 5058 | 3.02 / 4440 |
+| 4 | 3.51 / 10370 | 3.54 / 8293 | 3.78 / 8512 | 3.84 / 8872 |
+| 5 | 3.89 / 13028 | 3.88 / 11617 | 4.03 / 13190 | 4.18 / 12511 |
+| 6 | 3.91 / 13105 | 4.05 / 12887 | 4.44 / 13932 | 4.45 / 14534 |
 
-- **Goodput knee (p99=8 s crossing, linear interp):** stock **λ≈3.56** → cost-aware **λ≈3.85 req/s ≈ +8.3%.**
-  Cost-aware's p99-vs-λ curve sits below stock's — the curve shifts right, exactly what a real mechanism
-  (not a config flip) must do.
-- **Max throughput (saturation, λ=6):** stock 3.91 → cost-aware **4.44 req/s ≈ +14%** — the cleanest win:
-  under overload the server is compute-bound, and cost-aware's −12.5% recompute work converts directly into
-  +14% serving throughput.
-- At the knee (λ=4): cost-aware p99 −18% (10370→8512) and tput +8% (3.51→3.78).
+- **✅ MAX THROUGHPUT (saturation, λ=6) — ROBUST & REPRODUCIBLE: stock {3.91, 4.05} (mean 3.98) →
+  cost-aware {4.44, 4.45} (mean 4.445) = +11.7%.** Cost-aware's saturation throughput is remarkably tight
+  (4.44/4.45 across two independent loads); at λ=5 also +5.7% (both sweeps). This is the clean headline: under
+  overload the server is compute-bound, and cost-aware's −12.5% recompute work converts to more serving
+  capacity. Lossless.
+- **⚠️ GOODPUT KNEE (p99≤8 s crossing) — NOISE-LIMITED, inconclusive:** sweep #1 gave stock λ≈3.56 →
+  cost λ≈3.85 (+8%), but sweep #2 gave stock λ≈3.88 → cost λ≈3.80 (~0). The p99 at the knee region has huge
+  cross-run variance (stock λ=4 p99: 10370 vs 8293), so **the SLO-knee shift is within noise — I do NOT claim
+  a robust goodput-under-SLO improvement.** (An earlier n=1 "+8.3% knee" was a favorable draw; corrected here.)
 
-This is a **direct** demonstration of the headline goodput-curve shift (previously only inferred from λ=3),
-lossless. Modest at the SLO knee (+8%), larger at saturation (+14%).
+**Honest headline:** cost-aware eviction's directly-measured, reproducible system-level win is **+11.7% max
+throughput** (compute-efficiency from −12.5% recompute), plus the robust component wins below (hit +6.0pp, p50
+−16%). The p99-SLO *knee* is too noisy on this cluster to claim a goodput shift. The repeat sweep (n=2) was
+essential — it confirmed the throughput win and corrected the noisy knee claim.
 
 ## 🗺️ DESIGN-SPACE MAP (exhaustive; all versions on the W&B `sgl_mech` curve)
 | version | mechanism | verdict |

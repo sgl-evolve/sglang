@@ -103,3 +103,13 @@ Goodput knee (p99=8s): stock λ≈3.56 -> cost λ≈3.85 (+8.3%). Max throughput
 cleanest win: -12.5% recompute -> more compute for serving). Knee λ4: cost p99 -18%, tput +8%. Curve shifts
 right = real mechanism (not config flip). Lossless. This DIRECTLY demonstrates the headline (previously inferred).
 Rate sweep is the charter-sanctioned "occasional rate sweep around the knee"; launch flags kept frozen.
+
+## 2026-07-09 — Rate sweep n=2 COMPLETE: max-tput +11.7% ROBUST; knee NOISE-LIMITED (honest correction)
+Full n=2 curves (tput|p99): stock#1 λ6 3.91/13105, stock#2 λ6 4.05/12887; cost#1 λ6 4.44/13932, cost#2 λ6 4.45/14534.
+✅ MAX THROUGHPUT (λ6 saturation) ROBUST/REPRODUCIBLE: stock mean 3.98 -> cost mean 4.445 = +11.7% (cost tput
+tight 4.44/4.45 across 2 loads; λ5 +5.7% both sweeps). Clean headline: -12.5% recompute -> +11.7% serving capacity.
+⚠️ GOODPUT KNEE (p99<=8s) NOISE-LIMITED: sweep#1 +8% (stock 3.56->cost 3.85) but sweep#2 ~0 (stock 3.88->cost 3.80);
+p99 at knee too variable (stock λ4 10370 vs 8293). CORRECTED earlier n=1 "+8.3% knee" (favorable draw) -> inconclusive.
+FINAL honest headline: cost-aware eviction @t2048 = +11.7% max throughput (reproducible) + hit +6.0pp + p50 -16%
+(both non-overlapping) + -12.5% recompute; all lossless. p99-SLO-knee shift not robust (cluster p99 noise).
+Lesson: even rate-sweep knee needs n>=2; max-tput (compute-bound) is the clean reproducible metric.

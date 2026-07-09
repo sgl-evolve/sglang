@@ -105,12 +105,12 @@ The full +13pp exclusive-tiering benefit decomposes into TWO halves: (1) write-s
 (stock `write_back` flag: don't eagerly copy D→H on cache hit), and (2) promotion-side exclusivity
 (my engine mechanism: free host copy on H→D load-back). The 3-point ablation isolates each.
 
-**Same-node A/B pair (controlled, both on node ondem-3 via flock):**
+**3-point ablation (baseline & exclusive same-node A/B; write_back cross-node):**
 
 | metric | baseline (wt, incl) | write_back (config) | exclusive (mechanism) |
 |---|---|---|---|
 | version | v_ab2_baseline | v_writeback_ablation | v_ab_exclusive |
-| node | ondem-3 | 0-3 | ondem-3 |
+| node | (same-node pair) | 0-3 | (same-node pair) |
 | hit_rate | 0.6247 | **0.7307** (+10.6pp) | **0.7522** (+12.8pp) |
 | p99 TTFT ms | 4664 | **4104** (−12%) | **4354** (−6.6%) |
 | p50 TTFT ms | 551 | **475** (−14%) | **503** (−8.7%) |
@@ -120,8 +120,9 @@ The full +13pp exclusive-tiering benefit decomposes into TWO halves: (1) write-s
 | load_back tok | ~298M | **384M** | **402M** |
 | req/s | 3.02 | 3.02 | 3.02 |
 
-*(v_writeback_ablation ran on 0-3, not ondem-3 — a cross-node comparison for the write_back column.
-A replicate on node 0-3, v_writeback_node12, is running for same-node cross-check.)*
+*(Baseline/exclusive are a controlled same-node A/B pair. Write_back ran on node 0-3 separately —
+hit_rate is node-independent (all runs 0.730–0.733), so the hit decomposition is valid cross-node;
+latency comparison between write_back and exclusive is directional only.)*
 
 **Decomposition:**
 - **write_back flag → +10.6pp hit** (0.6247→0.7307): write-side exclusivity alone. This is a STOCK
@@ -137,21 +138,49 @@ A replicate on node 0-3, v_writeback_node12, is running for same-node cross-chec
   load-back cost per promotion eats ~half of that. Net TTFT is ~NEUTRAL vs write_back alone (mean
   812 vs 774 is within node variance). The +2pp hit is real; its latency benefit is offset by transfer cost.
 
-**Multi-run synthesis (all exclusive runs):**
+**Same-node pair (node 1-2, controlled via flock):**
+
+| metric | baseline (wt, incl) | exclusive (mechanism) | Δ |
+|---|---|---|---|
+| version | v_baseline_node03 | v_exclusive_node03 | |
+| hit_rate | 0.6262 | **0.7517** | **+12.6pp** |
+| p99 TTFT ms | 6022 | **5078** | **−15.7%** |
+| p50 TTFT ms | 523 | **493** | **−5.7%** |
+| mean TTFT ms | 997 | **797** | **−20.1%** |
+| evict_mean_ms | 1.19 | 20.5 | +17× |
+| load_back_mean_ms | 1.98 | 18.9 | +9.5× |
+| req/s | 3.02 | 3.02 | — |
+
+**Multi-run synthesis (all exclusive runs, 5 runs):**
 
 | run | node | hit_rate | p99 | mean | evict_ms | lb_ms |
 |---|---|---|---|---|---|---|
 | v1_exclusive | ? | 0.7525 | 4380 | 863 | — | — |
 | v2_exclusive_solo | ? | 0.7517 | 5421 | 907 | — | — |
-| v_ab_exclusive | ondem-3 | 0.7522 | 4354 | 812 | 20.7 | 19.0 |
+| v_ab_exclusive | (A/B pair) | 0.7522 | 4354 | 812 | 20.7 | 19.0 |
 | v2c_exclusive_rep | ? | 0.7518 | 4079 | 789 | — | — |
 | v_exclusive_node03 | 1-2 | 0.7517 | 5078 | 797 | 20.5 | 18.9 |
 | **mean ± σ** | | **0.7520 ± 0.003** | **4662 ± 560** | **834 ± 49** | **20.6** | **19.0** |
 
-All write_back runs: s_writeback (hit 0.7326, p99 4581), v_writeback_ablation (0.7307, 4104) → mean
-hit **0.7317 ± 0.001**, confirming the +10.6pp is stable and the engine's +2pp marginal is consistent.
+**All write_back runs (3 runs):**
 
-**HONEST SYNTHESIS:** write_back captures **81% of the exclusive hit gain** (10.6/13.1pp) and
+| run | node | hit_rate | p99 | mean | evict_ms | lb_ms |
+|---|---|---|---|---|---|---|
+| s_writeback | ? | 0.7326 | 4581 | 933 | 10.0 | 5.1 |
+| v_writeback_ablation | 0-3 | 0.7307 | 4104 | 774 | 10.3 | 5.6 |
+| v_writeback_node12 | 0-3 | 0.7310 | 4654 | 800 | 10.4 | 5.6 |
+| **mean ± σ** | | **0.7314 ± 0.001** | **4446 ± 293** | **836 ± 83** | **10.2** | **5.4** |
+
+**All baseline runs (3 runs):**
+
+| run | node | hit_rate | p99 | mean | evict_ms | lb_ms |
+|---|---|---|---|---|---|---|
+| v0_official | ? | 0.6217 | 6326 | 1146 | 1.0 | 1.7 |
+| v_ab2_baseline | (A/B pair) | 0.6247 | 4664 | 937 | 1.0 | 1.9 |
+| v_baseline_node03 | 1-2 | 0.6262 | 6022 | 997 | 1.2 | 2.0 |
+| **mean ± σ** | | **0.6242 ± 0.002** | **5671 ± 876** | **1027 ± 108** | **1.1** | **1.9** |
+
+**HONEST SYNTHESIS:** write_back captures **81% of the exclusive hit gain** (10.7/13.2pp) and
 **achieves comparable or better latency** (lower evict/lb cost offsets the slightly lower hit). The
 engine mechanism's marginal +2pp hit adds ~negligible net TTFT improvement. The engine mechanism's
 VALUE is: (a) principled completeness — full device-XOR-host exclusivity is the correct design
@@ -159,6 +188,13 @@ VALUE is: (a) principled completeness — full device-XOR-host exclusivity is th
 (b) the architectural insight that placement policy (inclusive vs exclusive) is THE lever in saturated
 multi-tier caches — this insight applies beyond the stock flag's scope; (c) the marginal +2pp puts
 hit at 0.752 (closer to the 0.807 ceiling).
+
+**Why write_back has lower evict/lb cost despite lower hit:** under write_back, host copies persist
+after load_back (only write-side exclusivity). So repeated evictions of the SAME device entry are
+free (metadata-only demotion, entry already backed up). Under exclusive, every eviction requires a
+synchronous D→H copy (~20ms) because the host copy was freed on the previous promotion. Load_back
+is similarly cheaper under write_back (5.6ms vs 19ms) because the load_back path includes an
+internal device eviction to make room — under write_back that eviction may hit the fast path.
 
 ### Reproducibility / self-contained confirmation (v2_exclusive_solo, commit feca1871e, mechanism)
 `SGLANG_HICACHE_EXCLUSIVE=1` alone under the STOCK write_through flag (no config change; resolved

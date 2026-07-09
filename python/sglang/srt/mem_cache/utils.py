@@ -28,6 +28,8 @@ from sglang.srt.mem_cache.evict_policy import (
     MRUStrategy,
     PriorityStrategy,
     SLRUStrategy,
+    SizeWeightedLRUStrategy,
+    TwoQueueStrategy,
 )
 from sglang.srt.mem_cache.triton_ops.mla_buffer import (
     get_mla_kv_buffer_kernel as get_mla_kv_buffer_kernel,
@@ -64,6 +66,8 @@ _EVICTION_POLICY_FACTORIES: dict[str, Callable[[], EvictionStrategy]] = {
     "slru": SLRUStrategy,
     "cost_aware": CostAwareStrategy,
     "gdsf": GDSFStrategy,
+    "2q": TwoQueueStrategy,
+    "size_lru": SizeWeightedLRUStrategy,
 }
 
 

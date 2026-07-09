@@ -560,6 +560,14 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # Run the proactive pass every N scheduler steps (throttle; keeps it cheap).
         self.xtier_period = max(1, int(os.environ.get("SGLANG_XTIER_PERIOD", "4")))
         self._xtier_device_total = None
+        # Adaptive XTIER: dynamically adjust wm_frac based on eviction pressure.
+        # When SGLANG_XTIER_ADAPTIVE=1, wm_frac ramps up (more backup) when the
+        # unbacked eviction rate is high (too many recomputes from dropped content),
+        # and ramps down (more exclusive) when eviction pressure is low.
+        self.xtier_adaptive = os.environ.get("SGLANG_XTIER_ADAPTIVE", "0") == "1"
+        self._xtier_adapt_window = 100
+        self._xtier_adapt_counter = 0
+        self._xtier_unbacked_evicts = 0
 
         if storage_backend is not None:
             self._apply_storage_runtime_config(

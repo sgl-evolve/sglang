@@ -111,3 +111,24 @@ class GDSFStrategy(EvictionStrategy):
         cost = CostAwareStrategy._node_cost(node)
         score = (cost * freq) / size
         return (score, node.last_access_time)
+
+
+class TwoQueueStrategy(EvictionStrategy):
+    """2Q eviction: nodes start in a FIFO 'in' queue (evicted by creation order)
+    and are promoted to an LRU 'out' queue on their second access.  This filters
+    one-shot insertions that pollute the cache, protecting frequently reused content.
+    Similar to Linux's inactive/active page lists."""
+
+    def get_priority(self, node: TreeNode) -> Tuple[int, float]:
+        promoted = 1 if node.hit_count >= 1 else 0
+        time_key = node.last_access_time if promoted else node.creation_time
+        return (promoted, time_key)
+
+
+class SizeWeightedLRUStrategy(EvictionStrategy):
+    """Evict larger nodes first (among LRU-equal): frees more capacity per eviction.
+    Priority = (size_bucket_descending, last_access_time). Large cold nodes go first."""
+
+    def get_priority(self, node: TreeNode) -> Tuple[float, float]:
+        size = CostAwareStrategy._node_size(node)
+        return (-size, node.last_access_time)

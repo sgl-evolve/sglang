@@ -41,8 +41,10 @@ side by H↔D bandwidth. (5) A secondary finding: exclusive tiering reduces cros
 For this hybrid-Mamba config the live cache is `UnifiedRadixCache` + `HybridCacheController`. Each
 conversation is a linear radix chain (cross-conversation sharing ≈0); reuse is intra-conversation (a
 document's KV must survive eviction between its own turns). Capacity is the binding constraint: total
-resident ≈10.16M tokens vs a ~19M-token working set; eviction order is near-optimal already (LRU≈Belady),
-and scheduling/admission cannot manufacture capacity. The lever is therefore **effective capacity**.
+resident ≈10.16M tokens vs a ~19M-token working set; a 13-policy eviction ablation (§4) and a Belady OPT
+analysis confirm that no online eviction policy can close the gap — the residual is dead-entry pollution
+(finished conversations occupying cache), not LRU suboptimality; and scheduling/admission cannot manufacture
+capacity. The lever is therefore **effective capacity**.
 
 Inclusive `write_through` (`_inc_hit_count`→`write_backup` on reuse, keeping the device copy) makes device
 a subset of host ⇒ distinct capacity ≈ host (7.81M). Baseline hit-rate 0.62.

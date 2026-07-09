@@ -202,9 +202,10 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 | v46-wt2 | d516e8b19 | mechanism | **0.3860** | **965/21478** | 0.9999 | 3.00 | **CATASTROPHIC NEGATIVE:** WT_threshold=2 → hit collapses, p99 21s (2.7× SLO) |
 | v7-gdsf | 75423918f | mechanism | 0.7070 | 480/4392 | 0.9999 | 3.02 | BM_EXCL=1 + GDSF: hit −2.6pp vs excl → GDSF eviction HURTS (size×freq anti-correlates w/ reuse) |
 | v29-selhost-costaware | 75423918f | mechanism | 0.6272 | 525/5200 | 0.9999 | 3.02 | Selective host + cost-aware, NO excl: = baseline. Cost-aware is moot without excl |
+| v47-wt5 | d516e8b19 | mechanism | **0.2497** | **1201/9502** | 0.9999 | **2.73** | **CATASTROPHIC:** WT_threshold=5 worse than wt2, hit monotone-decreasing with threshold |
 
 ## ★ BATCH ABLATION RESULTS (v6–v53, ongoing)
-**Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 19 of 48 complete; 1 in flight; 28 queued.
+**Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 20 of 48 complete; 1 in flight; 27 queued.
 
 **Summary of completed ablations (grouped by finding):**
 
@@ -226,7 +227,9 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 
 **CORRECTION from prior session:** v6-costaware was reported as "achieving near-excl hit WITHOUT BM_EXCL." This was WRONG — the batch config clearly had BM_EXCL=1. The correct interpretation: cost-aware eviction + excl = slightly below excl alone.
 
-**Still running:** v47-wt5 (WT threshold=5, expected catastrophic). **28 more queued** across batch1/2/3 (eviction strategies LFU/FIFO/MRU/SLRU/freq-decay/size-weight/depth-aware, selective dev, adaptive excl, admission control, host cost-aware, combinations).
+**v47-wt5: hit=0.250 — even worse than wt2 (0.386).** WT threshold has a clear monotone-decreasing relationship: threshold {1(default): 0.62, 2: 0.39, 5: 0.25}. At threshold 5, effectively nothing gets backed up (wb_ok=25 across the entire run, dev_delete=17.2M tokens). The host tier is ~empty.
+
+**Still running:** v8-lfu-excl. **27 more queued** across batch1/2/3 (eviction strategies FIFO/MRU/SLRU/freq-decay/size-weight/depth-aware, selective dev, adaptive excl, admission control, host cost-aware, combinations).
 
 ## ⚠️ CRITICAL: warm-first is a NEGATIVE result (node-variance debunked)
 diag2 (baseline fcfs, node 0-3) vs v2 (warm-first+aging, node 0-3) — SAME NODE:

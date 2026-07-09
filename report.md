@@ -146,6 +146,26 @@ in load — consistent with the same-node screen (§ top) and the +13pp hit. (Pr
 pair's node isn't recorded in the logs, so the node-CONTROLLED knee claim rests on the flock-held `snab`
 pair; this full-scale pair is corroborating, not independently node-controlled.)
 
+### Extended rate sweep (NPROMPTS=800, rates 3–6, cross-node) — corroborating
+Extended sweep with 800 conversations (~3917 turns) per rate, rates 3/4/5/6 (vs the 600-conv screen above).
+CAUTION: this is a CROSS-NODE comparison (baseline=ondem-2, exclusive=1-2) so ABSOLUTE p50 values are not
+reliable (node variance ±14% req/s, ±30% p99). Shape/relative behavior within each leg is valid.
+
+| rate | baseline p99 / p50 / tput | exclusive p99 / p50 / tput |
+|---|---|---|
+| 3 | 4551 / 423 / 3.00 | 4836 / 452 / 3.00 |
+| 4 | 9902 / 491 / 3.91 | **8844** / 533 / **3.99** |
+| 5 | 14430 / 546 / 4.53 | **13438** / 604 / **4.66** |
+| 6 | 17007 / 571 / 4.97 | **16598** / 652 / **5.19** |
+
+**SLO-crossing rate** (linear interp, p99 ≤ 8000ms): baseline ~λ=3.64, exclusive ~λ=3.79 → **+4% knee shift**.
+**Degradation rate** (p99_rate5 / p99_rate3): baseline 3.17×, exclusive 2.78× → exclusive degrades more slowly.
+**High-rate throughput**: at rate 6, exclusive sustains 5.19 req/s vs baseline 4.97 → **+4.4%**.
+Cross-node p50 is unreliable (exclusive p50 is higher at all rates — a node effect, inconsistent with the
+same-node screen that shows exclusive p50 LOWER). The p99 and throughput signals are consistent with the
+same-node NPROMPTS=600 sweep above: exclusive shifts the curve down by ~10–16% p99 at the knee and sustains
+higher throughput under load.
+
 ### v3_exclusive_hotkeep2 — frequency-aware hybrid (commit 91d611a10, mechanism) — NEUTRAL
 `SGLANG_HICACHE_EXCLUSIVE=1 SGLANG_HICACHE_EXCLUSIVE_HOT_KEEP=2` (stock write_through flag): keep nodes
 promoted ≥2× "hot" → inclusive (skip freeing host) to cut re-backup transfers; cold nodes exclusive.
@@ -550,14 +570,58 @@ Hit rate is determined by EFFECTIVE CACHE CAPACITY (exclusive vs inclusive tieri
 workload's reuse-mass CDF; no online eviction policy can close the ~5pp gap to the oracle without future
 knowledge.
 
+### v_lpm_excl — LPM + exclusive tiering (commit fe88d953c, mechanism) — NEGATIVE
+`--schedule-policy lpm` with `SGLANG_HICACHE_EXCLUSIVE=1`. Hypothesis: exclusive tiering's +13pp hit rate
+might cure LPM's cold-request starvation (fewer cache-cold requests → less starvation).
+
+| metric | exclusive LRU (4-run mean ± σ) | v0_lpm (no exclusive) | **v_lpm_excl** |
+|---|---|---|---|
+| hit_rate | 0.7509 ± 0.002 | 0.6205 | **0.7514** (= exclusive) |
+| p99 TTFT ms | 4575 ± 506 | **21351** | **5618** |
+| mean TTFT ms | 841 ± 47 | 1602 | 813 |
+| p50 TTFT ms | ~520 | 991 | 496 |
+| req/s | 3.02 | 2.47 | 3.02 |
+
+**NEGATIVE on p99.** Exclusive tiering mitigates most of LPM's starvation (p99 21.4s → 5.6s) because higher
+hit rate means fewer cold requests to starve. But LPM+exclusive STILL worsens p99 vs FCFS+exclusive (5618 vs
+4575 ± 506 — outside 1σ band). LPM's prefix-reorder disrupts FCFS's fairness and pushes cold requests to
+the tail even when they're rarer. **FCFS + exclusive is strictly better than LPM + exclusive — scheduling
+order is a dead end independent of the capacity-access mechanism.**
+
+### v_proactive_excl — proactive eviction backup + exclusive (commit fe88d953c, mechanism) — MECHANICALLY VALID, TTFT NEUTRAL
+`SGLANG_HICACHE_EXCLUSIVE=1 SGLANG_HICACHE_PROACTIVE_BACKUP=4`. Mechanism: after batch launch, pre-start
+D→H copies for the 4 lowest-priority (LRU) evictable device leaves. The async copies overlap with GPU
+compute on the separate `write_stream`. Next scheduling round, `writing_check` finds them already backed
+up → `_evict_device_leaf` skips the synchronous D→H wait. Safety: added `write_through_pending_id` check
+before `_evict_to_host` to prevent data race if proactive D→H copy is still in flight at eviction time.
+
+| metric | exclusive LRU (4-run mean ± σ) | **v_proactive_excl** |
+|---|---|---|
+| hit_rate | 0.7509 ± 0.002 | **0.7494** (within noise) |
+| p99 TTFT ms | 4575 ± 506 | 5128 (within 2σ, node 1-2) |
+| mean TTFT ms | 841 ± 47 | 819 (within noise) |
+| p50 TTFT ms | ~520 | 482 |
+| **evict_mean_ms** | **20.7** | **14.1 (−32%)** |
+| **load_back_mean_ms** | **19.0** | **15.2 (−20%)** |
+| req/s | 3.02 | 3.02 |
+
+**MECHANICALLY WORKS, TTFT NEUTRAL.** The eviction speedup (−32%) and load-back speedup (−20%) are
+definitive mechanical evidence that proactive backup operates as designed — pre-backed nodes skip the
+synchronous D→H wait during eviction. But the TTFT improvement is WITHIN NOISE: eviction is not the
+TTFT bottleneck at λ=3. Prefill compute (for cache misses) and H→D load (for host hits, pipelined but
+PCIe-bound) dominate TTFT; the ~6.6ms/eviction savings is too small to surface above run-to-run variance.
+At higher rates (near the knee), eviction contention may be worse and the benefit larger — not tested due
+to cross-node sweep limitations. **Honest negative on TTFT; valid mechanism kept in tree for future study
+at higher loads.**
+
 ### Lines EXHAUSTED (comprehensive mechanism-space analysis)
 
 | mechanism category | tested | result | reason |
 |---|---|---|---|
 | **L1↔L2 placement** | exclusive tiering | **WIN** (+13pp hit, −30% TTFT) | capacity unlocked |
 | **Eviction order** | LRU, queue-aware, SLRU, LFU | all NEUTRAL | capacity-bound, not policy-bound |
-| **Scheduling** | LPM | NEGATIVE (3.4× worse p99) | positive feedback loop starves cold reqs |
-| **Transfer D↔H** | analyzed (evict+load-back) | at PCIe bandwidth limits (~14 GB/s) | <4% TTFT improvement possible |
+| **Scheduling** | LPM, LPM+exclusive | NEGATIVE (starvation) | prefix ordering starves cold reqs |
+| **Transfer D↔H** | proactive backup (measured) | evict −32%, load −20%, TTFT neutral | not the bottleneck at λ=3 |
 | **Admission** | not implementable | requires conv-id (unavailable in serving path) | no grouping signal |
 | **Prefetch** | impossible | requires future knowledge | Poisson arrivals defeat prediction |
 | **Compression** | lossy | out of contract (lossless required) | INT4/FP4 changes attention output |

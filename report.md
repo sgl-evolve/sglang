@@ -215,9 +215,10 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 | v13-sizeweight-excl | 75423918f | mechanism | 0.6980 | 483/4905 | 0.9999 | 3.02 | Size-weighted LRU+excl: −3.3pp vs excl+LRU. Size dimension breaks recency ordering |
 | v14-depthaware-excl | 75423918f | mechanism | 0.7100 | 473/4509 | 0.9999 | 3.02 | Depth-aware LRU+excl: −2.1pp. Mildest alt-eviction (deeper=larger≈recency) |
 | v17-lfu-noexcl | 75423918f | mechanism | **0.3238** | **1151/8696** | 0.9996 | 2.98 | **CATASTROPHIC:** LFU without excl: worse than LFU+excl (0.332). LFU destroys cache composition regardless of tiering mode |
+| v21-costaware-t4096 | 75423918f | mechanism | 0.7276 | 466/5687 | 0.9999 | 3.02 | Cost-aware t=4096+excl: neutral (= t=2048 v6: 0.728). Threshold insensitive |
 
 ## ★ BATCH ABLATION RESULTS (v6–v53, ongoing)
-**Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 32 of 48 complete; batch5 running (v18-selhost next, pending node); 3 cancelled (v12/v15/v16, retry queued).
+**Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 34 of 48 complete; batch5 running (v22-excl-rep1 next, pending node); 6 cancelled (v12/v15/v16/v18/v19/v20, retry queued).
 
 **Summary of completed ablations (grouped by finding):**
 
@@ -245,7 +246,7 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 
 **v47-wt5: hit=0.250 — even worse than wt2 (0.386).** WT threshold has a clear monotone-decreasing relationship: threshold {1(default): 0.62, 2: 0.39, 5: 0.25}. At threshold 5, effectively nothing gets backed up (wb_ok=25 across the entire run, dev_delete=17.2M tokens). The host tier is ~empty.
 
-**Status (2026-07-10 ~09:00Z):** 32/48 complete. batch5 running sequentially (v18-selhost pending node, 15 more after). 3 cancelled evals (v12-freqdecay-excl, v15-costaware-noexcl, v16-gdsf-noexcl) queued for retry. Remaining: selective host/dev, cost-aware thresholds, excl repeats, baseline repeats, adaptive excl@70%, WT3, host cost-aware, full-stack combo, SJF+cost-aware, dual-sel.
+**Status (2026-07-10 ~10:30Z):** 34/48 complete (v17+v21 ran; v18/v19/v20 cancelled while pending due to queue contention). batch5 running sequentially; 6 cancelled evals queued for retry (v12/v15/v16/v18/v19/v20). **Cost-aware threshold is insensitive:** t=1024 (cancelled, retry), t=2048 (v6: 0.728), t=4096 (v21: 0.728) all neutral — confirms cost-aware eviction is moot under full-cycle reuse distance.
 
 ## ⚠️ CRITICAL: warm-first is a NEGATIVE result (node-variance debunked)
 diag2 (baseline fcfs, node 0-3) vs v2 (warm-first+aging, node 0-3) — SAME NODE:

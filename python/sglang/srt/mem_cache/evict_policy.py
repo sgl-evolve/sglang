@@ -206,17 +206,20 @@ class FreqDecayStrategy(EvictionStrategy):
 
     Pure LFU suffers from stale-high-frequency nodes blocking eviction long after
     they stop being useful. This decays frequency by age: effective_freq =
-    hit_count * decay^(now - last_access_time), where decay < 1. Recent
-    high-frequency nodes keep high priority; old ones decay away. Falls back to
-    recency when frequencies are similar.
+    hit_count * decay^(age_seconds), where decay < 1. Recent high-frequency nodes
+    keep high priority; old ones decay away. Falls back to recency when
+    frequencies are similar.
     """
 
     def __init__(self, decay: float = 0.999):
         self.decay = decay
 
     def get_priority(self, node: TreeNode) -> float:
+        import time as _time
+
         freq = max(getattr(node, "hit_count", 0), 1)
-        age = max(0, getattr(node, "_global_time", 0) - node.last_access_time)
+        now = _time.monotonic()
+        age = max(0, now - node.last_access_time)
         decayed = freq * (self.decay ** age)
         return decayed + node.last_access_time * 1e-12
 

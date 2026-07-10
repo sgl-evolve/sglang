@@ -55,6 +55,7 @@ from sglang.srt.mem_cache.unified_cache_components import (
 from sglang.srt.mem_cache.utils import (
     compute_node_hash_values,
     get_eviction_strategy,
+    get_host_eviction_strategy,
     split_node_hash_value,
 )
 from sglang.srt.observability.metrics_collector import (
@@ -320,6 +321,7 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self.kv_event_queue = []
         self.eviction_policy = params.eviction_policy.lower()
         self.eviction_strategy = get_eviction_strategy(self.eviction_policy)
+        self.host_eviction_strategy = get_host_eviction_strategy(self.eviction_strategy)
 
         if self.token_to_kv_pool_allocator:
             self.device = self.token_to_kv_pool_allocator.device

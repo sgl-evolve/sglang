@@ -121,6 +121,21 @@ _EVICTION_POLICY_FACTORIES: dict[str, Callable[[], EvictionStrategy]] = {
 }
 
 
+def get_host_eviction_strategy(device_strategy: EvictionStrategy) -> EvictionStrategy:
+    override = os.environ.get("SGLANG_HOST_EVICTION_POLICY", "").strip().lower()
+    if not override:
+        return device_strategy
+    logger.info("[sgl_mech] host eviction strategy OVERRIDE = %s", override)
+    try:
+        strategy = _EVICTION_POLICY_FACTORIES[override]()
+    except KeyError:
+        supported = "', '".join(_EVICTION_POLICY_FACTORIES)
+        raise ValueError(
+            f"Unknown host eviction policy: {override}. Supported: '{supported}'."
+        ) from None
+    return strategy
+
+
 def get_eviction_strategy(eviction_policy: str) -> EvictionStrategy:
     policy = eviction_policy.lower()
     # Ablation override: SGLANG_EVICTION_POLICY_OVERRIDE selects any registered policy

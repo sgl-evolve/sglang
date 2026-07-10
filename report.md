@@ -425,29 +425,49 @@ would require Belady-optimal replacement (offline, infeasible). This explains wh
 refinements (GDSF, SLRU, frequency, continuous cost, depth, 3-tier) are neutral — there's
 almost no room left to improve.
 
-### Pending ablation experiments (27 queued)
-- v10-lfu: pure LFU eviction
-- v11-slru: segmented LRU
-- v12-costfreq: cost-frequency hybrid
-- v13-contcost: continuous cost (alpha=1)
-- v14-writeadmit: write admission min cost
-- v15-sjf: shortest-job-first scheduling + CostAware
-- v16-warmfirst: warm-first scheduling + CostAware
-- v17-freqdecay: frequency-decay eviction
-- v18-sizelru: size-aware LRU
-- v19-loadback: cost-aware load-back skip
-- v21-valuegate: CostAware + value-gated load-back
-- v22-wt2: CostAware + write-through threshold=2
-- v23-wt3: CostAware + write-through threshold=3
-- v24-lru-valuegate: stock LRU + value-gated load-back
-- v25-fullstack: CostAware + WT2 + value-gate
-- v26-lru-wt2: stock LRU + WT2
-- v27-backupcost: BackupAwareCost (4-tier: cost × backup status)
-- v28-freqcost: RecencyBoostedCost (CostAware tiers + frequency bonus)
-- v29/v30-contcost: continuous cost at alpha=50/200
-- v31-reuse1: CostAware + reuse_min=1
-- v32-t4096: CostAware threshold=4096
-- v33-backupcost-wt2: BackupAwareCost + WT2
-- v34-3tier: CostAware 3-tier (1024/4096)
-- v35-freqcost-w20: RecencyBoostedCost freq_weight=20
-- v0-ctl3, v0-ctl4: additional controls
+### Ablation results (v10–v18 completed; v19–v39 running)
+
+**Frequency-based strategies — CATASTROPHIC (3/3):**
+- **v10-lfu** (pure LFU): hit_rate **0.333** (−47σ), dev% 79.7%, p99 8957ms. Stale high-frequency
+  nodes become immortal on device, starving host tier. Device-heavy allocation wastes the 768GB L2.
+- **v11-slru** (Segmented LRU): hit_rate **0.393** (−37σ), dev% 75.8%, p99 25196ms. Protected
+  segment fills with stale nodes; same frequency-pollution failure mode as LFU.
+- **v12-costfreq** (CostFreq, threshold=2048): hit_rate **0.338** (−46σ), dev% 84.0%, p99 8776ms.
+  Combining cost tiers with frequency WORSENS things — frequency dominates the priority and poisons
+  even the cost-aware tier structure.
+- **INSIGHT:** frequency is FUNDAMENTALLY wrong for tiered KV caches. Total eviction volume is constant
+  (~586M tokens regardless of strategy); frequency-based strategies fill device with small stale fragments
+  (dev% 76-84% vs LRU's 40.7%), starving the 768GB host tier that provides the capacity headroom.
+
+**Frequency with decay — MARGINAL (1/1):**
+- **v17-freqdecay** (FreqDecay, decay=0.999): hit_rate **0.635** (+2.8σ), dev% 39.5%, p99 4781ms.
+  Time-decay prevents catastrophic pollution (dev% back to ~40%) but the frequency signal itself adds
+  no useful information for eviction cost. Result: slightly above control, far below CostAware.
+
+**Continuous cost (no threshold) — NEUTRAL (1/1):**
+- **v13-contcost** (ContinuousCost, alpha=1.0): hit_rate **0.617** (−0.2σ), dev% 40.8%, p99 4802ms.
+  `priority = last_access + 1.0 * log(1+seg)`. At alpha=1.0, log(1+2048)≈7.6 is negligible vs access
+  times in the thousands → essentially LRU. Confirms that the cost signal must be strong (binary
+  threshold, not a tiny continuous bonus) to overcome recency.
+
+**Size-aware LRU (evict-large-first) — NEUTRAL/SLIGHT LOSS (1/1):**
+- **v18-sizelru** (SizeAwareLRU, threshold=2048): hit_rate **0.613** (−1.0σ), dev% 45.5%, p99 7470ms.
+  Evicts large nodes first — the **opposite** of CostAware's protect-expensive approach. Higher dev%
+  (45.5% vs control 40.7%) and p99 near SLO (7470ms) confirm this is the wrong direction.
+
+**CostAware add-on mechanisms — all NEUTRAL on hit_rate (hit_rate within CostAware band 0.678±0.006):**
+- **v14-writeadmit** (CostAware + write_admission_min_cost=2048): hit_rate **0.684**, p50 466, p99 5128.
+  Write-admission is redundant: CostAware eviction already makes L2 long-prefix-dominated, so filtering
+  cheap segments from writes converges to the same L2 contents.
+- **v15-sjf** (CostAware + SJF scheduling): hit_rate **0.684**, p50 456, p99 3700. Hit_rate unchanged
+  (SJF doesn't affect eviction), p99 notably low — could be SJF reducing tail by prioritizing short
+  prefills, or just a favorable node draw. Single-run p99 unreliable per error-bar analysis.
+- **v16-warmfirst** (CostAware + warmfirst scheduling): hit_rate **0.686**, p50 457, p99 4087.
+  Same pattern — hit_rate in CostAware band, p99 low. Scheduling add-ons are orthogonal to eviction
+  and don't compound the hit_rate gain.
+
+### Remaining experiments (v19–v39, running on job 18790)
+v19-loadback, v0-ctl3, v21-valuegate, v22-wt2, v23-wt3, v24-lru-valuegate, v25-fullstack,
+v26-lru-wt2, v27-backupcost, v28-freqcost, v29-contcost-a50, v30-contcost-a200, v31-reuse1,
+v32-t4096, v33-backupcost-wt2, v34-3tier, v35-freqcost-w20, v0-ctl4, v36-splittier-lru,
+v37-splittier-gdsf, v38-lru-splittier-cost, v0-ctl5, v39-t2048-ctl. Expected completion ~July 11 04:00 UTC.

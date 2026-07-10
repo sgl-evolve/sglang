@@ -214,9 +214,10 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 | v32-adaptive-excl-95 | 75423918f | mechanism | **0.5360** | **666/17666** | 0.9999 | 3.02 | **NEGATIVE:** Adaptive excl @95%: mode-flapping worse than @90%, p99 2.2× SLO |
 | v13-sizeweight-excl | 75423918f | mechanism | 0.6980 | 483/4905 | 0.9999 | 3.02 | Size-weighted LRU+excl: −3.3pp vs excl+LRU. Size dimension breaks recency ordering |
 | v14-depthaware-excl | 75423918f | mechanism | 0.7100 | 473/4509 | 0.9999 | 3.02 | Depth-aware LRU+excl: −2.1pp. Mildest alt-eviction (deeper=larger≈recency) |
+| v17-lfu-noexcl | 75423918f | mechanism | **0.3238** | **1151/8696** | 0.9996 | 2.98 | **CATASTROPHIC:** LFU without excl: worse than LFU+excl (0.332). LFU destroys cache composition regardless of tiering mode |
 
 ## ★ BATCH ABLATION RESULTS (v6–v53, ongoing)
-**Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 31 of 48 complete; 1 in flight; 16 queued (batch5, sequential sbatch after pool hold expired).
+**Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 32 of 48 complete; batch5 running (v18-selhost next, pending node); 3 cancelled (v12/v15/v16, retry queued).
 
 **Summary of completed ablations (grouped by finding):**
 
@@ -228,6 +229,7 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 | **Excl + alt-eviction (severe)** | v10-mru-excl, v31-adapt-90, v32-adapt-95 | 0.518–0.536 | 9982–17666 | MRU evicts just-used prefix; adaptive @any-threshold mode-flaps |
 | **Excl + alt-eviction (catastrophic)** | v8-lfu-excl, v11-slru-excl | 0.332–0.348 | 8322–8451 | Frequency-based: LFU/SLRU destroy host composition |
 | **Config diagnostic** | diag4-writeback | 0.731 | 4292 | Confirms mechanism ≈ config write_back |
+| **No-excl alt-eviction (catastrophic)** | v17-lfu-noexcl | 0.324 | 8696 | LFU WITHOUT excl: even worse (0.324 vs 0.332 w/ excl). LFU destroys cache regardless |
 | **Catastrophic negatives** | v5-keep2, v46-wt2, v47-wt5 | 0.250–0.391 | 8322–21478 | Threshold params cliff-edge; LFU+excl devastates |
 
 **Key ablation insights:**
@@ -243,7 +245,7 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 
 **v47-wt5: hit=0.250 — even worse than wt2 (0.386).** WT threshold has a clear monotone-decreasing relationship: threshold {1(default): 0.62, 2: 0.39, 5: 0.25}. At threshold 5, effectively nothing gets backed up (wb_ok=25 across the entire run, dev_delete=17.2M tokens). The host tier is ~empty.
 
-**Still running (2026-07-10 ~02:45Z):** v12-freqdecay-excl (batch1 next), v32-adaptive-excl-95 (batch2), v50-adaptive-excl-70 (batch3 next). **17 more queued** across batch1/2/3 (eviction strategies freq-decay/size-weight/depth-aware, no-excl variants, selective dev, adaptive excl, WT3 variants, host cost-aware, full-stack combo).
+**Status (2026-07-10 ~09:00Z):** 32/48 complete. batch5 running sequentially (v18-selhost pending node, 15 more after). 3 cancelled evals (v12-freqdecay-excl, v15-costaware-noexcl, v16-gdsf-noexcl) queued for retry. Remaining: selective host/dev, cost-aware thresholds, excl repeats, baseline repeats, adaptive excl@70%, WT3, host cost-aware, full-stack combo, SJF+cost-aware, dual-sel.
 
 ## ⚠️ CRITICAL: warm-first is a NEGATIVE result (node-variance debunked)
 diag2 (baseline fcfs, node 0-3) vs v2 (warm-first+aging, node 0-3) — SAME NODE:

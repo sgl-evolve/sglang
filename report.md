@@ -216,9 +216,11 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 | v14-depthaware-excl | 75423918f | mechanism | 0.7100 | 473/4509 | 0.9999 | 3.02 | Depth-aware LRU+excl: −2.1pp. Mildest alt-eviction (deeper=larger≈recency) |
 | v17-lfu-noexcl | 75423918f | mechanism | **0.3238** | **1151/8696** | 0.9996 | 2.98 | **CATASTROPHIC:** LFU without excl: worse than LFU+excl (0.332). LFU destroys cache composition regardless of tiering mode |
 | v21-costaware-t4096 | 75423918f | mechanism | 0.7276 | 466/5687 | 0.9999 | 3.02 | Cost-aware t=4096+excl: neutral (= t=2048 v6: 0.728). Threshold insensitive |
+| v22-excl-rep1 | 75423918f | mechanism | 0.7310 | 467/4408 | 0.9999 | 3.02 | Excl replicate: hit=0.731 |
+| v23-excl-rep2 | 75423918f | mechanism | 0.7325 | 467/4518 | 0.9999 | 3.02 | Excl replicate: hit=0.733 (n=7 excl LRU 0.731±0.002) |
 
 ## ★ BATCH ABLATION RESULTS (v6–v53, ongoing)
-**Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 34 of 48 complete; batch5 running (v22-excl-rep1 next, pending node); 6 cancelled (v12/v15/v16/v18/v19/v20, retry queued).
+**Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 36 of 48 complete; batch5 running (v24-baseline-rep1 next); 6 cancelled (v12/v15/v16/v18/v19/v20, retry queued).
 
 **Summary of completed ablations (grouped by finding):**
 

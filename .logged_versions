@@ -32,3 +32,5 @@ v13-sizeweight-excl
 v14-depthaware-excl
 v17-lfu-noexcl
 v21-costaware-t4096
+v22-excl-rep1
+v23-excl-rep2

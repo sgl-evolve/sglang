@@ -222,9 +222,10 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 | v25-baseline-rep2 | 75423918f | mechanism | 0.6173 | 537/4843 | 0.9999 | 3.02 | Baseline replicate: hit=0.617 (n=10 baseline 0.623±0.009) |
 | v33-adaptive-excl-80 | 73806500f | mechanism | **0.5032** | **700/17971** | 0.8001 | 3.02 | **STRONG NEGATIVE:** Adaptive excl @80% util: hit=0.503, p99 17.9s (2.2× SLO). Mode-flapping → host only 80% utilized |
 | v34-admit256 | 73806500f | mechanism | 0.7312 | 467/4482 | 0.9999 | 3.02 | Excl + admit min=256: neutral (= plain excl). Workload entries already >256 |
+| v35-admit512 | 73806500f | mechanism | 0.7319 | 462/4695 | 0.9999 | 3.02 | Excl + admit min=512: neutral. Admission filtering moot on this workload |
 
 ## ★ BATCH ABLATION RESULTS (v6–v53, ongoing)
-**Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 40 of 48 complete; batch5 running (v35-admit512 next); 6 cancelled (v12/v15/v16/v18/v19/v20, retry queued).
+**Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 41 of 48 complete; batch5 running (v36-wt3 next); 6 cancelled (v12/v15/v16/v18/v19/v20, retry queued).
 
 **Summary of completed ablations (grouped by finding):**
 
@@ -252,7 +253,7 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 
 **v47-wt5: hit=0.250 — even worse than wt2 (0.386).** WT threshold has a clear monotone-decreasing relationship: threshold {1(default): 0.62, 2: 0.39, 5: 0.25}. At threshold 5, effectively nothing gets backed up (wb_ok=25 across the entire run, dev_delete=17.2M tokens). The host tier is ~empty.
 
-**Status (2026-07-10 ~15:10Z):** 40/48 complete. v33-adaptive-excl-80 STRONG NEG (0.503), v34-admit256 neutral (0.731 = excl). batch5 running (v35-admit512 next); 6 cancelled evals queued for retry (v12/v15/v16/v18/v19/v20). **Adaptive excl completely dead:** @80% (0.503), @90% (0.520), @95% (0.536). **Error bars:** baseline n=10 (0.623±0.009), excl n=7+ (0.731±0.002).
+**Status (2026-07-10 ~15:55Z):** 41/48 complete. v35-admit512 neutral (0.732). batch5 running (v36-wt3 next); 6 cancelled evals queued for retry (v12/v15/v16/v18/v19/v20). **Admission filtering axis closed:** 256 (v34: 0.731), 512 (v35: 0.732), 1024 (v49: 0.730) all = plain excl. **Error bars:** baseline n=10 (0.623±0.009), excl n=9+ (0.731±0.002, adding v34/v35 to excl+LRU family).
 
 ## ⚠️ CRITICAL: warm-first is a NEGATIVE result (node-variance debunked)
 diag2 (baseline fcfs, node 0-3) vs v2 (warm-first+aging, node 0-3) — SAME NODE:

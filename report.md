@@ -228,6 +228,7 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 | v38-hostcost | 75423918f | mechanism | 0.6242 | 530/4738 | 0.9999 | 3.02 | Host cost-aware eviction, no excl: neutral (= baseline). Host eviction strategy irrelevant without excl |
 | v39-hostcost-excl | 75423918f | mechanism | 0.7323 | 468/4612 | 0.9999 | 3.02 | Excl + host cost-aware: neutral (= plain excl). Host eviction strategy irrelevant in both regimes |
 | v40-excl-hostcost-sel | 75423918f | mechanism | 0.7321 | 470/4204 | 0.9999 | 3.02 | Full combo (excl + host-cost + sel-host): neutral = plain excl. No lever stacks on excl |
+| v41-seldev | 75423918f | mechanism | 0.6374 | 519/4851 | 0.9999 | 3.02 | Selective device eviction, no excl: neutral (= baseline). Device eviction strategy irrelevant without excl |
 
 ## ★ BATCH ABLATION RESULTS (v6–v53, ongoing)
 **Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 43 of 48 complete; batch5 running (v38-hostcost next); 6 cancelled (v12/v15/v16/v18/v19/v20, retry queued).

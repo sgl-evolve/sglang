@@ -226,7 +226,9 @@ class SchedulePolicy:
                 raise ValueError(f"Unknown CacheAgnostic Policy: {policy=}")
 
     def _determine_active_policy(self, waiting_queue: List[Req]) -> Policy:
-        if self.policy in (CacheAwarePolicy.LPM, CacheAwarePolicy.SRPF) and len(waiting_queue) > 128:
+        if self.policy == CacheAwarePolicy.LPM and len(waiting_queue) > 128:
+            return CacheAgnosticPolicy.FCFS
+        if self.policy == CacheAwarePolicy.SRPF and len(waiting_queue) > 1024:
             return CacheAgnosticPolicy.FCFS
         return self.policy
 

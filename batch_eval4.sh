@@ -110,4 +110,10 @@ run_one "v59-xtier-cost-srpf-t1024" "SGLANG_XTIER_LAZY=1 SGLANG_XTIER_WM_FRAC=0.
 # XTIER + CostAware(t=4096) + SRPF (threshold sweep in three-way combo)
 run_one "v60-xtier-cost-srpf-t4096" "SGLANG_XTIER_LAZY=1 SGLANG_XTIER_WM_FRAC=0.1 SGLANG_COSTEVICT_THRESHOLD=4096" "--radix-eviction-policy cost_aware --schedule-policy srpf"
 
+# SRPF with raised queue threshold (1024 vs default 128) — test if SRPF works better on longer queues
+run_one "v61-xtier-cost-srpf-qlim" "SGLANG_XTIER_LAZY=1 SGLANG_XTIER_WM_FRAC=0.1" "--radix-eviction-policy cost_aware --schedule-policy srpf"
+
+# XTIER + 2Q eviction (2Q matched LRU in v13; test with XTIER for comparison to XTIER+CostAware)
+run_one "v62-xtier-2q" "SGLANG_XTIER_LAZY=1 SGLANG_XTIER_WM_FRAC=0.1" "--radix-eviction-policy 2q"
+
 echo "===== BATCH4 COMPLETE $(date) ====="

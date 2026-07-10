@@ -369,3 +369,68 @@ hit 0.6269; host_util 1.0; tput 2.87; out_tok/s 367; tpot 252; load_back 302M; e
 
 - **v4** (reuse-gated cost, code ready `7a5fe5850`): motivation (fix p50 regression) largely superseded by
   t2048; may still help capacity use. Lower priority now.
+
+## Systematic ablation campaign (v9+)
+
+Control baselines (n=4: v0-ctl, v0-ctl2, ctlC, ctlD): hit_rate **0.619 ± 0.006**, p50 591 ± 97 ms,
+p99 5470 ± 622 ms, rps 3.0. CostAware@2048 reference (n=3: v1-t2048, t2048C, t2048D): hit_rate
+**0.678 ± 0.006** (Δ = +5.9pp, >9σ). All following experiments compared vs these error bars.
+
+- **v9-gdsf** (`3c72425a9`, `mechanism`, **NEUTRAL**): GDSF (Greedy-Dual-Size-Frequency) eviction.
+  Result: hit_rate 0.622 (within control 0.619±0.006), p50 536, p99 5610, rps 3.02.
+  device_frac 0.370 (vs LRU 0.406) — GDSF shifts more hits to host (L2), similar to CostAware.
+  But overall hit_rate stays flat because GDSF's continuous priority weighting doesn't exploit the
+  non-linear O(L²) attention recompute cost boundary. CostAware's binary threshold (2048) aligns
+  with this non-linearity; GDSF's gradual weighting dilutes it.
+
+### Workload analysis — why CostAware@2048 works
+
+**Prefix length distribution** (from control run ctlC, n=9941 prefill batches):
+- 67.1% of prefill batches are COLD (cached_tokens=0) — first turns or new documents
+- 32.9% are WARM with cached prefix lengths:
+  - <2048 tokens: 15.8% of warm hits (cheap to recompute)
+  - ≥2048 tokens: 84.2% of warm hits (expensive — median=16K, mean=19K)
+  - Most common bin: [16384, 32768) at 32.4% of warm hits
+
+CostAware's binary threshold at 2048 perfectly separates the bimodal prefix distribution:
+cheap/short prefixes (common follow-up tokens) vs expensive/long prefixes (document caches).
+
+**Recompute savings** (server.log new-token analysis):
+- Stock LRU (n=4): mean 38.3M prefill new-tokens
+- CostAware@2048 (n=3): mean 32.4M new-tokens (**−15.4%** token savings)
+- GDSF: 38.0M (~0% savings — confirms NEUTRAL on recompute)
+- Attention compute cost: stock 0.23T → CostAware 0.18T (**−22%** compute; superlinear due to O(L²))
+
+**Device/host hit split** (from summary.json hicache metrics):
+- Stock LRU: 40.5% device / 59.5% host, ~293M load-back tokens
+- CostAware: 36.1% device / 63.9% host, ~346M load-back tokens (+18%)
+- CostAware shifts hits from device→host (more load-backs) but the saved recompute
+  far exceeds the ~2.5ms load-back cost. The mechanism trades cheap H→D transfers for
+  avoided O(L²) attention recompute on long prefixes.
+
+### Pending ablation experiments (27 queued)
+- v10-lfu: pure LFU eviction
+- v11-slru: segmented LRU
+- v12-costfreq: cost-frequency hybrid
+- v13-contcost: continuous cost (alpha=1)
+- v14-writeadmit: write admission min cost
+- v15-sjf: shortest-job-first scheduling + CostAware
+- v16-warmfirst: warm-first scheduling + CostAware
+- v17-freqdecay: frequency-decay eviction
+- v18-sizelru: size-aware LRU
+- v19-loadback: cost-aware load-back skip
+- v21-valuegate: CostAware + value-gated load-back
+- v22-wt2: CostAware + write-through threshold=2
+- v23-wt3: CostAware + write-through threshold=3
+- v24-lru-valuegate: stock LRU + value-gated load-back
+- v25-fullstack: CostAware + WT2 + value-gate
+- v26-lru-wt2: stock LRU + WT2
+- v27-backupcost: BackupAwareCost (4-tier: cost × backup status)
+- v28-freqcost: RecencyBoostedCost (CostAware tiers + frequency bonus)
+- v29/v30-contcost: continuous cost at alpha=50/200
+- v31-reuse1: CostAware + reuse_min=1
+- v32-t4096: CostAware threshold=4096
+- v33-backupcost-wt2: BackupAwareCost + WT2
+- v34-3tier: CostAware 3-tier (1024/4096)
+- v35-freqcost-w20: RecencyBoostedCost freq_weight=20
+- v0-ctl3, v0-ctl4: additional controls

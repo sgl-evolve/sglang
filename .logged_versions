@@ -22,3 +22,6 @@ v8-lfu-excl
 v9-fifo-excl
 v9-fifo-excl
 v30-excl-costaware-selhost
+v10-mru-excl
+v48-admit256-noexcl
+v31-adaptive-excl-90

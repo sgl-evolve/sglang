@@ -230,6 +230,7 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 | v40-excl-hostcost-sel | 75423918f | mechanism | 0.7321 | 470/4204 | 0.9999 | 3.02 | Full combo (excl + host-cost + sel-host): neutral = plain excl. No lever stacks on excl |
 | v41-seldev | 75423918f | mechanism | 0.6374 | 519/4851 | 0.9999 | 3.02 | Selective device eviction, no excl: neutral (= baseline). Device eviction strategy irrelevant without excl |
 | v42-seldev-excl | 75423918f | mechanism | 0.7373 | 465/4684 | 0.9999 | 3.02 | Selective dev + excl: neutral (= excl). Selective device adds nothing on top of excl |
+| v43-full-stack | 75423918f | mechanism | 0.7353 | 466/5316 | 0.9999 | 3.02 | Kitchen-sink (excl+selhost+seldev+hostcost): neutral = plain excl. NOTHING stacks on excl |
 
 ## ★ BATCH ABLATION RESULTS (v6–v53, ongoing)
 **Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 43 of 48 complete; batch5 running (v38-hostcost next); 6 cancelled (v12/v15/v16/v18/v19/v20, retry queued).
@@ -260,7 +261,7 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 
 **v47-wt5: hit=0.250 — even worse than wt2 (0.386).** WT threshold has a clear monotone-decreasing relationship: threshold {1(default): 0.62, 2: 0.39, 5: 0.25}. At threshold 5, effectively nothing gets backed up (wb_ok=25 across the entire run, dev_delete=17.2M tokens). The host tier is ~empty.
 
-**Status (2026-07-10 ~21:50Z):** 48/48 batch5 main list complete. v41 neutral (0.637), v42 neutral (0.737). batch5 continuing to tail (v43-full-stack, v50-v53); 6 cancelled evals queued for retry. **Selective device axis closed:** v41 no-excl (0.637=baseline), v42 excl (0.737=excl). **Every lever stacking attempt on excl is NEUTRAL** — excl is the sole significant lever.
+**Status (2026-07-10 ~22:35Z):** 49/48+ (v43 done). batch5 tail: v50-adaptive-excl-70, v51-sjf-costaware, v52-dual-sel, v53-cost-t8192 remaining; 6 cancelled (v12/v15/v16/v18/v19/v20) queued for retry. **DEFINITIVE: nothing stacks on excl.** v43 kitchen-sink (all 5 levers) = 0.735 = plain excl. Excl is the sole significant lever across 48 ablations.
 
 ## ⚠️ CRITICAL: warm-first is a NEGATIVE result (node-variance debunked)
 diag2 (baseline fcfs, node 0-3) vs v2 (warm-first+aging, node 0-3) — SAME NODE:

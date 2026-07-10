@@ -219,9 +219,10 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 | v22-excl-rep1 | 75423918f | mechanism | 0.7310 | 467/4408 | 0.9999 | 3.02 | Excl replicate: hit=0.731 |
 | v23-excl-rep2 | 75423918f | mechanism | 0.7325 | 467/4518 | 0.9999 | 3.02 | Excl replicate: hit=0.733 (n=7 excl LRU 0.731±0.002) |
 | v24-baseline-rep1 | 75423918f | mechanism | 0.6159 | 528/4970 | 0.9999 | 3.02 | Baseline replicate: hit=0.616 (n=9 baseline 0.623±0.009) |
+| v25-baseline-rep2 | 75423918f | mechanism | 0.6173 | 537/4843 | 0.9999 | 3.02 | Baseline replicate: hit=0.617 (n=10 baseline 0.623±0.009) |
 
 ## ★ BATCH ABLATION RESULTS (v6–v53, ongoing)
-**Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 36 of 48 complete; batch5 running (v24-baseline-rep1 next); 6 cancelled (v12/v15/v16/v18/v19/v20, retry queued).
+**Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 37 of 48 complete; batch5 running (v33-adaptive-excl-80 next); 6 cancelled (v12/v15/v16/v18/v19/v20, retry queued).
 
 **Summary of completed ablations (grouped by finding):**
 
@@ -249,7 +250,7 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 
 **v47-wt5: hit=0.250 — even worse than wt2 (0.386).** WT threshold has a clear monotone-decreasing relationship: threshold {1(default): 0.62, 2: 0.39, 5: 0.25}. At threshold 5, effectively nothing gets backed up (wb_ok=25 across the entire run, dev_delete=17.2M tokens). The host tier is ~empty.
 
-**Status (2026-07-10 ~10:30Z):** 34/48 complete (v17+v21 ran; v18/v19/v20 cancelled while pending due to queue contention). batch5 running sequentially; 6 cancelled evals queued for retry (v12/v15/v16/v18/v19/v20). **Cost-aware threshold is insensitive:** t=1024 (cancelled, retry), t=2048 (v6: 0.728), t=4096 (v21: 0.728) all neutral — confirms cost-aware eviction is moot under full-cycle reuse distance.
+**Status (2026-07-10 ~14:00Z):** 38/48 complete (v22-v25 baseline/excl replicates done). batch5 running sequentially (v33-adaptive-excl-80 in progress); 6 cancelled evals queued for retry (v12/v15/v16/v18/v19/v20). **Cost-aware threshold is insensitive:** t=1024 (cancelled, retry), t=2048 (v6: 0.728), t=4096 (v21: 0.728) all neutral — confirms cost-aware eviction is moot under full-cycle reuse distance. **Baseline error bars refined: n=10 (0.623±0.009).** Excl n=7 (0.731±0.002).
 
 ## ⚠️ CRITICAL: warm-first is a NEGATIVE result (node-variance debunked)
 diag2 (baseline fcfs, node 0-3) vs v2 (warm-first+aging, node 0-3) — SAME NODE:

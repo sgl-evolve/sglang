@@ -152,10 +152,11 @@ class GDSFStrategy(EvictionStrategy):
     def get_priority(self, node: TreeNode) -> float:
         key = getattr(node, "key", None)
         size = max(len(key), 1) if key is not None else 1
-        cost = getattr(node, "prefix_len", 0) or size
+        # cost = cumulative prefix length (total recompute if entire path lost).
+        # size = this node's token count. ratio = how much recompute leverage this
+        # node has (deep small conversational turns have high ratio = valuable).
+        cost = max(getattr(node, "prefix_len", 0), size)
         freq = max(getattr(node, "hit_count", 0), 1)
-        # Higher value = retained longer (heap pops minimum = evicted first).
-        # Use last_access_time as the aging clock component.
         return freq * cost / size + node.last_access_time
 
 

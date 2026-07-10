@@ -25,3 +25,6 @@ v30-excl-costaware-selhost
 v10-mru-excl
 v48-admit256-noexcl
 v31-adaptive-excl-90
+v11-slru-excl
+v49-admit1024
+v32-adaptive-excl-95

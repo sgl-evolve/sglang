@@ -1700,6 +1700,14 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             CacheTransferPhase.LOAD_BACK, kv_xfer, comp_xfers
         )
 
+        # Cost-aware load_back: skip loading cheap (short-prefix) nodes back from host
+        # and let them recompute — saves device memory for expensive prefixes.
+        _loadback_min_cost = int(os.environ.get("SGLANG_LOADBACK_MIN_COST", "0"))
+        if _loadback_min_cost > 0 and kv_tokens < _loadback_min_cost and not comp_xfers:
+            self.dec_lock_ref(best_match_node, ancestor_lock_params)
+            self.dec_host_lock_ref(best_match_node, host_anchor_params)
+            return False
+
         # Skip if there is nothing to load, or if the Full-KV transfer is too
         # small / exceeds memory quota. Aux transfers should still run even
         # when the Full-KV load is skipped by thresholding.

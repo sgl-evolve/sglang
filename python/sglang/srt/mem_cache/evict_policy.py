@@ -199,3 +199,44 @@ class CostFreqStrategy(EvictionStrategy):
         freq = getattr(node, "hit_count", 0)
         # Within each tier: higher freq → retained longer, then LRU within same freq
         return (tier, freq, node.last_access_time)
+
+
+class FreqDecayStrategy(EvictionStrategy):
+    """LFU with exponential time-decay on frequency, preventing cache pollution.
+
+    Pure LFU suffers from stale-high-frequency nodes blocking eviction long after
+    they stop being useful. This decays frequency by age: effective_freq =
+    hit_count * decay^(now - last_access_time), where decay < 1. Recent
+    high-frequency nodes keep high priority; old ones decay away. Falls back to
+    recency when frequencies are similar.
+    """
+
+    def __init__(self, decay: float = 0.999):
+        self.decay = decay
+
+    def get_priority(self, node: TreeNode) -> float:
+        freq = max(getattr(node, "hit_count", 0), 1)
+        age = max(0, getattr(node, "_global_time", 0) - node.last_access_time)
+        decayed = freq * (self.decay ** age)
+        return decayed + node.last_access_time * 1e-12
+
+
+class SizeAwareLRUStrategy(EvictionStrategy):
+    """Size-aware LRU: prefer evicting larger nodes (they free more capacity per eviction).
+
+    Under memory pressure, evicting one large node recovers more tokens than many
+    small ones, reducing eviction overhead and churn. priority = (size_bucket,
+    last_access_time): among equally-old nodes, larger ones are evicted first
+    (they have lower priority). size_bucket inverts size into priority: bucket 0 =
+    large (evict first), bucket 1 = small (evict later).
+    """
+
+    def __init__(self, size_threshold: int = 2048):
+        self.size_threshold = size_threshold
+
+    def get_priority(self, node: TreeNode) -> Tuple[int, float]:
+        key = getattr(node, "key", None)
+        seg = len(key) if key is not None else 0
+        # Large nodes (>= threshold) → bucket 0 (evict first); small → bucket 1
+        bucket = 0 if seg >= self.size_threshold else 1
+        return (bucket, node.last_access_time)

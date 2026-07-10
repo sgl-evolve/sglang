@@ -28,11 +28,13 @@ from sglang.srt.mem_cache.evict_policy import (
     EvictionStrategy,
     FIFOStrategy,
     FILOStrategy,
+    FreqDecayStrategy,
     GDSFStrategy,
     LFUStrategy,
     LRUStrategy,
     MRUStrategy,
     PriorityStrategy,
+    SizeAwareLRUStrategy,
     SLRUStrategy,
 )
 from sglang.srt.mem_cache.triton_ops.mla_buffer import (
@@ -98,6 +100,12 @@ _EVICTION_POLICY_FACTORIES: dict[str, Callable[[], EvictionStrategy]] = {
     ),
     "cost_freq": lambda: CostFreqStrategy(
         threshold=int(os.environ.get("SGLANG_COST_FREQ_THRESHOLD", "2048"))
+    ),
+    "freq_decay": lambda: FreqDecayStrategy(
+        decay=float(os.environ.get("SGLANG_FREQ_DECAY_RATE", "0.999"))
+    ),
+    "size_aware_lru": lambda: SizeAwareLRUStrategy(
+        size_threshold=int(os.environ.get("SGLANG_SIZE_AWARE_THRESHOLD", "2048"))
     ),
     # Recompute-cost-aware eviction (this work): select via --radix-eviction-policy cost_aware.
     "cost_aware": _make_cost_aware_strategy,

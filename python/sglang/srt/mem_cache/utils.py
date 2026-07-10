@@ -15,16 +15,20 @@
 
 import hashlib
 import logging
+import os
 from typing import Any, Callable, List, Optional, Tuple
 
 from sglang.srt.environ import envs
 
 logger = logging.getLogger(__name__)
 from sglang.srt.mem_cache.evict_policy import (
+    ContinuousCostStrategy,
     CostAwareStrategy,
+    CostFreqStrategy,
     EvictionStrategy,
     FIFOStrategy,
     FILOStrategy,
+    GDSFStrategy,
     LFUStrategy,
     LRUStrategy,
     MRUStrategy,
@@ -88,6 +92,13 @@ _EVICTION_POLICY_FACTORIES: dict[str, Callable[[], EvictionStrategy]] = {
     "filo": FILOStrategy,
     "priority": PriorityStrategy,
     "slru": SLRUStrategy,
+    "gdsf": GDSFStrategy,
+    "continuous_cost": lambda: ContinuousCostStrategy(
+        alpha=float(os.environ.get("SGLANG_CONTINUOUS_COST_ALPHA", "1.0"))
+    ),
+    "cost_freq": lambda: CostFreqStrategy(
+        threshold=int(os.environ.get("SGLANG_COST_FREQ_THRESHOLD", "2048"))
+    ),
     # Recompute-cost-aware eviction (this work): select via --radix-eviction-policy cost_aware.
     "cost_aware": _make_cost_aware_strategy,
 }
@@ -95,6 +106,18 @@ _EVICTION_POLICY_FACTORIES: dict[str, Callable[[], EvictionStrategy]] = {
 
 def get_eviction_strategy(eviction_policy: str) -> EvictionStrategy:
     policy = eviction_policy.lower()
+    # Ablation override: SGLANG_EVICTION_POLICY_OVERRIDE selects any registered policy
+    # directly (for mechanism experiments without touching CLI flags).
+    override = os.environ.get("SGLANG_EVICTION_POLICY_OVERRIDE", "").strip().lower()
+    if override:
+        logger.info("[sgl_mech] eviction strategy OVERRIDE = %s", override)
+        try:
+            return _EVICTION_POLICY_FACTORIES[override]()
+        except KeyError:
+            supported = "', '".join(_EVICTION_POLICY_FACTORIES)
+            raise ValueError(
+                f"Unknown eviction policy override: {override}. Supported: '{supported}'."
+            ) from None
     # Cost-aware eviction (mechanism): protect expensive-to-recompute long prefixes to shave the p99-TTFT
     # tail / cut recompute work. Selectable explicitly via --radix-eviction-policy cost_aware, or (for the
     # mechanism-only ablation) overrides the default 'lru' when SGLANG_ENABLE_COST_AWARE_EVICTION=1 (default);

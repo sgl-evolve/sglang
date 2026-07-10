@@ -133,3 +133,69 @@ class SLRUStrategy(EvictionStrategy):
 
         is_protected = 1 if node.hit_count >= self.protected_threshold else 0
         return (is_protected, node.last_access_time)
+
+
+class GDSFStrategy(EvictionStrategy):
+    """Greedy-Dual-Size-Frequency eviction (web-caching classic).
+
+    Combines frequency, cost (recompute = prefix len), and size (node token count)
+    into a single priority: H(p) = freq * cost / size + aging_clock. Lower H →
+    evicted first. Unlike pure LFU this accounts for the VALUE of retaining a node
+    (high cost, small size, frequently hit = most valuable). The aging clock prevents
+    stale high-frequency nodes from being immortal (cache pollution).
+
+    For KV-cache: cost = segment length (recompute tokens), size = len(key) (page
+    tokens consumed), freq = hit_count. A long shared document prefix that's hit
+    often gets high priority; a one-shot short leaf gets low priority.
+    """
+
+    def get_priority(self, node: TreeNode) -> float:
+        key = getattr(node, "key", None)
+        size = max(len(key), 1) if key is not None else 1
+        cost = getattr(node, "prefix_len", 0) or size
+        freq = max(getattr(node, "hit_count", 0), 1)
+        # Higher value = retained longer (heap pops minimum = evicted first).
+        # Use last_access_time as the aging clock component.
+        return freq * cost / size + node.last_access_time
+
+
+class ContinuousCostStrategy(EvictionStrategy):
+    """Continuous recompute-cost-weighted LRU (no threshold discretization).
+
+    Instead of segmenting into discrete tiers (cheap/expensive), this uses a
+    continuous cost weight: priority = last_access_time + alpha * log(1 + cost).
+    Higher priority = retained longer; the log dampens the cost influence so it
+    acts as a tiebreaker within a recency window rather than overriding recency
+    entirely. alpha controls the cost-vs-recency tradeoff.
+    """
+
+    def __init__(self, alpha: float = 1.0):
+        self.alpha = alpha
+
+    def get_priority(self, node: TreeNode) -> float:
+        import math
+
+        key = getattr(node, "key", None)
+        seg = len(key) if key is not None else 0
+        return node.last_access_time + self.alpha * math.log1p(seg)
+
+
+class CostFreqStrategy(EvictionStrategy):
+    """Cost × frequency hybrid: protect nodes that are BOTH expensive AND frequently hit.
+
+    Combines the cost-aware insight (long prefixes are expensive to recompute) with
+    frequency awareness (frequently-hit nodes are more likely to be reused). Segments
+    by cost (like CostAwareStrategy) but within the expensive tier, uses frequency
+    to further prioritize — a frequently-hit expensive node is evicted LAST.
+    """
+
+    def __init__(self, threshold: int = 2048):
+        self.threshold = threshold
+
+    def get_priority(self, node: TreeNode) -> Tuple:
+        key = getattr(node, "key", None)
+        seg = len(key) if key is not None else 0
+        tier = 1 if seg >= self.threshold else 0
+        freq = getattr(node, "hit_count", 0)
+        # Within each tier: higher freq → retained longer, then LRU within same freq
+        return (tier, freq, node.last_access_time)

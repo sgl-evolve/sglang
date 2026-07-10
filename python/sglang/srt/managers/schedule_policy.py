@@ -167,9 +167,29 @@ class SchedulePolicy:
         # It is used to find the matching prefix for in-batch prefix caching.
         self.waiting_queue_radix_tree = RadixCache.create_simulated()
 
+    _schedule_override = os.environ.get("SGLANG_SCHEDULE_OVERRIDE", "").strip().lower()
+
     def calc_priority(
         self, waiting_queue: List[Req], running_batch: Optional[ScheduleBatch] = None
     ) -> None:
+        # Mechanism-experiment scheduling overrides (env-gated, no CLI flag change).
+        if self._schedule_override and len(waiting_queue) > 1:
+            if self.tree_cache.supports_fast_match_prefix() and get_global_server_args().disaggregation_mode != "decode":
+                for r in waiting_queue:
+                    match_prefix_for_req(self.tree_cache, r)
+            if self._schedule_override == "sjf":
+                waiting_queue.sort(
+                    key=lambda r: len(r.origin_input_ids) - getattr(r, "num_matched_prefix_tokens", 0)
+                )
+            elif self._schedule_override == "warmfirst":
+                waiting_queue.sort(
+                    key=lambda r: (
+                        0 if getattr(r, "num_matched_prefix_tokens", 0) > 0 else 1,
+                        len(r.origin_input_ids) - getattr(r, "num_matched_prefix_tokens", 0),
+                    )
+                )
+            return
+
         policy = self._determine_active_policy(waiting_queue)
 
         # Populate req.num_matched_prefix_tokens at schedule time. Cache-aware policies

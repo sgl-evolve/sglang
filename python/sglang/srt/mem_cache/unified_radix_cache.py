@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import threading
 import time
@@ -1813,6 +1814,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             )
         return transfers
 
+    _write_admission_min_cost = int(os.environ.get("SGLANG_WRITE_ADMISSION_MIN_COST", "0"))
+
     def _inc_hit_count(self, node: UnifiedTreeNode, chunked: bool = False) -> None:
         """Increment hit count; trigger write_backup when threshold reached."""
         if node.evicted or chunked:
@@ -1828,6 +1831,11 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             and not node.backuped
             and node.hit_count >= self.write_through_threshold
         ):
+            if self._write_admission_min_cost > 0:
+                key = getattr(node, "key", None)
+                seg = len(key) if key is not None else 0
+                if seg < self._write_admission_min_cost:
+                    return
             self.write_backup(node)
 
     def write_backup_storage(self, node: UnifiedTreeNode) -> None:

@@ -3,7 +3,7 @@
 # SKIPS versions that already have summary.json.
 # Usage: nohup bash ablation_all.sh > ablation_all.log 2>&1 &
 set -uo pipefail
-EVAL_SCRIPT="/home/junyanch_google_com/autoresearch/programs/sgl/v0.25_ablations/sgl_mech/researcher/.claude/skills/submit-gpu-job/scripts/eval-on-pool.sh"
+EVAL_SCRIPT="/home/junyanch_google_com/autoresearch/workspace/sgl/v0.25_ablations/sgl_mech/researchers/sgl_mech/fast_acquire.sh"
 NAME="sgl_mech"
 WS="/home/junyanch_google_com/autoresearch/workspace/sgl/v0.25_ablations/sgl_mech/researchers/sgl_mech"
 

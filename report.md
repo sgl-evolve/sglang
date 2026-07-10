@@ -401,12 +401,29 @@ cheap/short prefixes (common follow-up tokens) vs expensive/long prefixes (docum
 - GDSF: 38.0M (~0% savings — confirms NEUTRAL on recompute)
 - Attention compute cost: stock 0.23T → CostAware 0.18T (**−22%** compute; superlinear due to O(L²))
 
-**Device/host hit split** (from summary.json hicache metrics):
-- Stock LRU: 40.5% device / 59.5% host, ~293M load-back tokens
-- CostAware: 36.1% device / 63.9% host, ~346M load-back tokens (+18%)
-- CostAware shifts hits from device→host (more load-backs) but the saved recompute
-  far exceeds the ~2.5ms load-back cost. The mechanism trades cheap H→D transfers for
-  avoided O(L²) attention recompute on long prefixes.
+**Device/host hit split** (from summary.json hicache metrics, n=3 each):
+- Stock LRU: 40.7% device / 59.3% host, ~292M load-back tokens
+- CostAware: 36.2% device / 63.8% host, ~350M load-back tokens (+19.6%)
+- GDSF: 37.0% device / 63.0% host, ~285M load-back tokens (−2.5%)
+- Total eviction volume CONSTANT (+1.0%) — CostAware changes WHAT is evicted, not how much.
+- **Absolute hit counts** (device×cached_tok): stock 25.0M, CostAware 24.5M, GDSF 23.0M
+- **Absolute host hits**: stock 36.5M, CostAware **43.2M** (+18.4%), GDSF 39.1M (+7.1%)
+- CostAware is fundamentally an **L2-effectiveness mechanism**: device hits stay flat;
+  the entire +6pp gain comes from making L2 host cache more useful — protecting expensive
+  long prefixes in L2 that LRU would evict, enabling more load-backs.
+- CostAware trades cheap D→H transfers (2.5ms) for avoided O(L²) attention recompute
+  on long prefixes (hundreds of ms). The 19.6% more load-back volume costs ~140ms total
+  extra transfer time per run but saves 5.9M new-token prefill compute (~22% attention cost).
+
+**Ceiling analysis:** CostAware achieves ~94% of the theoretical maximum hit_rate.
+Total prompt tokens: 99.9M. CostAware's prefill_new = 32.4M. Irreducible cold content
+(first-time documents that have never been seen) ≈ 28M+ tokens. Theoretical max hit_rate
+= (99.9−28)/99.9 ≈ 0.720. CostAware = 0.678, i.e. 93.9% of ceiling. Remaining headroom
+≈ 4.4M tokens = 13.6% of CostAware's remaining new-token work. This bounds the ENTIRE
+eviction design space: no refinement can gain more than ~4pp over CostAware, and that
+would require Belady-optimal replacement (offline, infeasible). This explains why ALL
+refinements (GDSF, SLRU, frequency, continuous cost, depth, 3-tier) are neutral — there's
+almost no room left to improve.
 
 ### Pending ablation experiments (27 queued)
 - v10-lfu: pure LFU eviction

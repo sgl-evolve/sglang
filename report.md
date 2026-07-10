@@ -348,7 +348,14 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   p99 is slightly worse (4388 vs 4175 for XTIER+CostAware) due to more load_back transfers. The p99 gap
   will be tested with SRPF in v51. Logged W&B (config).
 
-*v35+ batch running — results below will be added as they complete.*
+- **v35-wb-lfu** (write_back + LFU eviction, CONFIG) — **KEY INSIGHT.** hit **0.730**, p99 **4595 ms**,
+  p50 **487 ms**, req/s **3.02**, mean **812 ms**. **write_back RESCUES LFU from catastrophe!** LFU under
+  write_through (v10) was catastrophic: hit 0.394, p99 67,005 ❌❌. Under write_back: hit 0.730, p99 4595 ✓.
+  The exclusive tiering change alone is responsible for +0.336 hit and −93% p99 improvement over inclusive+LFU.
+  LFU vs LRU under write_back: only ~7% p99 variance (4595 vs 4291). **This proves the main lever is tiering
+  architecture (exclusive vs inclusive), not eviction policy.** Logged W&B (config).
+
+*v36+ batch running — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29)
 All frequency-based eviction policies (LFU, SLRU, GDSF) are STRONG NEGATIVES for this multi-turn workload.

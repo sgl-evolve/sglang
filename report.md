@@ -372,9 +372,9 @@ hit 0.6269; host_util 1.0; tput 2.87; out_tok/s 367; tpot 252; load_back 302M; e
 
 ## Systematic ablation campaign (v9+)
 
-Control baselines (n=4: v0-ctl, v0-ctl2, ctlC, ctlD): hit_rate **0.619 ± 0.006**, p50 591 ± 97 ms,
-p99 5470 ± 622 ms, rps 3.0. CostAware@2048 reference (n=3: v1-t2048, t2048C, t2048D): hit_rate
-**0.678 ± 0.006** (Δ = +5.9pp, >9σ). All following experiments compared vs these error bars.
+Control baselines (n=5: v0-ctl, v0-ctl2, ctlC, ctlD, v0-ctl3): hit_rate **0.622 ± 0.009**, p50 575 ± 94 ms,
+p99 5296 ± 670 ms, rps 3.0. CostAware@2048 reference (n=3: v1-t2048, t2048C, t2048D): hit_rate
+**0.678 ± 0.006** (Δ = +5.6pp, >6σ). All following experiments compared vs these error bars.
 
 - **v9-gdsf** (`3c72425a9`, `mechanism`, **NEUTRAL**): GDSF (Greedy-Dual-Size-Frequency) eviction.
   Result: hit_rate 0.622 (within control 0.619±0.006), p50 536, p99 5610, rps 3.02.
@@ -466,8 +466,31 @@ almost no room left to improve.
   Same pattern — hit_rate in CostAware band, p99 low. Scheduling add-ons are orthogonal to eviction
   and don't compound the hit_rate gain.
 
-### Remaining experiments (v19–v39, running on job 18790)
-v19-loadback, v0-ctl3, v21-valuegate, v22-wt2, v23-wt3, v24-lru-valuegate, v25-fullstack,
-v26-lru-wt2, v27-backupcost, v28-freqcost, v29-contcost-a50, v30-contcost-a200, v31-reuse1,
-v32-t4096, v33-backupcost-wt2, v34-3tier, v35-freqcost-w20, v0-ctl4, v36-splittier-lru,
-v37-splittier-gdsf, v38-lru-splittier-cost, v0-ctl5, v39-t2048-ctl. Expected completion ~July 11 04:00 UTC.
+**CostAware add-on mechanisms continued — NEUTRAL on hit_rate:**
+- **v19-loadback** (CostAware + loadback_min_cost=512): hit_rate **0.674**, dev% 36.4%, p50 478, p99 4750.
+  Filtering cheap load-backs (only restore segments ≥512 tokens from L2→L1) is redundant — CostAware eviction
+  already ensures L2 is long-prefix-dominated, so most load-backs are already expensive segments.
+- **v21-valuegate** (CostAware + loadback_value_gate=1): hit_rate **0.679**, dev% 36.0%, p50 473, p99 6646.
+  Value-gating load-backs (only restore when recompute cost > transfer cost) is neutral — L2→L1 transfer
+  is already cheap (~1.65ms) vs recompute for any non-trivial prefix.
+
+**Write-through threshold — MONOTONE CATASTROPHIC (2/2):**
+- **v22-wt2** (CostAware + write_through_threshold=2): hit_rate **0.388** (−37σ), dev% 74.3%, p50 915,
+  p99 **22121ms** (>2.5× SLO!). Requiring 2 accesses before backing up to L2 prevents most nodes from
+  ever reaching L2 — 768GB host tier nearly empty. Same failure mode as frequency-based strategies.
+- **v23-wt3** (CostAware + write_through_threshold=3): hit_rate **0.258** (−59σ), dev% 97.5%, p50 1092,
+  p99 8061ms (above SLO). Even worse: nearly nothing reaches L2 at threshold=3. Host tier completely wasted.
+- **INSIGHT:** Write-through threshold is **MONOTONE CATASTROPHIC**: {1: 0.678 (CostAware baseline),
+  2: 0.388, 3: 0.258}. Default write-through-everything (threshold=1) is essential. The 768GB L2 tier
+  is only valuable if every node is immediately backed up; any threshold >1 creates a critical mass failure
+  where most content never reaches L2, collapsing the entire tiered cache to device-only.
+
+**Additional control:**
+- **v0-ctl3** (stock LRU, 5th control): hit_rate **0.634** (+2.4σ), dev% 39.9%, p50 531, p99 4583.
+  Slightly higher than control mean (0.619) but within 2σ. Updated control band: n=5, mean 0.622±0.009.
+
+### Remaining experiments (v24–v39, running on job 19231)
+v24-lru-valuegate, v25-fullstack, v26-lru-wt2, v27-backupcost, v28-freqcost, v29-contcost-a50,
+v30-contcost-a200, v31-reuse1, v32-t4096, v33-backupcost-wt2, v34-3tier, v35-freqcost-w20, v0-ctl4,
+v36-splittier-lru, v37-splittier-gdsf, v38-lru-splittier-cost, v0-ctl5, v39-t2048-ctl.
+Expected completion ~July 11 08:00 UTC (restarted after v24 hung on job 18790).

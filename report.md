@@ -342,7 +342,13 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   (only back up nodes with hit_count ≥ 1). Result: within normal XTIER variance band. In practice, most
   backed-up content is already reused, so the filter has no effect. Logged W&B (mechanism).
 
-*v34+ batch running — results below will be added as they complete.*
+- **v34-wb-cost** (write_back + CostAware eviction, CONFIG+MECHANISM) — hit **0.736**, p99 **4388 ms**,
+  p50 **458 ms**, req/s **3.02**, mean **764 ms**. write_back + CostAware gives the highest hit rate so far
+  (0.736 > XTIER+CostAware 0.730) because write_back's inclusive backup preserves more host content. But
+  p99 is slightly worse (4388 vs 4175 for XTIER+CostAware) due to more load_back transfers. The p99 gap
+  will be tested with SRPF in v51. Logged W&B (config).
+
+*v35+ batch running — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29)
 All frequency-based eviction policies (LFU, SLRU, GDSF) are STRONG NEGATIVES for this multi-turn workload.

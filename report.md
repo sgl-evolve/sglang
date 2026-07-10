@@ -220,6 +220,7 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 | v23-excl-rep2 | 75423918f | mechanism | 0.7325 | 467/4518 | 0.9999 | 3.02 | Excl replicate: hit=0.733 (n=7 excl LRU 0.731±0.002) |
 | v24-baseline-rep1 | 75423918f | mechanism | 0.6159 | 528/4970 | 0.9999 | 3.02 | Baseline replicate: hit=0.616 (n=9 baseline 0.623±0.009) |
 | v25-baseline-rep2 | 75423918f | mechanism | 0.6173 | 537/4843 | 0.9999 | 3.02 | Baseline replicate: hit=0.617 (n=10 baseline 0.623±0.009) |
+| v33-adaptive-excl-80 | 73806500f | mechanism | **0.5032** | **700/17971** | 0.8001 | 3.02 | **STRONG NEGATIVE:** Adaptive excl @80% util: hit=0.503, p99 17.9s (2.2× SLO). Mode-flapping → host only 80% utilized |
 
 ## ★ BATCH ABLATION RESULTS (v6–v53, ongoing)
 **Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 37 of 48 complete; batch5 running (v33-adaptive-excl-80 next); 6 cancelled (v12/v15/v16/v18/v19/v20, retry queued).
@@ -231,7 +232,7 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 | **Baseline family** | s1-diag, diag2, diag3, v1, v2, v26-sjf, v45-rep3, v29-selhost-ca, v48-admit256 | 0.612–0.636 | 4797–6594 | hit=0.625±0.009; scheduling/eviction-strategy/admission NEUTRAL on hit without excl |
 | **Exclusive tiering family** | v3c, v44-rep3, v27-sjf-excl, v28-wf-excl, v6-costaware, v9-fifo-excl, v30-excl-ca-selhost, v49-admit1024 | 0.727–0.734 | 3507–4831 | hit=0.731±0.002; FIFO ≈ LRU; nothing adds on top of excl |
 | **Excl + alt-eviction (degraded)** | v7-gdsf, v13-sizeweight, v14-depthaware | 0.698–0.710 | 4392–4905 | Non-recency dims HURT excl (−2.1..−3.3pp) |
-| **Excl + alt-eviction (severe)** | v10-mru-excl, v31-adapt-90, v32-adapt-95 | 0.518–0.536 | 9982–17666 | MRU evicts just-used prefix; adaptive @any-threshold mode-flaps |
+| **Excl + alt-eviction (severe)** | v10-mru-excl, v31-adapt-90, v32-adapt-95, v33-adapt-80 | 0.503–0.536 | 9982–17971 | MRU evicts just-used prefix; adaptive @any-threshold mode-flaps (80/90/95% all catastrophic) |
 | **Excl + alt-eviction (catastrophic)** | v8-lfu-excl, v11-slru-excl | 0.332–0.348 | 8322–8451 | Frequency-based: LFU/SLRU destroy host composition |
 | **Config diagnostic** | diag4-writeback | 0.731 | 4292 | Confirms mechanism ≈ config write_back |
 | **No-excl alt-eviction (catastrophic)** | v17-lfu-noexcl | 0.324 | 8696 | LFU WITHOUT excl: even worse (0.324 vs 0.332 w/ excl). LFU destroys cache regardless |
@@ -250,7 +251,7 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 
 **v47-wt5: hit=0.250 — even worse than wt2 (0.386).** WT threshold has a clear monotone-decreasing relationship: threshold {1(default): 0.62, 2: 0.39, 5: 0.25}. At threshold 5, effectively nothing gets backed up (wb_ok=25 across the entire run, dev_delete=17.2M tokens). The host tier is ~empty.
 
-**Status (2026-07-10 ~14:00Z):** 38/48 complete (v22-v25 baseline/excl replicates done). batch5 running sequentially (v33-adaptive-excl-80 in progress); 6 cancelled evals queued for retry (v12/v15/v16/v18/v19/v20). **Cost-aware threshold is insensitive:** t=1024 (cancelled, retry), t=2048 (v6: 0.728), t=4096 (v21: 0.728) all neutral — confirms cost-aware eviction is moot under full-cycle reuse distance. **Baseline error bars refined: n=10 (0.623±0.009).** Excl n=7 (0.731±0.002).
+**Status (2026-07-10 ~14:30Z):** 39/48 complete (v33-adaptive-excl-80 done: hit=0.503, STRONG NEGATIVE). batch5 running (v34-admit256 in progress); 6 cancelled evals queued for retry (v12/v15/v16/v18/v19/v20). **Adaptive excl completely dead:** @80% (0.503), @90% (0.520), @95% (0.536) — ALL mode-flap below baseline. **Cost-aware threshold is insensitive:** t=1024 (cancelled, retry), t=2048 (v6: 0.728), t=4096 (v21: 0.728) all neutral. **Error bars:** baseline n=10 (0.623±0.009), excl n=7 (0.731±0.002).
 
 ## ⚠️ CRITICAL: warm-first is a NEGATIVE result (node-variance debunked)
 diag2 (baseline fcfs, node 0-3) vs v2 (warm-first+aging, node 0-3) — SAME NODE:

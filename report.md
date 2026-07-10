@@ -355,7 +355,12 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   LFU vs LRU under write_back: only ~7% p99 variance (4595 vs 4291). **This proves the main lever is tiering
   architecture (exclusive vs inclusive), not eviction policy.** Logged W&B (config).
 
-*v36+ batch running — results below will be added as they complete.*
+- **v36-xtier-cost-t4096** (XTIER + CostAware(t=4096), MECHANISM) — hit **0.726**, p99 **4313 ms**,
+  p50 **459 ms**, req/s **3.02**, mean **753 ms**. XTIER + higher CostAware threshold is slightly worse than
+  t=2048 (hit 0.730/p99 4175). Over-protection (t=4096) wastes cache on high-cost nodes that may not be
+  reused. **Confirms t=2048 is the CostAware sweet spot even with XTIER.** Logged W&B (mechanism).
+
+*v37+ batch running — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29)
 All frequency-based eviction policies (LFU, SLRU, GDSF) are STRONG NEGATIVES for this multi-turn workload.

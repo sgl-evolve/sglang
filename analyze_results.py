@@ -13,8 +13,8 @@ from collections import defaultdict
 WS = "/home/junyanch_google_com/autoresearch/workspace/sgl/v0.25_ablations/sgl_mech/researchers/sgl_mech/runs"
 
 # Version categorization
-CONTROLS = {"v0-ctl", "v0-ctl2", "ctlC", "ctlD", "v0-ctl3", "v0-ctl4"}
-COST_AWARE = {"v1-t2048", "t2048C", "t2048D"}
+CONTROLS = {"v0-ctl", "v0-ctl2", "ctlC", "ctlD", "v0-ctl3", "v0-ctl4", "v0-ctl5"}
+COST_AWARE = {"v1-t2048", "t2048C", "t2048D", "v39-t2048-ctl"}
 
 def load_all():
     results = {}
@@ -42,6 +42,7 @@ def classify(v):
     if "valuegate" in v: return "VALUE-GATE"
     if "wt2" in v or "wt3" in v: return "WT-THRESHOLD"
     if "fullstack" in v: return "FULL-STACK"
+    if "splittier" in v: return "SPLIT-TIER"
     if "backupcost" in v: return "BACKUP-AWARE"
     if "freqcost" in v: return "FREQ-COST"
     if "reuse" in v: return "REUSE-GATE"

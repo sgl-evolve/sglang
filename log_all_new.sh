@@ -22,6 +22,7 @@ NEW_VERSIONS=(
     v21-valuegate v22-wt2 v23-wt3 v24-lru-valuegate v25-fullstack v26-lru-wt2
     v27-backupcost v28-freqcost v29-contcost-a50 v30-contcost-a200
     v31-reuse1 v32-t4096 v33-backupcost-wt2 v34-3tier v35-freqcost-w20 v0-ctl4
+    v36-splittier-lru v37-splittier-gdsf v38-lru-splittier-cost v0-ctl5 v39-t2048-ctl
 )
 
 COMMIT=$(cd "$WS" && git rev-parse --short HEAD 2>/dev/null || echo "?")

@@ -544,6 +544,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self.write_through_threshold = (
             1 if server_args.hicache_write_policy == "write_through" else 2
         )
+        if self._write_through_threshold_override > 0:
+            self.write_through_threshold = self._write_through_threshold_override
         self.load_back_threshold = 10
         self.prefetch_stop_policy = server_args.hicache_storage_prefetch_policy
 
@@ -1723,6 +1725,16 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         else:
             avail = self.token_to_kv_pool_allocator.available_size()
         if avail < kv_tokens:
+            if self._loadback_value_gate and self.evictable_device_leaves:
+                load_pri = self.eviction_strategy.get_priority(best_match_node)
+                min_evict_pri = min(
+                    self.eviction_strategy.get_priority(n)
+                    for n in self.evictable_device_leaves
+                )
+                if load_pri <= min_evict_pri:
+                    self.dec_lock_ref(best_match_node, ancestor_lock_params)
+                    self.dec_host_lock_ref(best_match_node, host_anchor_params)
+                    return False
             needed = kv_tokens - avail
             result = self.evict(EvictParams(num_tokens=needed))
             if result.num_tokens_evicted < needed:
@@ -1823,6 +1835,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         return transfers
 
     _write_admission_min_cost = int(os.environ.get("SGLANG_WRITE_ADMISSION_MIN_COST", "0"))
+    _loadback_value_gate = os.environ.get("SGLANG_LOADBACK_VALUE_GATE", "").strip().lower() in ("1", "true", "yes")
+    _write_through_threshold_override = int(os.environ.get("SGLANG_WRITE_THROUGH_THRESHOLD", "0"))
 
     def _inc_hit_count(self, node: UnifiedTreeNode, chunked: bool = False) -> None:
         """Increment hit count; trigger write_backup when threshold reached."""

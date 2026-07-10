@@ -22,6 +22,7 @@ from sglang.srt.environ import envs
 
 logger = logging.getLogger(__name__)
 from sglang.srt.mem_cache.evict_policy import (
+    BackupAwareCostStrategy,
     ContinuousCostStrategy,
     CostAwareStrategy,
     CostFreqStrategy,
@@ -34,6 +35,7 @@ from sglang.srt.mem_cache.evict_policy import (
     LRUStrategy,
     MRUStrategy,
     PriorityStrategy,
+    RecencyBoostedCostStrategy,
     SizeAwareLRUStrategy,
     SLRUStrategy,
 )
@@ -106,6 +108,13 @@ _EVICTION_POLICY_FACTORIES: dict[str, Callable[[], EvictionStrategy]] = {
     ),
     "size_aware_lru": lambda: SizeAwareLRUStrategy(
         size_threshold=int(os.environ.get("SGLANG_SIZE_AWARE_THRESHOLD", "2048"))
+    ),
+    "backup_aware_cost": lambda: BackupAwareCostStrategy(
+        threshold=int(os.environ.get("SGLANG_COST_AWARE_EVICT_THRESHOLD", "2048"))
+    ),
+    "recency_boosted_cost": lambda: RecencyBoostedCostStrategy(
+        threshold=int(os.environ.get("SGLANG_COST_AWARE_EVICT_THRESHOLD", "2048")),
+        freq_weight=float(os.environ.get("SGLANG_FREQ_BOOST_WEIGHT", "5.0")),
     ),
     # Recompute-cost-aware eviction (this work): select via --radix-eviction-policy cost_aware.
     "cost_aware": _make_cost_aware_strategy,

@@ -244,3 +244,53 @@ class SizeAwareLRUStrategy(EvictionStrategy):
         # Large nodes (>= threshold) → bucket 0 (evict first); small → bucket 1
         bucket = 0 if seg >= self.size_threshold else 1
         return (bucket, node.last_access_time)
+
+
+class BackupAwareCostStrategy(EvictionStrategy):
+    """Cost-aware eviction that also considers L2 backup status.
+
+    Nodes backed up in L2 are "safe" to evict (recoverable via load-back);
+    unbacked nodes are lost forever on eviction.  This yields a 4-tier priority:
+      tier 0: cheap + backed   → safest to evict (cheap recompute if load-back fails)
+      tier 1: cheap + unbacked → lost but cheap
+      tier 2: expensive + backed   → safe but expensive to recompute from scratch
+      tier 3: expensive + unbacked → most dangerous to evict
+    Within each tier, LRU breaks ties.  Reduces to CostAware when write-through
+    threshold=1 (all nodes backed immediately).
+    """
+
+    def __init__(self, threshold: int = 2048):
+        self.threshold = threshold
+
+    def get_priority(self, node: TreeNode) -> Tuple[int, float]:
+        key = getattr(node, "key", None)
+        seg = len(key) if key is not None else 0
+        cost_tier = 1 if seg >= self.threshold else 0
+        backup_bonus = 0 if getattr(node, "backuped", False) else 1
+        return (cost_tier * 2 + backup_bonus, node.last_access_time)
+
+
+class RecencyBoostedCostStrategy(EvictionStrategy):
+    """Cost-aware tiers with a frequency boost for proven-reuse nodes.
+
+    Like CostAware, segments by recompute cost (segment length), but within each
+    tier adds a continuous frequency bonus: priority = (tier, last_access_time +
+    freq_weight * log1p(hit_count)).  Frequently re-hit nodes get slightly more
+    protection than nodes accessed the same number of time-units ago but with fewer
+    hits.  freq_weight controls the strength of the frequency bonus relative to
+    recency.
+    """
+
+    def __init__(self, threshold: int = 2048, freq_weight: float = 5.0):
+        self.threshold = threshold
+        self.freq_weight = freq_weight
+
+    def get_priority(self, node: TreeNode) -> Tuple[int, float]:
+        import math
+
+        key = getattr(node, "key", None)
+        seg = len(key) if key is not None else 0
+        tier = 1 if seg >= self.threshold else 0
+        freq = getattr(node, "hit_count", 0)
+        bonus = self.freq_weight * math.log1p(freq) if freq > 0 else 0.0
+        return (tier, node.last_access_time + bonus)

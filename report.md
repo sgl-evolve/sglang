@@ -231,6 +231,7 @@ Run baseline-behavior + per-prefill counters (commit 3ebce16b5). Expected contin
 | v41-seldev | 75423918f | mechanism | 0.6374 | 519/4851 | 0.9999 | 3.02 | Selective device eviction, no excl: neutral (= baseline). Device eviction strategy irrelevant without excl |
 | v42-seldev-excl | 75423918f | mechanism | 0.7373 | 465/4684 | 0.9999 | 3.02 | Selective dev + excl: neutral (= excl). Selective device adds nothing on top of excl |
 | v43-full-stack | 75423918f | mechanism | 0.7353 | 466/5316 | 0.9999 | 3.02 | Kitchen-sink (excl+selhost+seldev+hostcost): neutral = plain excl. NOTHING stacks on excl |
+| v50-adaptive-excl-70 | 73806500f | mechanism | **0.4703** | **801/24273** | 0.7299 | 3.02 | **CATASTROPHIC:** Adaptive excl @70%: worst of series. p99 24.3s=3× SLO. Full series: @70(0.47)<@80(0.50)<@90(0.52)<@95(0.54) |
 
 ## ★ BATCH ABLATION RESULTS (v6–v53, ongoing)
 **Design:** 48 systematic mechanism ablations across 9 env-gated levers (BM_EXCL, BM_EVICT_STRATEGY, BM_SJF, BM_WARMFIRST, BM_SELECTIVE_HOST, BM_SELECTIVE_DEV, BM_ADAPTIVE_EXCL, BM_ADMIT_MIN_TOKENS, BM_WT_THRESHOLD). 5 custom eviction strategies implemented (CostAwareStrategy, GDSFStrategy, FreqDecayStrategy, SizeWeightedLRUStrategy, DepthAwareLRUStrategy). 43 of 48 complete; batch5 running (v38-hostcost next); 6 cancelled (v12/v15/v16/v18/v19/v20, retry queued).

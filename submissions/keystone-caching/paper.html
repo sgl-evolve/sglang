@@ -19,21 +19,27 @@
 <p class="authors">lamport · sglang KV-cache research (v0.3) · DRAFT (evidence maturing)</p>
 
 <div class="abstract">
-<b>Abstract.</b> Hybrid linear-attention LLMs (e.g., Qwen3.5, Jamba, Zamba) interleave many
+<b>Abstract.</b> Hybrid linear-attention LLMs (Qwen3.5, Jamba, Zamba, MiniMax) interleave many
 constant-size recurrent-state (SSM/GDN) layers with a few full-attention layers. Recent hybrid
 prefix-caching systems (Marconi, MLSys'25; Jenga, SOSP'25) treat the large fixed recurrent state as
-the <i>scarce GPU resource</i> and manage it on-device only. We ask whether this intuition survives once
-the recurrent state is <i>host-tiered</i>, as in SGLang's HiCache. Using a fully-instrumented 122B hybrid
-MoE (Qwen3.5-122B-A10B-FP8, 36 GDN + 12 attention layers, 8×H100) under a Poisson rate-swept,
+the <i>scarce GPU resource</i> and manage it on-device only. We show this intuition <b>inverts</b> once
+the state is <i>host-tiered</i>, as in SGLang's HiCache. The key observation: on a host tier, the
+recurrent state's caching cost is <b>O(#sequences)</b> (one ~18 MB state per live conversation), while
+attention-KV is <b>O(#tokens)</b>; for long-context workloads (#tokens ≫ #sequences) the recurrent state
+is trivially cacheable and <i>never binds</i>, whereas attention-KV overflows. Using a fully-instrumented
+122B hybrid MoE (Qwen3.5-122B-A10B-FP8, 36 GDN + 12 attention layers, 8×H100) under a Poisson rate-swept,
 multi-turn, real-text (Mooncake-mix) protocol, we introduce a <i>reuse-frontier</i> diagnostic that
 measures, per prefix match, how much resident attention-KV is rendered un-continuable ("stranded") by a
-missing recurrent checkpoint. We find that <b>(i)</b> once host-tiered, the recurrent-state pool is
-<i>over-provisioned</i> and rarely evicts; <b>(ii)</b> stranding is small at the operating point but
-grows with working-set pressure; <b>(iii)</b> the binding resource shifts to prefill compute under
-bursty arrivals. We use these findings to build <i>Value-Density Mamba Retention (VMR)</i>, a
-cross-component co-management primitive that protects recurrent checkpoints in proportion to the
-attention-KV they unlock (a parameter-free memory crossover), and we characterize the regime in which it
-matters. <span class="note">[Quantitative headline pending diag1553 / VMR-at-scale runs.]</span>
+missing recurrent checkpoint. We find: <b>(i)</b> the recurrent-state host pool <i>never evicts</i> — even
+at 3× the working set where the attention-KV host pool evicts 26 M tokens; <b>(ii)</b> stranding is
+&lt;1.2% and is sparse-checkpoint-bounded, not eviction-driven; <b>(iii)</b> at realistic operating scale
+the system is not cache-bound at all (hit rate maximal 0.842, host tier 79% full, PCIe &lt;10%), and the
+known capacity lever (exclusive tiering, +13 pp elsewhere) is <i>neutralized</i>; the binding resource is
+prefill compute under bursty arrivals. We therefore <b>bound</b> the design space for hybrid KV caching:
+recurrent-state management (the focus of prior work) is a non-lever under host tiering; the only cache
+lever is attention-KV capacity, and only at large working sets. We contribute the reuse-frontier
+diagnostic, a cross-scale 2×2 characterization, and a candidate mechanism (Value-Density Mamba Retention)
+that we show is a no-op precisely because the state pool never binds — a rigorously-bounded negative.
 </div>
 
 <h2>1 Introduction</h2>

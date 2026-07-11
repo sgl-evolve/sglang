@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Callable, Optional, Sequence
 
 import torch
 
+from sglang.srt.mem_cache import lamport_instr
 from sglang.srt.mem_cache.base_prefix_cache import (
     DecLockRefParams,
     EvictParams,
@@ -164,6 +165,10 @@ class FullComponent(TreeComponent):
             _, x = heapq.heappop(heap)
             if x not in self.cache.evictable_host_leaves:
                 continue
+            _hv = x.component_data[ct].host_value
+            if _hv is not None:
+                lamport_instr.add("full_host_evict_nodes")
+                lamport_instr.add("full_host_evict_tok", len(_hv))
             self.cache._evict_host_leaf(x, tracker)
             if x.parent is not None and x.parent in self.cache.evictable_host_leaves:
                 heapq.heappush(

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Callable, Optional, Sequence
 
 import torch
 
+from sglang.srt.mem_cache import lamport_instr
 from sglang.srt.mem_cache.base_prefix_cache import (
     DecLockRefParams,
     EvictParams,
@@ -219,6 +220,7 @@ class MambaComponent(TreeComponent):
             else:
                 # Internal: tombstone Mamba + cascade
                 x_next = lru.get_prev_no_lock(x)
+                lamport_instr.add("mamba_dev_evict_nodes")
                 self.cache._evict_component_and_detach_lru(
                     x, self, target=EvictLayer.DEVICE, tracker=tracker
                 )
@@ -542,6 +544,7 @@ class MambaComponent(TreeComponent):
         while tracker[ct] < num_tokens and x is not None and host_lru.in_list(x):
             x_next = host_lru.get_prev_no_host_lock(x)
             cd = x.component_data[ct]
+            lamport_instr.add("mamba_host_evict_nodes")
             if x in self.cache.evictable_host_leaves:
                 # Host leaf: atomic eviction (all components host + delete)
                 self.cache._evict_host_leaf(x, tracker)

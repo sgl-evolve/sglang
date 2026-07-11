@@ -28,6 +28,7 @@ from sglang.srt.mem_cache.base_prefix_cache import (
     MatchResult,
 )
 from sglang.srt.mem_cache.events import KVCacheEventMixin
+from sglang.srt.mem_cache import lamport_instr
 from sglang.srt.mem_cache.hicache_storage import (
     PoolName,
     PoolTransfer,
@@ -895,6 +896,10 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         best_match_node = node
         best_match_device_node = node
         best_match_device_value_len = 0
+        # lamport instr: cum_len = full-KV reuse frontier (walk is full-driven);
+        # best_all_len = all-component-valid frontier. gap = mamba-stranded full KV.
+        cum_len = 0
+        best_all_len = 0
         separate_device_match = self.cache_controller is not None
         if separate_device_match:
             validators = tuple(
@@ -914,11 +919,12 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             return all([v(node) for v in validators])
 
         def _update_best_if_valid(node):
-            nonlocal best_match_node
+            nonlocal best_match_node, best_all_len
             nonlocal best_match_device_value_len, best_match_device_node
             matched = _all_valid(validators, node)
             if matched:
                 best_match_node = node
+                best_all_len = cum_len
 
             if not separate_device_match:
                 if matched:
@@ -941,17 +947,20 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 node = self._split_node(child.key, child, prefix_len)
                 if not node.evicted:
                     value.append(node.component_data[BASE_COMPONENT_TYPE].value)
+                cum_len += prefix_len
                 _update_best_if_valid(node)
                 break
 
             if not child.evicted:
                 value.append(child.component_data[BASE_COMPONENT_TYPE].value)
             node = child
+            cum_len += prefix_len
             _update_best_if_valid(node)
             key = key[prefix_len:]
             if len(key):
                 child_key = key.child_key(self.page_size)
 
+        lamport_instr.record_match(cum_len, best_all_len)
         return (
             value,
             best_match_node,

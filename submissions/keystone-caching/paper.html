@@ -167,6 +167,17 @@ not a failed tuning but a direct <i>test</i> of the law: its threshold <i>is</i>
 across every measured configuration (§5). The design space for lossless hybrid-KV caching therefore collapses
 onto the attention-KV tier, whose only in-budget lever is exclusive (device-XOR-host) tiering — a known
 result, not a novel primitive.</p>
+<p><b>Impossibility corollary.</b> Combining the law with the standard serving constraints yields a bound on
+what any cache-architecture change can achieve here. The only two ways to raise attention-KV reuse are
+(i) more effective capacity or (ii) better eviction. (i) is fixed by the frozen host budget, and its one
+non-duplicating refinement — exclusive tiering — is already deployed and known. (ii) is a classical policy
+transplant (LRU/LFU/GDSF), which prior HiCache work and our charter treat as a solved/non-contribution axis
+for this radix-structured, near-monotone reuse (a tight Belady bound is future work). Under those two
+premises — frozen budget and eviction-as-solved — <i>no lossless, budget-respecting, non-classical cache
+mechanism can shift the throughput–latency curve</i> for this model/workload. A win must come from outside
+the lossless cache: compute (attention approximation, lossy) or admission/scheduling (which the reuse
+structure makes SJF-equivalent). This is the sense in which the result is a bounded impossibility, not a
+failure to search — and it is exactly what the four-cell experiment confirms.</p>
 
 <h2>4 Implementation</h2>
 <p>All changes are in the live <code>UnifiedRadixCache</code> path (components <code>[FULL, MAMBA]</code>).

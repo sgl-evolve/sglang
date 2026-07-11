@@ -37,7 +37,16 @@ Candidate leads, hybrid-specific & non-banned:
 - Deciding via baseline curve + instrumented characterization (trace-driven motivation). Will NOT commit until headroom is measured.
 
 ---
-## Mechanism implemented (ready): Value-Density Mamba Retention (VMR)
+## ⚠ PIVOT — v1-instr disproves the SSM-stranding hypothesis (decisive negative)
+Measured (warm run, all rates): **host KV pool never saturates** (host_util ≈ 0.79 peak; **mamba_host_evict=0, full_host_evict=0** across the whole run). Reason: at NUMP=500 the working set (~6 M tok) < host KV capacity (8.4 M), so the 768 GB host tiers are **over-provisioned** and never evict. Consequences:
+- **SSM-state stranding is tiny** (0.33–0.66% of frontier, sparse-checkpoint only, 0 eviction) ⇒ **VMR-host = no-op** (nothing to protect). Marconi/Jenga's "SSM state is the scarce GPU resource" does NOT hold once the state is host-tiered here.
+- **hit_rate is maxed at 0.842** (0.158 = irreducible first-occurrence; host retains all, so ~0 eviction-recompute) ⇒ **no hit-rate/capacity headroom**.
+- **Bottleneck = DEVICE↔HOST movement/churn**: device KV pool (2.35 M) turns over hard — **evict 169 M + load-back 138 M tokens per rate** (load-bound regime, à la Strata). This is the charter's "hide/reduce L1↔L2 movement cost under load" target.
+- **p99 TTFT is noisy**: v0-baseline λ=3 p99=53 s (cold JIT, first load) vs v1-instr λ=3 p99=9 s (warm). Warm profile: p99 ~9 s(λ3), ~23 s(λ5). ⇒ compare **warm-to-warm**, use stable counters (hit, evict/load-back tokens) for attribution.
+
+**New direction:** target the device↔host **movement cost / overlap under load** (transfer path, not capacity/eviction/config). Need a profiling run to locate the exact bottleneck (prefill compute vs load-back-exposed vs queue) before committing. VMR kept flag-gated as a documented negative.
+
+## (superseded) Value-Density Mamba Retention (VMR)
 `LAMPORT_MECH=vmr` (default off; A/B on identical code). In the scarce Mamba host pool, **protect checkpoints whose unlocked attention-KV prefix exceeds their own ~18 MB cost** (parameter-free crossover ≈1570 tok, ablatable via `LAMPORT_MIN_TOK`) from host eviction; 2-pass fallback keeps the pool always freeable. Files: `mem_cache/lamport_mech.py`, `mamba_component.py` (`_host_evict_pass`, value stored at checkpoint creation). Lossless (reuse exact; only *which* checkpoints are retained changes). Targets the P99 tail: a deep-checkpoint eviction forces full-history recompute. **Risk:** in long-context workloads most checkpoints exceed the threshold → need enough short (ShareGPT) checkpoints to sacrifice; else raise threshold / go value-ordered.
 
 ## Versions

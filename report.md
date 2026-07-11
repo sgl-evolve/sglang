@@ -421,7 +421,15 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   CostFreq under XTIER is far worse than CostAware (0.730) or LRU (0.725). **Any eviction policy that
   considers frequency is incompatible with XTIER's lazy backup.** Logged W&B (mechanism).
 
-*v47+ batch running — results below will be added as they complete.*
+- **v46-xtier-cost-freq** (XTIER + CostFreq eviction, MECHANISM) — hit **0.510**, p99 **3842 ms**,
+  req/s **3.02**. XTIER hurts CostFreq (frequency component causes lazy-backup loss). Logged W&B.
+
+- **v47-xtier-adaptive** (XTIER + adaptive WM_FRAC, MECHANISM) — hit **0.725**, p99 **4972 ms**, p50 **463 ms**,
+  req/s **3.02**, mean **822 ms**. Adaptive backup tuning converges to a higher effective WM_FRAC than the
+  static 0.10 sweet spot → hit matches (0.725) but p99 is worse (4972 vs 4067). **Static WM_FRAC=0.10 beats
+  adaptive tuning.** Logged W&B (mechanism).
+
+*v48+ batch running — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29, v34-v37, v43-v45)
 All frequency-based eviction policies (LFU, SLRU, GDSF, LFUDA, CostFreq) are NEGATIVES under inclusive

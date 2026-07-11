@@ -114,15 +114,18 @@ LOC ≈ 130 net python. Verified live (not dead code) via the instrumentation fi
 <h2>5 Evaluation</h2>
 <p><b>5.1 The recurrent-state pool never binds (cross-scale).</b> Instrumentation over the whole run:</p>
 <table>
-<tr><th>scale</th><th>host util (attn-KV)</th><th>attn-KV host evict</th><th>mamba host evict</th><th>stranded (frontier)</th><th>hit</th></tr>
-<tr><td>contract (NUMP 500)</td><td>0.79 (flat, all λ)</td><td>0</td><td>0</td><td>0.4%</td><td>0.842</td></tr>
-<tr><td>intended (NUMP 1553)</td><td>1.0 (fills)</td><td>7036 nodes / 26 M tok</td><td><b>0</b></td><td>0.6–1.2%</td><td>—</td></tr>
+<tr><th>scale (λ=5)</th><th>host util (attn-KV)</th><th>attn-KV host evict</th><th>mamba host evict</th><th>stranded</th><th>hit rate</th><th>req/s</th></tr>
+<tr><td>contract (NUMP 500)</td><td>0.79 (flat, all λ)</td><td>0</td><td>0</td><td>0.4%</td><td><b>0.842</b></td><td>4.61</td></tr>
+<tr><td>intended (NUMP 1553)</td><td><b>1.00</b> (saturates)</td><td>7487 nodes / 26.4 M tok; 587 M total</td><td><b>0</b></td><td>0.5%</td><td><b>0.650</b></td><td>3.67</td></tr>
 </table>
-<p>Even at 3× the working set, where the attention-KV host tier evicts 26 M tokens, the recurrent-state
-host pool evicts <b>nothing</b>: with ~18 MB/sequence and ≈5360 host slots, it holds every live
-conversation's state. Stranding stays &lt;1.2% and is bounded by the checkpoint stride (64 tokens), i.e.
-sparse-placement, not eviction. <b>VMR is therefore a no-op</b> (its protect-list is never exercised:
-<code>protect_skips</code>≡0), by construction, not by tuning.</p>
+<p>Two facts. <b>(a) The contract eval is under-provisioned.</b> At NUMP 500 the working set (~6.2 M
+tokens) fits the 7.81 M-token host tier (util 0.79); hit rate is maximal (0.842) and no host eviction
+occurs. Only at the charter's intended scale (working set ~19 M) does the attention-KV host tier saturate
+(util 1.0, 587 M tokens evicted) and hit collapse to 0.650 — the pressured regime the protocol intends.
+<b>(b) The recurrent state never binds.</b> Even at util 1.0 with 587 M attention-KV tokens evicted, the
+recurrent-state host pool evicts <b>nothing</b> (18 MB/seq × ≈5360 slots holds every live conversation).
+Stranding stays &lt;1% and is checkpoint-stride-bounded (sparse placement, not eviction). <b>VMR is a no-op
+by construction</b> (<code>protect_skips</code>≡0), not by tuning: there is nothing to protect.</p>
 
 <p><b>5.2 The known capacity lever is neutralized at the contract operating point (2×2).</b>
 Exclusive tiering (<code>write_back</code>) — the mechanism that yields +13 pp under host pressure — is

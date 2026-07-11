@@ -60,9 +60,12 @@ Rigorous, cross-scale NEGATIVE + characterization (formal submission `keystone-c
 | ver | tag | hypothesis | curve result vs baseline | lossless | takeaway |
 |-----|-----|-----------|--------------------------|----------|----------|
 | v0_official | config | stock 2-tier λ=3 reference (baseline.json) | reference | — | logged W&B |
-| v0-baseline | config | stock rate-sweep = my comparison curve | goodput@8s **0**; peak 5.59 req/s; p50 1.2-1.6s, **p99 28-53s**; hit 0.841 | ✓(stock) | saturated tail regime; prefill-bound |
-| v1-instr | mechanism* | stock+instrumentation → stranding/churn data (baseline replicate) | queued (node contention) | ✓ | *instr only, no behavior change |
-| v2-vmr | mechanism | VMR: protect keystone Mamba checkpoints → cut recompute tail | pending v1-instr confirm | expect ✓ | ready to launch |
+| v0-baseline | config | stock rate-sweep (COLD JIT, 1st load) | goodput@8s **0**; peak 5.59; λ3 p99 **53s** | ✓ | JIT-cold-inflated tail; use warm |
+| v1-instr | mechanism* | stock+instrumentation, WARM (baseline replicate) | goodput@8s **0**; peak 5.95; λ3 p99 **9.0s** hit 0.842 | ✓ | *instr only; **stranding 0.4%, host 79%, 0 evict → NOT cache-bound** |
+| v2-writeback | config | write_back = exclusive tiering (the known +13pp lever) @contract | λ3 0.8424/9389 ≈ v1-instr → **NEUTRAL** | ✓ | known capacity lever neutralized (host not pressured) |
+| diag1553 | mechanism* | off-contract probe @ charter's intended scale (NUMP=1553, wt) | Full host evicts **26M tok**; **mamba host evict = 0**; stranding 1.2% | ✓ | mamba NEVER binds even at 3× WS; only attn-KV pressured |
+| diag1553wb | config | write_back @1553 (exclusive tiering under real pressure) | (running) | ✓ | expect: helps at 1553 → proves eval under-provisions |
+| (VMR) | mechanism | value-density Mamba retention | **no-op** (mamba_host_evict=0 ⇒ nothing to protect) | ✓ | documented negative; flag-gated, default off |
 
 ## Formal submissions
 (none yet)

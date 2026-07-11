@@ -301,7 +301,11 @@ empirical test that confirms the law, not a mechanism we claim as a win.</p>
 value is conditional on working-set pressure that this pool, by its O(#sequences) footprint, essentially
 never experiences. The p99 TTFT metric is warm-up- and burst-sensitive (≈6× cold-vs-warm at λ=3); we
 compare warm-to-warm and attribute via stable counters. The study is one model family (Qwen3.5 hybrid GDN)
-/ one workload mix. The over-provisioning of the recurrent host pool is partly an implementation artifact
+/ one workload mix; the intended-scale (NUMP 1553) results are single-rate (λ=5) diagnostics, so the
+mechanism-space claim <i>at that scale</i> rests on the unconditional capacity law and the
+recurrent-never-evicts result (0 host evictions across 4 runs × 2 write-policies × 2 scales), not on the
+single-rate 2×2 alone — a full λ-sweep and a measured null for a non-capacity attention-KV mechanism at 1553
+are the natural next experiments. The over-provisioning of the recurrent host pool is partly an implementation artifact
 (SGLang sizes it = <code>hicache_size</code>, i.e. 768 GB — equal to the KV host tier); a right-sized pool
 would still not bind: binding needs C·s &gt; H<sub>m</sub>, i.e. C &gt; H<sub>m</sub>/s ≈ 5333 concurrent cached
 sequences per rank at the stock 96 GB — but the node admits ≤270 running sequences and the entire workload has

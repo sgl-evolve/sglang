@@ -176,16 +176,19 @@ Exclusive tiering (<code>write_back</code>) — the mechanism that yields +13 pp
 statistically identical to <code>write_through</code> on the contract eval, because the host tier is only
 79% full:</p>
 <table>
-<tr><th>config</th><th>λ3 req/s</th><th>λ3 p99 (ms)</th><th>λ5 p99</th><th>λ7 p99</th><th>peak req/s</th><th>hit</th></tr>
-<tr><td>write_through (warm)</td><td>2.99</td><td>8969</td><td>23179</td><td>36855</td><td>5.95</td><td>0.8419</td></tr>
-<tr><td>write_back (warm)</td><td>2.99</td><td>9389</td><td>22992</td><td>36725</td><td>5.64</td><td>0.8424</td></tr>
+<tr><th>scale × policy</th><th>hit rate</th><th>req/s (λ5)</th><th>mamba host evict</th><th>Δ hit vs write-through</th></tr>
+<tr><td>contract (500) · write-through</td><td>0.8412 / 0.8419</td><td>4.63</td><td>0</td><td>—</td></tr>
+<tr><td>contract (500) · exclusive tiering</td><td>0.8424</td><td>4.61</td><td>0</td><td><b>+0.05 pp (neutral)</b></td></tr>
+<tr><td>intended (1553) · write-through</td><td>0.650</td><td>3.67</td><td>0</td><td>—</td></tr>
+<tr><td>intended (1553) · exclusive tiering</td><td><b>0.724</b></td><td><b>4.13</b></td><td><b>0</b></td><td><b>+7.4 pp (+12.5% req/s)</b></td></tr>
 </table>
-<p>Hit rate is invariant to 0.05 pp; TTFT differences are within run-to-run noise (§7). At the intended
-scale, where the attention-KV tier saturates (hit 0.650), exclusive tiering is exactly the mechanism that
-recovers capacity — the documented +13 pp "exclusive (device-XOR-host) tiering" result under host
-pressure — confirming the sole cache lever is <b>attention-KV capacity</b>, unmasked only by adequate
-working-set scale. Crucially, this lever is (i) bounded by the frozen 768 GB attention-KV host budget and
-(ii) already known; the improvement space contains no <i>novel</i> primitive.</p>
+<p>The 2×2 is decisive. On the contract eval, exclusive tiering (the "+13 pp under pressure" mechanism) is
+<b>neutral</b> (Δhit +0.05 pp) — the host tier is only 79% full, so there is nothing to gain. Only at the
+intended scale, where the attention-KV tier saturates (write-through hit 0.650), does exclusive tiering
+<b>recover +7.4 pp hit and +12.5% req/s</b>. Two conclusions: (i) the contract protocol <i>masks</i> the
+sole cache lever — attention-KV capacity — by under-provisioning; (ii) even where a lever exists, it is the
+<b>known</b> exclusive-tiering primitive, bounded by the frozen 768 GB budget — the improvement space
+contains no <i>novel</i> primitive. Note the recurrent-state pool evicts <b>nothing</b> in all four cells.</p>
 
 <p><b>5.3 The contract eval is compute/burst-bound, not cache-bound.</b> Prefill:decode batch ratio ≈7.4;
 queue depth p50=0 (idle) spiking to 83 (bursts); host↔device movement ≈1.85 GB/s (&lt;10% PCIe), fully

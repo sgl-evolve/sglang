@@ -154,11 +154,17 @@ bytes. For a serving instance with <i>C</i> concurrent live sequences of mean co
 host tiers must hold:</p>
 <pre>  recurrent host footprint = C · s          (grows with #sequences only)
   attention-KV host footprint = C · L · k   (grows with #sequences × context)</pre>
-<p>With host pools of sizes H<sub>m</sub> (recurrent) and H<sub>k</sub> (KV), the recurrent tier saturates when
-C·s &gt; H<sub>m</sub> and the KV tier when C·L·k &gt; H<sub>k</sub>. The recurrent tier is the <i>first</i> to bind
-exactly when C·s/H<sub>m</sub> &gt; C·L·k/H<sub>k</sub>, i.e.:</p>
-<pre>  L  &lt;  (s/k)·(H_k/H_m)  ≜  L*     (general);     L* = s/k when H_m = H_k</pre>
-<p><b>Capacity Law.</b> The recurrent-state tier is the bottleneck only when the mean context length
+<p><b>Assumptions.</b> (A1) each linear layer's recurrent state has fixed size independent of context length
+(true for SSM/Mamba/GDN by construction); (A2) full-attention KV is linear in tokens (standard); (A3) a
+serving instance holds C concurrent live cached sequences of mean context L; (A4) host tiers of sizes
+H<sub>m</sub> (recurrent) and H<sub>k</sub> (KV). Then the recurrent tier saturates when C·s &gt; H<sub>m</sub>
+and the KV tier when C·L·k &gt; H<sub>k</sub>.</p>
+<p><b>Proposition 1 (Capacity Law).</b> Under (A1)–(A4), the recurrent-state tier saturates <i>before</i> the
+attention-KV tier — i.e. is the binding capacity bottleneck — <b>iff L &lt; L* ≜ (s/k)·(H<sub>k</sub>/H<sub>m</sub>)</b>.
+<i>Proof.</i> The recurrent tier binds first iff its utilization exceeds the KV tier's:
+C·s/H<sub>m</sub> &gt; C·L·k/H<sub>k</sub>; C&gt;0 cancels, giving s/H<sub>m</sub> &gt; L·k/H<sub>k</sub>, i.e.
+L &lt; (s/k)·(H<sub>k</sub>/H<sub>m</sub>). ∎ (With equal pools H<sub>m</sub>=H<sub>k</sub>, L* = s/k.)</p>
+<p><b>Consequence.</b> The recurrent-state tier is the bottleneck only when the mean context length
 <b>L &lt; L* = (s/k)·(H<sub>k</sub>/H<sub>m</sub>)</b>. With equal pools (this system, both = <code>hicache_size</code>),
 L* = s/k = 18 MB / 11.4 KB ≈ <b>1580 tokens</b>. The pool ratio only shifts L* linearly: to make the recurrent
 tier bind at a realistic serving context (say L=64k), one would have to under-provision it by

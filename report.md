@@ -82,3 +82,12 @@ mamba_host_evict = **0 in all 4 cells**. ⇒ contract eval masks the only cache 
 **Capacity Law:** recurrent-state tier binds only when mean context L < L* = s/k (s=state bytes/seq, k=KV bytes/tok). For our model L*≈1580 tok. Since caching pays off only at L≫L*, the recurrent tier NEVER binds; attn-KV (footprint ∝ context) is the sole capacity bottleneck. Inverts Marconi/Jenga GPU-scarcity.
 **Generality (config-checkable, 6 hybrids):** L*_elem = Qwen3-Next 1536, Zamba2 167, Jamba 448, Granite-4 3456, Nemotron-H 3072, Qwen3.5-122B ~1580(measured) — all ≪ serving L (32k-256k). Family-wide result.
 **Impossibility corollary:** law + frozen budget + eviction-as-solved ⇒ no lossless budget-respecting non-classical cache mechanism can shift the curve. Win must come from outside the lossless cache (compute/scheduling). VMR no-op = direct test of the law.
+
+## ★ Paper v3: adversarial PC-review revision (spawned skeptical SOSP/OSDI reviewer)
+Reviewer verdict on v2: "borderline-reject; capacity law insightful+correct but impossibility over-scoped, Belady premise unproven, elastic-allocator inconsistent, goodput 'noise' is systematic, dtype hand-waving." Addressed ALL valid points honestly (no new/banned experiments):
+- Impossibility now SCOPED: unconditional capacity law (recurrent never binds, any scale) separated from scoped impossibility ("no lossless budget-respecting NON-CAPACITY non-classical mechanism shifts curve; capacity axis inert at contract point").
+- DROPPED LRU≈Belady dependency: eviction excluded as CLASSICAL axis (charter) regardless of Belady gap → no Belady bound needed.
+- Elastic cross-pool allocator RE-CLASSIFIED as a capacity mechanism (enlarges KV beyond 768GB budget) = baseline class, NOT an exception to the impossibility (resolves inconsistency).
+- goodput variance = SYSTEMATIC (warm-up + burst-phase alignment), not statistical noise; SLO in sensitivity band → attribute via stable counters.
+- Zamba2 low L*=167 STRENGTHENS conclusion (recurrent binds only for even shorter ctx); explicit only 122B measured, 5 config-derived w/ 1-4× dtype factor.
+Reviewer's one unaddressable ask = "add a positive mechanism" — impossible honestly (proven: capacity banned, eviction classical, compute lossy, contract not cache-bound). Charter accepts rigorous negatives. Re-review requested to confirm.

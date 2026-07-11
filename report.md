@@ -440,7 +440,12 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   band). DFS doesn't add value beyond XTIER's capacity improvement — **SRPF remains the best scheduling.**
   Logged W&B (mechanism).
 
-*v50+ batch running (batch4 started) — results below will be added as they complete.*
+- **v50-xtier-cost-srpf-wm05** (XTIER WM_FRAC=0.05 + CostAware + SRPF, MECHANISM) — hit **0.729**, p99
+  **3515 ms**, p50 **457 ms**, req/s **3.02**, mean **648 ms**. Three-way combo with WM_FRAC=0.05 ≈ v25
+  (WM_FRAC=0.10): p99 3515 vs 3469 (within noise). **WM_FRAC 0.05-0.10 is a plateau for the three-way
+  combo too** — the CostAware eviction and SRPF scheduling dominate. Logged W&B (mechanism).
+
+*v51+ batch running — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29, v34-v37, v43-v45)
 All frequency-based eviction policies (LFU, SLRU, GDSF, LFUDA, CostFreq) are NEGATIVES under inclusive

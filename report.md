@@ -454,7 +454,26 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   the novel XTIER mechanism's edge is load-back reduction (device-exclusive), but this is swamped by
   CostAware+SRPF's contribution. Logged W&B (mechanism).
 
-*v52+ batch running — results below will be added as they complete.*
+- **v52-xtier-2q-srpf** (XTIER + 2Q eviction + SRPF, MECHANISM) — hit **0.725**, p99 **3666 ms**, p50
+  **455 ms**, req/s **3.02**, mean **663 ms**. 2Q (segmented LRU) in the three-way combo: hit 0.725 vs
+  CostAware 0.729 (−0.4pp), p99 3666 vs 3469 (+6%). **2Q is competitive but CostAware still wins** —
+  recompute-cost weighting gives a real (small) edge over pure recency-based eviction. Consistent with the
+  standalone ranking (CostAware > LRU ≈ 2Q). Logged W&B (mechanism).
+
+- **v53-xtier-cost-reuse1** (XTIER + CostAware + REUSE_GATE=1, no SRPF, MECHANISM) — hit **0.730**, p99
+  **4235 ms**, p50 **454 ms**, req/s **3.02**, mean **754 ms**. Reuse gate (only back up nodes that have
+  been reused once) adds negligible value: vs XTIER+CostAware alone (v4: hit 0.69/p99 4067) the hit gain is
+  from CostAware, not reuse-gate. Without SRPF: p99 4235 vs v25 (with SRPF) 3469 = SRPF's ~18% contribution.
+  **Reuse gate is neutral** — the XTIER watermark-based backup already captures the right content. Logged
+  W&B (mechanism).
+
+- **v54-xtier-cost-srpf-reuse1** (XTIER + CostAware + SRPF + REUSE_GATE=1, four-way, MECHANISM) — hit
+  **0.730**, p99 **3391 ms**, p50 **441 ms**, req/s **3.02**, mean **632 ms**. Four-way ≈ three-way
+  (v25: 0.729/3469). **REUSE_GATE adds nothing** — confirmed neutral in both two-way (v53) and four-way
+  (v54) combos. The XTIER watermark-based backup already captures the right content without filtering by
+  reuse count. Logged W&B (mechanism).
+
+*v55+ batch running — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29, v34-v37, v43-v45)
 All frequency-based eviction policies (LFU, SLRU, GDSF, LFUDA, CostFreq) are NEGATIVES under inclusive

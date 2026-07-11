@@ -42,9 +42,10 @@ recurrent-state management (the focus of prior work) is a non-lever under host t
 lever is attention-KV capacity, and only at large working sets. The law is <b>config-checkable</b>: computing L* for six deployed hybrids (Qwen3-Next, Zamba2, Jamba,
 Granite-4, Nemotron-H, and our Qwen3.5-122B) gives L* = 167–3456 tokens — always far below realistic serving
 contexts — so the conclusion is family-wide, not a single-model artifact. We contribute the capacity law, a
-reuse-frontier diagnostic, a cross-scale 2×2 characterization, and an impossibility corollary showing the
-lossless budget-respecting improvement space is empty; a candidate mechanism (Value-Density Mamba Retention)
-is a no-op by construction, serving as a direct test of the law — a rigorously-bounded impossibility.
+reuse-frontier diagnostic, a cross-scale 2×2 characterization, and a scoped impossibility corollary: no
+lossless, budget-respecting, non-capacity, non-classical cache mechanism can shift the curve (the only
+remaining axes — capacity and classical eviction — are budget-frozen and charter-excluded respectively). A
+candidate mechanism (Value-Density Mamba Retention) is a no-op by construction, a direct test of the law.
 </div>
 
 <h2>1 Introduction</h2>

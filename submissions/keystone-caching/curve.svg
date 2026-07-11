@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="360" font-family="sans-serif" font-size="12">
+<rect x="0" y="0" width="560" height="360" fill="white"/>
+<line x1="70" y1="20" x2="70" y2="310" stroke="#333"/>
+<line x1="70" y1="310" x2="540" y2="310" stroke="#333"/>
+<line x1="70" y1="265" x2="540" y2="265" stroke="#c00" stroke-dasharray="5,4"/>
+<text x="536" y="261" text-anchor="end" fill="#c00">8 s TTFT SLO (goodput=0: all points above)</text>
+<line x1="66" y1="310" x2="70" y2="310" stroke="#333"/>
+<text x="62" y="314" text-anchor="end">0s</text>
+<line x1="66" y1="254" x2="70" y2="254" stroke="#333"/>
+<text x="62" y="258" text-anchor="end">10s</text>
+<line x1="66" y1="198" x2="70" y2="198" stroke="#333"/>
+<text x="62" y="202" text-anchor="end">20s</text>
+<line x1="66" y1="143" x2="70" y2="143" stroke="#333"/>
+<text x="62" y="147" text-anchor="end">30s</text>
+<line x1="66" y1="87" x2="70" y2="87" stroke="#333"/>
+<text x="62" y="91" text-anchor="end">40s</text>
+<line x1="66" y1="31" x2="70" y2="31" stroke="#333"/>
+<text x="62" y="35" text-anchor="end">50s</text>
+<line x1="287" y1="310" x2="287" y2="314" stroke="#333"/>
+<text x="287" y="328" text-anchor="middle">3</text>
+<line x1="359" y1="310" x2="359" y2="314" stroke="#333"/>
+<text x="359" y="328" text-anchor="middle">4</text>
+<line x1="432" y1="310" x2="432" y2="314" stroke="#333"/>
+<text x="432" y="328" text-anchor="middle">5</text>
+<line x1="504" y1="310" x2="504" y2="314" stroke="#333"/>
+<text x="504" y="328" text-anchor="middle">6</text>
+<text x="305" y="354" text-anchor="middle">achieved req/s (λ=3,5,7,10)</text>
+<text x="16" y="165" transform="rotate(-90 16 165)" text-anchor="middle">p99 TTFT</text>
+<polyline points="286,260 403,181 477,104 500,36" fill="none" stroke="#06c" stroke-width="2"/>
+<circle cx="286" cy="260" r="4" fill="#06c"/>
+<text x="286" y="252" text-anchor="middle" fill="#06c">λ3</text>
+<circle cx="403" cy="181" r="4" fill="#06c"/>
+<text x="403" y="173" text-anchor="middle" fill="#06c">λ5</text>
+<circle cx="477" cy="104" r="4" fill="#06c"/>
+<text x="477" y="96" text-anchor="middle" fill="#06c">λ7</text>
+<circle cx="500" cy="36" r="4" fill="#06c"/>
+<text x="500" y="28" text-anchor="middle" fill="#06c">λ10</text>
+</svg>

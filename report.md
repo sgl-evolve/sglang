@@ -365,7 +365,22 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   band as t=2048 (hit 0.730/p99 4175) and t=4096 (hit 0.726/p99 4313). **CostAware threshold has modest
   effect under XTIER** (0.004 hit, ~200ms p99 range) — tiering architecture dominates. Logged W&B (mechanism).
 
-*v38+ batch running — results below will be added as they complete.*
+- **v38-xtier-pgac99** (XTIER + PGAC threshold=0.99, MECHANISM) — hit **0.752** (HIGHEST ever), p99
+  **1,553,703 ms** (**CATASTROPHIC**, 26 min!), p50 **436 ms**, req/s **1.29** (−54%), mean **87,130 ms**.
+  PGAC defers cold prefills → hit rises (less concurrent thrash) but deferred requests starve for minutes.
+  **XTIER cannot rescue admission-control mechanisms** — same failure mode as v30/v31 (PGAC under inclusive
+  tiering). Interesting: PGAC achieves the highest hit rate of any config (0.752 > 0.736 cfg-writeback)
+  precisely BECAUSE it restricts active requests, reducing working-set pressure. But the p99 penalty is
+  3 orders of magnitude — admission control is fundamentally incompatible with the p99≤8s SLO in this regime.
+  Logged W&B (mechanism).
+
+- **v39-wb-srpf** (write_back + SRPF scheduling, MECHANISM) — hit **0.730**, p99 **3603 ms**, p50 **445 ms**,
+  req/s **3.02**, mean **650 ms**. Write_back + SRPF is very close to v25 XTIER+CostAware+SRPF (p99 3469).
+  **SRPF scheduling compounds with the stock write_back flag** — confirms SRPF is independently valuable,
+  not specific to XTIER. Comparison: wb alone p99 4291, wb+SRPF p99 3603 = **−16% from SRPF scheduling**
+  on top of exclusive tiering. Logged W&B (mechanism).
+
+*v40+ batch running — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29, v34-v37)
 All frequency-based eviction policies (LFU, SLRU, GDSF) are STRONG NEGATIVES under inclusive tiering.
@@ -403,7 +418,7 @@ the recommended production configuration for this regime.**
 batch size): 64 (v22) is marginal negative vs default (hit 0.715 vs 0.725, p99 4954 vs 4200). **Conclusion:
 WM_FRAC 0.05-0.10 is the sweet spot; larger batch size is not beneficial.** Default XTIER tuning is near-optimal.
 
-## Synthesis (38 versions)
+## Synthesis (40 versions)
 - **The contribution = the DIAGNOSIS + INSIGHT + compounding lossless mechanisms.** Capacity-bound multi-turn
   LLM serving: write-through KV tiering is INCLUSIVE (L1 mirrors L2's hot subset) → distinct cache = L2 only;
   the ~19 M working set thrashes → 21 pp hit lost to concurrency eviction (turns 0-2 ~0 hit). Three

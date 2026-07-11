@@ -22,6 +22,9 @@ req/s 2.80, hit **0.842**, input **42953 tok/s** vs output **310 tok/s** → **P
 ## Central hypothesis (gated by v1-instr instrumentation)
 The **large, scarce Mamba state (18 MB; 1351 dev / 5360 host slots)** is the binding reuse resource. Independent LRU eviction of Mamba vs Full → a Mamba checkpoint is evicted while its Full-KV prefix stays resident (KV host pool has room) → **Full KV stranded (present but un-continuable) → catastrophic full-history recompute → the P99 TTFT tail.** Mechanism = **hybrid dual-cache reuse-frontier co-management** to eliminate stranding → kill the tail → goodput. Lossless (exact states, exact reuse).
 
+### Reuse structure (baseline server.log, all rates)
+Reuse is **long-context**: per-hit cached tokens mean 29 452, **p50 20 544**, p90 61 184, p99 168 192, **max 257 152** (near 262 144 ctx). 18% of hits reuse >50k tokens; 25% reuse <6144. Total recompute over run ≈ 24.3 M new tokens. ⇒ a single 18 MB Mamba checkpoint unlocks up to **~2.9 GB** of cached Full KV (257k tok × 11.4 KB); losing it → full multi-hundred-k-token history recompute = the P99 tail. Mechanism target = protect/retain the highest-leverage (most-KV-unlocking) Mamba checkpoints in the scarce pool.
+
 ### Decision tree (from `tools/parse_instr.sh` on v1-instr)
 - stranded ≥5% **and** mamba_host_evict>0 → EVICTION-driven stranding → **frontier-coupled retention** (protect load-bearing Mamba, evict orphaned first).
 - stranded ≥5%, mamba_host_evict≈0 → SPARSE-checkpoint stranding → **denser/branch-point Mamba checkpointing** (HiCache-aware, currently disabled).

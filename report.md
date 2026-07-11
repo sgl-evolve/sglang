@@ -63,8 +63,8 @@ Rigorous, cross-scale NEGATIVE + characterization (formal submission `keystone-c
 | v0-baseline | config | stock rate-sweep (COLD JIT, 1st load) | goodput@8s **0**; peak 5.59; λ3 p99 **53s** | ✓ | JIT-cold-inflated tail; use warm |
 | v1-instr | mechanism* | stock+instrumentation, WARM (baseline replicate) | goodput@8s **0**; peak 5.95; λ3 p99 **9.0s** hit 0.842 | ✓ | *instr only; **stranding 0.4%, host 79%, 0 evict → NOT cache-bound** |
 | v2-writeback | config | write_back = exclusive tiering (the known +13pp lever) @contract | λ3 0.8424/9389 ≈ v1-instr → **NEUTRAL** | ✓ | known capacity lever neutralized (host not pressured) |
-| diag1553 | mechanism* | off-contract probe @ charter's intended scale (NUMP=1553, wt) | Full host evicts **26M tok**; **mamba host evict = 0**; stranding 1.2% | ✓ | mamba NEVER binds even at 3× WS; only attn-KV pressured |
-| diag1553wb | config | write_back @1553 (exclusive tiering under real pressure) | (running) | ✓ | expect: helps at 1553 → proves eval under-provisions |
+| diag1553 | mechanism* | off-contract probe @ charter's intended scale (NUMP=1553, wt) | **host util 1.0**; Full host evicts **587M tok**; **mamba host evict = 0**; **hit 0.650** (vs 0.842@contract); req/s 3.67 | ✓ | mamba NEVER binds even @ util 1.0; only attn-KV pressured; **contract eval UNDER-PROVISIONED** |
+| diag1553wb | config | write_back @1553 (exclusive tiering under real pressure) | NOT RUN (DRAM-teardown contention); cite known +13pp exclusive-tiering baseline | — | exclusive tiering = the sole (known) lever at scale |
 | (VMR) | mechanism | value-density Mamba retention | **no-op** (mamba_host_evict=0 ⇒ nothing to protect) | ✓ | documented negative; flag-gated, default off |
 
 ## Formal submissions

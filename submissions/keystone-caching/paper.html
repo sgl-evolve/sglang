@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Keystone Caching — lamport (DRAFT)</title>
+<style>
+ body{max-width:52rem;margin:2rem auto;padding:0 1rem;font:16px/1.55 Georgia,serif;color:#111}
+ h1{font-size:1.7rem;line-height:1.25} h2{font-size:1.25rem;margin-top:2rem;border-bottom:1px solid #ddd;padding-bottom:.2rem}
+ h3{font-size:1.05rem} code,pre{font-family:ui-monospace,Menlo,monospace;font-size:.86em;background:#f6f6f6}
+ pre{padding:.7rem;overflow:auto;border-radius:5px} .authors{color:#444;font-style:italic}
+ table{border-collapse:collapse;width:100%;font:13px/1.4 ui-monospace,monospace;margin:.6rem 0}
+ th,td{border:1px solid #ccc;padding:3px 7px;text-align:right} th{background:#f0f0f0} td:first-child,th:first-child{text-align:left}
+ .abstract{background:#f9f9f9;border-left:3px solid #888;padding:.6rem 1rem;font-size:.95em}
+ .note{color:#a00;font-style:italic} figure{margin:1rem 0;text-align:center} figcaption{font-size:.85em;color:#555}
+</style>
+</head>
+<body>
+<h1>Keystone Caching: Is the Recurrent State the Bottleneck in Tiered KV Caching for Hybrid-Attention LLMs?</h1>
+<p class="authors">lamport · sglang KV-cache research (v0.3) · DRAFT (evidence maturing)</p>
+
+<div class="abstract">
+<b>Abstract.</b> Hybrid linear-attention LLMs (e.g., Qwen3.5, Jamba, Zamba) interleave many
+constant-size recurrent-state (SSM/GDN) layers with a few full-attention layers. Recent hybrid
+prefix-caching systems (Marconi, MLSys'25; Jenga, SOSP'25) treat the large fixed recurrent state as
+the <i>scarce GPU resource</i> and manage it on-device only. We ask whether this intuition survives once
+the recurrent state is <i>host-tiered</i>, as in SGLang's HiCache. Using a fully-instrumented 122B hybrid
+MoE (Qwen3.5-122B-A10B-FP8, 36 GDN + 12 attention layers, 8×H100) under a Poisson rate-swept,
+multi-turn, real-text (Mooncake-mix) protocol, we introduce a <i>reuse-frontier</i> diagnostic that
+measures, per prefix match, how much resident attention-KV is rendered un-continuable ("stranded") by a
+missing recurrent checkpoint. We find that <b>(i)</b> once host-tiered, the recurrent-state pool is
+<i>over-provisioned</i> and rarely evicts; <b>(ii)</b> stranding is small at the operating point but
+grows with working-set pressure; <b>(iii)</b> the binding resource shifts to prefill compute under
+bursty arrivals. We use these findings to build <i>Value-Density Mamba Retention (VMR)</i>, a
+cross-component co-management primitive that protects recurrent checkpoints in proportion to the
+attention-KV they unlock (a parameter-free memory crossover), and we characterize the regime in which it
+matters. <span class="note">[Quantitative headline pending diag1553 / VMR-at-scale runs.]</span>
+</div>
+
+<h2>1 Introduction</h2>
+<p>Hierarchical KV caching (HiCache) tiers key–value state across GPU HBM (L1) and host DRAM (L2) to serve
+context reuse beyond device capacity. For <i>hybrid</i> models the picture is richer: full-attention layers
+hold a per-token KV cache that grows with sequence length, while linear-attention (Gated-DeltaNet / Mamba)
+layers hold a single constant-size recurrent state per sequence. Reusing a cached prefix requires
+<b>both</b>: the attention-KV along the path <i>and</i> a recurrent checkpoint at the reuse boundary.</p>
+<p>Prior hybrid caching work manages the recurrent state on GPU only and frames it as the scarce resource
+(its state is ~200× a KV block at 128K). Our contributions:</p>
+<ul>
+<li>A <b>reuse-frontier instrumentation</b> that separates, per match, the full-attention reuse frontier
+from the all-component frontier, exposing recurrent-state <i>stranding</i> of resident attention-KV — a
+quantity invisible to hit-rate.</li>
+<li>A <b>trace-driven characterization</b> showing that under host tiering the recurrent-state pool is
+over-provisioned, hit rate is near-maximal, host↔device bandwidth is &lt;10% utilized, and the operating
+bottleneck is bursty prefill compute — inverting the GPU-scarcity framing of Marconi/Jenga.</li>
+<li><b>Value-Density Mamba Retention (VMR)</b>: a lossless cross-component primitive that retains a
+recurrent checkpoint iff the attention-KV it unlocks exceeds its own memory footprint, and the regime
+(working-set pressure) in which it shifts the throughput–latency curve.</li>
+</ul>
+
+<h2>2 Motivation (trace-driven)</h2>
+<p><b>System &amp; pools (measured, per TP rank ×8).</b> Qwen3.5-122B-A10B-FP8, 48 layers = 36 GDN linear
++ 12 full-attention (GQA, 2 KV heads, head-dim 256). Recurrent state ≈ <b>18 MB/sequence</b> (ssm 23.77 GB
+over 1351 slots); device attention-KV = 2.35 M tokens (27 GB, ≈11.4 KB/token). Host tiers (hicache-size 96):
+attention-KV 96 GB (≈7.81 M tokens), recurrent state 96 GB (≈5360 states). Note the recurrent host pool is
+sized identically to the KV host pool by re-using <code>hicache_size</code>, doubling the host budget.</p>
+
+<p><b>Baseline curve (stock 2-tier, Poisson rate sweep, warm).</b></p>
+<table>
+<tr><th>λ (req/s)</th><th>req/s</th><th>TTFT p50 (ms)</th><th>TTFT p99 (ms)</th><th>hit rate</th><th>host util</th></tr>
+<tr><td>3</td><td>2.99</td><td>455</td><td>8969</td><td>0.842</td><td>0.79</td></tr>
+<tr><td>5</td><td>4.61</td><td>675</td><td>23179</td><td>0.841</td><td>0.79</td></tr>
+<tr><td>7</td><td>5.63</td><td>1016</td><td>36855</td><td>0.841</td><td>0.79</td></tr>
+<tr><td>10</td><td>—</td><td>—</td><td>—</td><td>0.841</td><td>0.79</td></tr>
+</table>
+<p>Reuse is long-context: per-hit cached tokens p50 = 20 544, max = 257 152. A single 18 MB recurrent
+checkpoint therefore gates continuation over up to ~2.9 GB of resident attention-KV. Yet at the contract
+operating scale the host pools never saturate (host util ≈ 0.79 at all rates), the recurrent-state pool
+never evicts, and measured stranding is only 0.3–0.7% of the reuse frontier. Hit rate is flat at 0.842
+(≈0.158 irreducible first-occurrence). Host↔device movement is ≈1.85 GB/s (&lt;10% of PCIe), fully
+overlapped with compute (per-step batched, layer-wise). The scheduler is prefill-dominated (prefill:decode
+batch ratio ≈7.4) with a bursty queue (p50 = 0, spikes to 83; concurrency 35→267).</p>
+<p><b>Takeaway.</b> At the contract scale the system is <i>not</i> cache-capacity bound; the recurrent
+state — the focus of prior hybrid caching — is cheap once host-tiered. Pressure (and thus cache headroom)
+is a function of working-set size: at the charter's intended scale (working set ≈19 M ≫ 10.7 M cache)
+stranding roughly doubles even before eviction begins. <span class="note">[diag1553 quantifies the
+pressured regime; VMR evaluated there.]</span></p>
+
+<h2>3 Design: Value-Density Mamba Retention (VMR)</h2>
+<p>The reuse boundary of a hybrid prefix is <code>min(full-KV frontier, recurrent frontier)</code>. The two
+pools are managed by independent LRUs; when the scarce recurrent pool evicts a checkpoint whose
+attention-KV is still resident (in the roomier KV tier), that KV becomes un-continuable — a
+<i>keystone</i> loss that forces full-history recompute (the tail). VMR makes recurrent-checkpoint
+retention <i>value-aware</i>: a checkpoint is protected from host eviction iff the attention-KV it unlocks
+exceeds its own footprint, i.e. <code>prefix_tokens ≥ MAMBA_BYTES/ KV_BYTES_PER_TOKEN ≈ 1570</code> — a
+parameter-free crossover derived from the pool geometry. A two-pass eviction (protect keystones first;
+fall back to LRU) keeps the pool always freeable. VMR is <b>lossless</b>: reuse remains exact; only which
+checkpoints are retained changes. It differs from Marconi's FLOP-aware GPU eviction (VMR is
+cross-<i>tier</i> and values a checkpoint by the <i>other component's</i> resident KV) and from classic
+size/frequency policies.</p>
+
+<h2>4 Implementation</h2>
+<p>All changes are in the live <code>UnifiedRadixCache</code> path (components <code>[FULL, MAMBA]</code>).
+Instrumentation: <code>mem_cache/lamport_instr.py</code> + hooks in <code>_match_prefix_helper</code> and
+the component eviction drivers (frontier gap + host/device eviction counters). Mechanism:
+<code>mem_cache/lamport_mech.py</code> + <code>MambaComponent._host_evict_pass</code> (value stored at
+checkpoint creation as prefix depth). Both are flag-gated (default off) so A/B runs on identical code.
+LOC ≈ 130 net python. Verified live (not dead code) via the instrumentation firing on the real serving path.</p>
+
+<h2>5 Evaluation</h2>
+<p class="note">[Rate-sweep curves for VMR vs stock at the pressured scale; stranded-token reduction;
+error bars (warm replicates); lossless verification; honest attribution. Pending diag1553 / VMR runs.]</p>
+
+<h2>6 Related work</h2>
+<p><b>Marconi</b> (MLSys'25): hybrid prefix caching with FLOP-efficiency eviction; GPU-HBM only, discards
+SSM state on eviction. <b>Jenga</b> (SOSP'25): heterogeneous on-GPU allocator for mixed state/KV page
+sizes; no host offload. <b>Mooncake</b> (FAST'25) / <b>Strata</b> / <b>AttentionStore</b> (ATC'24) /
+<b>CacheGen</b> / <b>LMCache</b> / <b>HCache</b> (EuroSys'25) / <b>InfiniGen</b> (OSDI'24): tiering,
+GPU-assisted layout, layer-wise overlap, compute-vs-load — all for transformer KV; none manages the
+<i>tiered recurrent state</i>. <b>Cake</b> (ICML'25) / <b>KVPR</b> (ACL'25): recompute-vs-load, transformer
+KV only. We position VMR as the first cross-tier, value-aware co-management of the recurrent-state pool,
+and provide the first evidence that this pool is over-provisioned (not scarce) once host-tiered.</p>
+
+<h2>7 Limitations &amp; when it fails</h2>
+<p>VMR is a no-op when the recurrent host pool does not evict (under-provisioned working set / over-provisioned
+pool) — precisely the contract operating point measured here. Its value is conditional on working-set
+pressure. The p99 TTFT metric is warm-up- and burst-sensitive (≈6× cold-vs-warm at λ=3); we compare
+warm-to-warm and attribute via stable counters. The study is one model family / one workload mix.</p>
+
+<h2>8 Reproducibility</h2>
+<p>Branch <code>evolve/lamport</code>. Baseline commit <code>a334877e5</code>; instrumentation+mechanism at
+HEAD. Runs: <code>runs/v0-baseline</code>, <code>runs/v1-instr</code> (instrumented baseline replicate),
+<code>runs/v2-writeback</code> (exclusive-tiering control), <code>runs/diag1553*</code> (pressured regime).
+Instrumentation enabled via <code>LAMPORT_INSTR=1</code>; mechanism via <code>LAMPORT_MECH=vmr</code>.
+Fixed protocol: <code>.claude/skills/evaluation-sop/scripts/eval.sh</code> (λ∈{3,5,7,10}, NUMP 500, MAXC 256).</p>
+</body>
+</html>

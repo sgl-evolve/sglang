@@ -473,7 +473,23 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   (v54) combos. The XTIER watermark-based backup already captures the right content without filtering by
   reuse count. Logged W&B (mechanism).
 
-*v55+ batch running — results below will be added as they complete.*
+- **v55-xtier-cost-srpf-wm15** (XTIER WM_FRAC=0.15 + CostAware + SRPF, MECHANISM) — hit **0.728**, p99
+  **3587 ms**, p50 **445 ms**, req/s **3.02**, mean **646 ms**. Three-way with WM_FRAC=0.15 ≈ 0.10 (v25:
+  0.729/3469) and 0.05 (v50: 0.729/3515). **WM_FRAC 0.05-0.15 is a plateau in the three-way combo** — the
+  CostAware eviction and SRPF scheduling dominate over the watermark tuning. Logged W&B (mechanism).
+
+- **v56-baseline-rep2** (inclusive baseline replicate 2, MECHANISM) — hit **0.629**, p99 **6558 ms**, p50
+  **529 ms**, req/s **3.02**, mean **1030 ms**. Baseline replicate: hit 0.629 vs v0_official 0.622 (+0.7pp,
+  noise), p99 6558 vs 6326 (+4%, node variance). **Baseline reproducible at ~0.62 hit / ~6300-6600 p99.**
+  Establishes the error band for statistical significance of improvements. Logged W&B (mechanism).
+
+- **v57-xtier-cost-srpf-rep2** (XTIER + CostAware + SRPF three-way replicate 2, MECHANISM) — hit **0.729**,
+  p99 **3574 ms**, p50 **448 ms**, req/s **3.02**, mean **653 ms**. Replicate 2 matches v25 (rep1: 0.729/3469)
+  within noise (hit IDENTICAL, p99 +3%). **Three-way result highly reproducible:** hit 0.729±0.001, p99
+  3469-3574 across replicates. Combined with WM sweep (v50=3515, v55=3587), the three-way combo is robust
+  across WM_FRAC 0.05-0.15 and across runs. Logged W&B (mechanism).
+
+*v58+ batch running — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29, v34-v37, v43-v45)
 All frequency-based eviction policies (LFU, SLRU, GDSF, LFUDA, CostFreq) are NEGATIVES under inclusive

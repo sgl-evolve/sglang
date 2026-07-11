@@ -151,11 +151,16 @@ bytes. For a serving instance with <i>C</i> concurrent live sequences of mean co
 host tiers must hold:</p>
 <pre>  recurrent host footprint = C · s          (grows with #sequences only)
   attention-KV host footprint = C · L · k   (grows with #sequences × context)</pre>
-<p>Given host pools of comparable size (in this system, both = <code>hicache_size</code>), the recurrent tier
-binds <i>later</i> than the KV tier exactly when its per-sequence footprint is smaller:</p>
-<pre>  C·s  &lt;  C·L·k   ⟺   L  &gt;  s / k  ≜  L*</pre>
+<p>With host pools of sizes H<sub>m</sub> (recurrent) and H<sub>k</sub> (KV), the recurrent tier saturates when
+C·s &gt; H<sub>m</sub> and the KV tier when C·L·k &gt; H<sub>k</sub>. The recurrent tier is the <i>first</i> to bind
+exactly when C·s/H<sub>m</sub> &gt; C·L·k/H<sub>k</sub>, i.e.:</p>
+<pre>  L  &lt;  (s/k)·(H_k/H_m)  ≜  L*     (general);     L* = s/k when H_m = H_k</pre>
 <p><b>Capacity Law.</b> The recurrent-state tier is the bottleneck only when the mean context length
-<b>L &lt; L* = s/k</b>. For this model, L* = 18 MB / 11.4 KB ≈ <b>1580 tokens</b>. Because prefix caching only
+<b>L &lt; L* = (s/k)·(H<sub>k</sub>/H<sub>m</sub>)</b>. With equal pools (this system, both = <code>hicache_size</code>),
+L* = s/k = 18 MB / 11.4 KB ≈ <b>1580 tokens</b>. The pool ratio only shifts L* linearly: to make the recurrent
+tier bind at a realistic serving context (say L=64k), one would have to under-provision it by
+H<sub>m</sub>/H<sub>k</sub> ≈ L*/L ≈ 1/40 — i.e. deliberately starve it far below what one node's concurrency
+even needs (C·s). No sane provisioning reaches that regime. Because prefix caching only
 pays off for long contexts (L ≫ a few hundred tokens), realistic serving operates at <b>L ≫ L*</b>, where the
 recurrent state is trivially the cheaper tier and <i>never</i> binds — while the KV tier, whose footprint
 scales with context, saturates. Equivalently, the recurrent tier binds only under <b>C &gt; H<sub>m</sub>/s</b>

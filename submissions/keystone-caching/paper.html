@@ -243,9 +243,15 @@ contains no <i>novel</i> primitive. Note the recurrent-state pool evicts <b>noth
 
 <p><b>5.3 The contract eval is compute/burst-bound, not cache-bound.</b> Prefill:decode batch ratio ≈7.4;
 queue depth p50=0 (idle) spiking to 83 (bursts); host↔device movement ≈1.85 GB/s (&lt;10% PCIe), fully
-overlapped. Hit rate is maximal (0.842 = 1 − irreducible first-occurrence). No lossless, non-capacity
-cache mechanism we could construct (recurrent-state co-management, transfer/overlap, layout,
-co-residency) has headroom here; the binding resource is prefill attention over reused long contexts.</p>
+overlapped. Hit rate is maximal (0.842 = 1 − irreducible first-occurrence). We rule out GPU bubbles as the
+lever: prefill batches during bursts run at ≈40k tok/s (the compute ceiling); the only low-throughput
+batches occur when the queue is empty (nothing to batch), so the tail-causing bursts are compute-saturated,
+not stalled on transfer or scheduler overhead. No lossless, non-capacity cache mechanism we could construct
+(recurrent-state co-management, transfer/overlap, layout, co-residency) has headroom here; the binding
+resource is prefill attention over reused long contexts, which is lossless-fixed. Scheduling cannot help
+losslessly either: with hit rate maximal and reuse near-monotone, per-request prefill cost is dominated by
+context length, so any cost-reducing reorder reduces to shortest-job-first — a classical policy excluded by
+the charter (and it trades tail fairness, not total work).</p>
 
 <p><b>5.4 Lossless &amp; noise (the headline metric is fragile).</b> All engine changes are pure counting /
 retention re-ordering; reuse is byte-exact. Beyond warm-up sensitivity (cold-JIT first-load λ3 p99 = 53 s

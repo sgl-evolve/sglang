@@ -415,22 +415,33 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   frequency multiplier penalizes new documents that haven't been hit yet, partially undermining the
   recency-preserving effect of the cost component. Logged W&B (mechanism).
 
-*v46+ batch running — results below will be added as they complete.*
+- **v46-xtier-cost-freq** (XTIER + CostFreq eviction, MECHANISM) — hit **0.510**, p99 **3842 ms**,
+  p50 **698 ms**, req/s **3.02**, mean **886 ms**. **XTIER hurts CostFreq** (inclusive CostFreq v45: hit
+  0.521) because the frequency component (1+hit_count) evicts new nodes before XTIER's lazy backup.
+  CostFreq under XTIER is far worse than CostAware (0.730) or LRU (0.725). **Any eviction policy that
+  considers frequency is incompatible with XTIER's lazy backup.** Logged W&B (mechanism).
 
-### Eviction policy synthesis (v9-v18, v28-v29, v34-v37)
-All frequency-based eviction policies (LFU, SLRU, GDSF) are STRONG NEGATIVES under inclusive tiering.
-The reuse pattern is temporal (inter-turn gap), not frequency-driven: turn-0 documents have count=1 but
-massive future reuse. **LRU remains the best simple eviction policy; 2Q is the only non-LRU that matches.**
-CostAware gives a marginal +6% hit by protecting high-recompute-cost nodes; threshold sweep: **t=2048 is
-the sweet spot** (t=1024 under-protects: hit 0.644; t=4096 over-protects: hit 0.693 but p99 5698).
-SizeWeightedLRU is actively harmful (penalizes large documents).
+*v47+ batch running — results below will be added as they complete.*
+
+### Eviction policy synthesis (v9-v18, v28-v29, v34-v37, v43-v45)
+All frequency-based eviction policies (LFU, SLRU, GDSF, LFUDA, CostFreq) are NEGATIVES under inclusive
+tiering. The reuse pattern is temporal (inter-turn gap), not frequency-driven: turn-0 documents have
+count=1 but massive future reuse. Ranking under inclusive tiering:
+**CostAware (0.657) > LRU (0.622) > CostFreq (0.521) > GDSF (0.430) > SizeLRU (0.459) > LFUDA (0.388) >
+LFU (0.341) ≈ SLRU (0.340).** CostAware is the best eviction policy — it uses prefix-depth cost (recency
+through LRU tiebreaker) without frequency, so it preserves new documents. CostFreq (cost×(1+hits)) is
+worse than plain LRU because the frequency multiplier penalizes new documents.
+CostAware threshold sweep: **t=2048 is the sweet spot** (t=1024 under-protects: hit 0.644; t=4096
+over-protects: hit 0.693 but p99 5698).
 **★ KEY FINDING (v35): write_back RESCUES catastrophically bad eviction policies.** LFU under
 write_through: hit 0.394, p99 67,005 ❌❌. LFU under write_back: hit 0.730, p99 4595 ✓. The exclusive
 tiering change alone accounts for +0.336 hit and −93% p99. LFU vs LRU under write_back: only ~7% p99
 variance (4595 vs 4291). **This proves the main lever is tiering architecture, not eviction policy.**
-**CAVEAT (v17): XTIER does NOT rescue LFU** — v17 (XTIER+LFU) hit 0.337, still catastrophic. LFU evicts
-new nodes (0 hits) before XTIER's lazy backup pass reaches them → content lost → recompute. Only
-write_back's synchronous backup-on-evict catches content evicted by pathological policies.
+**CAVEAT (v17, v44): XTIER does NOT rescue frequency-based eviction** — v17 (XTIER+LFU) hit 0.337, v44
+(XTIER+LFUDA) hit 0.325, both still catastrophic. Frequency-based eviction evicts new nodes (low freq)
+before XTIER's lazy backup pass reaches them → content lost → recompute. Only write_back's synchronous
+backup-on-evict catches content evicted by pathological policies. **XTIER requires recency-based eviction
+(LRU, 2Q, or CostAware).**
 CostAware threshold with XTIER (v36/v37): t=1024/2048/4096 all within ~0.004 hit — threshold effect
 is muted when tiering dominates.
 
@@ -460,7 +471,7 @@ backup = more device-exclusive content = fewer load-backs on prefill path = bett
 backup batch size): 64 (v22) is marginal negative vs default (hit 0.715 vs 0.725, p99 4954 vs 4200).
 **Conclusion: WM_FRAC=0.10 is the sweet spot — minimal backup maximizes device exclusivity.**
 
-## Synthesis (45 versions)
+## Synthesis (47 versions)
 - **The contribution = the DIAGNOSIS + INSIGHT + compounding lossless mechanisms.** Capacity-bound multi-turn
   LLM serving: write-through KV tiering is INCLUSIVE (L1 mirrors L2's hot subset) → distinct cache = L2 only;
   the ~19 M working set thrashes → 21 pp hit lost to concurrency eviction (turns 0-2 ~0 hit). Three

@@ -16,12 +16,19 @@ def _enabled() -> bool:
     if os.environ.get("LAMPORT_INSTR", "0") == "1":
         return True
     # Sentinel-file fallback (robust when env does not propagate through srun):
-    # clone root = 6 dirs up from this file (.../<clone>/python/sglang/srt/mem_cache/).
+    # walk up from this file looking for a `.lamport_instr` marker at any ancestor.
     try:
-        root = os.path.abspath(os.path.join(os.path.dirname(__file__), *[".."] * 6))
-        return os.path.exists(os.path.join(root, ".lamport_instr"))
+        d = os.path.dirname(os.path.abspath(__file__))
+        for _ in range(8):
+            if os.path.exists(os.path.join(d, ".lamport_instr")):
+                return True
+            nd = os.path.dirname(d)
+            if nd == d:
+                break
+            d = nd
     except Exception:
-        return False
+        pass
+    return False
 
 
 ENABLED = _enabled()

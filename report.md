@@ -391,7 +391,19 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   (capacity ceiling), p99 order: **0.10 (4067) < 0.05 (4506) < 0.20 (4689) < 0.15 (4773)**. WM_FRAC=0.10
   remains the sweet spot — minimal backup maximizes device exclusivity. Logged W&B (mechanism).
 
-*v42+ batch running — results below will be added as they complete.*
+- **v42-cost-srpf** (CostAware + SRPF under INCLUSIVE tiering, MECHANISM) — hit **0.657**, p99 **3880 ms**,
+  p50 **478 ms**, req/s **3.02**, mean **716 ms**. CostAware+SRPF under inclusive tiering gives p99 3880
+  (−39% vs baseline 6326). Compare to v25 (XTIER+CostAware+SRPF): hit 0.729/p99 3469. **The p99 gap is
+  smaller than the hit gap** — XTIER's main contribution is hit rate (capacity), not p99 directly. But both
+  mechanisms compound: the ~10% p99 gap (3880→3469) comes from XTIER's fewer recomputes feeding SRPF
+  shorter prefill queues. Logged W&B (mechanism).
+
+- **v43-lfuda** (LFUDA eviction, INCLUSIVE tiering, MECHANISM) — hit **0.388**, p99 **7535 ms**, p50 **986 ms**,
+  req/s **3.02**, mean **1507 ms**. LFUDA under inclusive tiering is a STRONG NEGATIVE, similar to LFU (v10:
+  hit 0.341). Dynamic aging doesn't rescue frequency-based eviction — the temporal reuse pattern (long
+  inter-turn gaps) conflicts with frequency counting. Logged W&B (mechanism).
+
+*v44+ batch running — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29, v34-v37)
 All frequency-based eviction policies (LFU, SLRU, GDSF) are STRONG NEGATIVES under inclusive tiering.
@@ -416,16 +428,18 @@ with XTIER (v20: p99 3924), **−45% with XTIER+CostAware** (v25: p99 **3469** �
 write_back** (v39: p99 3603 vs wb-alone 4291). LPM gives a smaller p99 improvement (−14% standalone v6,
 neutral with XTIER v19, decent with XTIER+CostAware v24: p99 4250). **SRPF is universally beneficial —
 compounds with ALL exclusive tiering variants (XTIER and write_back) and with cost-aware eviction.**
-eviction (CostAware) + shorter-first ordering (SRPF) = all three reduce tail latency independently and
-compound. **Scheduling is a latency lever, not a hit-rate lever.**
+Scheduling is a latency lever, not a hit-rate lever.
 
-### Combination synthesis (v24, v25)
+### Combination synthesis (v24, v25, v39, v42)
 The three mechanism axes — **XTIER** (tiering), **CostAware** (eviction), **SRPF** (scheduling) — compound.
 Best combination v25-xtier-cost-srpf: p99 **3469 ms** (−45% vs baseline, −19% vs write_back, −12% vs
 XTIER+SRPF alone). The improvement breakdown: XTIER alone saves ~30% p99 (capacity → fewer recomputes),
 CostAware saves ~6% hit (protects expensive-to-recompute nodes), SRPF saves ~15% p99 (prefill reordering).
 Together: hit 0.729 (near ceiling), p99 3469 (best), req/s 3.02 (sustains λ=3). **The three-way combo is
 the recommended production configuration for this regime.**
+**Ablation insight (v42):** CostAware+SRPF under INCLUSIVE tiering gives p99 3880 (−39% vs baseline). The
+gap to v25 (3469) is only ~10% — XTIER's primary contribution is hit rate (+0.072 = +11%), not p99 directly.
+But hit rate feeds p99: higher hit → fewer recomputes → shorter remaining prefill for SRPF to sort.
 
 ### XTIER parameter sweep (v4, v5, v21, v22, v40, v41)
 **WM_FRAC** (backup watermark): 0.00 catastrophic (v5: hit 0.25, p99 8900 ❌); 0.05-0.20 all achieve ~0.72
@@ -434,7 +448,7 @@ backup = more device-exclusive content = fewer load-backs on prefill path = bett
 backup batch size): 64 (v22) is marginal negative vs default (hit 0.715 vs 0.725, p99 4954 vs 4200).
 **Conclusion: WM_FRAC=0.10 is the sweet spot — minimal backup maximizes device exclusivity.**
 
-## Synthesis (42 versions)
+## Synthesis (44 versions)
 - **The contribution = the DIAGNOSIS + INSIGHT + compounding lossless mechanisms.** Capacity-bound multi-turn
   LLM serving: write-through KV tiering is INCLUSIVE (L1 mirrors L2's hot subset) → distinct cache = L2 only;
   the ~19 M working set thrashes → 21 pp hit lost to concurrency eviction (turns 0-2 ~0 hit). Three

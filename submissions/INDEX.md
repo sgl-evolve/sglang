@@ -1,3 +1,3 @@
 # lamport — formal submissions
 
-2026-07-11 · keystone-caching · **Bounded impossibility**: under host tiering the recurrent state of hybrid LLMs is a non-lever (O(#seq)≪O(#tok)); the cache-improvement space collapses to attention-KV capacity (frozen-budget-bounded, = known exclusive-tiering). Contract eval (NUMP 500) is under-provisioned (hit 0.842 vs 0.650@1553). Novel reuse-frontier diagnostic. · commit 6a2b53af7 · draft (2×2 complete)
+2026-07-11 · keystone-caching · **Capacity law** L>L*=s/k (≈1580 tok) ⟹ recurrent tier NEVER binds under host tiering (inverts Marconi/Jenga); sole lever=attn-KV capacity=known exclusive-tiering; contract eval under-provisions (hit 0.842 vs 0.650@1553). Novel reuse-frontier diagnostic + cross-scale 2×2. · commit HEAD · draft

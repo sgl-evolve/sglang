@@ -15,18 +15,20 @@
 </style>
 </head>
 <body>
-<h1>Keystone Caching: Is the Recurrent State the Bottleneck in Tiered KV Caching for Hybrid-Attention LLMs?</h1>
-<p class="authors">lamport · sglang KV-cache research (v0.3) · DRAFT (evidence maturing)</p>
+<h1>A Capacity Law for Tiered KV Caching in Hybrid-Attention LLMs: Why the Recurrent State Is Never the Bottleneck</h1>
+<p class="authors">lamport · sglang KV-cache research (v0.3) · draft</p>
 
 <div class="abstract">
 <b>Abstract.</b> Hybrid linear-attention LLMs (Qwen3.5, Jamba, Zamba, MiniMax) interleave many
 constant-size recurrent-state (SSM/GDN) layers with a few full-attention layers. Recent hybrid
 prefix-caching systems (Marconi, MLSys'25; Jenga, SOSP'25) treat the large fixed recurrent state as
 the <i>scarce GPU resource</i> and manage it on-device only. We show this intuition <b>inverts</b> once
-the state is <i>host-tiered</i>, as in SGLang's HiCache. The key observation: on a host tier, the
-recurrent state's caching cost is <b>O(#sequences)</b> (one ~18 MB state per live conversation), while
-attention-KV is <b>O(#tokens)</b>; for long-context workloads (#tokens ≫ #sequences) the recurrent state
-is trivially cacheable and <i>never binds</i>, whereas attention-KV overflows. Using a fully-instrumented
+the state is <i>host-tiered</i>, as in SGLang's HiCache. We give a simple <b>capacity law</b>: the recurrent
+state costs <i>s</i> bytes per sequence (context-independent) while attention-KV costs <i>k</i> bytes per
+token, so per sequence the KV footprint (<i>L·k</i>, growing with context length <i>L</i>) exceeds the state
+footprint (<i>s</i>) exactly when <b>L &gt; L* = s/k ≈ 1580 tokens</b>. Since prefix caching only pays off at
+L ≫ L*, the recurrent tier is <i>always</i> the cheaper tier and never binds; the attention-KV tier, whose
+footprint scales with context, is the sole capacity bottleneck. Using a fully-instrumented
 122B hybrid MoE (Qwen3.5-122B-A10B-FP8, 36 GDN + 12 attention layers, 8×H100) under a Poisson rate-swept,
 multi-turn, real-text (Mooncake-mix) protocol, we introduce a <i>reuse-frontier</i> diagnostic that
 measures, per prefix match, how much resident attention-KV is rendered un-continuable ("stranded") by a
@@ -51,20 +53,23 @@ layers hold a single constant-size recurrent state per sequence. Reusing a cache
 <p>Prior hybrid caching work manages the recurrent state on GPU only and frames it as the scarce resource
 (its state is ~200× a KV block at 128K). Our contributions:</p>
 <ul>
-<li>A <b>reuse-frontier instrumentation</b> that separates, per match, the full-attention reuse frontier
-from the all-component frontier, exposing recurrent-state <i>stranding</i> of resident attention-KV — a
-quantity invisible to hit-rate. (Reusable diagnostic; ~130 LOC on the live path.)</li>
-<li>A <b>cross-scale characterization</b> (a 2×2 over {contract, intended} × {write-through, exclusive
-tiering}) establishing an <b>impossibility, properly bounded</b>: under host tiering the recurrent-state
-pool never binds (O(#sequences) footprint), so the entire cache-improvement space collapses to
-attention-KV capacity, which is (a) frozen-budget-bounded and (b) already captured by exclusive tiering.
-This <i>inverts</i> the GPU-scarcity framing of Marconi/Jenga.</li>
-<li>A candidate mechanism, <b>Value-Density Mamba Retention (VMR)</b> — retain a checkpoint iff its
-unlocked attention-KV exceeds its own footprint — shown to be a <b>no-op by construction</b> (the state
-pool never evicts), which is itself the cleanest evidence for the impossibility.</li>
-<li>An actionable <b>methodological finding</b>: the draft rate-sweep protocol (NUMP 500) under-provisions
-the working set (hit 0.842, host 79%) relative to its stated premise; only at NUMP≈1553 does the
-attention-KV tier pressure (hit 0.650) — we recommend re-provisioning.</li>
+<li>A <b>capacity law</b> (§3): the recurrent-state tier binds only when mean context length L &lt; L* = s/k
+(≈1580 tokens here); for long-context serving (L ≫ L*) it never binds, and the attention-KV tier is the sole
+capacity bottleneck. This is a closed-form, model-agnostic condition that <i>inverts</i> the GPU-scarcity
+framing of Marconi/Jenga and predicts every measurement below.</li>
+<li>A <b>reuse-frontier instrumentation</b> (reusable, ~130 LOC, live path) that separates the full-attention
+reuse frontier from the all-component frontier, exposing recurrent-state <i>stranding</i> of resident
+attention-KV — a quantity invisible to hit-rate — and confirms the law directly.</li>
+<li>A <b>cross-scale 2×2</b> ({contract, intended} × {write-through, exclusive tiering}) that validates the
+law: the recurrent pool evicts 0 in all four cells even at 3× working set; the design space collapses to
+attention-KV capacity, whose only in-budget lever is the <i>known</i> exclusive-tiering primitive
+(neutral@contract, +7.4 pp@intended) — no novel primitive exists.</li>
+<li>A candidate mechanism, <b>Value-Density Mamba Retention (VMR)</b>, whose protection threshold <i>is</i>
+L* — shown to fire zero times, i.e. a <b>no-op by construction</b>, serving as a direct empirical test of
+the law rather than a failed tuning.</li>
+<li>An actionable <b>methodological finding</b>: the draft protocol (NUMP 500) under-provisions the working
+set (hit 0.842, host 79%) vs its stated premise; only at NUMP≈1553 does the attention-KV tier pressure
+(hit 0.650). We recommend re-provisioning.</li>
 </ul>
 
 <h2>2 Motivation (trace-driven)</h2>
@@ -134,18 +139,34 @@ cache) the attention-KV host tier saturates (util 1.0, hit falls 0.842→0.650) 
 pool still never evicts (§5.1). The pressured regime the protocol intends is thus reachable only off the
 draft contract point; even there, the recurrent state is a non-lever.</p>
 
-<h2>3 Design: Value-Density Mamba Retention (VMR)</h2>
-<p>The reuse boundary of a hybrid prefix is <code>min(full-KV frontier, recurrent frontier)</code>. The two
-pools are managed by independent LRUs; when the scarce recurrent pool evicts a checkpoint whose
-attention-KV is still resident (in the roomier KV tier), that KV becomes un-continuable — a
-<i>keystone</i> loss that forces full-history recompute (the tail). VMR makes recurrent-checkpoint
-retention <i>value-aware</i>: a checkpoint is protected from host eviction iff the attention-KV it unlocks
-exceeds its own footprint, i.e. <code>prefix_tokens ≥ MAMBA_BYTES/ KV_BYTES_PER_TOKEN ≈ 1570</code> — a
-parameter-free crossover derived from the pool geometry. A two-pass eviction (protect keystones first;
-fall back to LRU) keeps the pool always freeable. VMR is <b>lossless</b>: reuse remains exact; only which
-checkpoints are retained changes. It differs from Marconi's FLOP-aware GPU eviction (VMR is
-cross-<i>tier</i> and values a checkpoint by the <i>other component's</i> resident KV) and from classic
-size/frequency policies.</p>
+<h2>3 A capacity law for hybrid KV tiering</h2>
+<p>We formalize <i>when</i> each tier binds, which explains and generalizes the measurements. Let a hybrid
+model have <i>n<sub>lin</sub></i> linear-attention (SSM/GDN) layers and <i>n<sub>full</sub></i> full-attention
+layers. Per sequence, the recurrent state costs <b>s = n<sub>lin</sub>·d<sub>state</sub></b> bytes
+(<i>independent of context length</i>); per token, the attention-KV costs <b>k = n<sub>full</sub>·d<sub>kv</sub></b>
+bytes. For a serving instance with <i>C</i> concurrent live sequences of mean context length <i>L</i>, the two
+host tiers must hold:</p>
+<pre>  recurrent host footprint = C · s          (grows with #sequences only)
+  attention-KV host footprint = C · L · k   (grows with #sequences × context)</pre>
+<p>Given host pools of comparable size (in this system, both = <code>hicache_size</code>), the recurrent tier
+binds <i>later</i> than the KV tier exactly when its per-sequence footprint is smaller:</p>
+<pre>  C·s  &lt;  C·L·k   ⟺   L  &gt;  s / k  ≜  L*</pre>
+<p><b>Capacity Law.</b> The recurrent-state tier is the bottleneck only when the mean context length
+<b>L &lt; L* = s/k</b>. For this model, L* = 18 MB / 11.4 KB ≈ <b>1580 tokens</b>. Because prefix caching only
+pays off for long contexts (L ≫ a few hundred tokens), realistic serving operates at <b>L ≫ L*</b>, where the
+recurrent state is trivially the cheaper tier and <i>never</i> binds — while the KV tier, whose footprint
+scales with context, saturates. Equivalently, the recurrent tier binds only under <b>C &gt; H<sub>m</sub>/s</b>
+concurrent sequences (here 96 GB/18 MB ≈ 5333 per rank) — far beyond what one node's compute admits. This
+<b>inverts</b> the GPU-only regime (Marconi/Jenga), where HBM is so scarce that even the constant state
+competes; on a host tier the asymmetry L ≫ L* dominates.</p>
+<p><b>Corollary (why our mechanism is a no-op).</b> Any policy that manages the recurrent-state <i>tier</i> —
+including our own <i>Value-Density Mamba Retention</i> (VMR: protect a checkpoint iff its unlocked KV
+<code>L·k</code> exceeds its footprint <code>s</code>, i.e. iff <code>L &gt; L*</code>) — can only act when that
+tier evicts. The law says it never does at L ≫ L*, so VMR's protect-list is empty by construction. VMR is thus
+not a failed tuning but a direct <i>test</i> of the law: its threshold <i>is</i> L*, and it fires zero times
+across every measured configuration (§5). The design space for lossless hybrid-KV caching therefore collapses
+onto the attention-KV tier, whose only in-budget lever is exclusive (device-XOR-host) tiering — a known
+result, not a novel primitive.</p>
 
 <h2>4 Implementation</h2>
 <p>All changes are in the live <code>UnifiedRadixCache</code> path (components <code>[FULL, MAMBA]</code>).

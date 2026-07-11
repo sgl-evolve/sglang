@@ -360,7 +360,12 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   t=2048 (hit 0.730/p99 4175). Over-protection (t=4096) wastes cache on high-cost nodes that may not be
   reused. **Confirms t=2048 is the CostAware sweet spot even with XTIER.** Logged W&B (mechanism).
 
-*v37+ batch running — results below will be added as they complete.*
+- **v37-xtier-cost-t1024** (XTIER + CostAware(t=1024), MECHANISM) — hit **0.729**, p99 **4383 ms**,
+  p50 **454 ms**, req/s **3.02**, mean **761 ms**. XTIER + lower CostAware threshold is within the same
+  band as t=2048 (hit 0.730/p99 4175) and t=4096 (hit 0.726/p99 4313). **CostAware threshold has modest
+  effect under XTIER** (0.004 hit, ~200ms p99 range) — tiering architecture dominates. Logged W&B (mechanism).
+
+*v38+ batch running — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29)
 All frequency-based eviction policies (LFU, SLRU, GDSF) are STRONG NEGATIVES for this multi-turn workload.

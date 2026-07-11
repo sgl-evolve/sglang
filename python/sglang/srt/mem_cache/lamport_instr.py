@@ -12,7 +12,19 @@ import threading
 
 logger = logging.getLogger(__name__)
 
-ENABLED = os.environ.get("LAMPORT_INSTR", "0") == "1"
+def _enabled() -> bool:
+    if os.environ.get("LAMPORT_INSTR", "0") == "1":
+        return True
+    # Sentinel-file fallback (robust when env does not propagate through srun):
+    # clone root = 6 dirs up from this file (.../<clone>/python/sglang/srt/mem_cache/).
+    try:
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), *[".."] * 6))
+        return os.path.exists(os.path.join(root, ".lamport_instr"))
+    except Exception:
+        return False
+
+
+ENABLED = _enabled()
 _LOG_EVERY = int(os.environ.get("LAMPORT_INSTR_EVERY", "3000"))
 _lock = threading.Lock()
 

@@ -10,9 +10,22 @@
 - **Reuse boundary** (`_match_prefix_helper`, unified_radix_cache.py:885) = deepest node where **ALL** components validate (Full device|host AND Mamba device|host). Mamba checkpoints created at chunk boundaries (chunked prefill, `cache_unfinished_req`) + request ends. **Branch-point mamba checkpointing is DISABLED in HiCache mode** (mamba_component.py:86 "can add a HiCache-aware branching policy later") — a documented gap.
 - Load-back (H→D) already **overlapped** with compute (load_stream + LayerDoneCounter). No recompute-vs-load arbitration (always load if cached; init_load_back @2410). Cascade eviction priority Full(2)>SWA(1)>Mamba(0): evicting Full cascades Mamba, not vice-versa.
 
-## Baseline (stock 2-tier), single-λ reference (baseline.json, from supervisor, λ=3)
-ttft p50 750 ms, p99 6326 ms, hit 0.622, host_util 1.0, req/s 2.78, evict 582 M tok, load_back 298 M tok, hit_device 0.40 / hit_host 0.60.
-→ **Capacity-bound** (working set ~19 M ≫ cache ~10.7 M). Capacity/exclusive-tiering & eviction-policy are BANNED/dead-end. Goodput headroom must come from the **latency side under load** (shift curve left/down), not hit-rate.
+## Hardware / pool sizes (per TP rank ×8, from server.log)
+- **Mamba pool: 1351 slots, ssm 23.77 GB → ~18 MB per sequence-state** (LARGE, scarce). max_running_requests=270 → ~1081 free cache slots. **Mamba HOST pool = 96 GB/rank (~5360 slots).**
+- KV pool: 2.35 M device tokens (27 GB); **KV HOST = 96 GB (~8.4 M tokens).** So Mamba host pool (768 GB total) is co-equal to KV host pool.
+- Model 48 layers = 36 GDN linear-attn + 12 full-attn (interval 4); GQA 2 KV heads / head_dim 256. `mamba_cache_chunk_size` = max(FLA 64, page 64); `enable_int8_mamba_checkpoint`=False (off, lossy).
+
+## Baseline v0-baseline (my rate-sweep, stock), λ=3 point [running]
+req/s 2.80, hit **0.842**, input **42953 tok/s** vs output **310 tok/s** → **PREFILL-BOUND**. TTFT: median **1.64 s**, P90 **27.4 s**, P99 **53.5 s**; E2E median 7.2 s. TPOT median 200 ms, P99 15.5 s.
+→ **Tail-latency regime**: median fine, but P99 TTFT 53 s (goodput@8s-SLO ≈ 0). Tail = **queue-driven head-of-line blocking by large prefill recomputes**. Reducing aggregate recompute drains the queue → cuts the tail → raises goodput. Capacity/exclusive-tiering/eviction-policy remain BANNED/dead-end.
+
+## Central hypothesis (gated by v1-instr instrumentation)
+The **large, scarce Mamba state (18 MB; 1351 dev / 5360 host slots)** is the binding reuse resource. Independent LRU eviction of Mamba vs Full → a Mamba checkpoint is evicted while its Full-KV prefix stays resident (KV host pool has room) → **Full KV stranded (present but un-continuable) → catastrophic full-history recompute → the P99 TTFT tail.** Mechanism = **hybrid dual-cache reuse-frontier co-management** to eliminate stranding → kill the tail → goodput. Lossless (exact states, exact reuse).
+
+### Decision tree (from `tools/parse_instr.sh` on v1-instr)
+- stranded ≥5% **and** mamba_host_evict>0 → EVICTION-driven stranding → **frontier-coupled retention** (protect load-bearing Mamba, evict orphaned first).
+- stranded ≥5%, mamba_host_evict≈0 → SPARSE-checkpoint stranding → **denser/branch-point Mamba checkpointing** (HiCache-aware, currently disabled).
+- stranded <1% → PIVOT (elastic host-pool sharing between Mamba/KV host; or latency-hiding/scheduling of the recompute tail).
 
 ## Direction (being pinned by data)
 Candidate leads, hybrid-specific & non-banned:

@@ -193,10 +193,13 @@ overlapped. Hit rate is maximal (0.842 = 1 − irreducible first-occurrence). No
 cache mechanism we could construct (recurrent-state co-management, transfer/overlap, layout,
 co-residency) has headroom here; the binding resource is prefill attention over reused long contexts.</p>
 
-<p><b>5.4 Lossless &amp; noise.</b> All engine changes are pure counting / retention re-ordering; reuse is
-byte-exact. The headline p99-TTFT is warm-up sensitive (cold-JIT first-load λ3 p99 = 53 s vs warm 9 s);
-we compare warm-to-warm and rely on the stable counters (hit, evict/load-back tokens, host util) for
-attribution.</p>
+<p><b>5.4 Lossless &amp; noise (the headline metric is fragile).</b> All engine changes are pure counting /
+retention re-ordering; reuse is byte-exact. Beyond warm-up sensitivity (cold-JIT first-load λ3 p99 = 53 s
+vs warm 9 s), the p99-TTFT <i>itself</i> straddles the 8 s SLO across three identical warm runs: λ3 p99 =
+{7956, 8969, 9389} ms (±9%). The goodput@SLO headline therefore flips between 0 and 2.99 req/s purely by
+run-to-run noise at the knee — it is not a reliable discriminator for sub-10% mechanism effects. We
+consequently attribute via the <i>stable</i> counters (hit rate ±0.1 pp, evict/load-back tokens, host
+util), all of which show the recurrent-state and exclusive-tiering levers to be flat on the contract eval.</p>
 
 <h2>6 Related work</h2>
 <p><b>Marconi</b> (MLSys'25): hybrid prefix caching with FLOP-efficiency eviction; GPU-HBM only, discards

@@ -33,15 +33,17 @@ footprint scales with context, is the sole capacity bottleneck. Using a fully-in
 multi-turn, real-text (Mooncake-mix) protocol, we introduce a <i>reuse-frontier</i> diagnostic that
 measures, per prefix match, how much resident attention-KV is rendered un-continuable ("stranded") by a
 missing recurrent checkpoint. We find: <b>(i)</b> the recurrent-state host pool <i>never evicts</i> — even
-at 3× the working set where the attention-KV host pool evicts 26 M tokens; <b>(ii)</b> stranding is
-&lt;1.2% and is sparse-checkpoint-bounded, not eviction-driven; <b>(iii)</b> at realistic operating scale
-the system is not cache-bound at all (hit rate maximal 0.842, host tier 79% full, PCIe &lt;10%), and the
-known capacity lever (exclusive tiering, +13 pp elsewhere) is <i>neutralized</i>; the binding resource is
-prefill compute under bursty arrivals. We therefore <b>bound</b> the design space for hybrid KV caching:
-recurrent-state management (the focus of prior work) is a non-lever under host tiering; the only cache
-lever is attention-KV capacity, and only at large working sets. The law is <b>config-checkable</b>: computing L* for six deployed hybrids (Qwen3-Next, Zamba2, Jamba,
-Granite-4, Nemotron-H, and our Qwen3.5-122B) gives L* = 167–3456 tokens — always far below realistic serving
-contexts — so the conclusion is family-wide, not a single-model artifact. We contribute the capacity law, a
+at 3× the working set, where the attention-KV host pool evicts 587 M tokens cumulatively (26 M in a single
+steady-state window); <b>(ii)</b> stranding is &lt;1.2% and is sparse-checkpoint-bounded, not eviction-driven;
+<b>(iii)</b> at the contract operating point the system is not cache-bound at all (hit rate maximal 0.842,
+host tier 79% full, PCIe &lt;10%), and the known capacity lever (exclusive tiering, +13 pp under pressure in
+prior work) is <i>neutralized</i>; the binding resource is prefill compute under bursty arrivals. We
+therefore <b>bound</b> the design space for hybrid KV caching: recurrent-state management (the focus of prior
+work) is a non-lever under host tiering; the only cache lever is attention-KV capacity, and only at large
+working sets. The law is <b>config-checkable</b>: for six deployed hybrids (Qwen3-Next, Zamba2, Jamba,
+Granite-4, Nemotron-H, and our Qwen3.5-122B) the element-ratio crossover L*<sub>elem</sub> = 167–3456 tokens
+(byte-L* adds a 1–4× dtype factor, still ≪ deployed contexts) — so the conclusion is family-wide, not a
+single-model artifact. We contribute the capacity law, a
 reuse-frontier diagnostic, a cross-scale 2×2 characterization, and a scoped impossibility corollary: no
 lossless, budget-respecting, non-capacity, non-classical cache mechanism can shift the curve (the only
 remaining axes — capacity and classical eviction — are budget-frozen and charter-excluded respectively). A
@@ -301,7 +303,12 @@ never experiences. The p99 TTFT metric is warm-up- and burst-sensitive (≈6× c
 compare warm-to-warm and attribute via stable counters. The study is one model family (Qwen3.5 hybrid GDN)
 / one workload mix. The over-provisioning of the recurrent host pool is partly an implementation artifact
 (SGLang sizes it = <code>hicache_size</code>, i.e. 768 GB — equal to the KV host tier); a right-sized pool
-would still not bind, because #sequences ≪ #tokens. This artifact is itself the law's most concrete practical
+would still not bind: binding needs C·s &gt; H<sub>m</sub>, i.e. C &gt; H<sub>m</sub>/s ≈ 5333 concurrent cached
+sequences per rank at the stock 96 GB — but the node admits ≤270 running sequences and the entire workload has
+only 1553 distinct conversations, so even a right-sized ~30 GB recurrent host tier (≈1660 states) holds every
+live checkpoint while those same conversations' KV (C·L·k, L≈20k) overflows the KV tier many times over. The
+"never binds" result is thus not a pool-sizing artifact — it is forced by #sequences ≪ #tokens. This is itself
+the law's most concrete practical
 consequence: an <b>elastic cross-pool host allocator</b> could reclaim the demonstrably-idle recurrent-state
 DRAM for the pressured attention-KV tier at large scale (a new axis vs device↔host exclusive tiering: it shares
 slack <i>across components</i>, enabled precisely by the O(#sequences) state footprint). We are careful to

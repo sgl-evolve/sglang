@@ -27,8 +27,30 @@ def _env(name: str, default: str) -> str:
     return os.environ.get(name, default)
 
 
+def _mode() -> str:
+    m = _env("LAMPORT_MECH", "").strip().lower()
+    if m:
+        return m
+    # Sentinel-file fallback (robust when env does not propagate through srun):
+    # walk up from this file for a `.lamport_mech` marker whose contents = mode.
+    try:
+        d = os.path.dirname(os.path.abspath(__file__))
+        for _ in range(8):
+            p = os.path.join(d, ".lamport_mech")
+            if os.path.exists(p):
+                with open(p) as f:
+                    return f.read().strip().lower() or "0"
+            nd = os.path.dirname(d)
+            if nd == d:
+                break
+            d = nd
+    except Exception:
+        pass
+    return "0"
+
+
 # "0"/"off" disabled; "vmr" (or "1") = value-density retention.
-MODE = _env("LAMPORT_MECH", "0").lower()
+MODE = _mode()
 ENABLED = MODE not in ("0", "", "off", "false")
 
 # Principled crossover threshold in tokens: protect a Mamba checkpoint iff the

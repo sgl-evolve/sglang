@@ -367,15 +367,19 @@ active/locked, NOT the evictable cache — device is NOT under-used.
 
 *v38+ batch running — results below will be added as they complete.*
 
-### Eviction policy synthesis (v9-v18, v28-v29)
-All frequency-based eviction policies (LFU, SLRU, GDSF) are STRONG NEGATIVES for this multi-turn workload.
+### Eviction policy synthesis (v9-v18, v28-v29, v34-v37)
+All frequency-based eviction policies (LFU, SLRU, GDSF) are STRONG NEGATIVES under inclusive tiering.
 The reuse pattern is temporal (inter-turn gap), not frequency-driven: turn-0 documents have count=1 but
 massive future reuse. **LRU remains the best simple eviction policy; 2Q is the only non-LRU that matches.**
 CostAware gives a marginal +6% hit by protecting high-recompute-cost nodes; threshold sweep: **t=2048 is
 the sweet spot** (t=1024 under-protects: hit 0.644; t=4096 over-protects: hit 0.693 but p99 5698).
-SizeWeightedLRU is actively harmful (penalizes large documents). **The main lever is tiering architecture
-(exclusive vs inclusive), not eviction policy.** Combined with XTIER: cost_aware and 2Q both reach
-write_back-level hit (0.72-0.73), while LFU remains catastrophic even under XTIER.
+SizeWeightedLRU is actively harmful (penalizes large documents).
+**★ KEY FINDING (v35): exclusive tiering RESCUES catastrophically bad eviction policies.** LFU under
+write_through: hit 0.394, p99 67,005 ❌❌. LFU under write_back: hit 0.730, p99 4595 ✓. The exclusive
+tiering change alone accounts for +0.336 hit and −93% p99. LFU vs LRU under write_back: only ~7% p99
+variance (4595 vs 4291). **This proves the main lever is tiering architecture, not eviction policy.**
+CostAware threshold with XTIER (v36/v37): t=1024/2048/4096 all within ~0.004 hit — threshold effect
+is muted when tiering dominates.
 
 ### Scheduling synthesis (v6, v15, v19, v20, v24, v25)
 **SRPF** (shortest remaining prefill first) gives a robust p99 improvement: −28% standalone (v15), −38%
@@ -399,7 +403,7 @@ the recommended production configuration for this regime.**
 batch size): 64 (v22) is marginal negative vs default (hit 0.715 vs 0.725, p99 4954 vs 4200). **Conclusion:
 WM_FRAC 0.05-0.10 is the sweet spot; larger batch size is not beneficial.** Default XTIER tuning is near-optimal.
 
-## Synthesis (30 versions)
+## Synthesis (38 versions)
 - **The contribution = the DIAGNOSIS + INSIGHT + compounding lossless mechanisms.** Capacity-bound multi-turn
   LLM serving: write-through KV tiering is INCLUSIVE (L1 mirrors L2's hot subset) → distinct cache = L2 only;
   the ~19 M working set thrashes → 21 pp hit lost to concurrency eviction (turns 0-2 ~0 hit). Three
@@ -420,7 +424,12 @@ WM_FRAC 0.05-0.10 is the sweet spot; larger batch size is not beneficial.** Defa
   write_back's sync evict). In THIS 2-tier regime write_back's sync isn't a stall (fast host) so it edges
   XTIER on hit; XTIER's async design is the more robust realization (matters when the backup tier is slower).
   Combined with CostAware+SRPF, the full stack beats any single mechanism.
-- **Negatives (rigorous):** frequency-based eviction (LFU, SLRU, GDSF) catastrophic for temporal reuse;
-  admission control (WSAC) violates SLO; batch size increase harmful; WM_FRAC=0 catastrophic.
+- **★ Tiering dominates eviction (v35 key finding):** exclusive tiering rescues even catastrophically bad
+  eviction policies — LFU goes from hit 0.394/p99 67s under write_through to hit 0.730/p99 4.6s under
+  write_back (+0.336 hit, −93% p99). Eviction policy choice contributes only ~7% p99 variance under
+  exclusive tiering. CostAware threshold is also muted under XTIER (v36/v37: 0.004 hit range).
+- **Negatives (rigorous):** frequency-based eviction (LFU, SLRU, GDSF) catastrophic under inclusive;
+  admission control (WSAC, PGAC) violates SLO in ALL configurations; backup-select=costly stalls server;
+  REUSE_GATE=1 neutral; batch size increase harmful; WM_FRAC=0 catastrophic.
 - **Node variance:** ±14% req/s, ±18% p99 between nodes running identical configs. All A/B comparisons must
   be same-node or replicated. Baseline replicate confirms (v26 p99 5159 vs v0 6326 = 18% spread).

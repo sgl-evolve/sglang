@@ -166,18 +166,22 @@ competes; on a host tier the asymmetry L ≫ L* dominates.</p>
 KV dims), so it can be read off any config. Computing the element-ratio L* = (n<sub>lin</sub>·state_elems) /
 (n<sub>full</sub>·kv_elems_per_token) for six deployed hybrids:</p>
 <table>
-<tr><th>model</th><th>lin / full layers</th><th>state (M elem)</th><th>KV/tok (elem)</th><th>L* (tokens)</th></tr>
-<tr><td>Qwen3.5-122B (ours, measured)</td><td>36 / 12</td><td>~18 MB/seq</td><td>~11.4 KB</td><td><b>~1580</b></td></tr>
-<tr><td>Qwen3-Next-80B</td><td>36 / 12</td><td>18.9</td><td>12 288</td><td>1536</td></tr>
-<tr><td>Zamba2-7B</td><td>68 / 13</td><td>31.2</td><td>186 368</td><td>167</td></tr>
-<tr><td>Jamba-v0.1</td><td>28 / 4</td><td>3.7</td><td>8 192</td><td>448</td></tr>
-<tr><td>Granite-4.0-H-1B</td><td>36 / 4</td><td>14.2</td><td>4 096</td><td>3456</td></tr>
-<tr><td>Nemotron-H-8B</td><td>24 / 4</td><td>25.2</td><td>8 192</td><td>3072</td></tr>
+<tr><th>model (state type)</th><th>lin / full</th><th>state (M elem/seq)</th><th>KV (elem/tok)</th><th>L*<sub>elem</sub> (tok)</th></tr>
+<tr><td>Qwen3.5-122B — ours (GDN)</td><td>36 / 12</td><td>9.44</td><td>12 288</td><td><b>768</b> (meas. 1580, bf16 state / fp8 KV)</td></tr>
+<tr><td>Qwen3-Next-80B (GDN)</td><td>36 / 12</td><td>9.44</td><td>12 288</td><td>768</td></tr>
+<tr><td>Zamba2-7B (Mamba-2)</td><td>68 / 13</td><td>31.20</td><td>186 368</td><td>167</td></tr>
+<tr><td>Jamba-v0.1 (Mamba-2)</td><td>28 / 4</td><td>3.67</td><td>8 192</td><td>448</td></tr>
+<tr><td>Granite-4.0-H-1B (Mamba-2)</td><td>36 / 4</td><td>14.16</td><td>4 096</td><td>3456</td></tr>
+<tr><td>Nemotron-H-8B (Mamba-2)</td><td>24 / 4</td><td>25.17</td><td>8 192</td><td>3072</td></tr>
 </table>
-<p>Across every model L* is a few hundred to a few thousand tokens (dtype scaling, e.g. fp32 state + fp8 KV,
-shifts this by ≤~4× but not the conclusion). Since prefix caching is deployed precisely for long contexts
-(32k–256k ≫ L*), <b>the recurrent-state tier is never the capacity bottleneck for any current hybrid LLM</b>
-under host tiering — a family-wide, config-checkable prediction, not a single-model artifact.</p>
+<p>L*<sub>elem</sub> is the element-ratio crossover (state and KV in the same dtype). Across every deployed
+hybrid it is <b>167–3456 tokens</b>; the byte crossover L* = L*<sub>elem</sub> · (state_bytes/kv_bytes) adds a
+1–4× factor (e.g. our bf16-state / fp8-KV gives 2×, matching the measured 1580). The recurrent state elements
+follow the correct GDN geometry — per <i>key</i>-head, S ∈ [n<sub>key</sub>, d<sub>k</sub>, d<sub>v</sub>],
+validated against our measured 18 MB/seq (16·128·128·36·2 B). Since prefix caching is deployed precisely for
+long contexts (32k–256k ≫ L*), <b>the recurrent-state tier is never the capacity bottleneck for any current
+hybrid LLM</b> under host tiering — a family-wide, config-checkable prediction (see
+<code>tools/capacity_law.py</code>), not a single-model artifact.</p>
 <p><b>Corollary (why our mechanism is a no-op).</b> Any policy that manages the recurrent-state <i>tier</i> —
 including our own <i>Value-Density Mamba Retention</i> (VMR: protect a checkpoint iff its unlocked KV
 <code>L·k</code> exceeds its footprint <code>s</code>, i.e. iff <code>L &gt; L*</code>) — can only act when that
@@ -296,6 +300,6 @@ quality-gated, not output-matched.</p>
 HEAD. Runs: <code>runs/v0-baseline</code>, <code>runs/v1-instr</code> (instrumented baseline replicate),
 <code>runs/v2-writeback</code> (exclusive-tiering control), <code>runs/diag1553*</code> (pressured regime).
 Instrumentation enabled via <code>LAMPORT_INSTR=1</code>; mechanism via <code>LAMPORT_MECH=vmr</code>.
-Fixed protocol: <code>.claude/skills/evaluation-sop/scripts/eval.sh</code> (λ∈{3,5,7,10}, NUMP 500, MAXC 256).</p>
+Capacity law reproducible on any HF config via <code>tools/capacity_law.py</code>. Fixed protocol: <code>.claude/skills/evaluation-sop/scripts/eval.sh</code> (λ∈{3,5,7,10}, NUMP 500, MAXC 256).</p>
 </body>
 </html>

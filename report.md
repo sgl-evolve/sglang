@@ -429,7 +429,13 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   static 0.10 sweet spot → hit matches (0.725) but p99 is worse (4972 vs 4067). **Static WM_FRAC=0.10 beats
   adaptive tuning.** Logged W&B (mechanism).
 
-*v48+ batch running — results below will be added as they complete.*
+- **v48-cfg-dfs** (DFS-weight scheduling, INCLUSIVE tiering, MECHANISM) — hit **0.619**, p99 **5698 ms**,
+  p50 **561 ms**, req/s **3.02**, mean **1005 ms**. DFS scheduling is a WEAK NEGATIVE — hit neutral (0.619
+  ≈ baseline 0.622), p99 modestly better than baseline (5698 vs 6326, −10%) but much worse than SRPF (4523,
+  −28%). DFS prioritizes cache-sharing depth, which may over-serve already-warm conversations at the expense
+  of cold ones. Logged W&B (mechanism).
+
+*v49+ batch running — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29, v34-v37, v43-v45)
 All frequency-based eviction policies (LFU, SLRU, GDSF, LFUDA, CostFreq) are NEGATIVES under inclusive
@@ -479,7 +485,7 @@ backup = more device-exclusive content = fewer load-backs on prefill path = bett
 backup batch size): 64 (v22) is marginal negative vs default (hit 0.715 vs 0.725, p99 4954 vs 4200).
 **Conclusion: WM_FRAC=0.10 is the sweet spot — minimal backup maximizes device exclusivity.**
 
-## Synthesis (47 versions)
+## Synthesis (49 versions)
 - **The contribution = the DIAGNOSIS + INSIGHT + compounding lossless mechanisms.** Capacity-bound multi-turn
   LLM serving: write-through KV tiering is INCLUSIVE (L1 mirrors L2's hot subset) → distinct cache = L2 only;
   the ~19 M working set thrashes → 21 pp hit lost to concurrency eviction (turns 0-2 ~0 hit). Three

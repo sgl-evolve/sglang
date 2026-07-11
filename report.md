@@ -37,10 +37,16 @@ Candidate leads, hybrid-specific & non-banned:
 - Deciding via baseline curve + instrumented characterization (trace-driven motivation). Will NOT commit until headroom is measured.
 
 ---
+## Mechanism implemented (ready): Value-Density Mamba Retention (VMR)
+`LAMPORT_MECH=vmr` (default off; A/B on identical code). In the scarce Mamba host pool, **protect checkpoints whose unlocked attention-KV prefix exceeds their own ~18 MB cost** (parameter-free crossover ≈1570 tok, ablatable via `LAMPORT_MIN_TOK`) from host eviction; 2-pass fallback keeps the pool always freeable. Files: `mem_cache/lamport_mech.py`, `mamba_component.py` (`_host_evict_pass`, value stored at checkpoint creation). Lossless (reuse exact; only *which* checkpoints are retained changes). Targets the P99 tail: a deep-checkpoint eviction forces full-history recompute. **Risk:** in long-context workloads most checkpoints exceed the threshold → need enough short (ShareGPT) checkpoints to sacrifice; else raise threshold / go value-ordered.
+
 ## Versions
 | ver | tag | hypothesis | curve result vs baseline | lossless | takeaway |
 |-----|-----|-----------|--------------------------|----------|----------|
-| v0-baseline | config | stock rate-sweep = my comparison curve | (running) | — | — |
+| v0_official | config | stock 2-tier λ=3 reference (baseline.json) | reference | — | logged W&B |
+| v0-baseline | config | stock rate-sweep = my comparison curve | goodput@8s **0**; peak 5.59 req/s; p50 1.2-1.6s, **p99 28-53s**; hit 0.841 | ✓(stock) | saturated tail regime; prefill-bound |
+| v1-instr | mechanism* | stock+instrumentation → stranding/churn data (baseline replicate) | queued (node contention) | ✓ | *instr only, no behavior change |
+| v2-vmr | mechanism | VMR: protect keystone Mamba checkpoints → cut recompute tail | pending v1-instr confirm | expect ✓ | ready to launch |
 
 ## Formal submissions
 (none yet)

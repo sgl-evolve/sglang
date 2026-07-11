@@ -409,7 +409,13 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   backup reaches them → content lost → recompute → catastrophic. Confirms: XTIER requires a recency-based
   eviction policy (LRU/2Q/CostAware). Logged W&B (mechanism).
 
-*v45+ batch running — results below will be added as they complete.*
+- **v45-cost-freq** (CostFreq eviction, INCLUSIVE tiering, MECHANISM) — hit **0.521**, p99 **4553 ms**,
+  p50 **727 ms**, req/s **3.02**, mean **961 ms**. CostFreq (cost × (1+hits)) is a moderate negative under
+  inclusive tiering — better than LFU (0.341) but worse than CostAware (0.657) and LRU (0.622). The
+  frequency multiplier penalizes new documents that haven't been hit yet, partially undermining the
+  recency-preserving effect of the cost component. Logged W&B (mechanism).
+
+*v46+ batch running — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29, v34-v37)
 All frequency-based eviction policies (LFU, SLRU, GDSF) are STRONG NEGATIVES under inclusive tiering.

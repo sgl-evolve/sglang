@@ -208,11 +208,22 @@ GPU-assisted layout, layer-wise overlap, compute-vs-load — all for transformer
 KV only. We position VMR as the first cross-tier, value-aware co-management of the recurrent-state pool,
 and provide the first evidence that this pool is over-provisioned (not scarce) once host-tiered.</p>
 
-<h2>7 Limitations &amp; when it fails</h2>
-<p>VMR is a no-op when the recurrent host pool does not evict (under-provisioned working set / over-provisioned
-pool) — precisely the contract operating point measured here. Its value is conditional on working-set
-pressure. The p99 TTFT metric is warm-up- and burst-sensitive (≈6× cold-vs-warm at λ=3); we compare
-warm-to-warm and attribute via stable counters. The study is one model family / one workload mix.</p>
+<h2>7 Limitations, implications &amp; when the lever moves</h2>
+<p>VMR is a no-op when the recurrent host pool does not evict — precisely the contract operating point. Its
+value is conditional on working-set pressure that this pool, by its O(#sequences) footprint, essentially
+never experiences. The p99 TTFT metric is warm-up- and burst-sensitive (≈6× cold-vs-warm at λ=3); we
+compare warm-to-warm and attribute via stable counters. The study is one model family (Qwen3.5 hybrid GDN)
+/ one workload mix. The over-provisioning of the recurrent host pool is partly an implementation artifact
+(SGLang sizes it = <code>hicache_size</code>); a right-sized pool would still not bind, because #sequences
+≪ #tokens.</p>
+<p><b>Where the improvement actually is.</b> Two levers survive our analysis, both <i>outside</i> lossless
+recurrent-state caching: (1) <b>attention-KV capacity</b> — the sole cache lever, already captured by
+exclusive tiering and bounded by the frozen host budget; and (2) <b>prefill compute</b> — the true
+operating bottleneck (bursty long-context attention), addressable only by approximation (KV sparsity /
+partial attention), which is lossy and out of scope for a lossless cache study. A promising hybrid-specific
+hypothesis for future work: full-attention layers may tolerate more aggressive sparsification <i>because</i>
+the interleaved linear-attention layers already carry the long-range pathway — but this must be
+quality-gated, not output-matched.</p>
 
 <h2>8 Reproducibility</h2>
 <p>Branch <code>evolve/lamport</code>. Baseline commit <code>a334877e5</code>; instrumentation+mechanism at

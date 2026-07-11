@@ -53,13 +53,18 @@ layers hold a single constant-size recurrent state per sequence. Reusing a cache
 <ul>
 <li>A <b>reuse-frontier instrumentation</b> that separates, per match, the full-attention reuse frontier
 from the all-component frontier, exposing recurrent-state <i>stranding</i> of resident attention-KV — a
-quantity invisible to hit-rate.</li>
-<li>A <b>trace-driven characterization</b> showing that under host tiering the recurrent-state pool is
-over-provisioned, hit rate is near-maximal, host↔device bandwidth is &lt;10% utilized, and the operating
-bottleneck is bursty prefill compute — inverting the GPU-scarcity framing of Marconi/Jenga.</li>
-<li><b>Value-Density Mamba Retention (VMR)</b>: a lossless cross-component primitive that retains a
-recurrent checkpoint iff the attention-KV it unlocks exceeds its own memory footprint, and the regime
-(working-set pressure) in which it shifts the throughput–latency curve.</li>
+quantity invisible to hit-rate. (Reusable diagnostic; ~130 LOC on the live path.)</li>
+<li>A <b>cross-scale characterization</b> (a 2×2 over {contract, intended} × {write-through, exclusive
+tiering}) establishing an <b>impossibility, properly bounded</b>: under host tiering the recurrent-state
+pool never binds (O(#sequences) footprint), so the entire cache-improvement space collapses to
+attention-KV capacity, which is (a) frozen-budget-bounded and (b) already captured by exclusive tiering.
+This <i>inverts</i> the GPU-scarcity framing of Marconi/Jenga.</li>
+<li>A candidate mechanism, <b>Value-Density Mamba Retention (VMR)</b> — retain a checkpoint iff its
+unlocked attention-KV exceeds its own footprint — shown to be a <b>no-op by construction</b> (the state
+pool never evicts), which is itself the cleanest evidence for the impossibility.</li>
+<li>An actionable <b>methodological finding</b>: the draft rate-sweep protocol (NUMP 500) under-provisions
+the working set (hit 0.842, host 79%) relative to its stated premise; only at NUMP≈1553 does the
+attention-KV tier pressure (hit 0.650) — we recommend re-provisioning.</li>
 </ul>
 
 <h2>2 Motivation (trace-driven)</h2>
@@ -137,9 +142,11 @@ statistically identical to <code>write_through</code> on the contract eval, beca
 <tr><td>write_back (warm)</td><td>2.99</td><td>9389</td><td>22992</td><td>36725</td><td>5.64</td><td>0.8424</td></tr>
 </table>
 <p>Hit rate is invariant to 0.05 pp; TTFT differences are within run-to-run noise (§7). At the intended
-scale, where the attention-KV tier is pressured, exclusive tiering recovers capacity as expected
-(<span class="note">[diag1553wb quantifies]</span>) — confirming the sole cache lever is attention-KV
-capacity, unmasked only by adequate working-set scale.</p>
+scale, where the attention-KV tier saturates (hit 0.650), exclusive tiering is exactly the mechanism that
+recovers capacity — the documented +13 pp "exclusive (device-XOR-host) tiering" result under host
+pressure — confirming the sole cache lever is <b>attention-KV capacity</b>, unmasked only by adequate
+working-set scale. Crucially, this lever is (i) bounded by the frozen 768 GB attention-KV host budget and
+(ii) already known; the improvement space contains no <i>novel</i> primitive.</p>
 
 <p><b>5.3 The contract eval is compute/burst-bound, not cache-bound.</b> Prefill:decode batch ratio ≈7.4;
 queue depth p50=0 (idle) spiking to 83 (bursts); host↔device movement ≈1.85 GB/s (&lt;10% PCIe), fully

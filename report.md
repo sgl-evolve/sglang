@@ -435,7 +435,12 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   −28%). DFS prioritizes cache-sharing depth, which may over-serve already-warm conversations at the expense
   of cold ones. Logged W&B (mechanism).
 
-*v49+ batch running — results below will be added as they complete.*
+- **v49-xtier-dfs** (XTIER + DFS-weight scheduling, MECHANISM) — hit **0.726**, p99 **4638 ms**, p50 **489 ms**,
+  req/s **3.02**, mean **806 ms**. XTIER + DFS is neutral compared to XTIER alone (hit 0.726 in the XTIER
+  band). DFS doesn't add value beyond XTIER's capacity improvement — **SRPF remains the best scheduling.**
+  Logged W&B (mechanism).
+
+*v50+ batch running (batch4 started) — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29, v34-v37, v43-v45)
 All frequency-based eviction policies (LFU, SLRU, GDSF, LFUDA, CostFreq) are NEGATIVES under inclusive

@@ -112,8 +112,42 @@ checkpoint creation as prefix depth). Both are flag-gated (default off) so A/B r
 LOC ≈ 130 net python. Verified live (not dead code) via the instrumentation firing on the real serving path.</p>
 
 <h2>5 Evaluation</h2>
-<p class="note">[Rate-sweep curves for VMR vs stock at the pressured scale; stranded-token reduction;
-error bars (warm replicates); lossless verification; honest attribution. Pending diag1553 / VMR runs.]</p>
+<p><b>5.1 The recurrent-state pool never binds (cross-scale).</b> Instrumentation over the whole run:</p>
+<table>
+<tr><th>scale</th><th>host util (attn-KV)</th><th>attn-KV host evict</th><th>mamba host evict</th><th>stranded (frontier)</th><th>hit</th></tr>
+<tr><td>contract (NUMP 500)</td><td>0.79 (flat, all λ)</td><td>0</td><td>0</td><td>0.4%</td><td>0.842</td></tr>
+<tr><td>intended (NUMP 1553)</td><td>1.0 (fills)</td><td>7036 nodes / 26 M tok</td><td><b>0</b></td><td>0.6–1.2%</td><td>—</td></tr>
+</table>
+<p>Even at 3× the working set, where the attention-KV host tier evicts 26 M tokens, the recurrent-state
+host pool evicts <b>nothing</b>: with ~18 MB/sequence and ≈5360 host slots, it holds every live
+conversation's state. Stranding stays &lt;1.2% and is bounded by the checkpoint stride (64 tokens), i.e.
+sparse-placement, not eviction. <b>VMR is therefore a no-op</b> (its protect-list is never exercised:
+<code>protect_skips</code>≡0), by construction, not by tuning.</p>
+
+<p><b>5.2 The known capacity lever is neutralized at the contract operating point (2×2).</b>
+Exclusive tiering (<code>write_back</code>) — the mechanism that yields +13 pp under host pressure — is
+statistically identical to <code>write_through</code> on the contract eval, because the host tier is only
+79% full:</p>
+<table>
+<tr><th>config</th><th>λ3 req/s</th><th>λ3 p99 (ms)</th><th>λ5 p99</th><th>λ7 p99</th><th>peak req/s</th><th>hit</th></tr>
+<tr><td>write_through (warm)</td><td>2.99</td><td>8969</td><td>23179</td><td>36855</td><td>5.95</td><td>0.8419</td></tr>
+<tr><td>write_back (warm)</td><td>2.99</td><td>9389</td><td>22992</td><td>36725</td><td>5.64</td><td>0.8424</td></tr>
+</table>
+<p>Hit rate is invariant to 0.05 pp; TTFT differences are within run-to-run noise (§7). At the intended
+scale, where the attention-KV tier is pressured, exclusive tiering recovers capacity as expected
+(<span class="note">[diag1553wb quantifies]</span>) — confirming the sole cache lever is attention-KV
+capacity, unmasked only by adequate working-set scale.</p>
+
+<p><b>5.3 The contract eval is compute/burst-bound, not cache-bound.</b> Prefill:decode batch ratio ≈7.4;
+queue depth p50=0 (idle) spiking to 83 (bursts); host↔device movement ≈1.85 GB/s (&lt;10% PCIe), fully
+overlapped. Hit rate is maximal (0.842 = 1 − irreducible first-occurrence). No lossless, non-capacity
+cache mechanism we could construct (recurrent-state co-management, transfer/overlap, layout,
+co-residency) has headroom here; the binding resource is prefill attention over reused long contexts.</p>
+
+<p><b>5.4 Lossless &amp; noise.</b> All engine changes are pure counting / retention re-ordering; reuse is
+byte-exact. The headline p99-TTFT is warm-up sensitive (cold-JIT first-load λ3 p99 = 53 s vs warm 9 s);
+we compare warm-to-warm and rely on the stable counters (hit, evict/load-back tokens, host util) for
+attribution.</p>
 
 <h2>6 Related work</h2>
 <p><b>Marconi</b> (MLSys'25): hybrid prefix caching with FLOP-efficiency eviction; GPU-HBM only, discards

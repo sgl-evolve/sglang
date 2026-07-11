@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Callable, Optional, Sequence
 
 import torch
 
-from sglang.srt.mem_cache import lamport_instr
+from sglang.srt.mem_cache import lamport_instr, lamport_mech
 from sglang.srt.mem_cache.base_prefix_cache import (
     DecLockRefParams,
     EvictParams,
@@ -123,6 +123,18 @@ class MambaComponent(TreeComponent):
 
         return result._replace(mamba_branching_seqlen=branching_seqlen)
 
+    def _lamport_store_val(self, node: UnifiedTreeNode) -> None:
+        """VMR: record this Mamba checkpoint's reuse value = prefix-token depth
+        (the attention-KV prefix it unlocks). O(#nodes on path); cached."""
+        if not lamport_mech.ENABLED:
+            return
+        depth = 0
+        n = node
+        while n is not None and n.key is not None:
+            depth += len(n.key)
+            n = n.parent
+        node.component_data[self.component_type].metadata[lamport_mech.VAL_KEY] = depth
+
     def commit_insert_component_data(
         self,
         node: UnifiedTreeNode,
@@ -137,9 +149,11 @@ class MambaComponent(TreeComponent):
             self.cache.component_evictable_size_[self.component_type] += len(
                 params.mamba_value
             )
+            self._lamport_store_val(node)
             return
         if node.component_data[self.component_type].value is None:
             node.component_data[self.component_type].value = params.mamba_value
+            self._lamport_store_val(node)
             # move from host LRU to device LRU
             host_lru = self.cache.host_lru_lists[self.component_type]
             if host_lru.in_list(node):
@@ -539,11 +553,28 @@ class MambaComponent(TreeComponent):
         Internal nodes: private tombstone (free host mamba only).
         Host leaves: atomic eviction via _evict_host_leaf."""
         ct = self.component_type
+        # VMR: pass 1 protects high-value checkpoints (skip_protected=True); if the
+        # pool still can't meet the target, pass 2 evicts them in LRU order. Stock
+        # behavior = single pass with skip_protected=False.
+        self._host_evict_pass(num_tokens, tracker, skip_protected=lamport_mech.ENABLED)
+        if lamport_mech.ENABLED and tracker[ct] < num_tokens:
+            self._host_evict_pass(num_tokens, tracker, skip_protected=False)
+
+    def _host_evict_pass(
+        self, num_tokens: int, tracker: dict[ComponentType, int], skip_protected: bool
+    ) -> None:
+        ct = self.component_type
         host_lru = self.cache.host_lru_lists[ct]
         x = host_lru.get_lru_no_host_lock()
         while tracker[ct] < num_tokens and x is not None and host_lru.in_list(x):
             x_next = host_lru.get_prev_no_host_lock(x)
             cd = x.component_data[ct]
+            if skip_protected and lamport_mech.is_protected(
+                cd.metadata.get(lamport_mech.VAL_KEY)
+            ):
+                lamport_instr.add("mamba_host_protect_skips")
+                x = x_next
+                continue
             lamport_instr.add("mamba_host_evict_nodes")
             if x in self.cache.evictable_host_leaves:
                 # Host leaf: atomic eviction (all components host + delete)

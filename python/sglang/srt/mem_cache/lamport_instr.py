@@ -47,6 +47,7 @@ S = {
     "full_host_evict_tok": 0,
     "mamba_dev_evict_nodes": 0,
     "full_dev_evict_tok": 0,
+    "mamba_host_protect_skips": 0,  # VMR: high-value checkpoints protected from host eviction
 }
 
 
@@ -81,7 +82,7 @@ def _emit() -> None:
         "[LAMPORT_INSTR] matches=%d hit=%d aux_limited=%d(%.1f%% of hits) "
         "full_front_tok=%d best_tok=%d STRANDED_tok=%d(%.2f%% of full frontier) "
         "| mamba_host_evict_nodes=%d full_host_evict=%d/%dtok "
-        "mamba_dev_evict_nodes=%d full_dev_evict_tok=%d",
+        "mamba_dev_evict_nodes=%d full_dev_evict_tok=%d protect_skips=%d",
         S["matches"],
         S["matches_hit"],
         S["matches_aux_limited"],
@@ -95,6 +96,7 @@ def _emit() -> None:
         S["full_host_evict_tok"],
         S["mamba_dev_evict_nodes"],
         S["full_dev_evict_tok"],
+        S["mamba_host_protect_skips"],
     )
 
 

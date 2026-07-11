@@ -214,8 +214,11 @@ value is conditional on working-set pressure that this pool, by its O(#sequences
 never experiences. The p99 TTFT metric is warm-up- and burst-sensitive (≈6× cold-vs-warm at λ=3); we
 compare warm-to-warm and attribute via stable counters. The study is one model family (Qwen3.5 hybrid GDN)
 / one workload mix. The over-provisioning of the recurrent host pool is partly an implementation artifact
-(SGLang sizes it = <code>hicache_size</code>); a right-sized pool would still not bind, because #sequences
-≪ #tokens.</p>
+(SGLang sizes it = <code>hicache_size</code>, i.e. 768 GB — equal to the KV host tier); a right-sized pool
+would still not bind, because #sequences ≪ #tokens. This artifact is itself a concrete (capacity-flavored)
+opportunity: an <b>elastic cross-pool host allocator</b> could reclaim the demonstrably-idle recurrent-state
+DRAM for the pressured attention-KV tier at large scale — distinct from device↔host exclusive tiering in
+that it shares slack <i>across components</i>, enabled precisely by the O(#sequences) state footprint.</p>
 <p><b>Where the improvement actually is.</b> Two levers survive our analysis, both <i>outside</i> lossless
 recurrent-state caching: (1) <b>attention-KV capacity</b> — the sole cache lever, already captured by
 exclusive tiering and bounded by the frozen host budget; and (2) <b>prefill compute</b> — the true

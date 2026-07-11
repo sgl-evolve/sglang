@@ -445,7 +445,16 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   (WM_FRAC=0.10): p99 3515 vs 3469 (within noise). **WM_FRAC 0.05-0.10 is a plateau for the three-way
   combo too** — the CostAware eviction and SRPF scheduling dominate. Logged W&B (mechanism).
 
-*v51+ batch running — results below will be added as they complete.*
+- **v51-wb-cost-srpf** (write_back + CostAware + SRPF — stock config three-way, MECHANISM) — hit **0.736**,
+  p99 **3567 ms**, p50 **445 ms**, req/s **3.02**, mean **645 ms**. **Critical comparison to v25 (XTIER
+  three-way: hit 0.729, p99 3469):** write_back's three-way MATCHES XTIER three-way within node variance
+  (~3% p99 difference). Hit: wb 0.736 > XTIER 0.729 (+0.7pp — sync backup-on-evict captures marginally
+  more). p99: wb 3567 vs XTIER 3469 (noise). **Implication:** CostAware eviction + SRPF scheduling are the
+  dominant mechanisms — XTIER vs write_back is a secondary ~3% p99 effect. Both realize exclusive tiering;
+  the novel XTIER mechanism's edge is load-back reduction (device-exclusive), but this is swamped by
+  CostAware+SRPF's contribution. Logged W&B (mechanism).
+
+*v52+ batch running — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29, v34-v37, v43-v45)
 All frequency-based eviction policies (LFU, SLRU, GDSF, LFUDA, CostFreq) are NEGATIVES under inclusive
@@ -487,6 +496,9 @@ the recommended production configuration for this regime.**
 **Ablation insight (v42):** CostAware+SRPF under INCLUSIVE tiering gives p99 3880 (−39% vs baseline). The
 gap to v25 (3469) is only ~10% — XTIER's primary contribution is hit rate (+0.072 = +11%), not p99 directly.
 But hit rate feeds p99: higher hit → fewer recomputes → shorter remaining prefill for SRPF to sort.
+**Key comparison (v51):** write_back+CostAware+SRPF = hit 0.736/p99 3567 ≈ XTIER three-way (0.729/3469)
+within node variance. **CostAware+SRPF are the dominant mechanisms** — the tiering variant (XTIER vs
+write_back) is a secondary ~3% p99 effect.
 
 ### XTIER parameter sweep (v4, v5, v21, v22, v40, v41)
 **WM_FRAC** (backup watermark): 0.00 catastrophic (v5: hit 0.25, p99 8900 ❌); 0.05-0.20 all achieve ~0.72
@@ -495,7 +507,7 @@ backup = more device-exclusive content = fewer load-backs on prefill path = bett
 backup batch size): 64 (v22) is marginal negative vs default (hit 0.715 vs 0.725, p99 4954 vs 4200).
 **Conclusion: WM_FRAC=0.10 is the sweet spot — minimal backup maximizes device exclusivity.**
 
-## Synthesis (49 versions)
+## Synthesis (51 versions)
 - **The contribution = the DIAGNOSIS + INSIGHT + compounding lossless mechanisms.** Capacity-bound multi-turn
   LLM serving: write-through KV tiering is INCLUSIVE (L1 mirrors L2's hot subset) → distinct cache = L2 only;
   the ~19 M working set thrashes → 21 pp hit lost to concurrency eviction (turns 0-2 ~0 hit). Three

@@ -64,7 +64,15 @@ Rigorous, cross-scale NEGATIVE + characterization (formal submission `keystone-c
 | v1-instr | mechanism* | stock+instrumentation, WARM (baseline replicate) | goodput@8s **0**; peak 5.95; λ3 p99 **9.0s** hit 0.842 | ✓ | *instr only; **stranding 0.4%, host 79%, 0 evict → NOT cache-bound** |
 | v2-writeback | config | write_back = exclusive tiering (the known +13pp lever) @contract | λ3 0.8424/9389 ≈ v1-instr → **NEUTRAL** | ✓ | known capacity lever neutralized (host not pressured) |
 | diag1553 | mechanism* | off-contract probe @ charter's intended scale (NUMP=1553, wt) | **host util 1.0**; Full host evicts **587M tok**; **mamba host evict = 0**; **hit 0.650** (vs 0.842@contract); req/s 3.67 | ✓ | mamba NEVER binds even @ util 1.0; only attn-KV pressured; **contract eval UNDER-PROVISIONED** |
-| diag1553wb | config | write_back @1553 (exclusive tiering under real pressure) | NOT RUN (DRAM-teardown contention); cite known +13pp exclusive-tiering baseline | — | exclusive tiering = the sole (known) lever at scale |
+| diag1553wb | config | write_back @1553 (exclusive tiering under real pressure) | hit **0.650→0.724 (+7.4pp)**, req/s **3.67→4.13 (+12.5%)**; mamba host evict = 0 | ✓ | **exclusive tiering IS the (known) lever — but only at scale**; neutral @contract |
+| v3-baseline-rep | config | contract warm replicate (write_through) — error bars | λ3 p99 **7956** (vs 8969 v1, 9389 v2); hit 0.8412 | ✓ | **goodput@8s NOISE-fragile**: λ3 p99 straddles 8s across warm runs (7956/8969/9389, ±9%) |
+
+### ★ COMPLETE 2×2 (hit rate): recurrent state never binds; sole lever = attn-KV capacity, masked by under-provisioning
+| | write_through | exclusive tiering (write_back) | Δ |
+|---|---|---|---|
+| **contract (NUMP 500)** | 0.8412 / 0.8419 | 0.8424 | **+0.05pp NEUTRAL** (host 79%) |
+| **intended (NUMP 1553)** | 0.650 | 0.724 | **+7.4pp** (host util 1.0) |
+mamba_host_evict = **0 in all 4 cells**. ⇒ contract eval masks the only cache lever (attn-KV capacity=known exclusive tiering); recurrent state is a non-lever at every scale. No novel lossless primitive exists.
 | (VMR) | mechanism | value-density Mamba retention | **no-op** (mamba_host_evict=0 ⇒ nothing to protect) | ✓ | documented negative; flag-gated, default off |
 
 ## Formal submissions

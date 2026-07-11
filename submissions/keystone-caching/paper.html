@@ -129,9 +129,10 @@ overlapped with compute (per-step batched, layer-wise). The scheduler is prefill
 batch ratio ≈7.4) with a bursty queue (p50 = 0, spikes to 83; concurrency 35→267).</p>
 <p><b>Takeaway.</b> At the contract scale the system is <i>not</i> cache-capacity bound; the recurrent
 state — the focus of prior hybrid caching — is cheap once host-tiered. Pressure (and thus cache headroom)
-is a function of working-set size: at the charter's intended scale (working set ≈19 M ≫ 10.7 M cache)
-stranding roughly doubles even before eviction begins. <span class="note">[diag1553 quantifies the
-pressured regime; VMR evaluated there.]</span></p>
+is a function of working-set size: at the charter's intended scale (NUMP 1553, working set ≈19 M ≫ 10.7 M
+cache) the attention-KV host tier saturates (util 1.0, hit falls 0.842→0.650) — yet the recurrent-state
+pool still never evicts (§5.1). The pressured regime the protocol intends is thus reachable only off the
+draft contract point; even there, the recurrent state is a non-lever.</p>
 
 <h2>3 Design: Value-Density Mamba Retention (VMR)</h2>
 <p>The reuse boundary of a hybrid prefix is <code>min(full-KV frontier, recurrent frontier)</code>. The two

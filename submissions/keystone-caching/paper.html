@@ -183,10 +183,12 @@ KV dims), so it can be read off any config. Computing the element-ratio L* = (n<
 hybrid it is <b>167–3456 tokens</b>; the byte crossover L* = L*<sub>elem</sub> · (state_bytes/kv_bytes) adds a
 1–4× factor (e.g. our bf16-state / fp8-KV gives 2×, matching the measured 1580). The recurrent state elements
 follow the correct GDN geometry — per <i>key</i>-head, S ∈ [n<sub>key</sub>, d<sub>k</sub>, d<sub>v</sub>],
-validated against our measured 18 MB/seq (16·128·128·36·2 B). Since prefix caching is deployed precisely for
-long contexts (32k–256k ≫ L*), <b>the recurrent-state tier is never the capacity bottleneck for any current
-hybrid LLM</b> under host tiering — a family-wide, config-checkable prediction (see
-<code>tools/capacity_law.py</code>), not a single-model artifact.</p>
+validated against our measured 18 MB/seq (16·128·128·36·2 B). A <i>lower</i> L* (e.g. Zamba2's 167, from its 13 wide-KV attention layers) means the recurrent tier binds only
+at even shorter contexts — it <i>strengthens</i>, not weakens, the conclusion. Since prefix caching is deployed
+precisely for long contexts (32k–256k ≫ L*), <b>the recurrent-state tier is never the capacity bottleneck for
+any current hybrid LLM</b> under host tiering — a family-wide, config-checkable prediction (see
+<code>tools/capacity_law.py</code>), not a single-model artifact. (We measure only Qwen3.5-122B directly; the
+other five are config-derived, and their byte-L* carries the 1–4× dtype factor.)</p>
 <p><b>Corollary (why our mechanism is a no-op).</b> Any policy that manages the recurrent-state <i>tier</i> —
 including our own <i>Value-Density Mamba Retention</i> (VMR: protect a checkpoint iff its unlocked KV
 <code>L·k</code> exceeds its footprint <code>s</code>, i.e. iff <code>L &gt; L*</code>) — can only act when that
@@ -195,17 +197,20 @@ not a failed tuning but a direct <i>test</i> of the law: its threshold <i>is</i>
 across every measured configuration (§5). The design space for lossless hybrid-KV caching therefore collapses
 onto the attention-KV tier, whose only in-budget lever is exclusive (device-XOR-host) tiering — a known
 result, not a novel primitive.</p>
-<p><b>Impossibility corollary.</b> Combining the law with the standard serving constraints yields a bound on
-what any cache-architecture change can achieve here. The only two ways to raise attention-KV reuse are
-(i) more effective capacity or (ii) better eviction. (i) is fixed by the frozen host budget, and its one
-non-duplicating refinement — exclusive tiering — is already deployed and known. (ii) is a classical policy
-transplant (LRU/LFU/GDSF), which prior HiCache work and our charter treat as a solved/non-contribution axis
-for this radix-structured, near-monotone reuse (a tight Belady bound is future work). Under those two
-premises — frozen budget and eviction-as-solved — <i>no lossless, budget-respecting, non-classical cache
-mechanism can shift the throughput–latency curve</i> for this model/workload. A win must come from outside
-the lossless cache: compute (attention approximation, lossy) or admission/scheduling (which the reuse
-structure makes SJF-equivalent). This is the sense in which the result is a bounded impossibility, not a
-failure to search — and it is exactly what the four-cell experiment confirms.</p>
+<p><b>Impossibility corollary (scoped).</b> The capacity law above is <i>unconditional</i> — the recurrent
+tier never binds for L ≫ L*, at any scale. From it we derive a narrower, clearly-bounded statement about what
+a <i>cache-architecture</i> change can add. Attention-KV reuse can be raised on exactly two axes:
+(i) <b>effective capacity</b> and (ii) <b>eviction order</b>. Axis (i) is bounded by the KV-host budget
+(768 GB); its known non-duplicating refinement is exclusive tiering, and — a consequence of our law — one
+<i>could</i> also reclaim the idle recurrent budget for KV (§7), but that too is a <i>capacity increase</i>
+(it enlarges the KV tier beyond its 768 GB budget), i.e. the same class the venue treats as a baseline, not a
+novel primitive. Axis (ii) is a <i>classical</i> policy family (LRU/LFU/GDSF/Belady) — excluded as a
+contribution by construction, <i>independent of whether any Belady gap exists</i> (we make no LRU≈Belady
+claim). Therefore <b>no lossless, budget-respecting, non-capacity, non-classical cache mechanism can shift the
+curve</b>; and at the contract operating point even the capacity axis is inert (host 79% full, hit maximal).
+Any remaining win lies outside the lossless cache — compute (attention approximation, lossy) or
+admission/scheduling (which, with hit maximal and reuse near-monotone, reduces to shortest-job-first). This is
+a bounded impossibility — a map of where headroom cannot be — confirmed by the four-cell experiment (§5).</p>
 
 <h2>4 Implementation</h2>
 <p>All changes are in the live <code>UnifiedRadixCache</code> path (components <code>[FULL, MAMBA]</code>).
@@ -262,13 +267,17 @@ losslessly either: with hit rate maximal and reuse near-monotone, per-request pr
 context length, so any cost-reducing reorder reduces to shortest-job-first — a classical policy excluded by
 the charter (and it trades tail fairness, not total work).</p>
 
-<p><b>5.4 Lossless &amp; noise (the headline metric is fragile).</b> All engine changes are pure counting /
-retention re-ordering; reuse is byte-exact. Beyond warm-up sensitivity (cold-JIT first-load λ3 p99 = 53 s
-vs warm 9 s), the p99-TTFT <i>itself</i> straddles the 8 s SLO across three identical warm runs: λ3 p99 =
-{7956, 8969, 9389} ms (±9%). The goodput@SLO headline therefore flips between 0 and 2.99 req/s purely by
-run-to-run noise at the knee — it is not a reliable discriminator for sub-10% mechanism effects. We
-consequently attribute via the <i>stable</i> counters (hit rate ±0.1 pp, evict/load-back tokens, host
-util), all of which show the recurrent-state and exclusive-tiering levers to be flat on the contract eval.</p>
+<p><b>5.4 Lossless, and why we attribute via stable counters.</b> All engine changes are pure counting /
+retention re-ordering; reuse is byte-exact (verified against the no-cache run). The headline p99-TTFT is a
+<i>fragile</i> discriminator here for two <i>systematic</i> (not merely statistical) reasons: (a) warm-up —
+cold-JIT first load gives λ3 p99 = 53 s vs 9 s warm; and (b) burst-phase alignment — with a bursty
+open-loop arrival (queue p50=0 spiking to 83), the p99 depends on where the worst Poisson burst lands
+relative to cache warm-up. Across three identical warm runs λ3 p99 = {7956, 8969, 9389} ms, straddling the
+8 s SLO, so goodput@8s flips between 0 and 2.99 req/s. This is a property of the metric+workload, not
+statistical noise we can average away at n=3; it argues the SLO is set inside the sensitivity band. We
+therefore attribute via the <i>stable</i> counters — hit rate (±0.1 pp across runs), evict/load-back tokens,
+and host/mamba eviction counts — all of which show the recurrent-state and exclusive-tiering levers flat on
+the contract eval, and cleanly separated at intended scale (§5.1–5.2).</p>
 
 <h2>6 Related work</h2>
 <p><b>Marconi</b> (MLSys'25): hybrid prefix caching with FLOP-efficiency eviction; GPU-HBM only, discards
@@ -291,10 +300,15 @@ never experiences. The p99 TTFT metric is warm-up- and burst-sensitive (≈6× c
 compare warm-to-warm and attribute via stable counters. The study is one model family (Qwen3.5 hybrid GDN)
 / one workload mix. The over-provisioning of the recurrent host pool is partly an implementation artifact
 (SGLang sizes it = <code>hicache_size</code>, i.e. 768 GB — equal to the KV host tier); a right-sized pool
-would still not bind, because #sequences ≪ #tokens. This artifact is itself a concrete (capacity-flavored)
-opportunity: an <b>elastic cross-pool host allocator</b> could reclaim the demonstrably-idle recurrent-state
-DRAM for the pressured attention-KV tier at large scale — distinct from device↔host exclusive tiering in
-that it shares slack <i>across components</i>, enabled precisely by the O(#sequences) state footprint.</p>
+would still not bind, because #sequences ≪ #tokens. This artifact is itself the law's most concrete practical
+consequence: an <b>elastic cross-pool host allocator</b> could reclaim the demonstrably-idle recurrent-state
+DRAM for the pressured attention-KV tier at large scale (a new axis vs device↔host exclusive tiering: it shares
+slack <i>across components</i>, enabled precisely by the O(#sequences) state footprint). We are careful to
+classify this correctly: it is still a <i>capacity</i> mechanism (it enlarges the effective KV tier beyond its
+768 GB budget), so under this venue's rules it belongs to the baseline class and is <i>not</i> an exception to
+our impossibility (which excludes capacity increases); we report it as actionable provisioning guidance, not a
+claimed novel primitive. It would, however, help only at the pressured (intended) scale, and only if the
+budget ceiling is interpreted as total host rather than per-tier.</p>
 <p><b>Where the improvement actually is.</b> Two levers survive our analysis, both <i>outside</i> lossless
 recurrent-state caching: (1) <b>attention-KV capacity</b> — the sole cache lever, already captured by
 exclusive tiering and bounded by the frozen host budget; and (2) <b>prefill compute</b> — the true

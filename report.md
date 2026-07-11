@@ -403,7 +403,13 @@ active/locked, NOT the evictable cache — device is NOT under-used.
   hit 0.341). Dynamic aging doesn't rescue frequency-based eviction — the temporal reuse pattern (long
   inter-turn gaps) conflicts with frequency counting. Logged W&B (mechanism).
 
-*v44+ batch running — results below will be added as they complete.*
+- **v44-xtier-lfuda** (XTIER + LFUDA eviction, MECHANISM) — hit **0.325**, p99 **9448 ms** (VIOLATES SLO!),
+  p50 **1002 ms**, req/s **2.83**, mean **1570 ms**. **XTIER cannot rescue LFUDA** — same failure as v17
+  (XTIER+LFU, hit 0.337). Frequency-based eviction evicts new nodes (low frequency) before XTIER's lazy
+  backup reaches them → content lost → recompute → catastrophic. Confirms: XTIER requires a recency-based
+  eviction policy (LRU/2Q/CostAware). Logged W&B (mechanism).
+
+*v45+ batch running — results below will be added as they complete.*
 
 ### Eviction policy synthesis (v9-v18, v28-v29, v34-v37)
 All frequency-based eviction policies (LFU, SLRU, GDSF) are STRONG NEGATIVES under inclusive tiering.
@@ -448,7 +454,7 @@ backup = more device-exclusive content = fewer load-backs on prefill path = bett
 backup batch size): 64 (v22) is marginal negative vs default (hit 0.715 vs 0.725, p99 4954 vs 4200).
 **Conclusion: WM_FRAC=0.10 is the sweet spot — minimal backup maximizes device exclusivity.**
 
-## Synthesis (44 versions)
+## Synthesis (45 versions)
 - **The contribution = the DIAGNOSIS + INSIGHT + compounding lossless mechanisms.** Capacity-bound multi-turn
   LLM serving: write-through KV tiering is INCLUSIVE (L1 mirrors L2's hot subset) → distinct cache = L2 only;
   the ~19 M working set thrashes → 21 pp hit lost to concurrency eviction (turns 0-2 ~0 hit). Three

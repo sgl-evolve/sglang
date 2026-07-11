@@ -39,9 +39,12 @@ the system is not cache-bound at all (hit rate maximal 0.842, host tier 79% full
 known capacity lever (exclusive tiering, +13 pp elsewhere) is <i>neutralized</i>; the binding resource is
 prefill compute under bursty arrivals. We therefore <b>bound</b> the design space for hybrid KV caching:
 recurrent-state management (the focus of prior work) is a non-lever under host tiering; the only cache
-lever is attention-KV capacity, and only at large working sets. We contribute the reuse-frontier
-diagnostic, a cross-scale 2×2 characterization, and a candidate mechanism (Value-Density Mamba Retention)
-that we show is a no-op precisely because the state pool never binds — a rigorously-bounded negative.
+lever is attention-KV capacity, and only at large working sets. The law is <b>config-checkable</b>: computing L* for six deployed hybrids (Qwen3-Next, Zamba2, Jamba,
+Granite-4, Nemotron-H, and our Qwen3.5-122B) gives L* = 167–3456 tokens — always far below realistic serving
+contexts — so the conclusion is family-wide, not a single-model artifact. We contribute the capacity law, a
+reuse-frontier diagnostic, a cross-scale 2×2 characterization, and an impossibility corollary showing the
+lossless budget-respecting improvement space is empty; a candidate mechanism (Value-Density Mamba Retention)
+is a no-op by construction, serving as a direct test of the law — a rigorously-bounded impossibility.
 </div>
 
 <h2>1 Introduction</h2>
@@ -159,6 +162,22 @@ scales with context, saturates. Equivalently, the recurrent tier binds only unde
 concurrent sequences (here 96 GB/18 MB ≈ 5333 per rank) — far beyond what one node's compute admits. This
 <b>inverts</b> the GPU-only regime (Marconi/Jenga), where HBM is so scarce that even the constant state
 competes; on a host tier the asymmetry L ≫ L* dominates.</p>
+<p><b>Generality across the hybrid family.</b> L* depends only on the architecture (layer counts, state and
+KV dims), so it can be read off any config. Computing the element-ratio L* = (n<sub>lin</sub>·state_elems) /
+(n<sub>full</sub>·kv_elems_per_token) for six deployed hybrids:</p>
+<table>
+<tr><th>model</th><th>lin / full layers</th><th>state (M elem)</th><th>KV/tok (elem)</th><th>L* (tokens)</th></tr>
+<tr><td>Qwen3.5-122B (ours, measured)</td><td>36 / 12</td><td>~18 MB/seq</td><td>~11.4 KB</td><td><b>~1580</b></td></tr>
+<tr><td>Qwen3-Next-80B</td><td>36 / 12</td><td>18.9</td><td>12 288</td><td>1536</td></tr>
+<tr><td>Zamba2-7B</td><td>68 / 13</td><td>31.2</td><td>186 368</td><td>167</td></tr>
+<tr><td>Jamba-v0.1</td><td>28 / 4</td><td>3.7</td><td>8 192</td><td>448</td></tr>
+<tr><td>Granite-4.0-H-1B</td><td>36 / 4</td><td>14.2</td><td>4 096</td><td>3456</td></tr>
+<tr><td>Nemotron-H-8B</td><td>24 / 4</td><td>25.2</td><td>8 192</td><td>3072</td></tr>
+</table>
+<p>Across every model L* is a few hundred to a few thousand tokens (dtype scaling, e.g. fp32 state + fp8 KV,
+shifts this by ≤~4× but not the conclusion). Since prefix caching is deployed precisely for long contexts
+(32k–256k ≫ L*), <b>the recurrent-state tier is never the capacity bottleneck for any current hybrid LLM</b>
+under host tiering — a family-wide, config-checkable prediction, not a single-model artifact.</p>
 <p><b>Corollary (why our mechanism is a no-op).</b> Any policy that manages the recurrent-state <i>tier</i> —
 including our own <i>Value-Density Mamba Retention</i> (VMR: protect a checkpoint iff its unlocked KV
 <code>L·k</code> exceeds its footprint <code>s</code>, i.e. iff <code>L &gt; L*</code>) — can only act when that

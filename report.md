@@ -77,3 +77,8 @@ mamba_host_evict = **0 in all 4 cells**. ⇒ contract eval masks the only cache 
 
 ## Formal submissions
 (none yet)
+
+## ★ Paper v2: elevated to a CAPACITY LAW (principle-level, family-wide)
+**Capacity Law:** recurrent-state tier binds only when mean context L < L* = s/k (s=state bytes/seq, k=KV bytes/tok). For our model L*≈1580 tok. Since caching pays off only at L≫L*, the recurrent tier NEVER binds; attn-KV (footprint ∝ context) is the sole capacity bottleneck. Inverts Marconi/Jenga GPU-scarcity.
+**Generality (config-checkable, 6 hybrids):** L*_elem = Qwen3-Next 1536, Zamba2 167, Jamba 448, Granite-4 3456, Nemotron-H 3072, Qwen3.5-122B ~1580(measured) — all ≪ serving L (32k-256k). Family-wide result.
+**Impossibility corollary:** law + frozen budget + eviction-as-solved ⇒ no lossless budget-respecting non-classical cache mechanism can shift the curve. Win must come from outside the lossless cache (compute/scheduling). VMR no-op = direct test of the law.

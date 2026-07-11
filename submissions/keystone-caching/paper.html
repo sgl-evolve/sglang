@@ -232,9 +232,9 @@ Stranding stays &lt;1% and is checkpoint-stride-bounded (sparse placement, not e
 by construction</b> (<code>protect_skips</code>≡0), not by tuning: there is nothing to protect.</p>
 
 <p><b>5.2 The known capacity lever is neutralized at the contract operating point (2×2).</b>
-Exclusive tiering (<code>write_back</code>) — the mechanism that yields +13 pp under host pressure — is
-statistically identical to <code>write_through</code> on the contract eval, because the host tier is only
-79% full:</p>
+Exclusive tiering (<code>write_back</code>) — the mechanism reported at +13 pp under host pressure in prior
+sglang work (we measure +7.4 pp at intended scale, single-rate) — is statistically identical to
+<code>write_through</code> on the contract eval, because the host tier is only 79% full:</p>
 <table>
 <tr><th>scale × policy</th><th>hit rate</th><th>req/s (λ5)</th><th>mamba host evict</th><th>Δ hit vs write-through</th></tr>
 <tr><td>contract (500) · write-through</td><td>0.8412 / 0.8419</td><td>4.63</td><td>0</td><td>—</td></tr>
@@ -277,8 +277,12 @@ sizes; no host offload. <b>Mooncake</b> (FAST'25) / <b>Strata</b> / <b>Attention
 <b>CacheGen</b> / <b>LMCache</b> / <b>HCache</b> (EuroSys'25) / <b>InfiniGen</b> (OSDI'24): tiering,
 GPU-assisted layout, layer-wise overlap, compute-vs-load — all for transformer KV; none manages the
 <i>tiered recurrent state</i>. <b>Cake</b> (ICML'25) / <b>KVPR</b> (ACL'25): recompute-vs-load, transformer
-KV only. We position VMR as the first cross-tier, value-aware co-management of the recurrent-state pool,
-and provide the first evidence that this pool is over-provisioned (not scarce) once host-tiered.</p>
+KV only. Against this backdrop our contribution is not a new caching policy but the <b>capacity law</b> and
+its consequences: the first analysis showing that, once host-tiered, the recurrent-state pool is
+<i>over-provisioned rather than scarce</i> (inverting the GPU-only premise of Marconi/Jenga), a
+config-checkable crossover L* that holds family-wide, and a reuse-frontier diagnostic that makes stranding
+measurable. Our candidate cross-tier co-management (VMR) is reported as a <i>no-op by construction</i> — the
+empirical test that confirms the law, not a mechanism we claim as a win.</p>
 
 <h2>7 Limitations, implications &amp; when the lever moves</h2>
 <p>VMR is a no-op when the recurrent host pool does not evict — precisely the contract operating point. Its

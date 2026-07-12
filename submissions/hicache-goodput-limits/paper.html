@@ -204,11 +204,22 @@ the live turn-0 from the dead whale at the moment it must decide.</li>
 <p><b>The grace trap.</b> These combine into an impossibility for a completion-grace policy: to catch the
 turn-0→turn-1 reuse, the grace must be ≥ ~460 s; but a 460 s grace also protects every dead whale for 460 s,
 accumulating (at λ=3) ~8M tokens of never-reused KV that, added to the 9.3M live set, far exceeds the 10.7M
-cache — swamping it and evicting live KV. A short grace covers almost none of the 460 s gaps (grace 90 s covers
-14%, grace 300 s covers 24%) and degrades to LRU. There is no grace that both covers the gap and fits capacity.
-Belady escapes the trap only by using the future to hold the 9.3M live set and drop the whales — knowledge no
-online policy has at the decision point. §5.3 confirms both horns empirically: SLRU (evict-unproven-first)
-sacrifices live turn-0s and backfires; CAR (completion-grace) cannot win at any capacity-feasible grace.</p>
+cache — swamping it and evicting live KV. A short grace covers almost none of the 460 s gaps and degrades to LRU. The trap is quantitative — the peak KV a
+grace-<i>G</i> policy is forced to hold (everything touched in a trailing <i>G</i>-second window, since grace
+cannot tell live from dead) versus what fraction of turn-0→turn-1 gaps <i>G</i> actually covers:</p>
+<table>
+<tr><th>grace G</th><th>peak forced-resident KV</th><th>vs 10.7M cache</th><th>% of turn-0→turn-1 gaps covered</th></tr>
+<tr><td>90 s</td><td>9.0M</td><td>0.85× (fits)</td><td>14%</td></tr>
+<tr><td>180 s</td><td>14.9M</td><td><b>1.39× (swamp)</b></td><td>20%</td></tr>
+<tr><td>300 s</td><td>21.1M</td><td><b>1.97× (swamp)</b></td><td>24%</td></tr>
+<tr><td>460 s (= median gap)</td><td>27.7M</td><td><b>2.59× (swamp)</b></td><td>50%</td></tr>
+</table>
+<p>The largest grace that <i>fits</i> (~90 s, 0.85×) covers only 14% of gaps and behaves like LRU; covering the
+median gap needs ≥460 s, which forces 2.6× the cache. There is a ≈5× gap between the feasible-grace ceiling
+(~90–120 s) and the gap floor (460 s): <b>no grace both covers the gap and fits capacity.</b> Belady escapes
+only by using the future to hold the 9.3M live set and drop the whales — knowledge no online policy has at the
+decision point. §5.3 confirms both horns empirically: SLRU (evict-unproven-first) sacrifices live turn-0s and
+backfires; CAR (completion-grace) cannot win at any capacity-feasible grace.</p>
 
 <h2>5 Evaluation <span class="todo">λ=3 same-node numbers landed (lru, slru); car + full curves + certified confirm pending (job 19480)</span></h2>
 <p>Frozen rate-sweep (λ∈{3,5,7,10}, warmup burst, NUMP=1553, conc 256) on a certified 8×H100 node; headline

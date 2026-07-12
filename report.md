@@ -42,6 +42,18 @@ Hit-rate = cached_tok / prompt_tok (real definition). Capacity = combined L1+L2.
 | 10| 10.7M | 0.737 | 0.808 | **0.808** | 0.808 |
 | 3–10 | 8M | 0.57–0.60 | ~0.80 | 0.67–0.71 | 0.67–0.71 |
 
+**Capacity sweep (λ=5, `analysis/cache_sim_capsweep.py`)** — protect-pending gain over LRU:
+
+| cap | 6M | 7M | 8M | 9M | 10.7M | 12M | 14M |
+|-----|----|----|----|----|-------|-----|-----|
+| LRU | .358 | .438 | .583 | .725 | .737 | .745 | .758 |
+| protect-pending | .425 | .516 | .696 | .808 | .808 | .808 | .808 |
+| **gain (pp)** | +6.8 | +7.8 | **+11.2** | +8.3 | +7.1 | +6.4 | +5.0 |
+| **recompute ↓** | 10% | 14% | **27%** | 30% | 27% | 25% | 21% |
+
+Peak gain at cap ~8–9M — the **likely real effective-capacity regime** (running requests consume L1, so
+reuse-capacity < the 10.7M nominal). ≥9M: protect-pending == Belady (full oracle).
+
 **Finding:** at the real capacity a realizable *protect-pending* policy (protect conversations that have a
 request currently in the system) closes the **entire ~7 pp LRU→Belady gap** — a **~27% reduction in
 recompute**. The gap is conversation-structural (terminal-conversation pollution + eviction of pending
@@ -75,6 +87,16 @@ multiturn regime*. At tight capacity the working set genuinely overflows and pro
    pending set exceeds free L2). The real design contribution is *what to pin when you can't pin all*.
 
 ---
+
+## Ablation / iteration plan (as GPU frees)
+1. **v1 vs baseline** (same certified node): does pinning raise hit-rate + goodput@SLO, lossless? Confirm
+   `[valiant]` pins activate.
+2. **pin fraction sweep** (0.3 / 0.5 / 0.7) — capacity trade-off; find the graceful-degradation knee.
+3. **pin on/off same-code** (`VALIANT_PIN_ENABLE=0`) — isolate the mechanism from any incidental diff.
+4. **error bars** — n≥2 replicates of baseline & best config.
+5. **v2 (if headroom):** post-completion retention — protect a just-finished conversation's leaf for a
+   bounded horizon to also cover the *client* think/send gap (server-queue pinning only covers the
+   server-queue window). Ablate the increment. Possibly + terminal-prefix write-admission.
 
 ## Versions
 | ver | tag | hypothesis | change | goodput@SLO vs base | lossless | takeaway |

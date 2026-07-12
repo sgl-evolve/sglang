@@ -101,7 +101,23 @@ bounded-impossibility for lossless KV-movement).
 
 ## Versions
 
-### ⚠️⚠️ COURSE-CORRECTION (v1-writeback λ=3) — goodput@SLO is VARIANCE-DOMINATED ⚠️⚠️
+### ★★★ CONFIRMED (n=2 stock): goodput@SLO IS A COLD-START COIN-FLIP ★★★
+λ=3 p99 TTFT across identical/near-identical configs:
+| run (λ=3)     | p99 TTFT | hit    | req/s | goodput |
+|---------------|----------|--------|-------|---------|
+| v0-stock      | 14062ms  | 0.677  | 2.85  | 0 (fail)|
+| v0-stock-r2   | **8008ms** | 0.673 | 3.02 | 0 (barely fail) |
+| v1-writeback  | 7534ms   | 0.736  | 3.02  | 3 (pass)|
+**Two IDENTICAL stock runs: λ=3 p99 = 14.1s vs 8.0s (1.76× spread, STRADDLES the 8s SLO).** And stock-r2
+(8.0s) ≈ write_back (7.5s) despite write_back's +6pp hit ⇒ the p99 varies ~7.5–14s around the SLO
+REGARDLESS of config; the binary pass/fail metric flips on NOISE. **write_back's apparent "goodput 0→3" is
+the coin-flip, NOT a write_back effect** (v0-stock's 14s was an unlucky draw). ⇒ **goodput@SLO is
+VARIANCE-DOMINATED; single-run A/Bs are VOID.** Confirms [[hoare-v03-researcher]] + [[valiant-v031-researcher]]
+for v0.31. STABLE signal = hit (write_back reliably +6pp); the tail metric is noise around the SLO.
+FINAL CONTRIBUTION = honest methodology/variance result (replicated), NOT impossibility, NOT a write_back win.
+Next: warmdiag (does no-flush remove the flip?) + v1-writeback full curve. Then reframe paper.
+
+## ~~COURSE-CORRECTION (v1-writeback λ=3) — goodput@SLO is VARIANCE-DOMINATED~~ [CONFIRMED above by n=2]
 v1-writeback λ=3: req/s 3.02, p50 **529ms**, **p99 7534ms (<8s SLO!)**, hit **0.7356** (+5.9pp vs stock
 .677). vs v0-stock λ=3: p99 14062ms (>8s), goodput 0. So write_back λ=3 would give **goodput ≥3** —
 CONTRADICTS my single-run "goodput@SLO=0 impossibility". BUT this is the KNOWN COIN-FLIP trap: my memory

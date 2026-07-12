@@ -331,7 +331,13 @@ rate, transfer latency); we instead ask, for a tail-SLO long-context regime, whe
 <i>goodput@SLO</i>, and decompose the tail (conversation-id-aware) into an avoidable evicted-recompute component
 (63% of the tail, addressable in principle — §5.2) and an irreducible cold-document floor (37%). The two-bound
 model plus this decomposition reframes where effort pays off and delimits, via the cold-document floor, the
-ceiling any lossless cache policy can reach. See References for full citations.</p>
+ceiling any lossless cache policy can reach.
+<b>Caching theory.</b> Classic results (Belady's MIN, competitive analysis of LRU) bound the online-vs-offline
+gap under the assumption that a block's identity — and thus its reuse — is <i>known when it is admitted</i>; the
+online penalty is about reuse <i>timing</i>. Our obstruction is different and, to our knowledge, not captured by
+that theory: the object's future reuse is <i>unobservable at admission</i> (a turn-0's continuation is not yet
+decided), and the load-dependent reuse gap is large relative to capacity — so the barrier is one of
+<i>decision-time observability</i>, not competitive ratio. See References for full citations.</p>
 
 <h2>7 Limitations &amp; regime of validity</h2>
 <p>Our decomposition says the tail is dominated by avoidable evicted recompute (§5.2) with an irreducible

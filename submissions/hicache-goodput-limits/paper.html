@@ -26,8 +26,8 @@
 <div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>DRAFT v0.1</b></div>
 
 <p class="todo">DRAFT — verdict RESOLVED to CACHE-AFFECTABLE (mechanism). A conversation-id-aware (chash)
-pressured run shows ~47% of prefill work under pressure is avoidable recompute from EVICTED proven multi-turn
-conversations, and ~38% of the SLO-breaching (≥40K-tok) tail is such evicted turns. So the cache CAN move
+pressured run shows a substantial fraction (steady-state ≈20-30% of prefill work; ≈18% of the ≥40K-tok tail;
+⟨settling, full-sweep pending⟩) is avoidable recompute from EVICTED proven multi-turn convs. So the cache CAN move
 goodput; a residency mechanism that protects proven convs (evicting single-turn "whales" first) is the lever.
 The mechanism's goodput gain is being measured (eviction-policy screens + a novel continuation-aware policy).
 NOTE: an earlier match-only classifier wrongly labeled evicted turns as cold documents (retracted); the chash
@@ -42,9 +42,9 @@ p99 TTFT ≤ 8 s) — we ask what bounds goodput and whether the cache is the le
 measured) and a tail bound R_p99 set by the largest prefills under concurrency. A per-request decomposition
 of a warmup-corrected pressured rate sweep — using a conversation-id trace to distinguish genuine cold turn-0
 documents (irreducible) from later turns whose accumulated prefix was <i>evicted</i> mid-conversation
-(avoidable recompute) — shows that <b>≈47% of prefill work under pressure is avoidable recompute from evicted
-proven multi-turn conversations, and ≈38% of the SLO-breaching-size prefills are such evicted turns.</b> The
-cache is therefore a real goodput lever here: a residency policy that protects <i>proven</i> multi-turn
+(avoidable recompute) — shows that <b>a substantial fraction (steady-state ≈20-30% of prefill work; ≈18% of the SLO-breaching
+≥40K-token tail) is avoidable recompute from evicted proven multi-turn conversations</b> (⟨settling; full-sweep
+number pending⟩), the remainder being irreducible cold documents. So goodput is <b>partially cache-affectable</b>: a residency policy that protects <i>proven</i> multi-turn
 conversations from eviction (evicting single-turn "whale" documents first) shrinks both bounds — fewer
 avoidable recomputes (higher R_thru) and fewer big evicted turns in the tail (higher R_p99). We evaluate
 eviction policies and a novel continuation-aware residency mechanism that protects a conversation's prefix

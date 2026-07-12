@@ -366,3 +366,17 @@ turns share it) to the trace (scheduler.py). Offline: first request per chash = 
 chash with low match = evicted later turn (avoidable). A pressured chash-enabled run + steady-state (full
 λ=3, not the startup) will correctly classify the p99 tail. Verdict is RE-OPENED pending that run.
 LESSON: match-fraction alone cannot distinguish irreducible-cold from avoidable-evicted; need conv identity.
+
+## 20. Corrected analyzer validated (v0b chash trace, UNDER-pressured warmup) — nuanced signal
+
+chash-aware trace_analyze on v0b's warmup+early trace (hit 0.63, under-pressured): overall COLD-TURN0
+41.8%reqs/92%work, WARM-HIT 41.8%/0.7%, **EVICTED (avoidable) 16.5%reqs/7.4%work**. Crucially, the class
+mix among BIG (SLO-breaching-size) prefills: **T≥40K = 100% COLD-TURN0, 0% EVICTED**; T≥20K = 93% COLD /
+7% EVICTED. So even correctly classified, EVICTED (avoidable) turns are SMALLER than genuine cold docs and
+don't reach the SLO-breaching size — they'd cut p50/p90, not the p99 tail.
+⇒ This is a CAREFUL, corrected bounded-negative signal (big/tail prefills = genuine cold docs; the avoidable
+recompute is real but sub-tail-size). CAVEAT: UNDER-PRESSURED (warmup). DECISIVE test = full-pressure λ=3:
+do long-conversation full-evictions (accumulated 40-190K) grow into the ≥40K bucket and enter the p99 tail?
+If yes ⇒ cache-affectable; if the tail stays genuine-cold-docs ⇒ corrected bounded-negative confirmed.
+The correction MATTERS methodologically (separates avoidable-evicted from irreducible-cold) even if the
+verdict lands negative — it's the right way to make the claim.

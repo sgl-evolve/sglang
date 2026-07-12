@@ -180,6 +180,19 @@ because the vulnerable window is client-side"). This is charter-valid IF rigorou
 (e.g. hit collapses under load in a server-capturable way), revisit for a mechanism. Next eval after the
 reference will likely be a stock+trace DIAGNOSTIC to decompose the p99 tail and nail the limiter.
 
+## 10. Workload reuse structure (from conv_trace.json — motivation data, holds regardless of fork)
+
+- **39.0% of conversations are single-turn** (605/1553); avg 4.53 turns, median 3, max 61. Single-turn
+  turn-0 docs (esp. the huge summarization inputs) are cached but NEVER reused = cache pollution.
+- **Continuation hazard:** P(continue|reached turn1)=0.61, but **0.75–0.89 for turns ≥2** → hit_count≥1
+  strongly predicts continuation. Exploiting this = SLRU/LFU/GDSF (textbook; prior campaigns: neutral/harmful).
+- **Reuse ceiling = 80.6%** of prefill tokens are within-conv-reusable; **top-10% of convs hold 64.6% of
+  the reuse value** (concentrated in long convs). Baseline hit 0.62 ⇒ headroom exists but the exploiting
+  policies are all textbook, so a NOVEL capturable residency win is unlikely (converges with §9).
+- Interpretation: the exploitable structure is real, but every lever for it is either already-in-stock,
+  per-layer-overlapped, client-side-invisible, or a textbook policy ⇒ strengthens the bounded-negative
+  hypothesis; the rigorous question the baseline settles is WHAT actually bounds goodput@SLO under load.
+
 ## Versions (test submissions)
 - **v0-baseline** (stock sweep, clean reference) — job 19437, QUEUED. [pending curve]
 

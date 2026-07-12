@@ -204,14 +204,15 @@ continuation's document before it is scheduled, forcing a full recompute. Host-t
 (<code>inc_host_lock_ref</code>) exists only on the L3 storage path (dormant in the 2-tier config). Our
 mechanism is the first to protect a waiting/recently-active conversation's host prefix, driven by the
 scheduler's pending set.</p>
-<p><b>Two components, one primitive.</b> (i) <i>Queued pinning</i>: pin at enqueue, release at admission
-(the running-request lock then takes over). This covers the server-queue window — significant at high load,
-where the server queue is deep (measured p99≈95 even at λ=3). (ii) <i>Post-completion extension</i>: because
-the client caps concurrency near the server's, much of a continuation's inter-turn gap is spent
-<i>behind the client semaphore</i> (unprotected by (i)); we cover it by simply <b>keeping the pin alive for a
-bounded horizon after admission</b> instead of releasing it. Elegantly, this reuses the exact same pinned
-node/handle — the pin protects the document+history prefix (the reuse-dominant part); only the turn's small
-new question is recomputed. Both components share one host-token budget and a leak-proof release sweep.</p>
+<p><b>The mechanism, and one extension we tested.</b> The mechanism itself is <i>queued pinning</i>: pin at
+enqueue, release at admission (the running-request lock then takes over). It covers the server-queue window,
+which deepens under load (queue p99≈95 even at λ=3). We also implemented and evaluated a natural
+<i>post-completion extension</i>: since the client caps concurrency near the server's, much of a continuation's
+inter-turn gap is spent behind the client semaphore, unprotected by queued pinning; the extension keeps the
+pin alive for a bounded horizon after admission (reusing the same pinned handle) to cover that gap.
+<b>The ablation in §5 rejects this extension</b> — broad retention displaces LRU's working set and does not
+help — so the shipped mechanism is queued pinning alone. Both share one host-token budget and a leak-proof
+release sweep; pinning is bounded and never deadlocks eviction.</p>
 
 <h2>4&nbsp;&nbsp;Implementation</h2>
 <p>Active cache: <code>UnifiedRadixCache</code> (the hybrid-Mamba + hierarchical path;

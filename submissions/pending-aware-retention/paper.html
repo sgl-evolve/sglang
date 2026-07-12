@@ -210,6 +210,53 @@ magnitudes, §5.)</p>
 <p class="note">Hit at combined capacity 10.7M / 8M tokens (λ=3). <sup>†</sup>Verified: the server's
 <code>schedule_policy</code> default is <code>fcfs</code>, and the frozen <code>eval.sh</code> does not override
 it — so every number in this paper is measured under FCFS.</p>
+
+<figure>
+<svg viewBox="0 0 620 300" width="620" height="300" font-family="sans-serif" font-size="12">
+  <line x1="70" y1="250" x2="590" y2="250" stroke="#333"/>
+  <line x1="70" y1="45" x2="70" y2="250" stroke="#333"/>
+  <text x="24" y="150" transform="rotate(-90 24,150)" text-anchor="middle">hit rate</text>
+  <!-- y ticks: 0.50->250, 0.82->60 ; y=250-(h-.5)/.32*190 -->
+  <g fill="#555" text-anchor="end">
+    <text x="64" y="254">.50</text><text x="64" y="214">.57</text>
+    <text x="64" y="187">.63</text><text x="64" y="128">.73</text><text x="64" y="71">.80</text></g>
+  <g stroke="#eee">
+    <line x1="70" y1="209" x2="590" y2="209"/><line x1="70" y1="128" x2="590" y2="128"/><line x1="70" y1="67" x2="590" y2="67"/></g>
+  <!-- FCFS group -->
+  <rect x="110" y="209" width="42" height="41" fill="#c0392b"/>
+  <rect x="162" y="84"  width="42" height="166" fill="#2c3e80"/>
+  <rect x="214" y="74"  width="42" height="176" fill="#27ae60" fill-opacity="0.45"/>
+  <text x="131" y="204" text-anchor="middle" font-size="11" fill="#c0392b">.569</text>
+  <text x="183" y="79"  text-anchor="middle" font-size="11" fill="#2c3e80">.779</text>
+  <text x="235" y="69"  text-anchor="middle" font-size="11" fill="#1e7a44">.797</text>
+  <text x="183" y="270" text-anchor="middle" font-weight="bold">FCFS (protocol default)</text>
+  <!-- gap bracket -->
+  <line x1="99" y1="209" x2="99" y2="74" stroke="#777"/>
+  <text x="93" y="145" text-anchor="middle" font-size="11" fill="#555" transform="rotate(-90 93,145)">Bélády gap 23pp</text>
+  <text x="176" y="120" font-size="10.5" fill="#2c3e80">pin closes 92%</text>
+  <!-- LPM group -->
+  <rect x="410" y="67" width="42" height="183" fill="#c0392b"/>
+  <rect x="462" y="67" width="42" height="183" fill="#27ae60" fill-opacity="0.45"/>
+  <text x="431" y="62" text-anchor="middle" font-size="11" fill="#c0392b">.808</text>
+  <text x="483" y="62" text-anchor="middle" font-size="11" fill="#1e7a44">.808</text>
+  <text x="457" y="270" text-anchor="middle" font-weight="bold">prefix-aware (LPM)</text>
+  <text x="457" y="90" text-anchor="middle" font-size="10.5" fill="#555">no gap</text>
+  <!-- legend -->
+  <g font-size="11">
+    <rect x="300" y="47" width="13" height="9" fill="#c0392b"/><text x="317" y="55">LRU</text>
+    <rect x="300" y="62" width="13" height="9" fill="#2c3e80"/><text x="317" y="70">pending-pin (realizable)</text>
+    <rect x="300" y="77" width="13" height="9" fill="#27ae60" fill-opacity="0.45"/><text x="317" y="85">Bélády (oracle)</text>
+  </g>
+</svg>
+<figcaption>Fig.&nbsp;2 — <b>The eviction gap is created by the scheduler</b> (page simulator, λ=3, combined
+capacity 8M tok). Under <b>FCFS</b> (the protocol default) LRU trails Bélády by 23&nbsp;pp; the realizable
+pending-pin (risk-aligned) recovers 92% of it. Under <b>prefix-aware (LPM)</b> pull, LRU already equals Bélády
+(and at a higher ceiling) — there is no gap to capture, because LPM temporally clusters each conversation's
+turns. Pending-pin thus buys FCFS the cache locality of prefix scheduling <i>without</i> its request
+reordering. Single-tier simulation (absolute values illustrative; §5 real-system A/B under
+<code>--schedule-policy</code> confirms the direction).</figcaption>
+</figure>
+
 <p><b>The mechanism: recency is <i>inverted</i> from reuse-distance among pending continuations.</b> Under FCFS,
 a conversation's next turn joins the back of a long queue when the previous turn completes; the
 <i>least-recently-active</i> waiting conversation is the one that has queued <i>longest</i>, hence is pulled
@@ -356,7 +403,7 @@ flat (589→592 tok/s) — the mechanism moves prefill, not the decode ceiling, 
   <text x="240" y="120" fill="#2c3e80" font-size="11">+3.6% @λ5</text>
   <text x="375" y="78" fill="#2c3e80" font-size="11">+4.7% @λ7</text>
 </svg>
-<figcaption>Fig.&nbsp;2 — Achieved sustained throughput vs offered load (n=2 same-node means). v1 lifts
+<figcaption>Fig.&nbsp;3 — Achieved sustained throughput vs offered load (n=2 same-node means). v1 lifts
 sustained throughput 2–6% through the knee (λ=5,7); at full saturation (λ=10) both converge to the
 GPU-compute ceiling (~4.6 req/s). The curve shifts up where the cache can reduce prefill load, and not where
 compute binds — consistent with a lossless prefill-reuse mechanism.</figcaption>

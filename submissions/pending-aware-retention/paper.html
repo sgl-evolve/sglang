@@ -169,6 +169,14 @@ cache-aware scheduling, which overlaps unavoidable <i>loads</i> with compute; he
 that turns a cheap reload into an expensive recompute. It is <i>not</i> a config flag (write-through/write-back,
 exclusive tiering): those change <i>what is backed up</i>, not whether an about-to-be-reused prefix survives
 contention. The primitive is a <b>reuse-intent signal flowing from scheduler to cache</b>.</p>
+<p class="note"><b>Code audit (novelty).</b> In the stock engine, the KV of a request is lock-protected
+(<code>inc_lock_ref</code>) only <i>at admission</i>, i.e. once it is running; a request's own committed
+prefix is guarded by <code>cache_protected_len</code> during its execution. Nothing protects the cached
+prefix of a request that is still <i>waiting</i> in the queue — so a running batch can evict a queued
+continuation's document before it is scheduled, forcing a full recompute. Host-tier locking
+(<code>inc_host_lock_ref</code>) exists only on the L3 storage path (dormant in the 2-tier config). Our
+mechanism is the first to protect a waiting/recently-active conversation's host prefix, driven by the
+scheduler's pending set.</p>
 <p><b>Two components, one primitive.</b> (i) <i>Queued pinning</i>: pin at enqueue, release at admission
 (the running-request lock then takes over). This covers the server-queue window — significant at high load,
 where the server queue is deep (measured p99≈95 even at λ=3). (ii) <i>Post-completion extension</i>: because

@@ -496,10 +496,17 @@ benchmark.</li>
 </ul>
 
 <h2>8 Reproducibility</h2>
-<p>Base commit <code>a334877e5</code> (stock sglang). Trace stats: <code>tools/tokenize_trace.py</code> →
-<code>tools/trace_stats.json</code>. Queueing model: <code>tools/queue_model.py</code>. Eval:
-<code>eval-on-pool.sh kleinrock &lt;version&gt;</code> (frozen protocol). <span class="mut">Version→number
-mapping and commit hashes to be filled per result in §5.</span></p>
+<p>All runs use stock sglang at base commit <code>a334877e5</code> (verified zero <code>python/</code> diff).
+The frozen eval is <code>eval-on-pool.sh kleinrock &lt;version&gt;</code> (λ∈{3,5,7,10} sweep, 1553 conversations,
+warmup burst, max-concurrency 256, 2-tier <code>--hicache-size 96</code>, p99-TTFT-≤-8 s SLO). Runs:
+<b>v0-stock</b>, <b>v0-stock-r2</b>, <b>v0-stock-r3</b> (three stock replicates, §3.1);
+<b>v1-writeback</b> (adds <code>--hicache-write-policy write_back</code>, §5.1); and the off-contract
+diagnostic <b>v0-warmdiag</b> (identical stock server/sweep with the per-rate <code>/flush_cache</code>
+disabled, run on the same node as v0-stock, §5.3). Each run's <code>curve.csv</code> and
+<code>summary.json</code> hold the per-rate points and the goodput headline; every number in this paper is
+taken directly from those files. Tooling: trace stats <code>tools/tokenize_trace.py</code> →
+<code>tools/trace_stats.json</code>; queueing model <code>tools/queue_model.py</code>; prefill-rate
+calibration <code>tools/calibrate.py</code>; per-run analysis <code>tools/analyze_run.py</code>.</p>
 
 </body>
 </html>

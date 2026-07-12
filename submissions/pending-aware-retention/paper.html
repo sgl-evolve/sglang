@@ -228,6 +228,14 @@ to show it does not change. (ii) The gain must be a <i>mechanism</i>, not a conf
 share every frozen flag (write-through, io-backend, layout, tier sizes); the only difference is which cached
 prefixes are retained. (iii) Not mere queue de-saturation: we show the effect via reduced recompute /
 higher hit rate (a cache property), and that pins activate (<code>[valiant] pinned_reqs&gt;0</code>).</p>
+<p><b>Metric-variance caveat (measured).</b> We find goodput@SLO is <i>variance-dominated at the SLO
+boundary</i>: three <i>identical</i> stock runs on three nodes gave λ=3 p99 TTFT = 6.3s / 8.1s / 11.8s and
+hence goodput@SLO = 3.02 / 0 / 0 — the stock config alone flips the headline. In contrast the hit rate was
+stable (0.673–0.678). We therefore (a) lead with the <b>node-independent hit-rate / recompute-reduction</b>
+as the primary, reproducible evidence; (b) report p99 as a <b>same-node</b> delta with n≥2 (a treatment is run
+on the same node immediately after its stock control); and (c) treat absolute goodput@SLO as a
+curve-shift indicator rather than a single-run headline. This is itself a finding: a p99-tail SLO on this
+saturating workload needs same-node, replicated measurement to be meaningful.</p>
 <p><b>Lossless gate.</b> The mechanism only changes <i>which</i> KV is retained; reuse of a cached prefix is
 bit-identical to recomputing it, so outputs are unchanged vs the stock run by construction (verified: no
 change to the decode path or the KV values).</p>

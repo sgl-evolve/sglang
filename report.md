@@ -251,6 +251,21 @@ budget ⇒ concurrent heavy turn-0 docs prefill ~one-at-a-time to completion (se
   A positive (SLOP/co-residency) is only publishable if baseline data shows load-back/recompute is a
   MATERIAL tail contributor at the knee AND I differentiate from CachedAttention. Decide from data.
 
+## ★ KEY REFINEMENT (flush dominance → honest framing)
+The P-K model (§2.2) predicts a PERFECT WARM cache would reach goodput@SLO ≈ 3-5 (λ3 p99≈2.4s < SLO), yet
+measured = 0. ⇒ the **per-rate flush cold-start is the DOMINANT cause of goodput=0**, not a fundamental
+cache-immunity. Honest paper framing (done in §3): goodput@SLO=0 is pinned by THREE factors — (A) flush
+cold-start [dominant, methodology artifact], (B) heavy-tailed cold turn-0 floor [structural, model→warm
+goodput≈3], (C) prefill-throughput knee ~3.5. Contribution = measurement/methodology finding (goodput@SLO
+measures cold-start, not cache quality) + mean-vs-tail characterization. NOT "caching is useless."
+CAVEAT for controls: since the flush caps frozen-eval goodput at 0, write_back/srpf will ALL give 0 —
+confirms frozen-metric insensitivity to KV configs but is flush-CONFOUNDED (doesn't isolate each lever).
+**KEY strengthening experiment = WARM-STEADY-STATE DIAGNOSTIC** (off-contract: disable bench_serving.py:447
+flush → run sweep warm → measure warm goodput; if ≈0 → structural floor confirmed; if 3-5 → flush is
+everything). Resolves flush-vs-structural. Needs a diagnostic worktree (flush-disabled bench) + custom
+runner. Prioritize AFTER v1-writeback if compute allows; else rely on model+queue-timeline argument (§7
+flags it as untested-because-frozen).
+
 ## Controls (impossibility evidence)
 - **v1-writeback** (`--hicache-write-policy write_back`, config; job 19490 QUEUED): tests lever-1 (hit rate
   ↑ +13pp per prior work → predict goodput@SLO still 0). Flag-only, lossless.

@@ -657,3 +657,17 @@ CONTRIBUTION = a rigorous, trace-driven, self-reviewed BOUNDED-IMPOSSIBILITY + t
 barrier + honest negatives (SLRU-backfire, CAR-neutral) + the chash methodology. Top-venue-shaped negative result.
 Cron deleted, node released. Future (if invoked): VERIFIED-pool re-run (formality), or the continuation-predictor
 direction (the only signal that could beat the barrier — future work, scoped in §7/§9).
+
+## 38. ★★★ REOPENING: turn-0 SIZE predicts continuation (AUC 0.78) → whale-first eviction beats LRU in replay
+CRITICAL — challenges §4.2 "liveness unobservable@turn-0". Trace fact: single-turn WHALES have median turn-0
+=17,364 tok; CONTINUERS median turn-0 =816 tok. AUC(turn-0 size→continuation)=0.217 i.e. 0.78 flipped
+(SMALL turn-0 ⇒ likely multi-turn; LARGE ⇒ likely single-turn/whale). corr(size,#turns)=−. So SIZE is an
+OBSERVABLE turn-0 signal for liveness — a causal proxy for Belady's evict-dead-first (whales≈dead).
+★ whale-first eviction (evict unproven-LARGEST first, protect proven) in fixed-order replay: recompute
+7.24M→5.55M (−23% of total, captures ~23% of the 7.24M avoidable) — and UNLIKE car/slru (which matched lru in
+the replay), whale-first genuinely differs → real victim-choice improvement. Mechanism: promptly evicting recent
+big whales (single-turn, safe) frees capacity to keep the 9.3M live set resident → could cut the 63% evicted
+tail (LRU keeps recent whales → they displace live KV). MUST TEST ON GPU: does whale-first move goodput@SLO? If
+yes → OVERTURN impossibility → mechanism WIN. If no → refine §4.2 (size predicts turn-0 continuation but the
+expensive tail is later-turn proven-conv context, not turn-0). Campaign REOPENED — impossibility claim was
+premature; the observable size signal is the hole.

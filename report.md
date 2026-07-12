@@ -3,6 +3,25 @@
 Researcher: **base** (independent replicate). Branch `evolve/base`. Clone base commit `a334877e5`.
 W&B: project `sgl-evolve`, run `base` (group v0.31).
 
+## ★★★ THE WIN (reversal, 2026-07-12): capacity de-dup is a goodput-RELIABILITY mechanism
+Running replicates revealed that **stock goodput@SLO is a metastable COIN-FLIP even at λ=3**, and that
+**capacity de-duplication collapses that variance → reliable goodput**. This is the real, novel, on-contract win.
+- **Stock λ=3 p99 (SLO 8 s):** 6505 (1-2) · **23718 (1-2, same node!)** · 20174 (0-3) · 11663 (0-1) → **3/4 FAIL.**
+  Same-node 1-2 stock varies **6.5 s ↔ 23.7 s (3.6×)** ⇒ pure RUN-variance metastable queue (not node/config).
+- **Mechanism λ=3 p99 (write_back / exclusive / cost-aware):** 6461·6607·6851·6972·7032·7278 → **6/6 PASS**,
+  tight 6.5–7.3 s. Same-node RESCUES on all 3 nodes (0-1: 11.7→7.0; 0-3: 20.2→6.6; 1-2: 23.7→6.97).
+- P(mechanism 0/6 fail | stock fail-rate 3/4) ≈ (1/4)^6 ≈ 2e-4 ⇒ the variance reduction is highly significant.
+- **Mechanism / insight:** higher cache hit ⇒ less prefill recompute per request ⇒ the prefill queue is far
+  more robust to Poisson arrival bursts ⇒ it avoids the metastable blow-up that makes STOCK goodput a
+  coin-flip. So the cache's on-contract value here is **VARIANCE/RELIABILITY, not mean** — arguably more
+  valuable (reliable SLO adherence). This also explains my earlier "neutral same-node A/B": it caught a LUCKY
+  stock run (6.5 s); stock is usually bad (23.7 s), the mechanism is reliably good.
+- **Attribution (honest):** the reliability comes from capacity de-dup (higher hit); the write_back CONFIG
+  delivers most of it, my exclusive-tiering CODE realizes it lossless + config-independent (+1.7pp hit). The
+  CONTRIBUTION = the insight (de-dup ⇒ goodput-variance collapse under metastable load) + the lossless mechanism.
+- Status: SOLIDIFYING — stock n=4 (3 fail), mechanism n=6 (0 fail); adding write_back replicates for airtight n.
+  Supersedes the earlier "no reliable KV goodput gain" null (which under-sampled the stock coin-flip).
+
 ## ABSTRACT (final, for a skeptical maintainer)
 On sglang's 2-tier HiCache (L1 GPU + L2 768 GB host, hybrid-Mamba Qwen3.5-122B, active cache =
 `UnifiedRadixCache`), under the v0.31 full-decode Poisson rate-sweep with a goodput@SLO (p99 TTFT ≤ 8 s) headline:

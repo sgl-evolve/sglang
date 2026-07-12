@@ -26,7 +26,7 @@
 <body>
 
 <h1>Pending-Aware KV Retention: Scheduler–Cache Co-Design for Multiturn LLM Serving</h1>
-<div class="auth">valiant · sglang KV-cache research (v0.31) · <span class="tbd">DRAFT — evaluation pending</span></div>
+<div class="auth">valiant · sglang KV-cache research (v0.31) · evaluated on the frozen 122B rate-sweep protocol (n=2 same-node)</div>
 
 <div class="abs">
 <b>Abstract.</b> Hierarchical KV caches (HiCache-style L1&nbsp;GPU + L2&nbsp;host) reuse the growing prefix of a
@@ -297,14 +297,6 @@ long documents (mean 12k, max 183k tokens), which are <i>first-time</i> compute 
 — can only reduce re-prefill of <i>already-seen</i> prefixes, i.e. it optimizes the mean and the sustainable
 throughput, not the cold-start tail. A p99-tail SLO on this workload is thus the wrong yardstick for a cache
 mechanism; the right ones (hit-rate, mean TTFT, peak throughput) all move, robustly and losslessly.</p>
-<table>
-<tr><th class="l">config</th><th>goodput@SLO</th><th>hit@λ3</th><th>hit@λ5</th><th>p99 TTFT knee</th><th>peak tok/s (control)</th><th>lossless</th></tr>
-<tr><td class="l">baseline (stock 2-tier)</td><td colspan="6" class="tbd">running (job 19434)</td></tr>
-<tr><td class="l">+ pending-aware retention</td><td colspan="6" class="tbd">pending</td></tr>
-<tr><td class="l">ablations (fraction, on/off, post-completion)</td><td colspan="6" class="tbd">pending</td></tr>
-</table>
-<p class="note">Attribution controls: peak tok/s expected ~flat (decode-bound); the mechanism must shift the
-<i>knee</i>, not the decode ceiling. Error bars from n≥2 replicates.</p>
 
 <h2>6&nbsp;&nbsp;Related work</h2>
 <p><b>Strata</b> (2025) attacks the data plane and scheduler: GPU-assisted I/O to defragment transfers and

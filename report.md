@@ -445,3 +445,17 @@ Implications:
   a grace-pin, BUT it misses the turn-0->turn-1 first reuse (turn-0 hit_count=0 evicted during the long gap;
   61% of turn-0s continue). CAR-with-adequate-grace can capture that first reuse — its distinguishing value.
 The screens (lru/slru/car) will EMPIRICALLY measure which helps goodput and by how much.
+
+## 25. ★★★ REAL BASELINE (v0b lru, FULL λ=3 completed) — goodput@SLO=0, tail 63% AVOIDABLE
+
+v0b (stock lru) λ=3 COMPLETED (nodeset-0, warmup+NUMP1553): req/s 2.89, p50 876ms, **p99 TTFT 11,254ms
+(>8s SLO)**, hit 0.679 ⇒ **GOODPUT@SLO = 0** (even the lowest swept rate breaches the 8s SLO). R_thru=7.81
+req/s ≫ R_p99(=0), so p99 is the hard binding constraint.
+Full-λ=3 trace (n=8517, reliable steady-state — NOT a mid-run partial): COLD-TURN0 19%reqs, WARM-HIT ~56%,
+**EVICTED(avoidable) 25%reqs / 58% of prefill WORK; and of the ≥40K SLO-breaching TAIL: 63% EVICTED / 37%
+COLD-TURN0.** ⇒ the p99 tail is DOMINATED by avoidable evicted-proven-conv recompute. Strong cache-affectable.
+CORRECTION: my §23 "over-correction" to 29%/18% was itself a mid-run partial artifact; the FULL rate is
+58%/63%. LESSON (again): only trust COMPLETED rates.
+**Mechanism target (crisp):** cut the evicted recompute (63% of tail) to bring λ=3 p99 from 11.25s under 8s →
+goodput 0 → 2.89+ (a categorical win). OPEN: does removing evicted turns bring p99<8s, or does the 37%
+cold-doc floor keep p99>8s? The slru/car90 screens (next in pipeline) answer it directly.

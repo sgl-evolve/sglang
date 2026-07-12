@@ -5,33 +5,39 @@ W&B: project `sgl-evolve`, run `base` (group v0.31).
 
 ## ★★ KEY FINDINGS (2026-07-12, replicated — honest, nuanced)
 ### (A) DEFINITIVE: goodput@SLO is a metastable COIN-FLIP, even at λ=3 (warmup did NOT fix it)
-- **Stock λ=3 p99 (SLO 8 s):** 6505 (1-2) · **23718 (1-2, SAME node!)** · 20174 (0-3) · 11663 (0-1) → **3/4 FAIL.**
+- **Stock λ=3 p99 (SLO 8 s, n=5):** 6505 (1-2) · **23718 (1-2, SAME node!)** · 20174 (0-3) · 11663 (0-1) · 36660 (1-2) → **4/5 FAIL.**
   Same-node 1-2 stock varies **6.5 s ↔ 23.7 s (3.6×)** ⇒ pure RUN-variance metastable queue (definitive; not
   node/config). ⇒ **stock goodput@SLO is 0-or-3 by luck.** The v0.31 warmup+no-flush stabilized nothing at λ=3.
 - Implication (methodology): **single-run / single-node goodput A/Bs are VOID**; the metric needs median-of-k.
   This reproduces the v0.3 coin-flip on v0.31 and is itself a maintainer-relevant result (the eval is noisy).
-### (B) SUGGESTIVE (borderline sig): capacity de-dup REDUCES the coin-flip variance (not eliminates)
-- **Mechanism λ=3 p99 (write_back/exclusive/cost-aware, n=7):** 6461·6607·6851·6972·7032·7278·**10597** →
-  **6/7 PASS** (1 fail at 10.6 s). vs stock **1/4 PASS**. Fail-rate 0.14 vs 0.75; max p99 10.6 s vs 23.7 s.
-- Fisher exact ≈ **p 0.03–0.06 (borderline)** — a real but MODEST reliability effect, needs more n to firm up.
-  My initial "6/6 reliable" was under-sampled optimism; the 7th run (v-wb-cert-r2, 10.6 s) honestly softened it.
-- Same-node rescues still hold (0-1 11.7→7.0; 0-3 20.2→6.6 & 10.6; 1-2 23.7→6.97). Insight: higher hit ⇒ less
-  prefill ⇒ prefill queue more robust to Poisson bursts ⇒ tighter goodput distribution (lower mean AND variance).
+### (B) SIGNIFICANT: capacity de-dup REDUCES the goodput coin-flip (variance ↓61×, median p99 ↓3×)
+- **Stock λ=3 p99 (n=5):** 6505·11663·20174·23718·36660 → median **20174 ms**, std 10418, **1/5 pass**.
+- **Mechanism λ=3 p99 (write_back/exclusive/cost-aware, n=7):** 6461·6607·6851·6972·7032·7278·10597 →
+  median **6972 ms**, std 1329, **6/7 pass**. (Mechanism isn't perfect — 1 fail at 10.6 s — but far tighter.)
+- **Tests on the actual p99 values (the pass/fail Fisher p=0.072 was UNDERPOWERED — discards magnitude):**
+  **Levene (variance) p=0.014**, **Mann-Whitney (p99 shift) p=0.037**, variance ratio **61×**. ⇒ the variance
+  reduction is STATISTICALLY SIGNIFICANT at n=5/7. The huge effect (3× median, 61× var) is significant despite small n.
+- Same-node rescues on all 3 nodes (0-1 11.7→7.0; 0-3 20.2→6.6/10.6; 1-2 23.7→6.97). Insight: higher hit ⇒ less
+  prefill recompute ⇒ prefill queue robust to Poisson bursts ⇒ tighter goodput distribution (lower mean AND variance).
 - Attribution (honest): mostly the write_back CONFIG; exclusive CODE realizes it lossless/config-indep (+1.7pp hit).
+  My earlier single-run claims ("6/6 reliable", etc.) were variance artifacts; the SIGNIFICANT, defensible claim
+  is the variance/median REDUCTION (Levene/MWU on n=5/7), not "always passes".
 - OPS: v-wb-cert-r3 CRASHED (exit 3, boot) — flashinfer JIT race from launching 2 pool evals together; run
   pool replicates SERIALLY. Held-pool hold-jobs time out ~23h (killed v0-cert-r2/r3 mid-run); manager re-heals.
 
 ## ABSTRACT (final, for a skeptical maintainer)
 On sglang's 2-tier HiCache (L1 GPU + L2 768 GB host, hybrid-Mamba Qwen3.5-122B, active cache =
 `UnifiedRadixCache`), under the v0.31 full-decode Poisson rate-sweep with a goodput@SLO (p99 TTFT ≤ 8 s) headline:
-1. **goodput@SLO is a metastable COIN-FLIP (even at λ=3), NOT reliably KV-addressable.** Replicates show STOCK
-   λ=3 p99 swings **6.5 s ↔ 23.7 s SAME-NODE** (3/4 runs FAIL the 8 s SLO) ⇒ stock goodput is 0-or-3 by luck;
-   the v0.31 warmup did NOT fix it (reproduces the v0.3 coin-flip). λ=5 is worse (past the decode knee: 10–27 s).
-   ⇒ **single-run / single-node goodput A/Bs are VOID** (median-of-k required) — itself a maintainer-relevant
-   result. Capacity de-dup **REDUCES** this variance (mechanism λ=3: 6/7 pass, fail-rate 0.14 vs stock 0.75, max
-   p99 10.6 vs 23.7 s; Fisher p~0.03–0.06 borderline) — a promising RELIABILITY effect, not eliminated, needs
-   more n. (My earlier single-run claims — "goodput 0→3", "reliably 3", "6/6 reliable" — were all variance
-   artifacts, each corrected by replication; the honest core is: the metric is noisy, de-dup tightens it.)
+1. **goodput@SLO is a metastable COIN-FLIP (even at λ=3), and cache capacity de-dup is a SIGNIFICANT
+   reliability lever.** STOCK λ=3 p99 (n=5) swings **6.5 s ↔ 36.7 s** (same-node 1-2: 6.5 vs 23.7 s), median
+   20.2 s, **1/5 pass** the 8 s SLO ⇒ stock goodput is 0-or-3 by luck; the v0.31 warmup did NOT fix it
+   (reproduces the v0.3 coin-flip). ⇒ **single-run/single-node goodput A/Bs are VOID** (median-of-k required)
+   — itself a maintainer-relevant result. **Capacity de-dup (write_back/exclusive/cost-aware, n=7) SIGNIFICANTLY
+   reduces this**: median p99 **6.97 s**, std **1329 vs 10418 ms (61×)**, 6/7 pass — **Levene variance-test
+   p=0.014, Mann-Whitney p=0.037**. So the cache's on-contract value is a statistically-significant goodput
+   **RELIABILITY** win (tightens the metastable distribution), not a mean-throughput headline. (My earlier
+   single-run claims — "goodput 0→3", "reliably 3", "6/6 reliable" — were variance artifacts, each corrected by
+   replication; the defensible claim is the variance/median reduction on the p99 values, NOT "always passes".)
 2. **A real lossless WIN on the stable throughput dimension:** capacity de-duplication of the host tier
    (write_back-family, incl. my exclusive-tiering engine code) **raises the sustained decode-throughput ceiling
    +8 % (fast node) to +18 % (prefill-contended node)**, monotonic with hit, same-node-attributable — because

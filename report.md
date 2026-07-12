@@ -23,6 +23,21 @@ conversation's prefix while it has a request in the scheduler's queue; release a
   (the pending set) is the lever, not recency.** (pc full sweeps → W&B pending, ~1.5h.)
 - **Bound:** realized +2.5pp ≪ idealized offline oracle (+7pp) ⇒ LRU is near-optimal for concurrent multiturn
   EXCEPT its one scheduler-visible failure (evicting queued continuations), which v1 removes.
+- **★★ DEEPER RESULT (2026-07-12, sim+trace) — SCHEDULER-CACHE COUPLING:** the LRU-vs-Belady gap is CREATED by
+  the scheduler's pull order, not the cache. Under the eval's default `schedule_policy=fcfs` (VERIFIED default;
+  eval.sh doesn't override) LRU trails Belady 7–22pp; under prefix-aware (lpm) pull gap→0 (LPM temporally
+  clusters each conv's turns → LRU already keeps them). MECHANISM = recency-INVERSION: measured Spearman
+  ρ(recency,next-use)=**+0.81** among pending convs → LRU's victim is the SOONEST-reused (queued-longest =
+  pulled-soonest). So pinning LRU's victim (engine pins ARRIVAL-order = oldest-waiting first = risk-aligned) is
+  Belady-aligned. Budget/priority sweep: risk-first pin captures 61–92% of Belady @25–75% budget; recent-first
+  ~0% (= why pc/broad-recency fails — pins the wrong set). ⇒ pending-pin gives FCFS prefix-scheduling's cache
+  locality WITHOUT its reorder/TTFT-fairness cost. Realized +2.5pp ≪ +7pp sim-ceiling = 2-tier host absorbs
+  device evictions. Analysis: `analysis/{build_convs,risk_sim,gap_decomp,compare_coupling}.py`, saved
+  `analysis/results/sim_summary.txt`. Paper §2.4 + Fig 2 added (commits 97db816f1…df45d253b).
+- **GPU CONFIRMATION RUNNING** (nohup `pipe_coupling.sh` on idle held ondem-2 jid19376): stock_fcfs→stock_lpm→
+  v1_lpm→v1_fcfs same-node. Tests if real LPM raises stock hit + shrinks pin gain + at what p99 cost. If
+  real-LPM improves BOTH hit AND p99, the "locality-without-reorder" value-prop weakens to fairness-preservation
+  (flagged §7 open measurement). Started 10:54Z; first curve ~13:15Z.
 - **Metric finding:** goodput@SLO is variance-dominated at the 8s boundary (identical stock runs flip 0↔3.02
   across nodes) ⇒ hit-rate/throughput is the robust metric.
 - **pc CRASH (3rd strike vs pc):** pc_c crashed @λ=7 (`assert v==node` in `_evict_device_leaf`→`_remove_leaf_from_parent`): host-pinning a deep node keeps a host-only child alive → its ancestor stays a device-leaf-with-child → write-through delete-entirely removes a non-empty node → tree corruption. pc's LONG pins make it common; v1's short pins (released at admission) ran clean n=2 all rates. Retracted pc_c from W&B. Fix (future): stricter `_is_device_leaf` (require childless) or demote-not-delete. Ship v1 (short-pin, unaffected).

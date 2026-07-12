@@ -161,13 +161,16 @@ minimum of two bounds:</p>
 <ul>
 <li><b>R_thru = P / avg_uncached_prefill_per_req</b> — the prefill-throughput bound. Cache <i>reduces</i>
 avg_uncached, <i>raising</i> R_thru (baseline hit≈0.62 → ~6.5 req/s; perfect cache → ~12.8 req/s: a ~2× ceiling).</li>
-<li><b>R_p99</b> — the max rate with p99 TTFT ≤ 8 s, set by the largest cold-document prefills under
-concurrency; the cache does not shrink these, so it does not raise R_p99 (except indirectly via the queue).</li>
+<li><b>R_p99</b> — the max rate with p99 TTFT ≤ 8 s, set by the largest prefills in the tail under
+concurrency. Naively these look like irreducible cold documents; but the conversation-id decomposition (§5.2)
+shows the ≥40K-tok tail is <b>63% avoidable evicted-turn recompute</b> (a residency policy that keeps those
+prefixes resident <i>can</i> shrink it, raising R_p99) and only 37% irreducible cold documents (it cannot).</li>
 </ul>
-<p><b>goodput@SLO = min(R_thru, R_p99).</b> The fork is which binds: if the cold-document tail pushes p99
-past 8 s <i>below</i> throughput saturation (R_p99 &lt; R_thru), goodput is cold-context-bound and no lossless
-cache mechanism helps (bounded-negative); if p99 rises only at saturation (R_p99 ≈ R_thru), cache raises
-goodput (mechanism). Note the irreducible <b>cold-document floor</b>: ≈94% of prefill work at low pressure is
+<p><b>goodput@SLO = min(R_thru, R_p99).</b> The fork is which binds, and — crucially — <i>what the tail is
+made of</i>: if the tail were dominated by irreducible cold documents pushing p99 past 8 s below throughput
+saturation, goodput would be cold-context-bound and no lossless cache policy could help (a bounded-negative);
+§5.2 shows instead that the tail is <i>mostly avoidable</i>, so the cache <i>can</i> raise R_p99 in principle,
+and the open question (§5.3) is whether a causal residency policy captures it or, like SLRU, backfires. Note the irreducible <b>cold-document floor</b>: ≈94% of prefill work at low pressure is
 turn-0 documents; the cache only addresses the warm-miss remainder, which grows with pressure. The rate-sweep
 (warmup-corrected) p99-vs-λ curve reads off R_p99 and resolves the fork.</p>
 
@@ -241,17 +244,21 @@ no disk, and load-back is already overlapped — so plain prefetch is not the le
 <b>Reuse &amp; scheduling.</b> SGLang RadixAttention (prefix reuse + cache-aware scheduling), Preble,
 Parrot, Sarathi-Serve (chunked prefill / decode-maximal batching) — all present in or subsumed by the stock
 baseline. <b>Cost/predictive residency.</b> AsymCache, Predictive-Multi-Tier, Continuum (TTL-aware) price
-recompute or predict reuse; these overlap the turn-count-predictable residual we identify.
+recompute or predict reuse; these overlap the turn-count-predictable residual we identify — but we show the
+naive turn-count instantiation (SLRU) <i>backfires</i> here (§5.3), which these works do not report.
 <b>Disaggregated append-prefill.</b> PPD (2603.13358) colocates turn≥2 append-prefill with decode at
 <i>cluster</i> level — not available on a fixed single node. Prior work targets cache <i>efficiency</i> (hit
-rate, transfer latency); we instead delimit, for a tail-SLO long-context regime, the point at which cache
-efficiency stops mattering for goodput because the tail is set by irreducible cold-context prefill. This
-bounded-negative + two-bound model is complementary to the above mechanisms and reframes where effort pays
-off (prefill/context, not cache). See References for full citations.</p>
+rate, transfer latency); we instead ask, for a tail-SLO long-context regime, whether the cache can move
+<i>goodput@SLO</i>, and decompose the tail (conversation-id-aware) into an avoidable evicted-recompute component
+(63% of the tail, addressable in principle — §5.2) and an irreducible cold-document floor (37%). The two-bound
+model plus this decomposition reframes where effort pays off and delimits, via the cold-document floor, the
+ceiling any lossless cache policy can reach. See References for full citations.</p>
 
-<h2>7 Limitations &amp; when the negative flips</h2>
-<p>The bounded-negative has a precise regime of validity — it is a statement about <b>when</b> the cache
-stops mattering, and it fails (cache becomes the lever again) in the complementary regime:</p>
+<h2>7 Limitations &amp; regime of validity</h2>
+<p>Our decomposition says the tail is dominated by avoidable evicted recompute (§5.2) with an irreducible
+cold-document floor (≈37%); whether a <i>causal</i> residency policy converts that headroom into goodput is
+measured in §5.3 (SLRU backfires; CAR pending). Independent of that outcome, the following delimit the regime
+in which the cache is (and is not) the dominant goodput lever:</p>
 <ul>
 <li><b>Short contexts.</b> If cold prefills fit under the SLO even under concurrency (small documents /
 short prompts), R_p99 rises above R_thru and the throughput bound (cache-improvable) binds — cache matters.
@@ -264,9 +271,10 @@ prefixes — the cache would then shrink the tail. The negative is conditioned o
 <li><b>Lossless scope.</b> We restrict to lossless KV management. Lossy methods (KV compression, sparsity,
 partial-context attention) <i>can</i> shrink the cold-document tail and are the natural lever this negative
 points to — but they change the outputs and are out of scope here.</li>
-<li><b>Bounded, not zero.</b> Cache can still raise goodput by ≤~(warm-miss fraction ≈5%) indirectly via
-freeing prefill capacity; we claim the cache is not the <i>dominant</i> goodput lever, not that it is
-exactly irrelevant.</li>
+<li><b>Bounded by the cold-document floor.</b> Even offline-optimal (Belady) residency cannot touch the ≈37%
+irreducible cold-document share of the tail; a causal policy reaches less. So any lossless residency win is
+bounded above by the avoidable ≈63%, and in practice by how well continuation can be predicted online without
+the future — the SLRU backfire (§5.3) shows a naive predictor can be net-negative.</li>
 <li><b>Single model / workload; screening pending certification.</b> Results are on Qwen3.5-122B (hybrid
 Mamba) + the loogle 1:1:1 mix; the two-bound model generalizes but absolute numbers do not. The pressured
 decomposition is from a screening node; certified-node goodput numbers are pending.</li>

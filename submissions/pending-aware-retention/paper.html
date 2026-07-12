@@ -271,8 +271,8 @@ pending-pin (risk-aligned) recovers 92% of it. Under <b>prefix-aware (LPM)</b> p
 (and at a higher ceiling) — there is no gap to capture, because LPM temporally clusters each conversation's
 turns. <b>Single-tier simulation only</b> — this is the mechanism's origin, not a real-system result: on the
 real 2-tier system the host layer absorbs eviction order, so hit is scheduler-insensitive and this gap does
-<i>not</i> materialize (Table 2, §2.5). What transfers is the model-free recency-inversion that makes the
-pending signal the right target; the sim's absolute magnitudes do not.</figcaption>
+<i>not</i> materialize (Table 2, §2.5). What transfers is the arrival-order recency-inversion (independent of the
+cache-tier model) that makes the pending signal the right target; the sim's absolute magnitudes do not.</figcaption>
 </figure>
 
 <p><b>The mechanism: recency is <i>inverted</i> from reuse-distance among pending continuations.</b> Under FCFS,

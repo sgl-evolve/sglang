@@ -592,3 +592,25 @@ now consistent (all uncached-tail method). Next: car300 (19502, swamp horn).
 - car300 (19502, swamp horn) queued behind sibling eval-base-vca on nodeset-0 (~2.5h); cron 1d70e5e7 catches.
 - Certified confirmation + full rate curves: contended/pending (screening on nodeset-0 is valid; result
   categorical goodput=0). Core result COMPLETE; remainder = refinements.
+
+## 34. ★★ car300 λ=3 — HONEST CORRECTION: no catastrophic swamp; CAR neutral across feasible grace
+
+car300 (grace 300) λ=3: req/s 3.00, p50 678ms, p99 10430ms, hit 0.6756, goodput@SLO=0.
+Full comparison (λ=3, same node):
+| policy      | req/s | p50   | p99     | hit    | goodput |
+| lru         | 2.89  | 876   | 11254   | 0.679  | 0 |
+| slru        | 2.78  | 1498  | 10091   | 0.507  | 0 |
+| car90(g90)  | 2.97  | 722   | 11174   | 0.679  | 0 |
+| car300(g300)| 3.00  | 678   | 10430   | 0.6756 | 0 |
+
+★ CORRECTION to my §31 prediction: grace 300 did NOT catastrophically swamp (hit stayed 0.676 ≈ lru, NOT
+slru's 0.507). WHY: the §31 "forced-resident 1.97x cap" is a DEMAND; a finite cache CANNOT hold 1.97x, so CAR's
+heap just evicts LRU-within-segment (oldest turn-0s in seg1) → GRACEFUL degradation to ≈lru, not collapse. The
+catastrophic hurt only appears at the SLRU EXTREME (evict ALL unproven aggressively). As grace→∞, CAR seg1 stops
+expiring → approaches SLRU (protect-proven/evict-unproven-LRU) → would approach the 0.507 hurt; car300 is not yet
+there. p99 differences (10430 vs 11254 vs 11174) are within the ±30% node-variance noise ⇒ car90 AND car300 are
+BOTH ≈lru (hit intact, goodput 0). 
+★ IMPOSSIBILITY HOLDS (unchanged): no capacity-feasible grace reaches goodput>0 — all ≈lru (or worse at the
+SLRU extreme). But the honest mechanism is "CAR is NEUTRAL across the feasible grace range" (finite cache clips
+the swamp), NOT "large grace catastrophically swamps." Must correct §4.2/§31 "swamp horn" framing → "graceful
+degradation to ≈lru; hurt only at the SLRU extreme."

@@ -24,12 +24,14 @@ W&B: project `sgl-evolve`, run `base` (group v0.31).
 ## ABSTRACT (final, for a skeptical maintainer)
 On sglang's 2-tier HiCache (L1 GPU + L2 768 GB host, hybrid-Mamba Qwen3.5-122B, active cache =
 `UnifiedRadixCache`), under the v0.31 full-decode Poisson rate-sweep with a goodput@SLO (p99 TTFT ≤ 8 s) headline:
-1. **goodput@SLO is decode-bound and NOT KV-addressable.** On CERTIFIED nodes stock already clears the healthy
-   rate λ=3 (p99 ~6.5 s ⇒ goodput 3.02); λ=5 is past the decode knee and its p99 is a **mechanism-independent
-   coin-flip** (same node: 10.3 s vs 20.6 s across runs; the higher-hit run was *worse*). So goodput = 3.02 for
-   stock AND every mechanism. The p99 tail is decode-slot saturation (256 concurrency × long decodes), shown
-   mechanistically from batch composition (prefills are short/cache-served, #queue-req≈0, the tail is
-   admission-wait). Warm-up fixed the v0.3 cold-start coin-flip only at λ=3, not the near-knee λ=5.
+1. **goodput@SLO is a metastable COIN-FLIP (even at λ=3), NOT reliably KV-addressable.** Replicates show STOCK
+   λ=3 p99 swings **6.5 s ↔ 23.7 s SAME-NODE** (3/4 runs FAIL the 8 s SLO) ⇒ stock goodput is 0-or-3 by luck;
+   the v0.31 warmup did NOT fix it (reproduces the v0.3 coin-flip). λ=5 is worse (past the decode knee: 10–27 s).
+   ⇒ **single-run / single-node goodput A/Bs are VOID** (median-of-k required) — itself a maintainer-relevant
+   result. Capacity de-dup **REDUCES** this variance (mechanism λ=3: 6/7 pass, fail-rate 0.14 vs stock 0.75, max
+   p99 10.6 vs 23.7 s; Fisher p~0.03–0.06 borderline) — a promising RELIABILITY effect, not eliminated, needs
+   more n. (My earlier single-run claims — "goodput 0→3", "reliably 3", "6/6 reliable" — were all variance
+   artifacts, each corrected by replication; the honest core is: the metric is noisy, de-dup tightens it.)
 2. **A real lossless WIN on the stable throughput dimension:** capacity de-duplication of the host tier
    (write_back-family, incl. my exclusive-tiering engine code) **raises the sustained decode-throughput ceiling
    +8 % (fast node) to +18 % (prefill-contended node)**, monotonic with hit, same-node-attributable — because

@@ -29,10 +29,10 @@
 proven multi-turn convs</b>, 37% cold docs) and the real-time live set <b>fits</b> (peak 9.3M = 0.87× cache) →
 liveness-bound, Belady≈0 → cache-addressable <i>offline</i>. BUT it is <b>online-UNRECOVERABLE</b>: liveness is
 unobservable at turn-0 (live conv vs single-turn whale both hit_count 0) and the turn-0→turn-1 gap is minutes
-(p50 460s), so grace-protection is trapped (long=swamp cache w/ whales, short=degrade to LRU). Both horns shown:
-<b>SLRU backfires</b> (hit 0.68→0.51, evict 58→73%); <b>CAR</b> (completion-grace) can't win at any feasible
-grace (car90 job 19480 same-node measuring; analysis predicts ≈LRU). = rigorous BOUNDED-IMPOSSIBILITY for causal
-residency, distinct from textbook "eviction≈Belady". NOTE: earlier match-only classifier mislabeled evicted as
+(p50 460s) while the cache affords only ~90s of turn-0 retention (grace>90s clipped by finite capacity) → a
+turn-0 is evicted long before its 460s reuse under ANY grace. <b>CAR ≈ LRU across feasible grace</b> (MEASURED
+grace 90 AND 300: goodput 0, hit 0.68 unchanged); the <b>SLRU</b> extreme (evict-all-unproven) <b>backfires</b>
+(hit 0.68→0.51). = rigorous BOUNDED-IMPOSSIBILITY for causal residency, distinct from textbook "eviction≈Belady". NOTE: earlier match-only classifier mislabeled evicted as
 cold (retracted); chash correction decisive. Stable: §4.1 two-bound+P, §4.2 online-barrier, §5.2 decomposition,
 §5.3 SLRU-backfire.</p>
 
@@ -52,11 +52,12 @@ real-time live working set <i>fits</i> (peak concurrent live KV 9.3M = 0.87× ca
 policy would recompute ≈0: it is liveness-bound, not capacity-bound. <b>Yet no causal policy can capture it</b>,
 for a specific and quantified reason: liveness is <i>unobservable at the decision point</i> — a conversation
 that will continue (61% do) and a single-turn "whale" that will not (39%) are both unproven (hit_count 0) at
-turn-0 — while the turn-0→turn-1 reuse gap is minutes (p50 460 s). Any completion-grace long enough to bridge
-the gap also pins every dead whale and swamps the cache; any grace short enough to fit degrades to LRU. We show
-both horns: the textbook <b>SLRU backfires</b> (evicting unproven turn-0s: hit 0.68→0.51, evicted work 58→73%),
-and our <b>CAR (continuation-aware residency)</b> completion-grace policy is neutralized — measured ≈LRU at
-the capacity-feasible grace (goodput 0, hit unchanged), as the analysis predicts. <span class="todo">A
+turn-0 — while the turn-0→turn-1 reuse gap is minutes (p50 460 s). The cache can afford only ~90 s of turn-0
+retention (grace 90 s = 0.85× cache); a larger grace is simply clipped by finite capacity, so ~90 s ≪ 460 s
+means a turn-0 is evicted long before its first reuse under <i>any</i> grace. Consequently our <b>CAR
+(continuation-aware residency)</b> completion-grace policy ≈ LRU across the whole feasible grace range — measured
+at grace 90 s <i>and</i> 300 s (goodput 0, hit unchanged) — while the textbook <b>SLRU</b> (evict all unproven,
+the grace→∞ limit) <b>backfires</b> (hit 0.68→0.51). <span class="todo">A
 larger-grace swamp point and certified-node confirmation are in progress.</span> A
 methodological finding: a match-fraction classifier conflates evicted turns with cold documents and hides
 this headroom entirely — conversation identity is required to see it.
@@ -80,10 +81,11 @@ A methodological caution: a match-fraction classifier conflates the two and hide
 <li>A <b>quantified online-recoverability barrier</b> (§4.2): the avoidable tail is liveness-bound not
 capacity-bound (peak real-time live KV = 9.3M = 0.87× cache, so Belady recomputes ≈0), yet no <i>causal</i>
 policy can capture it, because liveness is unobservable at the decision point (a will-continue conversation and
-a single-turn whale are both hit_count 0 at turn-0) and the turn-0→turn-1 gap is minutes (p50 460 s) — so a
-completion grace long enough to bridge it swamps the cache with dead whales, and one short enough to fit
-degrades to LRU. This is a bounded impossibility distinct from the textbook "eviction ≈ Belady (dead under
-in-order reuse)": here reuse is out-of-order with full offline headroom, yet still online-unrecoverable.</li>
+a single-turn whale are both hit_count 0 at turn-0) and the turn-0→turn-1 gap (p50 460 s) is ~5× longer than the
+~90 s of turn-0 retention the cache can afford — a larger grace is clipped by finite capacity, so a turn-0 is
+evicted before its reuse under any grace. This is a bounded impossibility distinct from the textbook "eviction ≈
+Belady (dead under in-order reuse)": here reuse is out-of-order with full offline headroom, yet still
+online-unrecoverable.</li>
 <li>Empirical confirmation of both horns (§5.3): the textbook <b>SLRU backfires</b> (evicting unproven turn-0
 entry points makes the cache worse — hit 0.68→0.51), and our novel <b>CAR</b> (continuation-aware residency, a
 completion-grace probation on turn-0s) cannot win at any capacity-feasible grace — a same-node grace sweep
@@ -203,29 +205,32 @@ requires protecting it for ~8 minutes.</li>
 only server-side continuation signal is turn-count, which is 0 for every turn-0. A causal policy cannot tell
 the live turn-0 from the dead whale at the moment it must decide.</li>
 </ul>
-<p><b>The grace trap.</b> These combine into an impossibility for a completion-grace policy: to catch the
-turn-0→turn-1 reuse, the grace must be ≥ ~460 s; but a 460 s grace also protects every dead whale for 460 s,
-accumulating (at λ=3) ~8M tokens of never-reused KV that, added to the 9.3M live set, far exceeds the 10.7M
-cache — swamping it and evicting live KV. A short grace covers almost none of the 460 s gaps and degrades to LRU. The trap is quantitative — a conservative model of the resident pressure a
-grace-<i>G</i> policy induces (peak KV touched in a trailing <i>G</i>-second window, since grace cannot tell
-live from dead; CAR's 3-segment form holds unproven KV only for <i>G</i> and proven KV by recency, so its actual
-pressure is no higher — the swamp threshold below is thus a lower bound on the offending grace) versus what
-fraction of turn-0→turn-1 gaps <i>G</i> actually covers:</p>
+<p><b>The grace trap.</b> These combine into an impossibility for a completion-grace policy — and the binding
+constraint is that <i>the cache can only afford ~90 s of turn-0 retention</i>. The table below models the
+resident <i>demand</i> a grace-<i>G</i> policy would require (peak KV touched in a trailing <i>G</i>-second
+window, since grace cannot tell live from dead) against what fraction of the 460 s turn-0→turn-1 gaps <i>G</i>
+covers. At grace 90 s the recent-turn-0 demand is 9.0M = 0.85× cache — it fits. Beyond ~90–120 s the demand
+<i>exceeds capacity</i>, so a finite cache simply <b>clips it</b>: the eviction heap drops the oldest recent
+turn-0s (LRU within the probation segment), retaining no more than the ~90 s the cache affords. Grace above that
+is therefore <i>inoperative</i> — it relabels nodes without changing what is actually retained:</p>
 <table>
-<tr><th>grace G</th><th>peak forced-resident KV</th><th>vs 10.7M cache</th><th>% of turn-0→turn-1 gaps covered</th></tr>
+<tr><th>grace G</th><th>resident demand of grace-G</th><th>vs 10.7M cache</th><th>% of turn-0→turn-1 gaps covered</th></tr>
 <tr><td>90 s</td><td>9.0M</td><td>0.85× (fits)</td><td>14%</td></tr>
-<tr><td>180 s</td><td>14.9M</td><td><b>1.39× (swamp)</b></td><td>20%</td></tr>
-<tr><td>300 s</td><td>21.1M</td><td><b>1.97× (swamp)</b></td><td>24%</td></tr>
-<tr><td>460 s (= median gap)</td><td>27.7M</td><td><b>2.59× (swamp)</b></td><td>50%</td></tr>
+<tr><td>180 s</td><td>14.9M</td><td><b>1.39× (clipped)</b></td><td>20%</td></tr>
+<tr><td>300 s</td><td>21.1M</td><td><b>1.97× (clipped)</b></td><td>24%</td></tr>
+<tr><td>460 s (= median gap)</td><td>27.7M</td><td><b>2.59× (clipped)</b></td><td>50%</td></tr>
 </table>
-<p>The largest grace that <i>fits</i> (~90 s, 0.85×) covers only 14% of gaps and behaves like LRU; covering the
-median gap needs ≥460 s, which forces 2.6× the cache. There is a ≈5× gap between the feasible-grace ceiling
-(~90–120 s) and the gap floor (460 s): <b>no grace both covers the gap and fits capacity.</b> Belady escapes
+<p>The cache affords ~90 s of turn-0 retention, but the reuse gap is 460 s — <b>~5× longer</b>. A turn-0's KV
+is therefore evicted long before its first reuse under <i>any</i> grace setting: small grace covers only 14% of
+gaps; larger grace is clipped to the same ~90 s of real retention. So CAR ≈ LRU across the whole feasible grace
+range — confirmed empirically by both car (grace 90) and car (grace 300) landing at LRU's operating point (goodput
+0, hit unchanged; §5.3). Covering the median gap would require holding 2.6× the cache — impossible. Belady escapes
 only by using the future to hold the 9.3M live set and drop the whales — knowledge no online policy has at the
-decision point. §5.3 confirms both horns empirically: SLRU (evict-unproven-first) sacrifices live turn-0s and
-backfires; CAR (completion-grace) cannot win at any capacity-feasible grace.</p>
+decision point. (A qualitatively different failure is SLRU, which evicts <i>all</i> unproven KV aggressively —
+the limit CAR would approach only as grace→∞ — sacrificing live turn-0 entry points and actively hurting, §5.3.)
+No policy on this residency axis moves goodput@SLO.</p>
 
-<h2>5 Evaluation <span class="todo">λ=3 same-node numbers landed (lru, slru, car grace-90); full rate curves + a larger-grace swamp point + certified-node confirmation pending</span></h2>
+<h2>5 Evaluation <span class="todo">λ=3 same-node numbers landed (lru, slru, car grace-90); full rate curves + a larger-grace point (car300) + certified-node confirmation pending</span></h2>
 <p>Frozen rate-sweep (λ∈{3,5,7,10}, warmup burst, NUMP=1553, conc 256) on an 8×H100 node; headline
 goodput@SLO (max req/s with p99 TTFT ≤ 8 s). We report the λ=3 operating point (the lowest swept rate): since
 p99 already exceeds the 8 s SLO there for every policy, goodput@SLO = 0 and higher rates cannot recover it, so
@@ -266,13 +271,15 @@ node as the lru baseline (λ=3; node variance is the dominant confound so all ro
 <tr><td>lru (stock)</td><td>0.679</td><td>876 ms</td><td>11,254 ms</td><td>61%</td><td>65%</td><td>0</td></tr>
 <tr><td>slru (protect proven)</td><td><b>0.507</b></td><td>1,498 ms</td><td>10,091 ms</td><td><b>73%</b></td><td><b>83%</b></td><td>0</td></tr>
 <tr><td>car (this work, grace 90 s)</td><td>0.679</td><td>722 ms</td><td>11,174 ms</td><td>65%</td><td>69%</td><td>0</td></tr>
+<tr><td>car (this work, grace 300 s)</td><td>0.676</td><td>678 ms</td><td>10,430 ms</td><td class="todo">≈lru</td><td class="todo">≈lru</td><td>0</td></tr>
 </table>
-<p><b>CAR (grace 90) ≈ LRU</b>, exactly as §4.2 predicts: p99 11,174 ms vs LRU's 11,254 ms (within noise, still
-≫8 s → goodput 0), hit 0.679 identical to LRU, and — unlike SLRU — it does <i>not</i> hurt (the turn-0 grace
-probation protects turn-0s without sacrificing them). At grace 90 s the policy fits the cache (0.85×) but covers
-only 14% of the 460 s turn-0→turn-1 gaps, so it captures essentially none of the avoidable recompute. This is
-the small-grace horn of the grace trap (§4.2); the large-grace horn (a grace approaching the 460 s gap swamps
-the cache and hurts, like SLRU) is the complementary failure. No capacity-feasible grace moves goodput@SLO.</p>
+<p><b>CAR ≈ LRU across the feasible grace range.</b> Both grace 90 s and grace 300 s land at LRU's operating
+point — goodput 0, hit 0.679/0.676 identical to LRU (contrast SLRU's collapse to 0.507); p99 11,174 / 10,430 ms
+vs LRU's 11,254 ms is within the ±30% node-variance band. Raising the grace from 90 s to 300 s does <i>not</i>
+help (it cannot retain turn-0s any longer — the cache affords only ~90 s, §4.2, so the extra grace is clipped)
+and does <i>not</i> catastrophically hurt (a finite cache degrades gracefully via LRU-within-segment, it does
+not overflow). Catastrophic harm appears only at the SLRU extreme (grace→∞, evict all unproven). So there is no
+capacity-feasible grace that moves goodput@SLO: too little retention to bridge the 460 s gap at any setting.</p>
 <p><b>SLRU is counterproductive</b> — protecting proven conversations made the cache <i>worse</i> (hit
 0.68→0.51, EVICTED 58→73% of work, 63→83% of the tail; p99 essentially unchanged, still ≫8 s). The reason is
 structural and is the key insight of this section: <b>SLRU protects hit_count≥1 by evicting hit_count=0 nodes
@@ -287,13 +294,12 @@ future proven.</p>
 [turn-0 probation — hold long enough to catch the first reuse]; (2) proven, hit_count≥1 [active multi-turn].
 The grace is the novel signal: it is keyed on <i>completion time</i> (a closed-loop quantity), not recency or
 frequency, and it protects precisely the turn-0s SLRU discards while still evicting genuinely dead single-turn
-whales first. Measured (row above), <b>CAR at grace 90 s ≈ LRU</b>: goodput 0, hit unchanged, evicted tail
-unchanged — it captures essentially none of the avoidable recompute, because grace 90 s (the largest grace that
-fits the cache, §4.2) covers only 14% of the 460 s reuse gaps. This is the small-grace horn; a grace approaching
-the gap swamps the cache (the large-grace horn — SLRU is its extreme, protecting proven indefinitely, and
-hurts). <span class="todo">A direct larger-grace CAR point and certified-node confirmation are in progress;
-the conclusion — no capacity-feasible grace moves goodput@SLO — is already fixed by the two measured horns plus
-the §4.2 grace-trap.</span></p>
+whales first. Measured (rows above), <b>CAR ≈ LRU at grace 90 s and 300 s</b>: goodput 0, hit and evicted tail
+unchanged — it captures essentially none of the avoidable recompute, because the cache affords only ~90 s of
+turn-0 retention (§4.2) whereas the reuse gap is 460 s; raising the grace is clipped by finite capacity and
+retains no more. Only the SLRU extreme (grace→∞, evict all unproven) actively hurts, by sacrificing turn-0 entry
+points. <span class="todo">Certified-node confirmation is in progress; the conclusion — no capacity-feasible
+grace moves goodput@SLO — is fixed by the measured grace 90 s and 300 s points plus the §4.2 grace-trap.</span></p>
 <h3>5.4 Honest controls</h3>
 <ul>
 <li><b>Decode throughput is flat across policies</b> (decode-bound control): at λ=3 output throughput is
@@ -377,9 +383,11 @@ goodput@SLO is <b>not addressable by any causal lossless residency policy</b> �
 would recompute nothing. The obstruction is not capacity (the live working set fits at 0.87× cache) and not the
 textbook "eviction ≈ Belady" (reuse here is out-of-order with full offline headroom); it is that <i>liveness is
 unobservable at the moment eviction must decide</i> — a will-continue conversation and a single-turn document
-are indistinguishable at turn-0 — while the turn-0→turn-1 reuse gap (median 460 s) is long enough that any grace
-wide enough to bridge it pins the dead documents and overflows the cache. SLRU backfires on one horn of this
-trap and our continuation-aware CAR is neutralized on the other. The practical implication is that effort on
+are indistinguishable at turn-0 — while the turn-0→turn-1 reuse gap (median 460 s) is ~5× longer than the ~90 s
+of turn-0 retention the cache can afford, so a turn-0 is evicted before its reuse under any grace setting (a
+larger grace is simply clipped by finite capacity). Our continuation-aware CAR is therefore neutralized (≈LRU at
+grace 90 s and 300 s), and the textbook SLRU actively backfires by discarding turn-0 entry points. The practical
+implication is that effort on
 this regime should target the <i>prefill/context</i> bound — raising P, cross-request document sharing, or lossy
 context reduction — or a genuine <i>continuation predictor</i> (the only signal that could beat the barrier),
 rather than eviction or residency tuning. The methodological tools — the conversation-id tail decomposition, the

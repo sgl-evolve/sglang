@@ -68,6 +68,34 @@ _(pending baseline sweep — job 19436 queued behind the active v0.3 campaign ho
 Hypothesis/change: stock 2-tier config swept λ∈{3,5,7,10} to get the real throughput–latency curve +
 goodput@SLO baseline + per-rate load-back/host-util diagnostics. This anchors all comparisons.
 
+## Mechanism design (ready to implement, gated on baseline data)
+**Primary — SLOP: Speculative Load-back Overlap under Pressure (queue-driven L2→L1 KV prefetch).**
+Today load-back is layer-pipelined with the *admitting* iteration's forward (`LayerDoneCounter.wait_until`)
+but STARTS only at admission — never overlapped with prior decode iterations, and the sync
+alloc/evict sits on the admission path. SLOP:
+- Hook `_add_request_to_queue`/`_prefetch_kvcache` (scheduler.py:2305/2280): on queue entry, run
+  match_prefix; if host hit ≥ threshold AND device-prefetch budget available → start the H2D load-back NOW
+  (overlaps with the running batch's decode compute).
+- Admission (scheduler.py:2861 loop): mirror the L3 storage-prefetch skip pattern (line 2882) — if the
+  speculative load-back is still in flight, `continue`; when done, admit with KV already resident (no sync
+  load_back, no admission-path eviction).
+- **Pressure-aware, revocable budget** (the hard part / novelty): prefetch only up to a reserved device-KV
+  budget B so it NEVER evicts running-batch KV; revoke under pressure. Prefetch depth ≈ λ × load-back
+  latency (Kleinrock: prefetch exactly the reqs admitted within the transfer window).
+- Novelty vs prior art: the L2→L1 prefetch tier does not exist in stock (only L3→L2
+  `prefetch_from_storage`); memory-pressure-aware revocable speculative load-back driven by the
+  waiting-queue lookahead is new; ties queueing dynamics to the KV memory hierarchy. Distinct from
+  Strata/Mooncake (L3/remote prefetch), LMCache/CacheGen (compression), AttentionStore (disk).
+- **Go/no-go:** only if v0-stock shows load-back on the critical path under load (load_back_duration p99
+  grows with λ; load-back tokens material).
+
+**Fallback A (load-back negligible):** dual-class prefill-budget reservation — reserve a slice of the
+per-iteration prefill token budget for short/warm (cached) requests so a long cold prefill can't HoL-block
+them; SLO-feedback-tuned. NOT SRPF (bandwidth reservation, not global reorder).
+**Fallback B (tail is irreducible cold prefill):** rigorous bounded-impossibility — goodput@SLO is set by
+heavy-tailed cold-doc prefill service time; no lossless KV-movement mechanism shifts it (cache helps mean,
+not the tail). Establish with the curve + tail decomposition + ablations.
+
 ## Formal submissions
 _(none yet)_
 

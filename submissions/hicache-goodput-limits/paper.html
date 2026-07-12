@@ -153,6 +153,7 @@ problem. Belady is offline; a causal policy cannot reach 0 (it must predict cont
 so this is a ceiling — §5.2/§5.3 measure how much a causal residency policy captures, and §5.2 shows the
 avoidable recompute <i>is</i> concentrated in the p99 tail (63% of the ≥40K-tok tail), correcting an earlier
 draft that (pre-conversation-id) mislabeled it as small and out-of-tail.</p>
+<p><img src="fig3_headroom.svg" alt="Belady liveness headroom vs cache capacity: LRU vs oracle recompute" style="max-width:100%"></p>
 <h3>4.1 Measured P and the two-bound model</h3>
 <p>A diagnostic boot (steady-state over 164 real prefill batches) measures <b>P ≈ 35,000 tok/s</b>. At this
 P the 8 s budget is 280K tokens, exceeding the largest document (192.7K) — so no <i>single</i> request's cold

@@ -46,16 +46,33 @@ ax.set_xlabel("turns per conversation (clipped at 21)"); ax.set_ylabel("# conver
 ax.set_title("Multi-turn structure: 39% single-turn cache pollution", fontsize=10)
 ax.grid(alpha=.25); fig.tight_layout(); fig.savefig(os.path.join(OUT, "fig2_turns.svg")); plt.close(fig)
 
-# ---- Fig 3: recompute headroom (sim v1/v2 numbers) ----
-fig, ax = plt.subplots(figsize=(5.2, 3.0))
-labels = ["LRU\n(no protect)", "LRU\n+stock protect", "Belady\n(oracle)"]
-vals = [5.76, 2.0, 0.0]  # M tokens (sim v1 no-protect, v2 with-protect, oracle)
-bars = ax.bar(labels, vals, color=["#d62728", "#dd8452", "#55a868"])
-for b, v in zip(bars, vals):
-    ax.text(b.get_x() + b.get_width() / 2, v + .1, f"{v:.1f}M", ha="center", fontsize=9)
-ax.set_ylabel("avoidable recompute (M tokens)")
-ax.set_title("Residency headroom: stock protection + dead-KV abundance", fontsize=10)
-ax.grid(alpha=.25, axis="y"); fig.tight_layout(); fig.savefig(os.path.join(OUT, "fig3_headroom.svg")); plt.close(fig)
+# ---- Fig 3: Belady liveness headroom vs capacity (live from the sim replay) ----
+# Timing-independent fixed-order replay: LRU vs Belady (evict-farthest-future) recompute over the served
+# access order at several cache capacities. At the real 2-tier cap the live working set fits -> Belady=0.
+import sim.simulate as _S
+_convs = _S.load()
+_base = _S.Sim(_convs, 3, 10.7e6, "lru", 25000, 4000, record=True); _base.run()
+_ao = _base.access_order
+caps = [4e6, 6e6, 8e6, 10.7e6, 15e6]
+lru_rc, opt_rc = [], []
+for _cap in caps:
+    hr = _S.trace_headroom(_ao, _convs, _cap)
+    lru_rc.append(hr["lru"] / 1e6); opt_rc.append(hr["opt"] / 1e6)
+head = [100 * (l - o) / l if l else 0 for l, o in zip(lru_rc, opt_rc)]
+xM = [c / 1e6 for c in caps]
+fig, ax = plt.subplots(figsize=(5.4, 3.2))
+ax.plot(xM, lru_rc, "o-", color="#d62728", lw=2, label="LRU recompute")
+ax.plot(xM, opt_rc, "s-", color="#55a868", lw=2, label="Belady (oracle) recompute")
+ax.fill_between(xM, opt_rc, lru_rc, color="#f2c14e", alpha=.35, label="avoidable (liveness headroom)")
+ax.axvline(10.7, color="gray", ls="--", lw=1); ax.text(10.7, ax.get_ylim()[1]*.9, " real L1+L2\n cap 10.7M", fontsize=7, color="gray")
+for x, h in zip(xM, head):
+    ax.text(x, (opt_rc[xM.index(x)]+lru_rc[xM.index(x)])/2, f"{h:.0f}%", ha="center", va="center", fontsize=7, color="#7a5c00")
+ax.set_xlabel("cache capacity (M tokens)  [total working set = 20.2M, 1.89× at real cap]")
+ax.set_ylabel("recompute (M tokens)")
+ax.set_title("Liveness headroom: Belady=0 at real cap (live set fits)", fontsize=10)
+ax.legend(fontsize=7, loc="upper right"); ax.grid(alpha=.25)
+fig.tight_layout(); fig.savefig(os.path.join(OUT, "fig3_headroom.svg")); plt.close(fig)
+print("headroom vs cap:", {f"{x:.1f}M": f"{h:.0f}%" for x, h in zip(xM, head)})
 
 print("wrote:", sorted(os.listdir(OUT)))
 # stats echo

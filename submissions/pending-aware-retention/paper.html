@@ -40,7 +40,8 @@ conversation's prefix precisely while that conversation has a request the schedu
 its queue</i> — a guaranteed-imminent-reuse signal — and releases it at admission. This is a scheduler↔cache
 co-design, not a replacement policy or config flag. On the frozen 122B rate-sweep protocol it delivers a
 modest but <b>robust, lossless</b> win: <b>hit&nbsp;+2.5&nbsp;pp</b> at the operating rate and
-<b>+2–6% peak throughput</b> under load (n=2, same-node), reproducibly. Two findings sharpen the picture.
+<b>+2–6% higher sustained throughput at moderate load</b> (λ=5,7; the gain converges to ~0 at full
+saturation where GPU compute binds), n=2 same-node, reproducibly. Two findings sharpen the picture.
 (1) <b>Targeting is everything, and the target is narrow</b>: the natural extension — retaining <i>every</i>
 recently-finished conversation for a horizon to also cover the client think-gap — does <i>not</i> help and
 mildly hurts. Not because continuation is unpredictable (it is 78% predictable from turn count), but because
@@ -53,7 +54,7 @@ KV cache reduces re-prefill of <i>already-seen</i> prefixes, so it moves the mea
 throughput but not the p99 tail, which is set by <i>first-turn</i> long-document prefills that are never
 reusable. Accordingly the protocol's headline goodput@SLO is <b>variance-dominated at the SLO boundary</b>
 (identical stock runs flip goodput 0↔3.0 across nodes) and is the wrong yardstick for a cache mechanism;
-hit-rate, mean TTFT, and peak throughput — which all move robustly and losslessly — are the right ones.
+hit-rate, mean TTFT, and moderate-load throughput — which all move robustly and losslessly — are the right ones.
 </div>
 
 <h2>1&nbsp;&nbsp;Introduction</h2>
@@ -78,7 +79,7 @@ evicted-continuation recompute</b> (prefixes that were cached and reused, then d
 an oracle policy would remove most of it — a large gap the LRU≈Bélády intuition misses in this regime.</li>
 <li><b>Pending-aware KV retention</b>: couple L2 retention to the scheduler's pending-request set (a
 guaranteed-imminent-reuse signal). Realizable, non-oracle, capacity-bounded, lossless. It gives a
-<b>modest but robust</b> win: hit +2.5&nbsp;pp and +2–6% peak throughput (n=2, same-node).</li>
+<b>modest but robust</b> win: hit +2.5&nbsp;pp and +2–6% sustained throughput at moderate load (n=2, same-node).</li>
 <li>A <b>targeting ablation + a realizability characterization</b>: extending retention to <i>all</i>
 recently-finished conversations does not beat LRU — not because continuation is unpredictable (78% predictable)
 but because broad retention only <i>displaces</i> a working set LRU already keeps. LRU is near-optimal for
@@ -260,7 +261,7 @@ change to the decode path or the KV values).</p>
 <h3>5.2&nbsp;&nbsp;Results</h3>
 <p><b>Pending-aware retention (v1) is a robust, lossless win (n=2 same-node).</b> Table&nbsp;1 shows stock vs
 v1 (means of two same-node A/B pairs, nodes 0-3 and 1-2). Hit rate rises consistently on both nodes, largest
-at the operating rate and tapering under saturation; peak sustained throughput rises 2–6% at the knee. p50
+at the operating rate and tapering under saturation; sustained throughput rises 2–6% at moderate load (&lambda;=5,7), converging at full saturation. p50
 TTFT falls ~25% at λ=3. All lossless (v1 only changes which KV is retained).</p>
 <table>
 <tr><th>λ</th><th>hit stock→v1</th><th>Δhit</th><th>req/s stock→v1</th><th>Δreq</th><th>p50 stock→v1 (λ=3)</th></tr>
@@ -296,7 +297,7 @@ long documents (mean 12k, max 183k tokens), which are <i>first-time</i> compute 
 <b>never cache-reusable by any lossless mechanism</b>. Prefix caching — and reuse-aware retention on top of it
 — can only reduce re-prefill of <i>already-seen</i> prefixes, i.e. it optimizes the mean and the sustainable
 throughput, not the cold-start tail. A p99-tail SLO on this workload is thus the wrong yardstick for a cache
-mechanism; the right ones (hit-rate, mean TTFT, peak throughput) all move, robustly and losslessly.</p>
+mechanism; the right ones (hit-rate, mean TTFT, moderate-load throughput) all move, robustly and losslessly.</p>
 
 <h2>6&nbsp;&nbsp;Related work</h2>
 <p><b>Strata</b> (2025) attacks the data plane and scheduler: GPU-assisted I/O to defragment transfers and

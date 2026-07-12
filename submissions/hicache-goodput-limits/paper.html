@@ -417,6 +417,19 @@ eviction <i>robustly lowers median TTFT and shifts the p99 distribution across t
 a scheduling improvement plus a probabilistic goodput crossing — not a deterministic goodput 0→3.02 win. This
 also refines the earlier same-workload "single-run goodput is unreliable" observation with a mechanism: p99 is
 decoupled from the cache's recompute work.</p>
+<p><b>Full rate curve (whale vs LRU, same node).</b> A complete whale sweep:</p>
+<table>
+<tr><th>λ (offered)</th><th>whale p99 TTFT</th><th>LRU p99 TTFT</th><th>whale req/s</th><th>LRU req/s</th></tr>
+<tr><td>3</td><td><b>8.7 s</b> (2/4 runs 6.2–6.6 s)</td><td>10.4 s</td><td>3.02</td><td>2.99</td></tr>
+<tr><td>5</td><td><b>13.5 s</b></td><td>28.5 s</td><td>4.12</td><td>3.69</td></tr>
+<tr><td>7</td><td>34.0 s</td><td>25.7 s</td><td>4.47</td><td>4.19</td></tr>
+<tr><td>10</td><td>40.6 s</td><td>36.7 s</td><td>4.68</td><td>4.31</td></tr>
+</table>
+<p>whale reduces p99 at the <b>near-SLO rates that decide goodput</b> (λ=3 and λ=5, where it roughly halves the
+λ=5 p99, 13.5 vs 28.5 s) and lifts peak throughput ~8–12%. At <b>deep overload</b> (λ=7, 10) both policies fail by
+3–5× and the p99 becomes metastable-noisy — LRU's own curve is non-monotonic (28.5→25.7 s from λ=5→7) — so the
+λ=7/10 ordering is not meaningful and we do <b>not</b> claim whale helps there. goodput@SLO is decided at λ=3
+(the only rate either policy can approach): whale 3.02 (metastable, 2/4), LRU 0.</p>
 
 <h2>6 Related work</h2>
 <p><b>Tiered KV caching &amp; prefetch.</b> AttentionStore/CachedAttention (ATC'24) does hierarchical KV

@@ -957,3 +957,29 @@ whale captures a meaningful fraction across the whole capacity axis (peaks mid-p
 extreme 4M where everything churns). Robust across capacity, not a single-point artifact. Added to §4.2. This is
 the DETERMINISTIC, non-metastable core of the contribution (offline replay) — the size signal is provably the
 unique correct causal victim rule, independent of the noisy GPU p99.
+
+## 56. whale curve: λ=5 p99 = 13.5s vs lru 28.5s — whale HALVES higher-λ p99 (size effect scales w/ load)
+whale-r4 sweep so far: λ=3 8.7s (r4; 2/4 cross ~6-9s), λ=5 **13.5s** (req 4.12, hit 0.666). vs lru λ=5 28.5s.
+whale ~halves the λ=5 p99 — the size effect is STRONGER at higher load (more eviction pressure → size signal
+more valuable), matching the offline capacity sweep (§55 peaks mid-pressure). Still ≫8s SLO so goodput@SLO
+ceiling stays 3.02 (only λ=3 crosses). Confirms whale shifts the p99 distribution down at ALL rates, not just λ=3.
+whale-r4 continues λ=7/10 for the full curve + summary.json (W&B). Good curve for the paper (reviewer W2).
+
+## 57. ★ whale λ=7 = 34.0s > lru 25.7s — HONEST: whale NOT better in deep overload (high-λ metastable)
+whale curve: λ3 8.7s, λ5 13.5s, λ7 **34.0s** (req 4.47, hit 0.659). lru curve: λ3 10.4, λ5 28.5, λ7 25.7, λ10 36.7.
+whale BETTER at λ3 (8.7<10.4) and λ5 (13.5<28.5) — the near-SLO rates that matter. WORSE at λ7 (34>25.7). BUT this
+is the deep-overload METASTABLE regime: lru's OWN curve is non-monotonic (28.5→25.7 λ5→λ7), p99 values swing
+wildly (my memory: high-λ ±variance). So the λ=7 "reversal" is NOT a real whale-worse signal — both are ≫8s
+(goodput 0 for both at λ≥5 regardless), and the high-λ p99 is queue-metastable. HONEST curve framing: whale
+reduces p99 at the lower rates (near the SLO, where the metric is decided); at deep overload (λ≥7) both policies
+fail massively and the p99 is metastable-noisy (whale not consistently better). goodput@SLO: whale 3.02 (λ3
+crosses sometimes), lru 0. Do NOT claim whale helps at all rates — it helps where it matters (λ3/5). λ=10 pending.
+
+## 58. FINALIZED: whale full curve + W&B v_whale logged. lru-r3 running (median confirm)
+whale full sweep (r4): λ3 8.7s / λ5 13.5s / λ7 34.0s / λ10 40.6s; peak req 3.02/4.12/4.47/4.68 (lru 2.99/3.69/
+4.19/4.31 → whale +8-12% peak throughput). goodput@SLO=3.02 (λ3, metastable 2/4); lru 0. W&B v_whale [mechanism]
+logged to sgl-evolve/wilkes (17 metrics + artifact; note the summary's own goodput=0 = whale-r4's unlucky λ=3
+fail, but panel ttft_p99@3=8714 < lru 10360 shows the shift). Added whale rate-curve table to §5.5 (honest: helps
+λ3/5, NOT deep overload λ7/10 metastable). lru-r3 (19561) running on nodeset-0 → lru n=3 median (~00:15) to
+confirm the median win isn't lru-n=2 variance. After lru-r3: final median check + commit; campaign essentially
+COMPLETE (paper v0.2 honest + figure + curve + W&B + self-review).

@@ -236,11 +236,22 @@ goodput@SLO (max req/s with p99 TTFT ≤ 8 s). We report the λ=3 operating poin
 p99 already exceeds the 8 s SLO there for every policy, goodput@SLO = 0 and higher rates cannot recover it, so
 λ=3 is decisive for the impossibility. All policy rows are same-node (node variance is the dominant confound).</p>
 <h3>5.1 The goodput@SLO baseline &amp; the binding bound</h3>
-<p>Stock lru at λ=3 (the lowest swept rate; warmup+NUMP=1553; screening node): req/s 2.89, p50 TTFT 876 ms,
-<b>p99 TTFT 11,254 ms</b>, hit 0.679. Since p99 &gt; 8 s already at λ=3, <b>goodput@SLO = 0</b> — the p99
-tail bound R_p99 binds far below the throughput bound R_thru = P/avg-uncached ≈ 7.8 req/s. So the question is
-whether a cache mechanism can pull λ=3 p99 below 8 s (goodput 0 → 2.89+). <span class="todo">certified
-absolute numbers + full curve pending; nodeset-0 is a screening node.</span></p>
+<p>The full stock-lru rate curve (warmup+NUMP=1553, same node):</p>
+<table>
+<tr><th>λ (req/s offered)</th><th>req/s achieved</th><th>p50 TTFT</th><th>p99 TTFT</th><th>out tok/s</th><th>hit</th></tr>
+<tr><td>3</td><td>2.99</td><td>678 ms</td><td><b>10,360 ms</b></td><td>382</td><td>0.680</td></tr>
+<tr><td>5</td><td>3.69</td><td>785 ms</td><td>28,531 ms</td><td>472</td><td>0.665</td></tr>
+<tr><td>7</td><td>4.19</td><td>909 ms</td><td>25,716 ms</td><td>536</td><td>0.664</td></tr>
+<tr><td>10</td><td>4.31</td><td>1,009 ms</td><td>36,695 ms</td><td>552</td><td>0.662</td></tr>
+</table>
+<p><b>p99 TTFT exceeds the 8 s SLO at every rate</b> (10.4 s already at the lowest, λ=3), so
+<b>goodput@SLO = 0</b> across the whole sweep. The tail bound R_p99 binds far below the throughput bound
+R_thru = P/avg-uncached ≈ 7.8 req/s (peak achieved throughput is 4.31 req/s / 552 tok/s, rising with λ — a
+decode-bound control), while p50 stays sub-1.1 s throughout: the SLO breach is a p99 <i>tail</i> phenomenon,
+not a systemic slowdown. So the question is whether a cache mechanism can pull the λ=3 p99 below 8 s
+(goodput 0 → 2.99+). (This λ=3 p99 of 10.4 s replicates an independent same-node run at 11.25 s — both far
+above 8 s.) <span class="todo">A certified-node confirmation is in progress; nodeset-0 is a verified-usable
+screening node running the identical frozen eval.</span></p>
 <h3>5.2 Decomposing the p99 tail (per-request trace) — the core result</h3>
 <p>We trace every prefill (rid-deduped) and, using a per-request conversation id (hash of the first tokens),
 classify it as COLD-TURN0 (first request of a conversation = an irreducible cold document), WARM-HIT (a later

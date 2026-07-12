@@ -67,9 +67,8 @@ rewrite as a positive. If a continuation *predictor* (turn-0 features) could sep
 turn-0 feature poverty, but both are falsifiable — a strength.
 
 ## Resolution status (updated 2026-07-12 13:16)
-- W1 (replicates/error-bars): IN PROGRESS — full lru sweep (job 19515) + full car sweep queued serve as
-  same-node replicates of the λ=3 points; error bars to add once both land.
-- W2 (full rate curve): IN PROGRESS — full lru sweep 19515 running (λ{3,5,7,10}); full car sweep next.
+- W1 (replicates): PARTIAL — lru λ=3 measured twice same-node (11254 & 10360 ms, both ≫8s); car full sweep pending. Categorical result (40% over SLO) makes error bars secondary.
+- W2 (full rate curve): RESOLVED (lru) — full λ{3,5,7,10} curve landed, goodput@SLO=0 at every rate (p99 10.4/28.5/25.7/36.7s); in paper §5.1. Full car curve pending (job 19525).
 - W3 (swamp horn): RESOLVED — car grace-300 measured (§34); it did NOT catastrophically swamp (hit 0.676 ≈lru).
   This CORRECTED the prediction: finite cache clips grace>~90s → CAR≈LRU across feasible grace; only the SLRU
   extreme hurts. Paper reframed throughout (abstract/§4.2/§5.3/§7). A cleaner impossibility than the original.

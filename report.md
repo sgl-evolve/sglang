@@ -152,6 +152,31 @@ full context each turn). Results:
   gains for the tail — but SRPT/SRPF HURT here (they starve the big turn-0 docs that ARE the p99). Room
   for a genuinely new tail-aware primitive, TBD from data.
 
+## KEY design insight — chunked prefill serializes heavy docs → p99 ≈ K·t
+Only ONE `chunked_req` at a time (scheduler.py:1026) and a full 6144 chunk exhausts the per-iter prefill
+budget ⇒ concurrent heavy turn-0 docs prefill ~one-at-a-time to completion (serialized). So p99 TTFT ≈
+**K·t** (K = #heavy prefills queued at the knee, t = mean heavy-prefill time). Consequences:
+- Serialize is actually near-OPTIMAL for p99 (round-robin/parallel chunking makes ALL heavy docs finish
+  late ⇒ worse p99). So SRPT/parallel-chunk both hurt. Confirms the tail is queueing-structural.
+- t and the COLD turn-0 count are irreducible (unique docs, lossless) ⇒ that part of p99 is a hard floor
+  (impossibility component).
+- **The ONE lossless lever = reduce K by preventing follow-up RECOMPUTES** (evicted active-conv docs that
+  get re-prefilled add to K). Worth MORE than raising hit rate: it cuts the *count of heavy prefills*, not
+  just mean tokens (E[X²] driver). Mechanism candidate: **conversation-liveness-aware residency** — under
+  pressure evict COMPLETED-conversation docs before ACTIVE-conversation docs (semantic, not LRU recency);
+  differentiate from CachedAttention (no think-time; open-loop; pressure-driven eviction protection, not
+  think-time prefetch) and from exclusive-tiering (this is an eviction-VICTIM-selection by liveness, not a
+  placement policy). GATE: baseline must show follow-up recompute is a material tail contributor (else the
+  impossibility floor dominates and residency can't move goodput@SLO).
+- ⚠️ CRITICAL CAVEAT (pushes toward impossibility): the server has **no conversation-liveness oracle** —
+  open-loop turns arrive as independent HTTP requests with no conversation ID; the server sees only token
+  prefixes. So it can only PREDICT reuse from access patterns (recency/frequency/depth) = exactly the known
+  eviction signals, and stock LRU already exploits recency (active convs = recently accessed). ⇒ Without an
+  oracle, K-reduction cannot beat LRU losslessly. Combined with irreducible cold turn-0 prefills, this is
+  the backbone of a **bounded impossibility**: *no lossless KV mechanism materially raises goodput@SLO on
+  this benchmark class.* A positive would require the data to reveal a NON-eviction lever (e.g., a genuine
+  load-back-convoy transfer bottleneck that overlap removes) — verify from baseline load_back histogram.
+
 ## Related work / novelty positioning (governs which direction is publishable)
 - **AttentionStore / CachedAttention (OSDI'24)** — hierarchical KV caching for MULTI-TURN convs with
   scheduler-aware prefetch of a conversation's KV ahead of its next turn (layer-wise pre-load, positional

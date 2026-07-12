@@ -3,3 +3,4 @@
 05:49:04 DONE stock_c :: good@SLO=3.02 peak_tok=585 best_hit=0.673 | req_s@3=3.0 ttft_p99@3=6285.9 req_s@5=3.9 ttft_p99@5=13017.9 req_s@7=4.3 ttft_p99@7=34807.0 req_s@10=4.6 ttft_p99@10=41494.1
 08:01:05 DONE v1_b :: good@SLO=3.02 peak_tok=592 best_hit=0.700 | req_s@3=3.0 ttft_p99@3=7978.2 req_s@5=4.0 ttft_p99@5=23638.2 req_s@7=4.5 ttft_p99@7=34819.9 req_s@10=4.6 ttft_p99@10=40995.0
 08:09:05 DONE v1_c :: good@SLO=0.00 peak_tok=587 best_hit=0.701 | req_s@3=3.0 ttft_p99@3=8031.3 req_s@5=4.0 ttft_p99@5=23019.2 req_s@7=4.5 ttft_p99@7=35077.3 req_s@10=4.6 ttft_p99@10=40976.8
+09:07:05 DONE pc_e :: good@SLO=3.02 peak_tok=598 best_hit=0.671 | req_s@3=3.0 ttft_p99@3=6556.2 req_s@5=4.0 ttft_p99@5=23370.2 req_s@7=4.5 ttft_p99@7=34388.0 req_s@10=4.7 ttft_p99@10=26777.6

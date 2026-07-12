@@ -40,11 +40,13 @@ this benchmark is not a reliably measurable quantity: it is a cold-start coin-fl
 extreme compute-to-context asymmetry — a conversation's first turn prefills a heavy-tailed document
 (median 16.7K, p99 65.6K, max 192.5K tokens) while follow-ups prefill ~16 new tokens — so the p99 TTFT is
 a bimodal, metastable queueing tail that <b>straddles the 8 s SLO</b>. Across <b>three identical stock
-runs</b>, λ=3 p99 TTFT is <b>14.1 s, 8.0 s, and 6.8 s</b> (a 2.07× spread), so stock's own goodput@SLO is
-<b>{0, 0, 3}</b> — the binary metric flips on nothing but run-to-run noise. A write-back configuration that
-appears to lift goodput@SLO from 0 to 3 falls squarely inside this stock band (λ=3 p99 7.5 s); indeed a
-stock replicate (6.8 s) beats it despite a <i>lower</i> hit rate, so the apparent gain is not a write-back
-effect — even though write-back's <i>stable</i> effects are real (hit rate +6 pp, peak throughput +18%). We give a trace-driven Pollaczek–Khinchine account of why
+runs</b> (across cluster nodes), λ=3 p99 TTFT is <b>14.1 s, 8.0 s, and 6.8 s</b> (a 2.07× spread), so
+stock's own goodput@SLO is <b>{0, 0, 3}</b> — the binary metric flips on run-to-run and node-to-node noise.
+A write-back configuration that appears to lift goodput@SLO from 0 to 3 falls squarely inside this stock
+band (λ=3 p99 7.5 s), so its single-run "win" cannot be attributed to write-back — even though write-back's
+<i>stable</i> effects are real and do not flip (hit rate +6 pp, peak throughput +18%). The point is not
+that a better cache never helps, but that <b>a single run cannot tell</b>: goodput@SLO is dominated by
+variance (cold-start metastability plus node heterogeneity), both invisible to a single-run A/B. We give a trace-driven Pollaczek–Khinchine account of why
 the tail is metastable, and show the effect is compounded by the harness flushing the cache before each
 rate (defeating the eval's intended warm-steady-state design). Contributions: (1) <b>a measurement result</b>
 — goodput@SLO is unreliable for single-run KV-cache A/B on heavy-tailed cold-prefill workloads, a pitfall
@@ -72,9 +74,9 @@ rate and the prefill-token distribution, and separates the roles of the cache: i
 <li><b>An eval-methodology observation</b>: the harness flushes the KV cache per rate, so each measured
 point is cold-started, compounding the cold-start metastability that makes the p99 tail bimodal (§2.3).</li>
 <li><b>A measurement result</b> (§3, §5): goodput@SLO on this benchmark is a <b>cold-start coin-flip</b>.
-Replicate stock runs give λ=3 p99 TTFT 14.1 s vs 8.0 s (straddling the 8 s SLO), so the binary metric
-flips on noise; a write-back config's apparent 0→3 gain is a sub-500 ms threshold artifact of this
-variance. Single-run KV-cache A/B on this workload is therefore void.</li>
+Replicate stock runs give λ=3 p99 TTFT 14.1 s / 8.0 s / 6.8 s (straddling the 8 s SLO), so stock's own
+goodput@SLO is {0,0,3}; a write-back config's apparent 0→3 gain falls inside this stock band and cannot be
+attributed to the mechanism. Single-run KV-cache A/B on this workload is therefore void.</li>
 <li><b>A separation of stable vs unstable signals</b>: the cache's effect on hit rate, mean/p50 TTFT, and
 peak throughput is stable and real (write-back: hit +6 pp, peak throughput +18%); only the tail SLO metric
 is variance-dominated. Evaluating caches by goodput@SLO measures the noise, not the cache.</li>
@@ -225,21 +227,26 @@ comparisons between KV-cache configurations are void. The cache's effect on the 
 metric is not. goodput@SLO, as operationalized here, measures the noise, not the cache.</div>
 
 <h3>3.1 The coin-flip (evidence)</h3>
-<p>Four λ=3 runs — <b>three of them the identical stock configuration</b>:</p>
+<p>Four λ=3 runs — three of them the same stock configuration:</p>
 <table>
-<tr><th>run (λ=3)</th><th>config</th><th>p99 TTFT</th><th>vs 8 s SLO</th><th>hit</th><th>goodput@SLO</th></tr>
-<tr><td>v0-stock</td><td>stock</td><td>14.06 s</td><td>fail</td><td>0.677</td><td><b>0</b></td></tr>
-<tr><td>v0-stock-r2</td><td>stock</td><td>8.01 s</td><td>fail (by 8 ms)</td><td>0.673</td><td><b>0</b></td></tr>
-<tr><td>v0-stock-r3</td><td>stock</td><td>6.79 s</td><td>pass (by 1.21 s)</td><td>0.672</td><td><b>3.0</b></td></tr>
-<tr><td>v1-writeback</td><td>write_back</td><td>7.53 s</td><td>pass (by 466 ms)</td><td>0.736</td><td>3.0</td></tr>
+<tr><th>run (λ=3)</th><th>config</th><th>node</th><th>p99 TTFT</th><th>vs 8 s SLO</th><th>hit</th><th>goodput</th></tr>
+<tr><td>v0-stock</td><td>stock</td><td>ondem-3</td><td>14.06 s</td><td>fail</td><td>0.677</td><td><b>0</b></td></tr>
+<tr><td>v0-stock-r2</td><td>stock</td><td>node1-2</td><td>8.01 s</td><td>fail (by 8 ms)</td><td>0.673</td><td><b>0</b></td></tr>
+<tr><td>v0-stock-r3</td><td>stock</td><td>node0-3</td><td>6.79 s</td><td>pass (by 1.21 s)</td><td>0.672</td><td><b>3.0</b></td></tr>
+<tr><td>v1-writeback</td><td>write_back</td><td>ondem-3</td><td>7.53 s</td><td>pass (by 466 ms)</td><td>0.736</td><td>3.0</td></tr>
 </table>
-<p><b>Three identical stock runs give λ=3 p99 TTFT of 14.06 s, 8.01 s, and 6.79 s — a 2.07× spread
-straddling the 8 s SLO — so stock's own goodput@SLO is {0, 0, 3}. The metric flips on nothing but run-to-run
-noise.</b> The write-back configuration's p99 (7.53 s) falls squarely inside this stock band; its "goodput
-3" is indistinguishable from stock. Decisively, <b>stock-r3 (6.79 s, goodput 3) beats write-back (7.53 s)
-despite a <i>lower</i> hit rate (0.672 vs 0.736)</b> — so the higher hit did not cause the lower tail, and
-write-back's apparent 0→3 gain is not a write-back effect at all. Single-run A/B of KV-cache configurations
-on this benchmark is therefore void.</p>
+<p><b>Stock's own λ=3 p99 TTFT spans 6.79–14.06 s (2.07×), straddling the 8 s SLO, so stock's goodput@SLO
+is {0, 0, 3} — the binary metric is decided by noise near the deadline.</b> This variance has two sources,
+<i>both</i> invisible to a single run: (i) cold-start metastability (§3.2), and (ii) cluster node
+heterogeneity — the three stock runs are on three different nodes, and same-workload p99 varies ~±45%
+across nodes on this cluster. We are careful not to over-read the cross-config comparison: the only
+same-node pair (v0-stock vs write-back, both on ondem-3) is n=1 each, and there write-back's higher hit
+coincides with a lower p99 (14.06→7.53 s) — <i>consistent</i> with write-back helping, but indistinguishable
+from a single coin-flip draw. <b>The honest conclusion is not "write-back doesn't help" but "a single run
+cannot tell": with stock alone spanning both sides of the SLO, no single-run A/B on goodput@SLO is
+attributable to the mechanism.</b> Write-back's <i>stable</i> effects — hit +6 pp, peak throughput +18%
+(§5.1) — do not flip and are real; its goodput@SLO effect is unresolved and would need same-node,
+median-of-k replicates (§7).</p>
 <figure>
 <svg width="520" height="240" viewBox="0 0 520 240" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="11">
   <line x1="70" y1="200" x2="470" y2="200" stroke="#333"/><line x1="70" y1="200" x2="70" y2="20" stroke="#333"/>
@@ -257,11 +264,12 @@ on this benchmark is therefore void.</p>
   <circle cx="380" cy="120" r="5" fill="#3a7a3a"/><text x="300" y="120" text-anchor="end" fill="#3a7a3a">write_back 7.5s (pass)  </text>
 </svg>
 <figcaption><b>Figure (coin-flip).</b> λ=3 p99 TTFT across four runs. <b>Three
-<span style="color:#7a2020">identical stock</span> runs land at 14.1 s, 8.0 s, and 6.8 s</b> — a 2.07×
-spread straddling the 8 s SLO, so stock's own goodput@SLO is {0, 0, 3}. The
-<span style="color:#3a7a3a">write-back</span> run (7.5 s) falls inside the stock band; stock-r3 (6.8 s)
-even beats it at lower hit. The binary goodput@SLO is decided by which side of the deadline the metastable
-p99 happens to land on — noise, not the cache.</figcaption>
+<span style="color:#7a2020">stock</span> runs land at 14.1 s, 8.0 s, and 6.8 s</b> — a 2.07× spread
+straddling the 8 s SLO, so stock's own goodput@SLO is {0, 0, 3}. The
+<span style="color:#3a7a3a">write-back</span> run (7.5 s) falls inside the stock band. The binary
+goodput@SLO is decided by which side of the deadline the p99 happens to land on — dominated by variance
+(cold-start metastability + node heterogeneity; the stock runs are on three different nodes), not resolvable
+by a single run.</figcaption>
 </figure>
 
 <h3>3.2 Why the tail is a coin-flip: cold-start metastability</h3>
@@ -371,8 +379,8 @@ transfer/compute-overlap direction is empirically dead here.</i></li>
 warm follow-ups already resolve near-instantly. Raising hit rate cannot help requests that are already
 sub-second, and it cannot help the cold turn-0 documents that <i>are</i> the p99 (they are unique and
 seen for the first time). The write-back control confirms this: it raises hit +6 pp (0.67→0.73) and peak
-throughput +18%, yet its λ=3 p99 (7.5 s) is statistically indistinguishable from a stock replicate (8.0 s)
-— the higher hit lands on already-fast follow-ups, not the cold-prefill tail (§3.1).</li>
+throughput +18%, yet its λ=3 p99 (7.5 s) falls inside the stock band (6.8–14.1 s) — the higher hit lands on
+already-fast follow-ups, and its goodput@SLO effect is not resolvable above the variance (§3.1).</li>
 <li><b>The tail is heavy-tailed cold prefill + serialization.</b> Calibrated prefill rate P ≈ 20.5 K
 tok/s. The measured p99 is <b>6–8× above</b> the perfect-cache P-K prediction (λ=3: 2.4 s predicted vs
 14.1 s measured), and the gap grows with λ — consistent with heavy-tailed cold turn-0 documents
@@ -433,10 +441,14 @@ heavy-tailed cold-prefill serving workload, and to separate the cache's stable g
 
 <h2>7 Limitations &amp; threats to validity</h2>
 <ul>
-<li><b>Replicate count.</b> The coin-flip is established at n=2–3 stock runs (λ=3 p99 14.1 s vs 8.0 s [vs
-r3, in progress]); this is enough to show the metric straddles the SLO, but a full variance estimate
-(median-of-k, k≥5, per rate) is future work. Our claim is precisely that the metric is <i>too noisy</i>
-for single-run A/B — not a point estimate of goodput.</li>
+<li><b>Replicate count and the node confound.</b> The three stock runs span λ=3 p99 6.8–14.1 s, straddling
+the SLO — enough to show single-run goodput@SLO is unreliable — but they ran on <i>three different cluster
+nodes</i>, so the spread mixes two variance sources: cold-start metastability and node heterogeneity
+(~±45% p99). We therefore do not attribute the spread purely to run-to-run variance, and we do not claim
+write-back's goodput effect is zero — only that a single run cannot resolve it. The clean experiment
+(future work, compute-permitting) is <b>same-node, median-of-k</b> replicates of stock and of each config,
+which isolates run-variance and would give an attributable goodput estimate. Our claim is exactly that this
+is <i>required</i>: single-run, cross-node A/B on goodput@SLO — the common practice — is void.</li>
 <li><b>Per-rate cache flush.</b> The harness flushes the cache before each rate, compounding the
 metastability by cold-starting every measured point (queue ramps to 90–184 before draining, §5.3). This
 inflates the absolute p99; a true warm-steady-state eval would lower it and likely narrow the coin-flip.

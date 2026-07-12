@@ -85,7 +85,9 @@ dataset with the model tokenizer:</p>
 <li>Within-conversation reuse ceiling = 80.6% of prefill work; top-10% of convs hold 64.6% of reuse value.</li>
 </ul>
 </div>
+<p><img src="fig2_turns.svg" alt="turns-per-conversation histogram" style="max-width:100%"></p>
 <h3>2.2 The irreducible cold-context tail</h3>
+<p><img src="fig1_coldtail.svg" alt="CCDF of per-turn uncached prefill vs 8s-SLO budgets" style="max-width:100%"></p>
 <p>Under <i>perfect</i> within-conversation caching, turn-0 prefill is the whole (cold) document while later
 turns need only the new question. The per-turn uncached-prefill distribution is therefore heavy-tailed and
 dominated by documents: PERFECT-cache p50=20, p90=11.4K, <b>p99=39.2K, max=193K tokens</b>; and

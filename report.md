@@ -385,3 +385,18 @@ COMPUTE pipeline (CUDA graphs/JIT) not the CACHE — every measured rate still b
 this (off-contract). Abstract reword pending: "defeating the eval's intended warm-steady-state design" →
 purely-factual "the load generator issues /flush_cache per invocation, so each measured rate is
 cold-started" (fold into the one-shot warmdiag integration edit).
+
+### warmdiag COMPLETE + integrated (2026-07-12 ~15:05Z)
+Full no-flush curve (same node ondem-3): λ3 9.12s / λ5 13.91s / λ7 20.87s / λ10 28.06s, all hit ~0.67-0.70,
+**goodput@SLO = 0**. vs v0-stock (per-rate flush): flush inflates p99 by 33-45% at EVERY rate (14.06→9.12,
+25.45→13.91, 33.31→20.87, 42.01→28.06), confirming the cold-start ramp is a large real tail component — BUT
+every warm p99 still > 8s SLO ⇒ warm steady-state NARROWS the coin-flip band, does NOT remove the failure;
+the structural cold-turn-0 prefill floor is the binding ceiling, not the flush. Integrated into paper §4
+(result), §5.3 (node-controlled flush table), §7 bullet-2 (tested: narrows not removes) + abstract flush
+phrasing bulletproofed (factual, matches program.md "flush between rates" contract). Committed 60c7c18f6,
+tags balanced, Δ% verified vs raw. W&B: warmdiag stays OFF the goodput evolution curve (off-contract
+diagnostic, not a frozen-eval mechanism — would be misleading as a curve point).
+medk (19516): dependency satisfied (warmdiag COMPLETED), now PENDING Reason=Resources — all certified nodes
+busy (node-0 wilkes, ondem-3 sibling eval, 3 held-pool). Kept as fair exclusive sbatch (not overlapped into
+shared pool → no 3h monopoly); slurm-durable, runs when a node frees. Last paper piece = medk K=5 same-node
+λ=3 coin-flip → §3.1/§3.2 + §7 bullet-1.

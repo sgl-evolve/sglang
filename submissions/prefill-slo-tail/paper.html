@@ -214,15 +214,31 @@ systematically beat LRU on this workload — a claim we test directly with negat
 </p>
 
 <h2>3 The impossibility result</h2>
-<div class="key"><b>Claim (bounded impossibility).</b> On an open-loop, SLO-constrained serving benchmark
-whose prefill service time is heavy-tailed and dominated by <i>unique, first-seen</i> documents (the
-Mooncake-style ShareGPT+LEval+LooGLE mix), <b>no lossless KV-cache mechanism — of hit rate, eviction,
-placement, or L1↔L2 movement — can raise goodput@SLO above its cache-oblivious value.</b> The cache
-improves the mean/median and system stability (utilization ρ), but goodput@SLO is a p99 quantity set by
-the cold heavy-tailed prefill process, which is cache-immune.</div>
-<p><b>Argument.</b> The p99 first-token latency at the operating point is <code>≈ K·t</code> (§2.4): K
-heavy cold turn-0 documents queued, each of mean prefill time t, serialized by chunked prefill. A lossless
-KV mechanism can only change goodput@SLO by reducing this p99. It cannot:</p>
+<div class="key"><b>Claim (bounded).</b> On the frozen v0.31 benchmark (open-loop rate sweep, per-rate cache
+flush, heavy-tailed unique-document workload), <b>goodput@SLO = 0 for stock sglang and for every lossless
+KV-cache mechanism — of hit rate, eviction, placement, or L1↔L2 movement — none raises it.</b> The metric
+is pinned at zero by three lossless-irreducible or cache-oblivious factors (below); the cache's genuine
+value is in the mean/median (p50 flat ~1 s) and stability (ρ&lt;1), which goodput@SLO does not measure.
+This is a statement about the metric on this benchmark, not that caching is useless.</div>
+<p><b>The three pinning factors.</b></p>
+<ol type="A">
+<li><b>Per-rate flush cold-start (dominant).</b> The harness clears the cache before each rate, so every
+rate begins cold; the queue ramps to depth 90–184 before draining (§5.3). A KV mechanism cannot un-flush a
+cache the harness clears, and cannot speed the cold prefills the ramp is made of. Our queueing model (§2.2)
+shows that <i>without</i> the flush a perfect warm cache would reach goodput ≈ 3–5 — so the flush, not the
+cache, is what forces 0. This is a benchmark-methodology finding: goodput@SLO here measures cold-start, not
+cache quality.</li>
+<li><b>Heavy-tailed unique cold turn-0 prefills (structural floor).</b> Even warm, the p99 ≈ K·t (§2.4): K
+serialized cold turn-0 documents (65 K–192 K tokens), which are unique and first-seen and must be prefilled
+losslessly. This holds the warm tail near the 8 s SLO, leaving near-zero headroom (model: warm goodput ≈ 3,
+i.e. only λ=3 marginally passes).</li>
+<li><b>Prefill-throughput knee at ~3.5 req/s.</b> Achieved throughput saturates at ~4.2 req/s (§5.1), so
+λ≥5 is beyond the knee and its tail explodes from queueing regardless of warmth. Raising the knee needs
+less prefill work = higher hit rate, which is capacity-bound and, per §2, cannot alone bring λ≥5 under the
+SLO.</li>
+</ol>
+<p><b>Why no lossless KV lever moves it.</b> Given (A)-(C), a lossless mechanism could only help by
+reducing the warm p99 ≈ K·t. It cannot:</p>
 <ol>
 <li><b>Hit rate / residency cannot reduce K or t.</b> Turn-0 documents are unique and first-seen within a
 rate; they are cold by definition and must be prefilled at least once (losslessly). Raising hit rate helps

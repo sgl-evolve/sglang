@@ -25,15 +25,16 @@
 <h1>What Bounds Goodput@SLO in a Two-Tier HiCache under Concurrent Multi-Turn Long-Context Serving?</h1>
 <div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>DRAFT v0.1</b></div>
 
-<p class="todo">DRAFT — the p99 tail is dominated by AVOIDABLE recompute: a conversation-id-aware (chash) pressured
-λ=3 run shows <b>58% of prefill work and 63% of the ≥40K-tok SLO-breaching tail is evicted proven multi-turn
-convs</b> (vs 37% irreducible cold docs). So the bottleneck is cache-addressable <i>in principle</i>. But the
-textbook fix backfires: <b>SLRU (protect proven) HURT</b> (hit 0.68→0.51, EVICTED 58→73% work) — protecting
-hit_count≥1 evicts turn-0 <i>entry points</i> first, destroying the reuse it meant to protect. This motivates
-CAR (continuation-aware residency: a completion-grace probation for turn-0s). Whether CAR actually moves
-goodput@SLO is being measured (car90, job 19480, same-node). NOTE: an earlier match-only classifier wrongly
-labeled evicted turns as cold docs (retracted); the chash correction was decisive. Stable: two-bound model
-(§4), workload (§2), engine analysis (§3), tail decomposition (§5.2), SLRU-backfire (§5.3).</p>
+<p class="todo">DRAFT — thesis: the p99 tail is AVOIDABLE recompute (chash: <b>63% of the ≥40K-tok tail is evicted
+proven multi-turn convs</b>, 37% cold docs) and the real-time live set <b>fits</b> (peak 9.3M = 0.87× cache) →
+liveness-bound, Belady≈0 → cache-addressable <i>offline</i>. BUT it is <b>online-UNRECOVERABLE</b>: liveness is
+unobservable at turn-0 (live conv vs single-turn whale both hit_count 0) and the turn-0→turn-1 gap is minutes
+(p50 460s), so grace-protection is trapped (long=swamp cache w/ whales, short=degrade to LRU). Both horns shown:
+<b>SLRU backfires</b> (hit 0.68→0.51, evict 58→73%); <b>CAR</b> (completion-grace) can't win at any feasible
+grace (car90 job 19480 same-node measuring; analysis predicts ≈LRU). = rigorous BOUNDED-IMPOSSIBILITY for causal
+residency, distinct from textbook "eviction≈Belady". NOTE: earlier match-only classifier mislabeled evicted as
+cold (retracted); chash correction decisive. Stable: §4.1 two-bound+P, §4.2 online-barrier, §5.2 decomposition,
+§5.3 SLRU-backfire.</p>
 
 <div class="abstract">
 <b>Abstract.</b> Hierarchical KV caching (HiCache) tiers attention KV across GPU HBM (L1) and host DRAM (L2).
@@ -46,14 +47,17 @@ of a warmup-corrected pressured rate sweep — using a conversation-id trace to 
 documents (irreducible) from later turns whose accumulated prefix was <i>evicted</i> mid-conversation
 (avoidable recompute) — shows that <b>58% of pressured prefill work and 63% of the SLO-breaching ≥40K-token
 tail is avoidable recompute from evicted proven multi-turn conversations</b> (the remaining 37% of the tail
-being irreducible cold documents). So the bottleneck is cache-addressable <i>in principle</i>. Whether a
-<i>policy</i> captures it is a separate question, and the textbook answer is negative: <b>SLRU (protect proven
-conversations) is counterproductive</b> — it evicts hit_count=0 turn-0s first, but turn-0s are the entry point
-to multi-turn reuse, so protecting the proven destroys the not-yet-proven that become proven (hit 0.68→0.51,
-evicted work 58→73%). This motivates <b>CAR (continuation-aware residency)</b>, which adds a completion-grace
-probation that protects a turn-0 across its think-gap to capture the turn-0→turn-1 first reuse SLRU discards.
-<span class="todo">Whether CAR moves goodput@SLO (and by how much, against the 37% cold-document floor and
-minute-scale think-gaps under 1.89× oversubscription) is being measured (same-node A/B).</span> A
+being irreducible cold documents). So the bottleneck is cache-addressable <i>in principle</i> — and indeed the
+real-time live working set <i>fits</i> (peak concurrent live KV 9.3M = 0.87× cache), so an offline (Belady)
+policy would recompute ≈0: it is liveness-bound, not capacity-bound. <b>Yet no causal policy can capture it</b>,
+for a specific and quantified reason: liveness is <i>unobservable at the decision point</i> — a conversation
+that will continue (61% do) and a single-turn "whale" that will not (39%) are both unproven (hit_count 0) at
+turn-0 — while the turn-0→turn-1 reuse gap is minutes (p50 460 s). Any completion-grace long enough to bridge
+the gap also pins every dead whale and swamps the cache; any grace short enough to fit degrades to LRU. We show
+both horns: the textbook <b>SLRU backfires</b> (evicting unproven turn-0s: hit 0.68→0.51, evicted work 58→73%),
+and our <b>CAR (continuation-aware residency)</b> completion-grace policy cannot win at any capacity-feasible
+grace. <span class="todo">CAR's grace-sweep goodput numbers are being measured (same-node A/B); the analysis
+predicts ≈LRU.</span> A
 methodological finding: a match-fraction classifier conflates evicted turns with cold documents and hides
 this headroom entirely — conversation identity is required to see it.
 </div>
@@ -73,12 +77,17 @@ throughput bound from the concurrency-set tail bound, with the prefill throughpu
 turn-0 documents from avoidable mid-conversation evictions — showing a substantial fraction of pressured
 prefill work (and the SLO-breaching tail) is avoidable recompute from evicted proven multi-turn convs (§5).
 A methodological caution: a match-fraction classifier conflates the two and hides this entirely.</li>
-<li>A residency analysis showing the <b>textbook fix backfires</b>: SLRU (protect hit_count≥1 proven convs)
-makes the cache <i>worse</i> because it evicts turn-0 entry points first (§5.3) — a non-obvious negative that
-constrains the design space. We then propose <b>CAR</b>, a novel continuation-aware policy adding a
-completion-grace probation that protects a conversation's turn-0 across its think-gap (capturing the
-turn-0→turn-1 first reuse SLRU discards), with its goodput effect measured and bounded against the
-irreducible ≈37% cold-document floor (§5).</li>
+<li>A <b>quantified online-recoverability barrier</b> (§4.2): the avoidable tail is liveness-bound not
+capacity-bound (peak real-time live KV = 9.3M = 0.87× cache, so Belady recomputes ≈0), yet no <i>causal</i>
+policy can capture it, because liveness is unobservable at the decision point (a will-continue conversation and
+a single-turn whale are both hit_count 0 at turn-0) and the turn-0→turn-1 gap is minutes (p50 460 s) — so a
+completion grace long enough to bridge it swamps the cache with dead whales, and one short enough to fit
+degrades to LRU. This is a bounded impossibility distinct from the textbook "eviction ≈ Belady (dead under
+in-order reuse)": here reuse is out-of-order with full offline headroom, yet still online-unrecoverable.</li>
+<li>Empirical confirmation of both horns (§5.3): the textbook <b>SLRU backfires</b> (evicting unproven turn-0
+entry points makes the cache worse — hit 0.68→0.51), and our novel <b>CAR</b> (continuation-aware residency, a
+completion-grace probation on turn-0s) cannot win at any capacity-feasible grace — a same-node grace sweep
+against the ≈37% irreducible cold-document floor.</li>
 <li>Three engine findings that constrain the space: stock schedule-time matching already protects
 server-waiting prefixes; L2→L1 load-back is already per-layer overlapped; so the lever is residency of
 proven-conversation prefixes across think-gaps, not prefetch or waiting-set protection (§3).</li>
@@ -174,6 +183,32 @@ saturation, goodput would be cold-context-bound and no lossless cache policy cou
 and the open question (§5.3) is whether a causal residency policy captures it or, like SLRU, backfires. Note the irreducible <b>cold-document floor</b>: ≈94% of prefill work at low pressure is
 turn-0 documents; the cache only addresses the warm-miss remainder, which grows with pressure. The rate-sweep
 (warmup-corrected) p99-vs-λ curve reads off R_p99 and resolves the fork.</p>
+
+<h3>4.2 The online barrier: liveness is unobservable at the decision point</h3>
+<p>"Cache-addressable in principle" (Belady removes 100% of the avoidable recompute, §4 above) is an
+<i>offline</i> statement. Three trace-measured facts show why a <i>causal</i> policy cannot convert it to
+goodput — a barrier stronger and more specific than the textbook "eviction ≈ Belady":</p>
+<ul>
+<li><b>The live working set fits — it is not a capacity problem.</b> Summing, over wall-clock time, the prefix
+KV each conversation must hold from one turn until its next, the <b>peak concurrent live KV is 9.3–9.4M tokens
+= 0.87–0.88× the 10.7M cache</b> (902 conversations simultaneously mid-gap at the peak). An offline policy that
+held exactly the live set would recompute ≈0. So the headroom is real and capacity is sufficient.</li>
+<li><b>The reuse gap is minutes.</b> The turn-0→turn-1 gap (a long document's full response + user think-time +
+requeue) has <b>p50 = 460 s</b> (p75 559 s, p90 614 s). Holding a turn-0's KV until its first reuse therefore
+requires protecting it for ~8 minutes.</li>
+<li><b>Liveness is unobservable at turn-0.</b> A conversation that will continue (61% do) and a single-turn
+"whale" that never will (39% of conversations) are <i>both</i> unproven — hit_count = 0 — at turn-0 time. The
+only server-side continuation signal is turn-count, which is 0 for every turn-0. A causal policy cannot tell
+the live turn-0 from the dead whale at the moment it must decide.</li>
+</ul>
+<p><b>The grace trap.</b> These combine into an impossibility for a completion-grace policy: to catch the
+turn-0→turn-1 reuse, the grace must be ≥ ~460 s; but a 460 s grace also protects every dead whale for 460 s,
+accumulating (at λ=3) ~8M tokens of never-reused KV that, added to the 9.3M live set, far exceeds the 10.7M
+cache — swamping it and evicting live KV. A short grace covers almost none of the 460 s gaps (grace 90 s covers
+14%, grace 300 s covers 24%) and degrades to LRU. There is no grace that both covers the gap and fits capacity.
+Belady escapes the trap only by using the future to hold the 9.3M live set and drop the whales — knowledge no
+online policy has at the decision point. §5.3 confirms both horns empirically: SLRU (evict-unproven-first)
+sacrifices live turn-0s and backfires; CAR (completion-grace) cannot win at any capacity-feasible grace.</p>
 
 <h2>5 Evaluation <span class="todo">λ=3 same-node numbers landed (lru, slru); car + full curves + certified confirm pending (job 19480)</span></h2>
 <p>Frozen rate-sweep (λ∈{3,5,7,10}, warmup burst, NUMP=1553, conc 256) on a certified 8×H100 node; headline

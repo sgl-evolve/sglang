@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What Bounds Goodput@SLO in a Two-Tier HiCache under Concurrent Multi-Turn Long-Context Serving? — wilkes (DRAFT)</title>
+<style>
+  body{font:16px/1.55 Georgia,serif;max-width:52em;margin:2em auto;padding:0 1.2em;color:#161616}
+  h1{font-size:1.6em;line-height:1.25;margin-bottom:.1em}
+  h2{font-size:1.22em;margin-top:1.8em;border-bottom:1px solid #ddd;padding-bottom:.15em}
+  h3{font-size:1.05em;margin-top:1.2em}
+  .authors{color:#444;font-style:italic;margin:.2em 0 1em}
+  .abstract{background:#f7f7f7;border-left:3px solid #888;padding:.7em 1em;font-size:.97em}
+  code,pre{font-family:ui-monospace,Menlo,monospace}
+  pre{background:#f4f4f4;padding:.7em;overflow-x:auto;font-size:.85em;border-radius:4px}
+  table{border-collapse:collapse;margin:1em 0;font-size:.9em}
+  th,td{border:1px solid #ccc;padding:.3em .6em;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  .todo{background:#fff3cd;border:1px solid #ffe08a;padding:.3em .6em;border-radius:3px;font-size:.85em;color:#664d03}
+  .fig{background:#fafafa;border:1px solid #e2e2e2;padding:.6em;margin:1em 0;border-radius:4px}
+  small{color:#555}
+</style>
+</head>
+<body>
+
+<h1>What Bounds Goodput@SLO in a Two-Tier HiCache under Concurrent Multi-Turn Long-Context Serving?</h1>
+<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>DRAFT v0.1</b></div>
+
+<p class="todo">DRAFT — the empirical core (§5 Evaluation) awaits the frozen rate-sweep baseline (compute-gated).
+The central claim (a novel residency mechanism <i>vs.</i> a rigorously bounded negative result) is resolved
+by one measured quantity: the server's prefill throughput P (§4). Motivation (§2), related work (§6), and
+methodology are trace-driven and stable. Numbers marked ⟨measured⟩ are pending.</p>
+
+<div class="abstract">
+<b>Abstract.</b> Hierarchical KV caching (HiCache) tiers attention KV across GPU HBM (L1) and host DRAM (L2).
+We ask a sharp question for a realistic regime — a hybrid Mamba–Transformer MoE (Qwen3.5-122B) serving a
+Mooncake-style 1:1:1 mix of multi-turn conversations under a Poisson rate sweep, scored by
+<i>goodput@SLO</i> (max req/s with p99 TTFT ≤ 8 s) — whether the KV cache is the lever for goodput under
+load, and if so what mechanism captures it losslessly. Through trace-driven analysis of the real workload
+and the live sglang engine, we establish three facts that sharply constrain the design space: (1) the
+default scheduler already re-matches every server-side-waiting request each step, refreshing LRU recency, so
+LRU already protects prefixes of requests visible to the server; (2) L2→L1 load-back is already per-layer
+overlapped with compute, so speculative prefetch removes only a first-layer bubble; (3) under perfect
+within-conversation caching, <b>99% of the irreducible prefill work is cold turn-0 documents</b>, and the
+p99 of per-turn uncached prefill is large (39K tokens). Consequently, whether p99 TTFT can be reduced by any
+lossless cache mechanism is decided by the prefill throughput P relative to the SLO: if the long-context
+cold-prefill tail alone exceeds the SLO for &gt;1% of requests, goodput@SLO is <i>irreducibly</i> bound by
+context length, not cache efficiency. We ⟨report⟩ the measured regime and either (a) a residency mechanism
+that captures the ⟨~18.5M-token⟩ avoidable-recompute headroom, or (b) a bounded impossibility result with
+its regime of validity. Either way the contribution is a precise, generalizable characterization of when the
+cache is — and is not — the goodput lever in tiered LLM serving.
+</div>
+
+<h2>1 Introduction</h2>
+<p>Serving multi-turn LLM conversations is prefill-heavy: each turn's prompt is the accumulated history, so
+the KV of earlier turns is reused by later turns. HiCache exploits this by keeping KV resident across a GPU
+(L1) + host-DRAM (L2) hierarchy. The community wisdom is that <i>eviction policy is a dead end</i> (LRU ≈
+Belady under in-order reuse) and that capacity (exclusive tiering) is the lever. We test whether this holds
+in the <i>concurrent</i> regime, where reuse is out-of-order (a conversation's next turn is separated from
+its previous turn by a load-dependent think-gap) and where the headline metric is a tail latency SLO.</p>
+<p>Contributions (this draft; empirical core pending):</p>
+<ul>
+<li>A trace-driven decomposition of the goodput@SLO limiter into (i) irreducible cold-context prefill and
+(ii) avoidable warm-turn recompute, with a single measurable criterion (prefill throughput P vs. SLO)
+that decides which dominates (§4).</li>
+<li>Three engine-level findings that rule out the "obvious" cache mechanisms before any experiment: stock
+schedule-time matching already protects server-waiting prefixes; load-back is already per-layer overlapped;
+the residual reuse structure is only predictable by turn-count, i.e. by textbook frequency policies (§3).</li>
+<li>⟨Either⟩ a novel lossless residency mechanism that shifts the goodput curve, ⟨or⟩ a rigorously bounded
+negative result — decided by the measured regime (§5).</li>
+</ul>
+
+<h2>2 Motivation (trace-driven)</h2>
+<h3>2.1 Workload</h3>
+<p>The frozen evaluation serves the real-text Mooncake-style 1:1:1 mix (ShareGPT + LEval + LooGLE) via the
+loogle multi-turn loader: 1553 conversations, closed-loop <i>within</i> a conversation (turn N+1 is issued
+only after turn N's response completes) and open-loop Poisson <i>across</i> conversations. Tokenizing the
+dataset with the model tokenizer:</p>
+<div class="fig">
+<b>Workload facts (measured, sim/build_trace.py):</b>
+<ul style="margin:.3em 0">
+<li>7037 turns; avg 4.53 turns/conv (median 3, max 61); <b>39.0% of conversations are single-turn.</b></li>
+<li>Working set 20.2M tokens = <b>1.89× the L1+L2 capacity</b> (~10.7M) → genuine eviction pressure.</li>
+<li>turn-0 documents dominate conversation KV: p50 7.9K, p90 32.6K, <b>max 192.7K tokens.</b></li>
+<li>Continuation hazard: P(continue | reached turn 1)=0.61, but <b>0.75–0.89 for turns ≥2</b>.</li>
+<li>Within-conversation reuse ceiling = 80.6% of prefill work; top-10% of convs hold 64.6% of reuse value.</li>
+</ul>
+</div>
+<h3>2.2 The irreducible cold-context tail</h3>
+<p>Under <i>perfect</i> within-conversation caching, turn-0 prefill is the whole (cold) document while later
+turns need only the new question. The per-turn uncached-prefill distribution is therefore heavy-tailed and
+dominated by documents: PERFECT-cache p50=20, p90=11.4K, <b>p99=39.2K, max=193K tokens</b>; and
+<b>99.0% of all irreducible prefill work is turn-0 documents</b> (1.0% is later turns). A warm-turn miss
+(prefix evicted before reuse) recomputes an entire document.</p>
+
+<h2>3 Why the obvious cache mechanisms are already taken (engine analysis)</h2>
+<p>We read the live engine (UnifiedRadixCache + HybridCacheController + scheduler) for the frozen config
+(2-tier, page_first_direct/direct, write_through) and find:</p>
+<ul>
+<li><b>Stock already protects server-waiting prefixes.</b> Even under the default fcfs policy,
+<code>calc_priority</code> calls <code>match_prefix_for_req</code> for every waiting request each step
+(schedule_policy.py:179-185), and <code>match_prefix</code> bumps <code>last_access_time</code> for the
+matched node and ancestors (unified_radix_cache.py:976-980). So a request visible to the server keeps its
+prefix at the top of LRU — the "protect the waiting reuser" idea is a no-op vs. stock.</li>
+<li><b>Load-back is already per-layer overlapped.</b> <code>start_loading</code> transfers on a separate
+CUDA stream with a per-layer <code>producer_event.complete(i)</code>; the forward waits per-layer via
+<code>layer_transfer_counter.wait_until(layer_id)</code> (memory_pool.py:1526/1537). Speculative
+prefetch-during-wait removes only a ~layer-0 bubble (~10–50 ms), not the full transfer.</li>
+<li><b>The residual reuse structure is turn-count-predictable only.</b> The vulnerable window for a warm-turn
+miss is when a conversation's next turn is <i>client-side</i> (concurrency-semaphore-blocked), invisible to
+the server; the only server-side predictor of continuation is turn-count (=hit_count), i.e. LFU/SLRU/GDSF —
+textbook policies that prior work reports as neutral/harmful here.</li>
+</ul>
+
+<h2>4 The fork criterion (what the baseline decides)</h2>
+<p>Let P be the server's effective prefill throughput (tokens/s). A turn whose <i>perfect-cache</i> cold
+prefill exceeds the SLO (8 s · P tokens) cannot meet the SLO under any lossless cache policy. Applying the
+measured per-turn distribution:</p>
+<table>
+<tr><th>P (tok/s)</th><th>8 s budget (tok)</th><th>% turns irreducibly &gt; SLO</th><th>Implication</th></tr>
+<tr><td>4000</td><td>32,000</td><td>2.23%</td><td>p99 irreducible → bounded-negative</td></tr>
+<tr><td>8000</td><td>64,000</td><td>0.16%</td><td>cache can affect p99 → mechanism viable</td></tr>
+<tr><td>15000</td><td>120,000</td><td>0.03%</td><td>cache can affect p99 → mechanism viable</td></tr>
+</table>
+<p>If mechanism-viable, the target is the avoidable-recompute headroom: baseline uncached ⟨~37.8M⟩ tok
+(hit 0.62) vs. perfect ⟨~19.3M⟩ → <b>⟨~18.5M⟩ tok (~49% of baseline prefill)</b> of warm-turn recompute
+that a better-than-LRU finite-cache policy could remove. We measure P from the baseline (server-log input
+throughput + curve.csv p99-vs-λ + hit-rate-vs-λ) and resolve the fork.</p>
+
+<h2>5 Evaluation <span class="todo">PENDING BASELINE</span></h2>
+<p>⟨Frozen rate-sweep throughput–latency curve vs. baseline; goodput@SLO; ablations isolating the mechanism;
+n≥2 error bars; lossless verification; honest attribution (mechanism, not config flip / de-saturation).⟩</p>
+
+<h2>6 Related work</h2>
+<p><b>Tiered KV caching &amp; prefetch.</b> AttentionStore/CachedAttention (ATC'24) does hierarchical KV
+caching with <i>reactive</i> layer-wise prefetch; Strata (2508.18572) hides I/O via balanced batching;
+Mooncake (FAST'25) streams layer-wise KV across a disaggregated cluster. Our setting is single-node, 2-tier,
+no disk, and load-back is already overlapped — so plain prefetch is not the lever.
+<b>Reuse &amp; scheduling.</b> SGLang RadixAttention (prefix reuse + cache-aware scheduling), Preble,
+Parrot, Sarathi-Serve (chunked prefill / decode-maximal batching) — all present in or subsumed by the stock
+baseline. <b>Cost/predictive residency.</b> AsymCache, Predictive-Multi-Tier, Continuum (TTL-aware) price
+recompute or predict reuse; these overlap the turn-count-predictable residual we identify.
+<b>Disaggregated append-prefill.</b> PPD (2603.13358) colocates turn≥2 append-prefill with decode at
+<i>cluster</i> level — not available on a fixed single node. We position our contribution as either the
+first mechanism to capture the concurrent-regime out-of-order-reuse headroom on a single-node 2-tier cache,
+or a bounded negative delimiting when that headroom is real. <span class="todo">expand w/ full citations</span></p>
+
+<h2>7 Limitations &amp; when it fails</h2>
+<p>⟨pending⟩ The analysis assumes the frozen 2-tier no-disk budget and the loogle multi-turn workload;
+generality beyond this mix and to non-hybrid models is argued but not exhaustively measured.</p>
+
+<h2>8 Reproducibility</h2>
+<p>Branch <code>evolve/wilkes</code> (base <code>a334877e5</code>). Offline analysis: <code>sim/build_trace.py</code>,
+<code>sim/simulate.py</code>, <code>sim/prefill_tail.py</code>, <code>analyze.py</code>,
+<code>analyze_serverlog.py</code>. Eval via the frozen <code>eval-on-pool.sh &lt;name&gt; &lt;version&gt;</code>.
+⟨commit hashes + run dirs per number pending.⟩</p>
+
+</body>
+</html>

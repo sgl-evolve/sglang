@@ -128,9 +128,13 @@ measured per-turn distribution:</p>
 <tr><td>8000</td><td>64,000</td><td>0.16%</td><td>cache can affect p99 → mechanism viable</td></tr>
 <tr><td>15000</td><td>120,000</td><td>0.03%</td><td>cache can affect p99 → mechanism viable</td></tr>
 </table>
-<p>If mechanism-viable, the target is the avoidable-recompute headroom: baseline uncached ⟨~37.8M⟩ tok
-(hit 0.62) vs. perfect ⟨~19.3M⟩ → <b>⟨~18.5M⟩ tok (~49% of baseline prefill)</b> of warm-turn recompute
-that a better-than-LRU finite-cache policy could remove.</p>
+<p>This single-request criterion is a <i>lower bound</i> on when the tail is irreducible: it asks whether a
+document's prefill exceeds the SLO in isolation. Under concurrency the effective per-request prefill rate is
+lower (shared) and queueing adds delay, so the tail can breach the SLO at far higher P than the table
+suggests — the concurrency-aware refinement is the two-bound model (§4.1). The avoidable-recompute headroom a
+finite-cache policy could in principle remove is ⟨~18.5M⟩ tok (~49% of baseline prefill; baseline uncached
+⟨~37.8M⟩ vs. perfect ⟨~19.3M⟩) — but §5.2 shows this headroom is ≤~5% under the actual policy (stock already
+captures it) and, crucially, is <i>not in the p99 tail</i>.</p>
 <h3>4.1 Measured P and the two-bound model</h3>
 <p>A diagnostic boot (steady-state over 164 real prefill batches) measures <b>P ≈ 35,000 tok/s</b>. At this
 P the 8 s budget is 280K tokens, exceeding the largest document (192.7K) — so no <i>single</i> request's cold
@@ -155,9 +159,23 @@ goodput@SLO (max req/s with p99 TTFT ≤ 8 s). Lossless verified vs the no-cache
 <h3>5.1 The goodput@SLO curve &amp; the binding bound</h3>
 <p>⟨Table: per-λ req/s, p99 TTFT, hit-rate, host-util. Read off R_p99 (rate where p99 crosses 8 s) and
 compare to R_thru = P/avg_uncached (§4.1). Verdict: which bound binds ⇒ cache-affectable vs cold-doc-bound.⟩</p>
-<h3>5.2 Decomposing the p99 tail (per-request trace)</h3>
-<p>⟨From SGLANG_WILKES_TRACE (rid-dedup): fraction of p99-tail requests that are COLD turn-0 docs vs
-WARM-MISS; warm-miss% of prefill work vs λ = the avoidable, cache-addressable remainder.⟩</p>
+<h3>5.2 Decomposing the p99 tail (per-request trace) — the core result</h3>
+<p>Per-request tracing (rid-deduped) classifies each prefill by prefix-match fraction into COLD (turn-0
+document, no match), WARM-HIT (mostly cached), WARM-MISS (partial match, prefix evicted mid-conversation =
+avoidable recompute). Under full NUMP=1553 pressure (hit ≈0.55, avg-uncached ≈5980 tok):</p>
+<table>
+<tr><th>class</th><th>% of requests</th><th>% of uncached (prefill) work</th><th>in p99 tail?</th></tr>
+<tr><td>COLD (turn-0 doc)</td><td>≈49%</td><td><b>≈95%</b></td><td><b>≈100% of tail</b></td></tr>
+<tr><td>WARM-HIT</td><td>≈40%</td><td>≈0.6%</td><td>no</td></tr>
+<tr><td>WARM-MISS (avoidable)</td><td>≈11%</td><td><b>≈5%</b></td><td><b>≈0% of tail</b></td></tr>
+</table>
+<p>The p99-TTFT tail is ≈100% cold-document prefills; the avoidable warm-miss recompute is ≤~5% of work and
+never enters the tail (consistent under-pressure and at low pressure). Because eviction/residency/prefetch
+can only affect warm-miss recompute — cold turn-0 documents are computed exactly once and are never a cache
+hit — <b>no lossless cache mechanism can shrink the p99 tail.</b> Its only route to goodput is indirect: the
+≤~5% work it frees slightly relaxes prefill contention (raising R_thru), a bounded effect that stock's
+schedule-time matching (§3) already nearly captures. <span class="todo">screening on nodeset-0; certified +
+full-curve numbers pending.</span></p>
 <h3>5.3 Does eviction/residency move goodput? (policy sweep)</h3>
 <p>⟨Sweep --radix-eviction-policy {lru, lfu, slru} (+ candidate) on the fixed protocol. The protocol claims
 eviction is a dead end (LRU≈Belady) — validated or overturned here for the goodput@SLO-under-load metric.
@@ -175,13 +193,34 @@ Parrot, Sarathi-Serve (chunked prefill / decode-maximal batching) — all presen
 baseline. <b>Cost/predictive residency.</b> AsymCache, Predictive-Multi-Tier, Continuum (TTL-aware) price
 recompute or predict reuse; these overlap the turn-count-predictable residual we identify.
 <b>Disaggregated append-prefill.</b> PPD (2603.13358) colocates turn≥2 append-prefill with decode at
-<i>cluster</i> level — not available on a fixed single node. We position our contribution as either the
-first mechanism to capture the concurrent-regime out-of-order-reuse headroom on a single-node 2-tier cache,
-or a bounded negative delimiting when that headroom is real. <span class="todo">expand w/ full citations</span></p>
+<i>cluster</i> level — not available on a fixed single node. Prior work targets cache <i>efficiency</i> (hit
+rate, transfer latency); we instead delimit, for a tail-SLO long-context regime, the point at which cache
+efficiency stops mattering for goodput because the tail is set by irreducible cold-context prefill. This
+bounded-negative + two-bound model is complementary to the above mechanisms and reframes where effort pays
+off (prefill/context, not cache). <span class="todo">expand w/ full citations</span></p>
 
-<h2>7 Limitations &amp; when it fails</h2>
-<p>⟨pending⟩ The analysis assumes the frozen 2-tier no-disk budget and the loogle multi-turn workload;
-generality beyond this mix and to non-hybrid models is argued but not exhaustively measured.</p>
+<h2>7 Limitations &amp; when the negative flips</h2>
+<p>The bounded-negative has a precise regime of validity — it is a statement about <b>when</b> the cache
+stops mattering, and it fails (cache becomes the lever again) in the complementary regime:</p>
+<ul>
+<li><b>Short contexts.</b> If cold prefills fit under the SLO even under concurrency (small documents /
+short prompts), R_p99 rises above R_thru and the throughput bound (cache-improvable) binds — cache matters.
+Our negative is specific to <i>long-context</i> workloads whose cold prefill tail is concurrency-amplified
+past the SLO.</li>
+<li><b>Cross-request reuse.</b> Our mix has no cross-conversation document sharing (each turn-0 is unique),
+so cold docs are computed exactly once and are never cacheable. Workloads with shared documents / system
+prompts across requests (e.g. RAG over a shared corpus, few-shot prefixes) turn "cold" docs into cacheable
+prefixes — the cache would then shrink the tail. The negative is conditioned on low cross-request reuse.</li>
+<li><b>Lossless scope.</b> We restrict to lossless KV management. Lossy methods (KV compression, sparsity,
+partial-context attention) <i>can</i> shrink the cold-document tail and are the natural lever this negative
+points to — but they change the outputs and are out of scope here.</li>
+<li><b>Bounded, not zero.</b> Cache can still raise goodput by ≤~(warm-miss fraction ≈5%) indirectly via
+freeing prefill capacity; we claim the cache is not the <i>dominant</i> goodput lever, not that it is
+exactly irrelevant.</li>
+<li><b>Single model / workload; screening pending certification.</b> Results are on Qwen3.5-122B (hybrid
+Mamba) + the loogle 1:1:1 mix; the two-bound model generalizes but absolute numbers do not. The pressured
+decomposition is from a screening node; certified-node goodput numbers are pending.</li>
+</ul>
 
 <h2>8 Reproducibility</h2>
 <p>Branch <code>evolve/wilkes</code> (base <code>a334877e5</code>). Offline analysis: <code>sim/build_trace.py</code>,

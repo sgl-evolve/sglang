@@ -25,10 +25,10 @@
 <h1>What Bounds Goodput@SLO in a Two-Tier HiCache under Concurrent Multi-Turn Long-Context Serving?</h1>
 <div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>DRAFT v0.1</b></div>
 
-<p class="todo">DRAFT — the empirical core (§5 Evaluation) awaits the frozen rate-sweep baseline (compute-gated).
-The central claim (a novel residency mechanism <i>vs.</i> a rigorously bounded negative result) is resolved
-by one measured quantity: the server's prefill throughput P (§4). Motivation (§2), related work (§6), and
-methodology are trace-driven and stable. Numbers marked ⟨measured⟩ are pending.</p>
+<p class="todo">DRAFT — P measured (≈35K tok/s, §4.1); the central claim (mechanism vs bounded-negative) is
+resolved by the warmup-corrected rate-sweep reading off R_p99 vs R_thru (§5.1), running now. Motivation
+(§2), engine analysis (§3), the two-bound model (§4), related work (§6) are trace-driven and stable;
+§5 numbers pending the sweep.</p>
 
 <div class="abstract">
 <b>Abstract.</b> Hierarchical KV caching (HiCache) tiers attention KV across GPU HBM (L1) and host DRAM (L2).
@@ -41,13 +41,15 @@ default scheduler already re-matches every server-side-waiting request each step
 LRU already protects prefixes of requests visible to the server; (2) L2→L1 load-back is already per-layer
 overlapped with compute, so speculative prefetch removes only a first-layer bubble; (3) under perfect
 within-conversation caching, <b>99% of the irreducible prefill work is cold turn-0 documents</b>, and the
-p99 of per-turn uncached prefill is large (39K tokens). Consequently, whether p99 TTFT can be reduced by any
-lossless cache mechanism is decided by the prefill throughput P relative to the SLO: if the long-context
-cold-prefill tail alone exceeds the SLO for &gt;1% of requests, goodput@SLO is <i>irreducibly</i> bound by
-context length, not cache efficiency. We ⟨report⟩ the measured regime and either (a) a residency mechanism
-that captures the ⟨~18.5M-token⟩ avoidable-recompute headroom, or (b) a bounded impossibility result with
-its regime of validity. Either way the contribution is a precise, generalizable characterization of when the
-cache is — and is not — the goodput lever in tiered LLM serving.
+p99 of per-turn uncached prefill is large (39K tokens, max 193K). We measure the prefill throughput
+(P ≈ 35K tok/s) and cast goodput as <b>goodput@SLO = min(R_thru, R_p99)</b>: the cache reduces average
+uncached work and thus raises the throughput bound R_thru (up to ~2×), but it cannot shrink the largest
+cold-document prefills that set the tail bound R_p99. The contribution is a precise, generalizable
+characterization of when the cache is — and is not — the goodput lever: if the cold-document tail pushes p99
+past the SLO below throughput saturation (R_p99 &lt; R_thru), goodput is context-bound and no lossless cache
+mechanism helps; otherwise the ⟨~18.5M-token⟩ warm-miss recompute headroom is addressable. We ⟨report⟩ the
+measured regime (the warmup-corrected rate-sweep reads off R_p99) and the resulting verdict, with the
+per-request tail decomposition (cold-doc vs warm-miss) and an eviction-policy sweep as evidence.
 </div>
 
 <h2>1 Introduction</h2>

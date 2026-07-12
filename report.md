@@ -108,6 +108,12 @@ Warmup (cold, discarded): p99 48284ms. ⇒ **λ=3 already FAILS the 8s SLO → b
 CONFIRMS: per-rate flush → cold-start; p99 dominated by cache-immune cold long-doc prefills. Awaiting
 λ=5/7/10 + calibration. This is strong empirical support for the bounded-impossibility direction.
 
+CURVE (partial): λ3 req/s2.85 p50 1.02s **p99 14.1s** hit.677 | λ5 req/s3.67 p50 1.03s **p99 25.4s**
+hit.666. **KEY PATTERN: p50≈1s (excellent — warm follow-ups hit) but p99 catastrophic & rising
+(14→25s).** knee ~3.5 (λ5 achieved 3.67<5=saturated). ⇒ **goodput@SLO=0**; the cache moves the
+MEDIAN/mean but NOT the SLO tail (cold heavy-tailed turn-0 + saturation queue). This is the crisp
+impossibility: goodput@SLO is structurally 0, cache-immune. Awaiting λ7/10.
+
 ### v0-stock (config) — baseline rate sweep — QUEUED
 Hypothesis/change: stock 2-tier config swept λ∈{3,5,7,10} to get the real throughput–latency curve +
 goodput@SLO baseline + per-rate load-back/host-util diagnostics. This anchors all comparisons.

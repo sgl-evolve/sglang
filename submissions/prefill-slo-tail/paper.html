@@ -454,7 +454,13 @@ at all. <b>LMCache/CacheGen</b> compress and stream KV for cross-request reuse; 
 <b>Chunked-prefill scheduling</b> (Sarathi-Serve and related) splits long prefills into fixed chunks and
 mixes them with decode to avoid decode stalls; we take this mechanism as given and show its consequence
 for the tail — a single in-flight chunked request serializes concurrent heavy documents, giving the
-p99 ≈ K·t we exploit (§2.4). Our analytical frame is classical queueing theory (Kleinrock;
+p99 ≈ K·t we exploit (§2.4). <b>Metastable failures</b> (Bronson et al., HotOS'21; Huang et al., OSDI'22)
+name the phenomenon at the heart of our result: a system driven into a sustained bad state by a transient
+trigger and held there by a self-reinforcing feedback loop. The per-rate cold start is exactly such a
+trigger, and the prefill queue's depth→slot-occupancy→queue-growth loop (§5.3) is the sustaining feedback;
+what we add is that this metastability manifests as <i>run-to-run non-determinism of a benchmark metric</i>,
+not an outage — the deadline sits inside the metastable band, so goodput@SLO samples the feedback loop's
+coin toss. Our analytical frame is classical queueing theory (Kleinrock;
 Pollaczek–Khinchine; Harchol-Balter on tail-optimal scheduling), applied to the LLM prefill server; to our
 knowledge we are the first to show that the standard goodput@SLO metric is a metastable coin-flip on a
 heavy-tailed cold-prefill serving workload, and to separate the cache's stable gains from the noisy tail.

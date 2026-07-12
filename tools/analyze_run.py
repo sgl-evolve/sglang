@@ -11,7 +11,8 @@ import sys, os, re, csv, json
 SLO_MS = 8000.0
 
 def parse_metrics(path):
-    """Return dict: counters{name: total}, hist{name: {le: cumcount, '_sum':x, '_count':n}}, gauges{name:last}."""
+    """Return dict: counters{name: total}, hist{name: {le: cumcount, '_sum':x, '_count':n}}, gauges{name:last}.
+    Also splits sglang:cached_tokens_total by cache_source into counters cached_src_{device,host,storage}."""
     counters, hist, gauges = {}, {}, {}
     if not os.path.exists(path):
         return counters, hist, gauges
@@ -24,6 +25,11 @@ def parse_metrics(path):
         if not m:
             continue
         name, labels, val = m.group(1), m.group(2) or "", float(m.group(3))
+        if name == "sglang:cached_tokens_total":
+            src = re.search(r'cache_source="([^"]+)"', labels)
+            if src:
+                k = f"cached_src_{src.group(1)}"
+                counters[k] = counters.get(k, 0.0) + val
         if name.endswith("_bucket"):
             base = name[:-7]
             le = re.search(r'le="([^"]+)"', labels)
@@ -81,14 +87,14 @@ def main():
     prev_c = {}
     prev_hb = {}
     print("\n-- per-rate deltas (from cumulative /metrics) --")
-    print(f"{'rate':>4} {'prompt_tok':>12} {'cache_dev':>11} {'cache_host':>11} {'hit%':>6} {'loadback_tok':>13} {'evict_tok':>12} {'lb_mean_ms':>10} {'lb_p99_ms':>10}")
+    print(f"{'rate':>4} {'prompt_tok':>12} {'hit_dev':>11} {'hit_host':>11} {'hit%':>6} {'loadback_tok':>13} {'evict_tok':>12} {'lb_mean_ms':>10} {'lb_p99_ms':>10}")
     for R in rates:
         c, h, g = parse_metrics(os.path.join(d, f"metrics_r{R}.txt"))
         def dc(name):
             return c.get(name, 0.0) - prev_c.get(name, 0.0)
         prm = dc("sglang:prompt_tokens_total")
-        dev = dc("sglang:cached_tokens_total") if "sglang:cached_tokens_total" in c else 0.0
-        # cached by source needs per-label; fall back to overall
+        devhit = dc("cached_src_device"); hosthit = dc("cached_src_host")
+        dev = devhit + hosthit + dc("cached_src_storage")  # total cached (hit numerator)
         lb = dc("sglang:load_back_tokens_total")
         ev = dc("sglang:eviction_tokens_total")
         # load-back duration histogram delta
@@ -101,7 +107,7 @@ def main():
         lb_p99 = hist_pct(dbuckets, dcount, 0.99)
         lb_p99 = (lb_p99 * 1000) if lb_p99 else 0.0
         hitpct = 100.0 * (dev / prm) if prm else 0.0
-        print(f"{R:>4} {prm:>12.0f} {dev:>11.0f} {'':>11} {hitpct:>6.1f} {lb:>13.0f} {ev:>12.0f} {lb_mean:>10.2f} {lb_p99:>10.1f}")
+        print(f"{R:>4} {prm:>12.0f} {devhit:>11.0f} {hosthit:>11.0f} {hitpct:>6.1f} {lb:>13.0f} {ev:>12.0f} {lb_mean:>10.2f} {lb_p99:>10.1f}")
         prev_c = dict(c)
         prev_hb = dict(buckets); prev_hb["_count"] = lbh.get("_count", 0.0); prev_hb["_sum"] = lbh.get("_sum", 0.0)
 

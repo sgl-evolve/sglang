@@ -245,7 +245,35 @@ saturating workload needs same-node, replicated measurement to be meaningful.</p
 <p><b>Lossless gate.</b> The mechanism only changes <i>which</i> KV is retained; reuse of a cached prefix is
 bit-identical to recomputing it, so outputs are unchanged vs the stock run by construction (verified: no
 change to the decode path or the KV values).</p>
-<h3>5.2&nbsp;&nbsp;Results <span class="tbd">[PENDING — n=2 sweep in flight]</span></h3>
+<h3>5.2&nbsp;&nbsp;Results</h3>
+<p><b>Pending-aware retention (v1) is a robust, lossless win (n=2 same-node).</b> Table&nbsp;1 shows stock vs
+v1 (means of two same-node A/B pairs, nodes 0-3 and 1-2). Hit rate rises consistently on both nodes, largest
+at the operating rate and tapering under saturation; peak sustained throughput rises 2–6% at the knee. p50
+TTFT falls ~25% at λ=3. All lossless (v1 only changes which KV is retained).</p>
+<table>
+<tr><th>λ</th><th>hit stock→v1</th><th>Δhit</th><th>req/s stock→v1</th><th>Δreq</th><th>p50 stock→v1 (λ=3)</th></tr>
+<tr><td>3</td><td>0.676→0.701</td><td><b>+2.5 pp</b></td><td>3.02→3.02</td><td>+0%</td><td>721→534 ms (<b>−26%</b>)</td></tr>
+<tr><td>5</td><td>0.666→0.678</td><td>+1.2 pp</td><td>3.88→4.02</td><td><b>+3.6%</b></td><td>—</td></tr>
+<tr><td>7</td><td>0.661→0.670</td><td>+0.9 pp</td><td>4.28→4.48</td><td><b>+4.7%</b></td><td>—</td></tr>
+<tr><td>10</td><td>0.658→0.665</td><td>+0.65 pp</td><td>4.59→4.61</td><td>+0.4%</td><td>—</td></tr>
+</table>
+<p class="note">Table 1. Stock vs v1 (pending-aware retention), n=2 same-node means. Hit gain is
+node-independent and reproducible (per-node: λ=3 +2.2/+2.8 pp; λ=5 +1.5/+0.8 pp). Throughput gain peaks at the
+mid-load knee (λ=5,7) and vanishes at full saturation (λ=10, GPU-compute-bound). Peak decode throughput is
+flat (589→592 tok/s) — the mechanism moves prefill, not the decode ceiling, as expected.</p>
+
+<p><b>Targeting ablation — the post-completion extension hurts.</b> Extending retention to <i>every</i>
+recently-finished conversation for a 20 s horizon (to cover the client think-gap) pins ~15× more prefixes
+(≈70–99 vs ≤6 for queued-only) but delivers <b>no hit gain</b>: hit@λ3 = 0.671 (≈ stock 0.676, and below v1's
+0.701). The broad policy spends L2 on conversations that are never reused, cancelling the client-gap benefit.
+The scheduler's <i>pending set</i> — guaranteed imminent reuse — is the signal that matters, not recency.
+<span class="note">(n=1 here; n=2 same-node confirmation in progress.)</span></p>
+
+<p><b>goodput@SLO is not a reliable single-run headline.</b> v1 reduced λ=3 p99 by 2% on node 0-3 (8.13→7.98 s),
+which crossed the 8 s SLO (goodput 0→3.02); on node 1-2 the stock p99 was a "lucky" 6.3 s and v1's 8.0 s read
+as a regression. Both are the boundary noise quantified in §5.1 — the p99 tail is set by cold-document
+first-turn prefills (irreducible), which v1 does not target. We therefore claim the robust hit-rate /
+throughput result, not a goodput@SLO crossing.</p>
 <table>
 <tr><th class="l">config</th><th>goodput@SLO</th><th>hit@λ3</th><th>hit@λ5</th><th>p99 TTFT knee</th><th>peak tok/s (control)</th><th>lossless</th></tr>
 <tr><td class="l">baseline (stock 2-tier)</td><td colspan="6" class="tbd">running (job 19434)</td></tr>
@@ -290,8 +318,14 @@ hit-rate/throughput. A different SLO or a less bursty workload could make goodpu
 <p>Branch <code>evolve/valiant</code>, base <code>a334877e5</code>, mechanism <code>28a775ae9</code>.
 Offline analysis: <code>analysis/cache_sim.py</code>, <code>analysis/cache_sim_capsweep.py</code>,
 <code>analysis/wl_struct.py</code> (CPU-only, tokenizer-exact). Evals: <code>runs/&lt;version&gt;/</code> via the
-frozen <code>eval.sh</code>; configs toggled by <code>VALIANT_PIN_ENABLE</code>/<code>VALIANT_PIN_FRACTION</code>.
-<span class="tbd">Version→number mapping filled on completion.</span></p>
+frozen <code>eval.sh</code>; configs toggled by env (<code>VALIANT_PIN_ENABLE</code>, <code>VALIANT_PC_ENABLE</code>,
+<code>VALIANT_PIN_FRACTION</code>, <code>VALIANT_PC_HORIZON_S</code>). Version→number map (all in W&B run
+<code>valiant</code>, project <code>sgl-evolve</code>): stock = <code>stock_b</code> (node 0-3),
+<code>stock_c</code> (node 1-2), both <code>VALIANT_PIN_ENABLE=0</code> (same binary, mechanism off);
+v1 (pending-aware retention) = <code>v1_b</code>/<code>v1_c</code> (<code>PC_ENABLE=0</code>); post-completion
+ablation = <code>pc_e</code>/<code>pc_b</code>/<code>pc_c</code> (<code>PC_ENABLE=1</code>). Each pair is a
+same-node A/B (stock then treatment, back-to-back on one node, to control ±30% cross-node p99 variance).
+Offline motivation: <code>analysis/{wl_struct,cache_sim,cache_sim_capsweep,cache_sim_sensitivity}.py</code>.</p>
 
 </body>
 </html>

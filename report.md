@@ -118,6 +118,17 @@ From baseline hit=0.678 + structural perfect-cache (18.7M irreducible new tokens
   queues (chunked-prefill interleaves, so less total work speeds every request incl. the cold-doc tail)
   → the mechanism should pull p99 down materially, plausibly under the 8s SLO.
 
+## ★★★ KEY ABLATION — TARGETING matters (v1 targeted WINS; pc indiscriminate is a WASH)
+- **v1 (queued-pin, ~6 targeted pins @λ=3):** hit **+2.5pp** (n=2), p50 −25%, throughput +5-6% @high load.
+- **pc (post-completion, 99 indiscriminate pins @λ=3):** hit **0.671 ≈ stock (~0 gain!)** despite 16× more pins.
+- **Insight:** protecting ALL recently-finished convs for a horizon wastes L2 on terminal/non-reused convs,
+  offsetting the client-gap benefit → net wash. The winning signal is the SCHEDULER'S PENDING SET (guaranteed
+  imminent reuse), not broad recency-retention (which ≈ LRU). This is why the offline Bélády gap (+8pp) is NOT
+  fully server-realizable: reuse-TIMING (client think-gap) is unknowable server-side; only the server queue
+  gives a guaranteed-reuse signal (+2.5pp). A bounded-realizability result + a clean targeting ablation.
+- (pc_e @λ=3 also p99 6.5s but that's node-luck, not the mechanism — hit shows no gain.)
+- Checking whether pc helps at HIGH λ (short client-gap under backlog). pc_b/pc_c (n=2 same-node) will confirm.
+
 ## ★★★ FIRST EFFICACY RESULT — mechanism WORKS (v1_b vs stock_b, same node 0-3, λ=3)
 | metric | stock_b | v1_b (queued-pin) | Δ |
 |--------|---------|-------------------|---|

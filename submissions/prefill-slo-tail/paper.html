@@ -278,7 +278,8 @@ it cannot help — a designed-and-ruled-out negative rather than an untried one.
 256, 2-tier (L1 GPU + L2 768 GB host, <code>--hicache-size 96</code>), full decode, SLO p99 TTFT ≤ 8 s.
 Baseline is stock sglang (commit <code>a334877e5</code>; verified zero python churn).</p>
 
-<h3>5.1 The measured curve: goodput@SLO = 0, and why</h3>
+<h3>5.1 The curves and the SLO-straddling tail</h3>
+<p>A representative stock sweep (one draw; the λ=3 point is the coin-flip of §3.1):</p>
 <table>
 <tr><th>λ (req/s offered)</th><th>req/s achieved</th><th>out tok/s</th><th>TTFT p50</th><th>TTFT p99</th><th>hit</th></tr>
 <tr><td>3</td><td>2.85</td><td>365</td><td>1.02 s</td><td><b>14.1 s</b></td><td>0.677</td></tr>
@@ -286,6 +287,19 @@ Baseline is stock sglang (commit <code>a334877e5</code>; verified zero python ch
 <tr><td>7</td><td>4.07</td><td>521</td><td>1.02 s</td><td><b>33.3 s</b></td><td>0.660</td></tr>
 <tr><td>10</td><td>4.21</td><td>538</td><td>1.04 s</td><td><b>42.0 s</b></td><td>0.656</td></tr>
 </table>
+<p>The write-back configuration, same sweep — note the <i>stable</i> gains (hit, req/s, tok/s) at every
+rate, while the p99 tail behaves the same way (grows past the SLO for λ≥5; the λ=3 point is the coin-flip):</p>
+<table>
+<tr><th>λ</th><th>req/s achieved</th><th>out tok/s</th><th>TTFT p50</th><th>TTFT p99</th><th>hit</th></tr>
+<tr><td>3</td><td>3.02</td><td>387</td><td>0.53 s</td><td><b>7.5 s</b></td><td>0.736</td></tr>
+<tr><td>5</td><td>4.18</td><td>534</td><td>0.71 s</td><td><b>21.5 s</b></td><td>0.729</td></tr>
+<tr><td>7</td><td>4.83</td><td>618</td><td>0.79 s</td><td><b>32.0 s</b></td><td>0.727</td></tr>
+<tr><td>10</td><td>4.96</td><td>634</td><td>0.83 s</td><td><b>39.4 s</b></td><td>0.726</td></tr>
+</table>
+<p>write-back reliably improves hit (+6 pp), peak req/s (4.2→5.0, +18%), and peak tok/s (538→634, +18%) —
+the stable, ordered effects of a better cache. Its goodput@SLO reads 3.0 (λ=3 p99 7.5 s &lt; 8 s) vs stock
+0, but §3.1 shows that gap is the coin-flip: a stock replicate's λ=3 p99 is 8.0 s, within 500 ms of
+write-back's 7.5 s but on the failing side of the threshold.</p>
 <figure>
 <svg width="580" height="260" viewBox="0 0 580 260" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="11">
   <line x1="60" y1="210" x2="540" y2="210" stroke="#333"/><line x1="60" y1="210" x2="60" y2="20" stroke="#333"/>

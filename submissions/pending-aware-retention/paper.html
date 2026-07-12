@@ -68,7 +68,8 @@ KV cache reduces re-prefill of <i>already-seen</i> prefixes, so it moves the mea
 throughput but not the p99 tail, which is set by <i>first-turn</i> long-document prefills that are never
 reusable. Accordingly the protocol's headline goodput@SLO is <b>variance-dominated at the SLO boundary</b>
 (identical stock runs flip goodput 0↔3.0 across nodes) and is the wrong yardstick for a cache mechanism;
-hit-rate, mean TTFT, and moderate-load throughput — which all move robustly and losslessly — are the right ones.
+hit-rate, mean TTFT, and moderate-load throughput — not the boundary-variance-dominated goodput@SLO — are the
+right yardsticks (and even they move by variance-affected margins, so we report ranges, not point claims).
 </div>
 
 <h2>1&nbsp;&nbsp;Introduction</h2>

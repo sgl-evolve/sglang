@@ -217,6 +217,22 @@ timing). This resolves at the FIRST rate (~40 min into the run), not the full sw
   load) — but must beat textbook SLRU/GDSF/LFU novelly (open problem; may still be negative if only
   turn-count-predictable). Keep both live until P is known.
 
+## 12. Sim v2 (PS + stock-protection modeled, sim/simulate2.py) — residency headroom is real but textbook
+
+Congested processor-sharing sim that models stock's at-server protection (a conv with a req at-server keeps
+its prefix recency-refreshed, mirroring fcfs per-step match). Findings (robust to P sweep 15K/40K, λ 3/5/10):
+- **Stock protection cuts LRU recompute ~5.8M→~2M** vs v1 (no-protection) — confirms §3 empirically.
+- **Belady eliminates the residual ~2M entirely (OPT≈0 avoidable):** the workload has ABUNDANT dead KV
+  (39% single-turn whales + finished convs), so an oracle never evicts a live prefix — LRU's whole residual
+  cost is DEAD/LIVE confusion (keeps recently-finished dead whales, evicts older live multi-turn convs).
+- That headroom is exactly **dead-vs-live-distinguishable = hit_count/size-predictable = SLRU/GDSF**
+  (textbook; prior campaigns neutral on the single-point eval). ⇒ real headroom, NOT novel-capturable.
+- Whether reducing this warm-turn recompute moves **goodput@SLO** depends on §11's fork: if p99 is
+  cold-turn-0-tail-bound, warm-miss reduction helps p50/p90 but NOT p99/goodput (→ negative on goodput);
+  if p99 is cache-affectable, an SLRU/GDSF-style policy would move it (but that's a config/textbook win,
+  not a contribution). Either way, a NOVEL top-venue mechanism looks unlikely; the contribution is the
+  characterization + the P-vs-SLO criterion + (pending baseline) the measured verdict.
+
 ## Versions (test submissions)
 - **v0-baseline** (stock sweep, clean reference) — job 19437, QUEUED. [pending curve]
 

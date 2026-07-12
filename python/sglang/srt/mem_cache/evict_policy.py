@@ -47,16 +47,17 @@ class PriorityStrategy(EvictionStrategy):
 
 
 class CARStrategy(EvictionStrategy):
-    """Continuation-Aware Residency (wilkes). A conversation's prefix is protected from eviction for a
-    grace window (wall-seconds ~ the observed think-gap) after each request completes on it, so it
-    survives the idle gap until the next turn reuses it — capturing the turn-0->turn-1 first-reuse race
-    that hit-count policies (SLRU/LFU) miss (turn-0 has hit_count=0). Multi-turn convs are reused within
-    grace (re-pinned, kept); single-turn "whale" documents' grace expires and they are evicted. Soft:
-    within each segment falls back to LRU, so eviction always makes progress under full pressure.
+    """Continuation-Aware Residency (wilkes). Combines hit-count segmentation (protect PROVEN multi-turn
+    conversations indefinitely, like SLRU — handles long think-gaps) with a completion GRACE probation for
+    UNPROVEN turn-0s (protect a just-completed conversation for grace-s ~ the think-gap, so its FIRST reuse
+    turn-0->turn-1 lands before eviction — the race hit-count policies miss, since turn-0 has hit_count=0).
+    Single-turn "whale" documents complete once, are never reused, and their grace expires -> evicted first,
+    freeing capacity for proven convs. Soft: LRU within each segment, so eviction always makes progress.
 
     Priority (heap pops MIN = evict first):
-      segment 0 (evict first): grace expired / never completed -> ordered by last_access_time (LRU)
-      segment 1 (protect):     completed within grace           -> ordered by last_access_time (LRU)
+      segment 0 (evict first): unproven (hit_count==0) AND grace expired  -> LRU  [single-turn whales]
+      segment 1:               unproven (hit_count==0) but within grace   -> LRU  [turn-0 probation]
+      segment 2 (protect most):proven (hit_count>=1)                       -> LRU  [active multi-turn]
     """
 
     def __init__(self, grace_s: float = 30.0):
@@ -64,8 +65,13 @@ class CARStrategy(EvictionStrategy):
 
     def get_priority(self, node: TreeNode) -> Tuple[int, float]:
         import time as _t
-        protected = (_t.time() - getattr(node, "car_completed_at", 0.0)) <= self.grace_s
-        return (1 if protected else 0, node.last_access_time)
+        if getattr(node, "hit_count", 0) >= 1:
+            seg = 2
+        elif (_t.time() - getattr(node, "car_completed_at", 0.0)) <= self.grace_s:
+            seg = 1
+        else:
+            seg = 0
+        return (seg, node.last_access_time)
 
 
 class SLRUStrategy(EvictionStrategy):

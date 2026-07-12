@@ -48,7 +48,7 @@ mildly hurts. Not because continuation is unpredictable (it is 78% predictable f
 broad retention merely <i>displaces</i> a working set LRU already keeps well; the only exploitable failure of
 LRU is its eviction of the narrow, provably-at-risk set of continuations sitting in the scheduler's queue.
 (2) <b>The eviction gap is created by the scheduler, not the cache.</b> The LRU≈Bélády folklore holds only
-under prefix-aware scheduling; under the protocol's <i>FCFS</i> default LRU trails Bélády by 7–22&nbsp;pp,
+under prefix-aware scheduling; under the protocol's <i>FCFS</i> default LRU trails Bélády by 7–23&nbsp;pp,
 because FCFS scatters a conversation's turns in time. The reason our narrow signal works is a
 <b>recency-inversion</b> (Spearman ρ=+0.81 on the trace): among queued continuations the least-recently-used
 prefix is the soonest-reused, so LRU is <i>anti</i>-Bélády on exactly this set and pinning its victim is
@@ -87,7 +87,7 @@ an oracle policy would remove most of it — a large gap the LRU≈Bélády intu
 guaranteed-imminent-reuse signal). Realizable, non-oracle, capacity-bounded, lossless. It gives a
 <b>modest but robust</b> win: hit +2.5&nbsp;pp and +2–6% sustained throughput at moderate load (n=2, same-node).</li>
 <li>A <b>scheduler–cache coupling result</b> (the deeper insight): the LRU-vs-Bélády gap is set by the
-scheduler's pull order — large under the protocol's FCFS default (7–22&nbsp;pp), ≈0 under prefix-aware pull.
+scheduler's pull order — large under the protocol's FCFS default (7–23&nbsp;pp), ≈0 under prefix-aware pull.
 Its cause is a measured <b>recency-inversion</b> (ρ=+0.81): among queued continuations, the LRU victim is the
 soonest-reused. Pending-aware retention therefore delivers prefix-scheduling's cache locality without its
 reordering cost, and this single fact explains both why the narrow pending signal works and why broad
@@ -197,7 +197,7 @@ We report the offline figure as motivation that a gap exists, and the +2.5&nbsp;
 
 <h3>2.4&nbsp;&nbsp;The eviction gap is <i>created by the scheduler</i> (a recency-inversion)</h3>
 <p>Why does eviction <i>order</i> — which §2's premise (and the LRU≈Bélády folklore) calls a solved problem —
-suddenly leave 7–22&nbsp;pp on the table here? Because the gap is not a property of the cache alone; it is a
+suddenly leave 7–23&nbsp;pp on the table here? Because the gap is not a property of the cache alone; it is a
 property of the <b>scheduler×cache interaction</b>. We establish this with the same page-level simulator, now
 varying the request <i>pull order</i>, and confirm the mechanism with a direct measurement on the trace.
 (These are single-tier simulation results — illustrative absolute values; the real 2-tier system attenuates

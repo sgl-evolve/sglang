@@ -686,3 +686,11 @@ REFINED: size helps substantially, nearly bridges).
 ★ PAPER IMPACT: no longer a clean impossibility. Reframe to feature the SIZE SIGNAL as the key lever + whale-
 first as the best causal policy (hit +2.6pp, p99 −~15%, closes most of the gap). Let full whale sweep finish
 (curve), then replicate λ=3. This is the campaign's strongest lead — the observable signal I initially missed.
+
+## 40. PLAN: replicate whale λ=3 to resolve the borderline (9.29s vs 8s SLO)
+whale λ=3=9.29s is borderline (16% over SLO). Need n≥3 whale-λ3 + n≥3 lru-λ3 (same node) to resolve:
+does whale's p99 distribution cross 8s (goodput>0) while lru's doesn't? On MY node (nodeset-0) lru λ=3 is
+consistent ~10-11s (n=2), NOT the wild coin-flip a sibling cell reported on node 1-2 (I verify on my own node,
+don't rely on siblings). If whale reliably <8s → mechanism WIN (goodput 0→2.9); if whale ~9.3s consistently →
+best policy but doesn't cross → refined result (size helps, nearly bridges). Let whale full sweep finish, then
+λ=3 replicate batch. Reframe paper around the SIZE lever regardless.

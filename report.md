@@ -118,6 +118,19 @@ From baseline hit=0.678 + structural perfect-cache (18.7M irreducible new tokens
   queues (chunked-prefill interleaves, so less total work speeds every request incl. the cold-doc tail)
   → the mechanism should pull p99 down materially, plausibly under the 8s SLO.
 
+## ★★★ FIRST EFFICACY RESULT — mechanism WORKS (v1_b vs stock_b, same node 0-3, λ=3)
+| metric | stock_b | v1_b (queued-pin) | Δ |
+|--------|---------|-------------------|---|
+| hit | 0.6779 | **0.6998** | **+2.2pp** (≫ ±0.5pp node noise → real) |
+| p50 TTFT | 749ms | **538ms** | **−28%** |
+| p99 TTFT | 8128ms | 7978ms | −1.8% (tail = cold-doc prefill, irreducible) |
+| req/s | 3.02 | 3.02 | = |
+
+Queued-pinning recovers evicted-continuation reuse: **hit +2.2pp (robust), p50 −28%**, lossless by construction.
+Max ~6 concurrent pins at λ=3 (shallow queue) yet cumulative hit gain is real. p99 barely moves (cold-doc tail
+dominated) — so v1 helps median/throughput, not the p99 tail; **pc (post-completion) expected to add more via
+client-gap coverage**. Awaiting v1_b λ=5/7/10 (hit gain may grow with load), v1_c (n=2), pc_b/pc_c.
+
 ## ★★ COIN-FLIP FINDING (decisive for metric choice)
 Three **identical stock** runs (3 nodes), λ=3:
 | node | p99 | hit | goodput@SLO |

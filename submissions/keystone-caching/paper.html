@@ -45,7 +45,8 @@ Granite-4, Nemotron-H, and our Qwen3.5-122B) the element-ratio crossover L*<sub>
 (byte-L* adds a 1–4× dtype factor, still ≪ deployed contexts) — so the conclusion is family-wide, not a
 single-model artifact. We contribute the capacity law, a
 reuse-frontier diagnostic, a cross-scale 2×2 characterization, and a scoped impossibility corollary: no
-lossless, budget-respecting, non-capacity, non-classical cache mechanism can shift the curve (the only
+lossless, budget-respecting, non-capacity, non-classical cache mechanism can shift the curve on this
+model and workload, across the enumerated axes (the only
 remaining axes — capacity and classical eviction — are budget-frozen and charter-excluded respectively). We
 back the corollary with <b>measured nulls</b> in the claimed-empty region: host↔device utilization (&lt;10%)
 for the movement/overlap axes, and a direct prefix-aware (lpm) vs first-come scheduling test at the pressured
@@ -198,7 +199,7 @@ follow the correct GDN geometry — per <i>key</i>-head, S ∈ [n<sub>key</sub>,
 validated against our measured 18 MB/seq (16·128·128·36·2 B). A <i>lower</i> L* (e.g. Zamba2's 167, from its 13 wide-KV attention layers) means the recurrent tier binds only
 at even shorter contexts — it <i>strengthens</i>, not weakens, the conclusion. Since prefix caching is deployed
 precisely for long contexts (32k–256k ≫ L*), <b>the recurrent-state tier is never the capacity bottleneck for
-any current hybrid LLM</b> under host tiering — a family-wide, config-checkable prediction (see
+any mainstream hybrid LLM we examined</b> under host tiering — a family-wide, config-checkable prediction (see
 <code>tools/capacity_law.py</code>), not a single-model artifact. (We measure only Qwen3.5-122B directly; the
 other five are config-derived, and their byte-L* carries the 1–4× dtype factor.)</p>
 <figure><svg xmlns="http://www.w3.org/2000/svg" width="620" height="300" font-family="sans-serif" font-size="12">
@@ -286,6 +287,9 @@ sglang work (we measure +7.4 pp at intended scale, single-rate) — is statistic
 <tr><td>intended (1553) · write-through</td><td>0.650</td><td>3.67</td><td>0</td><td>—</td></tr>
 <tr><td>intended (1553) · exclusive tiering</td><td><b>0.724</b></td><td><b>4.13</b></td><td><b>0</b></td><td><b>+7.4 pp (+12.5% req/s)</b></td></tr>
 </table>
+<p style="font-size:0.85em;color:#555">Contract cells are two warm runs; the two intended-scale (1553) cells are single warm runs at λ5
+(off-contract diagnostics — see §7). Attribution rests on <i>hit rate</i>, which is stable to ±0.1 pp across our runs,
+not on the noise-fragile p99 tail (§5.4).</p>
 <p>The 2×2 is decisive. On the contract eval, exclusive tiering (the "+13 pp under pressure" mechanism) is
 <b>neutral</b> (Δhit +0.05 pp) — the host tier is only 79% full, so there is nothing to gain. Only at the
 intended scale, where the attention-KV tier saturates (write-through hit 0.650), does exclusive tiering

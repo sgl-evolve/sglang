@@ -201,9 +201,29 @@ is bit-identical to recompute). CPU unit tests cover the pin bookkeeping and the
 <span class="note">Commit: <code>d10eabb5e</code> (<code>evolve/valiant</code>); ~110 LOC in
 <code>managers/scheduler.py</code>.</span></p>
 
-<h2>5&nbsp;&nbsp;Evaluation <span class="tbd">[PENDING]</span></h2>
-<p>Protocol (frozen): one 8×H100 node, Qwen3.5-122B-A10B-FP8 TP8, 2-tier L1+L2, full-decode Poisson rate
-sweep λ∈{3,5,7,10}, warm steady-state, headline goodput@SLO (max req/s with p99 TTFT ≤ 8s).</p>
+<h2>5&nbsp;&nbsp;Evaluation</h2>
+<h3>5.1&nbsp;&nbsp;Methodology</h3>
+<p><b>Protocol (frozen).</b> One 8×H100 node, Qwen3.5-122B-A10B-FP8 TP8, ctx 262144, 2-tier L1 (GPU,
+2.35M tok) + L2 (host, 768&nbsp;GB ≈ 8.4M tok), no L3. Full-decode Poisson rate sweep λ∈{3,5,7,10} with a
+warmup burst and no inter-rate flush (warm steady-state), max-concurrency 256, 1553-conversation mix.
+Headline = <b>goodput@SLO</b> (max sustained req/s with p99 TTFT ≤ 8s); we also report per-rate p99 TTFT
+(the curve) and hit rate.</p>
+<p><b>A/B design.</b> Every comparison is <b>same-node</b>: on a single node we run stock (all mechanism
+env off), then queued-only (<code>VALIANT_PC_ENABLE=0</code>), then +post-completion
+(<code>VALIANT_PC_ENABLE=1</code>) back-to-back, so node-to-node variance (measured at ±14% req/s / ±30%
+p99 across nodes) never confounds a delta. We replicate the full triple on a second node (n=2) for error
+bars. stock is the <i>same binary</i> with the mechanism disabled (not a different commit), isolating the
+mechanism from any incidental code overhead.</p>
+<p><b>Attribution controls.</b> (i) Peak output-token throughput is expected ~flat (decode is compute-bound);
+the mechanism must move the <i>prefill-driven p99/goodput</i>, not the decode ceiling — we report peak tok/s
+to show it does not change. (ii) The gain must be a <i>mechanism</i>, not a config flip: stock and treatment
+share every frozen flag (write-through, io-backend, layout, tier sizes); the only difference is which cached
+prefixes are retained. (iii) Not mere queue de-saturation: we show the effect via reduced recompute /
+higher hit rate (a cache property), and that pins activate (<code>[valiant] pinned_reqs&gt;0</code>).</p>
+<p><b>Lossless gate.</b> The mechanism only changes <i>which</i> KV is retained; reuse of a cached prefix is
+bit-identical to recomputing it, so outputs are unchanged vs the stock run by construction (verified: no
+change to the decode path or the KV values).</p>
+<h3>5.2&nbsp;&nbsp;Results <span class="tbd">[PENDING — n=2 sweep in flight]</span></h3>
 <table>
 <tr><th class="l">config</th><th>goodput@SLO</th><th>hit@λ3</th><th>hit@λ5</th><th>p99 TTFT knee</th><th>peak tok/s (control)</th><th>lossless</th></tr>
 <tr><td class="l">baseline (stock 2-tier)</td><td colspan="6" class="tbd">running (job 19434)</td></tr>

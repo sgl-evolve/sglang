@@ -131,6 +131,11 @@ Max ~6 concurrent pins at λ=3 (shallow queue) yet cumulative hit gain is real. 
 dominated) — so v1 helps median/throughput, not the p99 tail; **pc (post-completion) expected to add more via
 client-gap coverage**. Awaiting v1_b λ=5/7/10 (hit gain may grow with load), v1_c (n=2), pc_b/pc_c.
 
+**★ n=2 CONFIRMED (v1_c on 1-2, λ=3):** hit 0.6734→**0.7011 (+2.8pp)**, p50 692→**530ms (−23%)**, p99
+6286→8031ms (+28%). So across n=2: **hit +2.2/+2.8pp (robust ~+2.5pp), p50 −28/−23% (robust ~−25%), p99
+−2%/+28% (NOISE — coin-flip confirmed).** ⇒ Reliable contribution = hit + median; p99/goodput variance-dominated
+(honest). Max pins ≤6 (queued window small) ⇒ pc should be larger.
+
 ## ★★ COIN-FLIP FINDING (decisive for metric choice)
 Three **identical stock** runs (3 nodes), λ=3:
 | node | p99 | hit | goodput@SLO |

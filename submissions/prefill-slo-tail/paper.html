@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>goodput@SLO is a Coin-Flip: Cold-Start Metastability Undermines Tail-SLO Evaluation of KV Caches (kleinrock, DRAFT)</title>
+<title>goodput@SLO is a Coin-Flip: Cold-Start Metastability Undermines Tail-SLO Evaluation of KV Caches (kleinrock)</title>
 <style>
   :root{--ink:#1a1a1a;--mut:#666;--acc:#7a2020;--bg:#fff;--box:#f6f4f0;--line:#ddd}
   html{font-size:16px}
@@ -29,7 +29,7 @@
 <body>
 
 <h1>goodput@SLO is a Coin-Flip: Cold-Start Metastability Undermines Tail-SLO Evaluation of KV Caches</h1>
-<div class="sub"><b>kleinrock</b> · sglang KV-cache architecture (v0.31) · <i>DRAFT — n=3 cross-node stock replicates + node-controlled no-flush diagnostic complete; same-node median-of-k underway</i></div>
+<div class="sub"><b>kleinrock</b> · sglang KV-cache architecture (v0.31) · <i>measurement study — n=3 cross-node + K=5 same-node stock replicates + node-controlled no-flush diagnostic</i></div>
 
 <div class="abstract">
 <b>Abstract.</b> Tiered KV caching (GPU HBM + host DRAM) is widely credited with improving LLM serving
@@ -42,7 +42,10 @@ extreme compute-to-context asymmetry — a conversation's first turn prefills a 
 a bimodal, metastable queueing tail that <b>straddles the 8 s SLO</b>. Across <b>three identical stock
 runs</b> (across cluster nodes), λ=3 p99 TTFT is <b>14.1 s, 8.0 s, and 6.8 s</b> (a 2.07× spread), so
 stock's own goodput@SLO is <b>{0, 0, 3}</b> — the binary metric flips on run-to-run and node-to-node noise.
-A write-back configuration that appears to lift goodput@SLO from 0 to 3 falls squarely inside this stock
+A <b>same-node control</b> — K=5 replicates of the identical stock configuration on one fixed node — is
+even starker: λ=3 p99 spans <b>6.5–25.8 s (a 4.0× spread, two pass / three fail)</b>, so the flip
+<i>persists and widens with the node held constant</i>, isolating run-to-run cold-start metastability
+(not node heterogeneity) as the cause. A write-back configuration that appears to lift goodput@SLO from 0 to 3 falls squarely inside this stock
 band (λ=3 p99 7.5 s), so its single-run "win" cannot be attributed to write-back — even though write-back's
 <i>stable</i> effects are real and do not flip (hit rate +6 pp, peak throughput +18%). The point is not
 that a better cache never helps, but that <b>a single run cannot tell</b>: goodput@SLO is dominated by
@@ -75,9 +78,11 @@ rate and the prefill-token distribution, and separates the roles of the cache: i
 <li><b>An eval-methodology observation</b>: the harness flushes the KV cache per rate, so each measured
 point is cold-started, compounding the cold-start metastability that makes the p99 tail bimodal (§2.3).</li>
 <li><b>A measurement result</b> (§3, §5): goodput@SLO on this benchmark is a <b>cold-start coin-flip</b>.
-Replicate stock runs give λ=3 p99 TTFT 14.1 s / 8.0 s / 6.8 s (straddling the 8 s SLO), so stock's own
-goodput@SLO is {0,0,3}; a write-back config's apparent 0→3 gain falls inside this stock band and cannot be
-attributed to the mechanism. Single-run KV-cache A/B on this workload is therefore void.</li>
+Cross-node stock runs give λ=3 p99 TTFT 14.1 / 8.0 / 6.8 s (straddling the 8 s SLO), and a <b>same-node
+control (K=5 replicates on one fixed node)</b> is starker still — λ=3 p99 spans 6.5–25.8 s (4.0×, two pass /
+three fail) — so the flip persists with the node held constant, isolating run-to-run metastability as the
+cause. A write-back config's apparent 0→3 gain falls inside this stock band and cannot be attributed to the
+mechanism. Single-run KV-cache A/B on this workload is therefore void.</li>
 <li><b>A separation of stable vs unstable signals</b>: the cache's effect on hit rate, mean/p50 TTFT, and
 peak throughput is stable and real (write-back: hit +6 pp, peak throughput +18%); only the tail SLO metric
 is variance-dominated. Evaluating caches by goodput@SLO measures the noise, not the cache.</li>
@@ -273,6 +278,36 @@ goodput@SLO is decided by which side of the deadline the p99 happens to land on 
 by a single run.</figcaption>
 </figure>
 
+<p><b>Same-node replication resolves the node confound.</b> The four runs above sit on different nodes, so
+their spread mixes cold-start metastability with node heterogeneity (§7). To isolate the two we ran a
+<b>median-of-k study</b>: <b>K=5 replicates of the identical stock configuration, back-to-back on one node</b>
+(ondem-3, the same node as v0-stock). Server, workload, configuration, and node are all fixed; each replicate
+is an independent cold-cache λ=3 draw (the load generator flushes at the start of every run). Because λ≥5
+reliably fails the SLO (§5.1), goodput@SLO is decided entirely by λ=3, so the spread of these five same-node
+p99 values <i>is</i> the goodput coin-flip with node held constant.</p>
+<table>
+<tr><th>same-node draw (ondem-3, stock, λ=3)</th><th>p50 TTFT</th><th>p99 TTFT</th><th>vs 8 s SLO</th><th>goodput</th></tr>
+<tr><td>replicate 1</td><td>0.55 s</td><td>13.39 s</td><td>fail</td><td>0</td></tr>
+<tr><td>replicate 2</td><td>0.53 s</td><td><b>6.61 s</b></td><td>pass</td><td><b>3</b></td></tr>
+<tr><td>replicate 3</td><td>0.54 s</td><td>25.76 s</td><td>fail</td><td>0</td></tr>
+<tr><td>replicate 4</td><td>0.55 s</td><td><b>6.47 s</b></td><td>pass</td><td><b>3</b></td></tr>
+<tr><td>replicate 5</td><td>0.56 s</td><td>9.41 s</td><td>fail</td><td>0</td></tr>
+<tr><td><i>v0-stock (earlier, same node)</i></td><td><i>1.02 s</i></td><td><i>14.06 s</i></td><td><i>fail</i></td><td><i>0</i></td></tr>
+</table>
+<p><b>On one fixed node, the identical configuration produces λ=3 p99 from 6.47 s to 25.76 s — a 4.0× spread
+(median 9.4 s, sample std 8.0 s) that straddles the SLO — so goodput@SLO flips {3, 3, 0, 0, 0} across the
+five draws (two pass, three fail).</b> Node, workload, and configuration are constant, so this
+<b>isolates run-to-run cold-start metastability as the coin-flip's cause and removes the node-heterogeneity
+confound from the central claim</b>. Two details confirm the mechanism: (i) the <b>p50 TTFT is flat at
+~0.54 s across all five draws</b> while the p99 swings 4× — the variance lives entirely in the tail (the
+cache serves the body identically every run), the signature of a metastable queue transient rather than a
+steady-state difference; and (ii) the run-to-run standard deviation (8.0 s) <i>exceeds</i> the distance from
+the median to the SLO (1.4 s), the formal condition for a variance-dominated metric that a single run cannot
+resolve. Write-back's single ondem-3 draw (7.53 s, §3.1) falls squarely inside this stock same-node band
+(6.47–25.76 s) — below two of the five stock draws — so its apparent goodput win remains unattributable, now
+against a same-node reference. Cross-node heterogeneity (§7) is an <i>additional</i> variance source on top
+of this.</p>
+
 <h3>3.2 Why the tail is a coin-flip: cold-start metastability</h3>
 <p>The p99 is metastable because prefill service time is heavy-tailed and bimodal (§2.1): a request is
 either a ~16-token warm follow-up (sub-second) or a cold turn-0 document of 65 K–192 K tokens, serialized
@@ -307,6 +342,8 @@ by exposing it. §2's model makes each boundary quantitative.</p>
 <p>We evaluate on the frozen protocol (§5) with stock sglang at commit <code>a334877e5</code> (zero python
 churn, verified via git-diff line counts logged to each run). Experiments (each a full λ∈{3,5,7,10} sweep):
 <b>three stock replicates</b> (v0-stock, v0-stock-r2, v0-stock-r3) establishing the coin-flip;
+a <b>same-node median-of-k control</b> (v0-medk: K=5 stock λ=3 draws back-to-back on one node, ondem-3),
+which isolates run-variance from node heterogeneity and shows the flip persists at a fixed node (§3.1);
 <b>v1-writeback</b> (<code>--hicache-write-policy write_back</code>, a hit-rate-raising config control);
 and an off-contract <b>warm-steady-state diagnostic</b> (v0-warmdiag: per-rate flush disabled, run on the
 <i>same</i> node as v0-stock) testing whether warm serving removes the metastability — it does not
@@ -470,14 +507,16 @@ heavy-tailed cold-prefill serving workload, and to separate the cache's stable g
 
 <h2>7 Limitations &amp; threats to validity</h2>
 <ul>
-<li><b>Replicate count and the node confound.</b> The three stock runs span λ=3 p99 6.8–14.1 s, straddling
-the SLO — enough to show single-run goodput@SLO is unreliable — but they ran on <i>three different cluster
-nodes</i>, so the spread mixes two variance sources: cold-start metastability and node heterogeneity
-(~±45% p99). We therefore do not attribute the spread purely to run-to-run variance, and we do not claim
-write-back's goodput effect is zero — only that a single run cannot resolve it. The clean experiment
-(future work, compute-permitting) is <b>same-node, median-of-k</b> replicates of stock and of each config,
-which isolates run-variance and would give an attributable goodput estimate. Our claim is exactly that this
-is <i>required</i>: single-run, cross-node A/B on goodput@SLO — the common practice — is void.</li>
+<li><b>Node confound — controlled, not merely flagged.</b> The three cross-node stock runs (λ=3 p99
+6.8–14.1 s) mix cold-start metastability with node heterogeneity (~±45% p99). We removed this confound with
+the <b>same-node median-of-k study of §3.1</b>: K=5 stock replicates on one node (ondem-3) give λ=3 p99
+6.47–25.76 s (median 9.4 s; two pass, three fail), so the coin-flip persists — indeed <i>widens</i> to 4.0× —
+with the node held constant. Run-to-run cold-start metastability is therefore the cause, not node
+heterogeneity (which is an additional layer). Two residual limits remain, honestly: (i) K=5 characterizes
+run-variance for one node; a full node×run grid would map both axes jointly; and (ii) we did <i>not</i> run
+same-node replicates of write-back, so its goodput effect stays unresolved — its single draw (7.53 s) falls
+inside the stock same-node band, so we neither claim nor deny a benefit. The methodological claim is now
+demonstrated, not conjectured: single-run — and especially cross-node — A/B on goodput@SLO is void.</li>
 <li><b>Per-rate cache flush.</b> The harness cold-starts the cache before each rate (the load generator
 issues <code>/flush_cache</code> per invocation), compounding the metastability by ramping the queue to
 90–184 before it drains (§5.3). We tested the no-flush condition with an off-contract, node-controlled
@@ -502,7 +541,10 @@ benchmark.</li>
 The frozen eval is <code>eval-on-pool.sh kleinrock &lt;version&gt;</code> (λ∈{3,5,7,10} sweep, 1553 conversations,
 warmup burst, max-concurrency 256, 2-tier <code>--hicache-size 96</code>, p99-TTFT-≤-8 s SLO). Runs:
 <b>v0-stock</b>, <b>v0-stock-r2</b>, <b>v0-stock-r3</b> (three stock replicates, §3.1);
-<b>v1-writeback</b> (adds <code>--hicache-write-policy write_back</code>, §5.1); and the off-contract
+<b>v1-writeback</b> (adds <code>--hicache-write-policy write_back</code>, §5.1);
+<b>v0-medk</b> (same-node median-of-k, <code>tools/medk_eval.sh</code>: one stock server on ondem-3, K=5
+back-to-back λ=3 draws, each flushed at the load generator's start; <code>medk.csv</code> + <code>summary.json</code>
+in <code>runs/v0-medk/</code>, §3.1); and the off-contract
 diagnostic <b>v0-warmdiag</b> (identical stock server/sweep with the per-rate <code>/flush_cache</code>
 disabled, run on the same node as v0-stock, §5.3). Each run's <code>curve.csv</code> and
 <code>summary.json</code> hold the per-rate points and the goodput headline; every number in this paper is

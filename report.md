@@ -14,8 +14,11 @@ are DORMANT.
 conversation's prefix while it has a request in the scheduler's queue; release at admission. ~110 LOC in
 `managers/scheduler.py`, env-gated, lossless-by-construction. **Registered formal submission:**
 `submissions/pending-aware-retention/paper.html`.
-- **v1 (queued-pin) WINS, n=2 same-node:** hit **+2.5pp@λ3** (→+0.65pp@λ10), **peak throughput +2–6%@knee (λ5,7)**,
-  p50 −25%@λ3, lossless. Robust (both nodes; hit is node-independent).
+- **v1 (queued-pin) WINS but MAGNITUDE IS VARIABLE (⚠️ n=3 revises the headline):** hit gain@λ3 = +2.2/+2.8pp
+  (shipped nodes 0-3/1-2) BUT **+0.4pp on ondem-2** (2026-07-12 coupling run) — pin ENGAGED there (max 19 concurrent
+  pins, MORE than shipped's 6) yet small gain ⇒ gain is positive+lossless but VARIANCE-AFFECTED (~+0.4 to +2.8pp,
+  mean ~+1.8pp), NOT a robust +2.5pp. Consistent w/ paper's variance theme. Peak throughput +2–6%@knee, p50 −25%@λ3.
+  ⇒ MUST soften headline magnitude to a range + honest variance (pending full v1_fcfs sweep λ5/7/10 on ondem-2).
 - **pc (post-completion extension) HURTS — n=2 same-node confirmed @λ3 AND λ5:** hit@λ3 pc 0.674/0.673 ≈ stock
   0.678/0.673 ≪ v1 0.700/0.701; hit@λ5 pc 0.661/0.672 ≈ stock 0.664/0.668 ≪ v1 0.680/0.677 → the extension
   CANCELS v1's gain across rates (pc_e full curve corroborates: pc < stock at λ5/7/10).

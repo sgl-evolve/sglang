@@ -253,6 +253,24 @@ goodput@SLO-under-load though true at a single point) OR whether a novel residen
 them (stronger). Test via `--radix-eviction-policy {lru,slru,lfu}` sweeps (allowed) + a candidate mechanism.
 Caveat: P from a non-certified node; certified P may differ ±, but 35K ≫ 8K threshold so the fork is robust.
 
+## 14. Diag trace (rid-dedup) — the COLD-DOC FLOOR refinement (validates tooling; NUMP=400 preview)
+
+Per-request trace (SGLANG_WILKES_TRACE works; chunked prefills log multiple entries → dedup by rid, first
+entry = true match). Diag NUMP=400 (under-pressured), 1929 reqs, hit **0.818** (≈ the predicted under-pressured
+0.84). Request-class split (by prefix-match fraction):
+- **COLD (turn-0, match<5%): 24% of reqs but 93.9% of prefill WORK** — irreducible, each unique doc once.
+- WARM-HIT (unc<10%): 63% of reqs, 1.5% of work.
+- **WARM-MISS (partial, AVOIDABLE): 13% of reqs, 4.6% of work** (at low pressure).
+
+**Refinement of the fork:** even though P≈35K makes p99 not single-request-irreducible, the prefill WORK has
+an irreducible **cold-document floor** (Σ unique docs ≈ 19M tok = 94% of low-pressure prefill). The cache can
+only reduce the *warm-miss* fraction. At P=35K, prefilling the 19M cold floor ≈ 543s of pure prefill vs a
+~704s arrival window at λ=10 ⇒ cold docs ALONE near-saturate prefill at high λ. So goodput@SLO headroom is
+bounded by the warm-miss fraction, which grows with pressure. **screen-v0 (NUMP=1553) quantifies the pressured
+warm-miss% = the decisive number:** large ⇒ mechanism materially helps; small ⇒ cold-doc-floor-bound
+(bounded-negative). This is the crisp, quantified thesis either way: *goodput@SLO is set by the cold-context
+prefill floor; the cache addresses only the avoidable warm-miss remainder (X% under pressure).*
+
 ## Versions (test submissions)
 - **v0-baseline** (stock sweep, clean reference) — job 19437, QUEUED. [pending curve]
 

@@ -29,22 +29,25 @@
 <div class="auth">valiant · sglang KV-cache research (v0.31) · <span class="tbd">DRAFT — evaluation pending</span></div>
 
 <div class="abs">
-<b>Abstract.</b> Hierarchical KV caches (HiCache-style L1&nbsp;GPU + L2&nbsp;host) are the standard way to
-reuse the growing prefix of a multiturn conversation and avoid re-prefilling it on every turn. Conventional
-wisdom holds that, once the tier sizes are fixed, the replacement <i>order</i> is a dead end — under in-order
-reuse LRU is within a fraction of a percent of Bélády's optimum. We show this conclusion breaks under
-<i>concurrent</i> multiturn load. When many conversations are interleaved, a conversation's cached prefix can
-be evicted by other requests <i>during the gap between its turns</i>, forcing a full recompute of a document
-that may be tens of thousands of tokens long — the single most expensive event on the prefill path. The loss
-is not eviction <i>order</i> (LRU ≈ Bélády among a fixed working set) but the eviction of prefixes whose reuse
-is <i>imminent and already visible to the scheduler</i>, a signal the cache ignores. We propose
-<b>pending-aware KV retention</b>: the cache protects the L2 residency of a conversation's prefix precisely
-while that conversation has an in-flight request the scheduler is holding, and releases it the instant the
-request is admitted. This is a scheduler↔cache co-design, not a replacement policy and not a config flag.
-A trace-driven analysis of the Mooncake-style 1:1:1 mix shows a realizable, non-oracle pending-aware policy
-recovers essentially the entire LRU→Bélády gap (up to <b>+11&nbsp;pp</b> hit rate, <b>~30% fewer recomputes</b>)
-at the cache capacities that arise in practice. <span class="tbd">[End-to-end goodput@SLO results on the
-frozen rate-sweep protocol are pending and will complete this abstract.]</span>
+<b>Abstract.</b> Hierarchical KV caches (HiCache-style L1&nbsp;GPU + L2&nbsp;host) reuse the growing prefix of a
+multiturn conversation to avoid re-prefilling it each turn. Under <i>concurrent</i> multiturn load a
+conversation's cached prefix can be evicted between its turns, forcing a full recompute of a document that may
+be tens of thousands of tokens — the most expensive event on the prefill path. A trace-driven analysis shows
+42% of the stock cache's prefill work is exactly this evicted-continuation recompute, and an oracle (Bélády)
+policy would remove most of it. We ask how much of that gap is <i>realizable</i> by a server that cannot see
+the future. We propose <b>pending-aware KV retention</b>: the cache protects the L2 residency of a
+conversation's prefix precisely while that conversation has a request the scheduler is <i>already holding in
+its queue</i> — a guaranteed-imminent-reuse signal — and releases it at admission. This is a scheduler↔cache
+co-design, not a replacement policy or config flag. On the frozen 122B rate-sweep protocol it delivers a
+modest but <b>robust, lossless</b> win: <b>hit&nbsp;+2.5&nbsp;pp</b> at the operating rate and
+<b>+2–6% peak throughput</b> under load (n=2, same-node), reproducibly. Two findings sharpen the picture.
+(1) <b>Targeting is everything</b>: the natural extension — retaining <i>every</i> recently-finished
+conversation for a horizon to also cover the client think-gap — <i>hurts</i>, because it spends L2 on
+conversations that are never reused; the value is the scheduler's pending set, not recency. (2) The full
+Bélády gap is <b>not server-realizable</b>: reuse <i>timing</i> (the client think-gap) is unknowable
+server-side, so only the queued signal is safe to act on. We further show the protocol's headline goodput@SLO
+is <b>variance-dominated at the SLO boundary</b> (identical stock runs flip goodput 0↔3.0 across nodes), so
+recompute/hit-rate is the sound way to measure cache mechanisms on this workload.
 </div>
 
 <h2>1&nbsp;&nbsp;Introduction</h2>
@@ -63,16 +66,19 @@ the effect that actually matters under concurrency.</p>
 
 <p><b>Contributions.</b></p>
 <ul>
-<li>A trace-driven diagnosis showing that, under concurrent multiturn load, the cache's dominant loss is the
-eviction of conversation prefixes whose <i>next turn is already in flight</i> — not eviction order. We quantify
-a <b>+5–11&nbsp;pp</b> hit-rate gap between LRU and Bélády at realistic capacities, overturning the
-"LRU ≈ Bélády" assumption <i>in this regime</i>.</li>
-<li><b>Pending-aware KV retention</b>: a mechanism that couples the cache's L2 retention to the scheduler's
-pending-request set. It is realizable and non-oracle (the scheduler already knows which conversations have a
-waiting request), capacity-bounded (it degrades gracefully to LRU when the pending set exceeds a budget), and
-lossless (it only changes <i>which</i> KV is retained, never what is computed).</li>
-<li><span class="tbd">[An evaluation on the frozen full-decode rate-sweep protocol showing the mechanism shifts
-the throughput–latency curve and raises goodput@SLO, isolated by ablations, with error bars — pending.]</span></li>
+<li>A trace-driven diagnosis: under concurrent multiturn load, <b>42% of the stock cache's prefill work is
+evicted-continuation recompute</b> (prefixes that were cached and reused, then dropped under contention), and
+an oracle policy would remove most of it — a large gap the LRU≈Bélády intuition misses in this regime.</li>
+<li><b>Pending-aware KV retention</b>: couple L2 retention to the scheduler's pending-request set (a
+guaranteed-imminent-reuse signal). Realizable, non-oracle, capacity-bounded, lossless. It gives a
+<b>modest but robust</b> win: hit +2.5&nbsp;pp and +2–6% peak throughput (n=2, same-node).</li>
+<li>A <b>targeting ablation</b>: extending retention to <i>all</i> recently-finished conversations (to cover
+the client think-gap) <i>hurts</i> — it wastes L2 on never-reused conversations. The scheduler's pending set,
+not recency, is the signal that matters.</li>
+<li>A <b>realizability bound</b>: the oracle gap is not fully server-realizable because reuse timing (the
+client think-gap) is unknowable server-side; the queued signal captures the safely-realizable part.</li>
+<li>A <b>measurement finding</b>: goodput@SLO is variance-dominated at the SLO boundary on this workload
+(identical stock runs flip goodput 0↔3.0 across nodes); hit-rate/recompute is the robust metric.</li>
 </ul>
 
 <h2>2&nbsp;&nbsp;Motivation (trace-driven)</h2>

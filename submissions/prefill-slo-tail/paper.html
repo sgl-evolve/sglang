@@ -47,8 +47,11 @@ even starker: λ=3 p99 spans <b>6.5–25.8 s (a 4.0× spread, two pass / three f
 <i>persists and widens with the node held constant</i>, isolating run-to-run cold-start metastability
 (not node heterogeneity) as the cause. A write-back configuration that appears to lift goodput@SLO from 0 to 3 falls squarely inside this stock
 band (λ=3 p99 7.5 s), so its single-run "win" cannot be attributed to write-back — even though write-back's
-<i>stable</i> effects are real and do not flip (hit rate +6 pp, peak throughput +18%). The point is not
-that a better cache never helps, but that <b>a single run cannot tell</b>: goodput@SLO is dominated by
+<i>stable</i> effects are real and do not flip (hit rate +6 pp, peak throughput +18%). Running the same-node
+K=5 protocol for write-back too, <b>even median-of-k cannot separate stock from write-back on goodput@SLO
+(both pass 2 of 5)</b>, though write-back plainly wins on hit (+7 pp), median TTFT, and tail variance —
+all invisible to the binary metric. The point is not
+that a better cache never helps, but that <b>a single run cannot tell — and even median-of-k cannot tell on the tail</b>: goodput@SLO is dominated by
 variance (cold-start metastability plus node heterogeneity), both invisible to a single-run A/B. We give a trace-driven Pollaczek–Khinchine account of why
 the tail is metastable, and show the effect is compounded by the harness cold-starting the cache before
 each rate — the load generator issues <code>/flush_cache</code> at the start of every invocation, so the
@@ -245,14 +248,11 @@ metric is not. goodput@SLO, as operationalized here, measures the noise, not the
 is {0, 0, 3} — the binary metric is decided by noise near the deadline.</b> This variance has two sources,
 <i>both</i> invisible to a single run: (i) cold-start metastability (§3.2), and (ii) cluster node
 heterogeneity — the three stock runs are on three different nodes, and same-workload p99 varies ~±45%
-across nodes on this cluster. We are careful not to over-read the cross-config comparison: the only
-same-node pair (v0-stock vs write-back, both on ondem-3) is n=1 each, and there write-back's higher hit
-coincides with a lower p99 (14.06→7.53 s) — <i>consistent</i> with write-back helping, but indistinguishable
-from a single coin-flip draw. <b>The honest conclusion is not "write-back doesn't help" but "a single run
-cannot tell": with stock alone spanning both sides of the SLO, no single-run A/B on goodput@SLO is
-attributable to the mechanism.</b> Write-back's <i>stable</i> effects — hit +6 pp, peak throughput +18%
-(§5.1) — do not flip and are real; its goodput@SLO effect is unresolved and would need same-node,
-median-of-k replicates (§7).</p>
+across nodes on this cluster. We are careful not to over-read this cross-config, cross-node comparison (n=1 each, different nodes); below
+we resolve it properly with same-node median-of-k for <i>both</i> stock and write-back. <b>The honest
+conclusion is not "write-back doesn't help" but "a single run cannot tell": with stock alone spanning both
+sides of the SLO, no single-run A/B on goodput@SLO is attributable to the mechanism.</b> Write-back's
+<i>stable</i> effects — hit +6 pp, peak throughput +18% (§5.1) — do not flip and are real.</p>
 <figure>
 <svg width="520" height="240" viewBox="0 0 520 240" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="11">
   <line x1="70" y1="200" x2="470" y2="200" stroke="#333"/><line x1="70" y1="200" x2="70" y2="20" stroke="#333"/>
@@ -332,10 +332,28 @@ confound from the central claim</b>. Two details confirm the mechanism: (i) the 
 cache serves the body identically every run), the signature of a metastable queue transient rather than a
 steady-state difference; and (ii) the run-to-run standard deviation (8.0 s) <i>exceeds</i> the distance from
 the median to the SLO (1.4 s), the formal condition for a variance-dominated metric that a single run cannot
-resolve. Write-back's single ondem-3 draw (7.53 s, from the cross-node table above) falls squarely inside this stock
-same-node band (6.47–25.76 s) — below two of the five stock draws — so its apparent goodput win remains
-unattributable, now against a same-node reference. Cross-node heterogeneity (§7) is an <i>additional</i> variance source on top
-of this.</p>
+resolve. Cross-node heterogeneity (§7) is an <i>additional</i> variance source on top of this.</p>
+
+<p><b>Validating the fix: same-node median-of-k of a "better" config.</b> Our proposed methodology is
+warm-steady-state + <b>same-node median-of-k</b> + reporting stable metrics. Does median-of-k let us A/B a
+config that a single run cannot? We ran the identical K=5 protocol for <b>write-back</b>
+(<code>--hicache-write-policy write_back</code>, a lossless config that raises hit rate) on the <i>same</i>
+node (ondem-3), head-to-head with the stock K=5 above:</p>
+<table>
+<tr><th>same-node K=5 (ondem-3, λ=3)</th><th>goodput@SLO (pass / 5)</th><th>p99 median</th><th>p99 mean ± std</th><th>hit</th><th>p50</th></tr>
+<tr><td>stock</td><td>2 / 5</td><td>9.41 s</td><td>12.33 ± 8.02 s</td><td>0.66</td><td>0.55 s</td></tr>
+<tr><td>write-back</td><td>2 / 5</td><td>11.07 s</td><td>10.02 ± 2.67 s</td><td><b>0.73</b></td><td><b>0.48 s</b></td></tr>
+</table>
+<p><b>Even with same-node median-of-k, goodput@SLO cannot distinguish the two configurations — both pass 2
+of 5, and write-back's median p99 is if anything slightly higher.</b> Yet write-back is unambiguously the
+better cache on every <i>stable</i> axis (hit +7 pp, 0.66→0.73; p50 −64 ms) and even has a <i>tighter tail</i>
+(std 8.0→2.7 s; it never produced stock's 25.8 s catastrophic draw). <b>All three real, consistent
+improvements are invisible to the binary goodput@SLO.</b> This validates the paper's thesis by construction:
+the recommended median-of-k does <i>not</i> rescue goodput@SLO for KV-cache A/B — the tail stays too
+variance-dominated even at K=5 — so a correct evaluation must report the cache's stable effects (hit, median
+TTFT, throughput) and, if the tail matters, its <i>variance</i>, rather than a single binary deadline.
+Write-back is <i>itself</i> a coin-flip on goodput@SLO (2 / 5 pass, straddling the SLO), confirming the
+phenomenon is a property of the workload, not of any one configuration.</p>
 
 <h3>3.2 Why the tail is a coin-flip: cold-start metastability</h3>
 <p>The p99 is metastable because prefill service time is heavy-tailed and bimodal (§2.1): a request is
@@ -541,11 +559,14 @@ heavy-tailed cold-prefill serving workload, and to separate the cache's stable g
 the <b>same-node median-of-k study of §3.1</b>: K=5 stock replicates on one node (ondem-3) give λ=3 p99
 6.47–25.76 s (median 9.4 s; two pass, three fail), so the coin-flip persists — indeed <i>widens</i> to 4.0× —
 with the node held constant. Run-to-run cold-start metastability is therefore the cause, not node
-heterogeneity (which is an additional layer). Two residual limits remain, honestly: (i) K=5 characterizes
-run-variance for one node; a full node×run grid would map both axes jointly; and (ii) we did <i>not</i> run
-same-node replicates of write-back, so its goodput effect stays unresolved — its single draw (7.53 s) falls
-inside the stock same-node band, so we neither claim nor deny a benefit. The methodological claim is now
-demonstrated, not conjectured: single-run — and especially cross-node — A/B on goodput@SLO is void.</li>
+heterogeneity (which is an additional layer). We also ran the same-node K=5 protocol for <b>write-back</b>
+(§3.1): both stock and write-back pass 2 of 5, so even median-of-k cannot separate them on goodput@SLO,
+though write-back clearly wins on stable metrics (hit +7 pp, p50 −64 ms) and tail variance — this
+<i>validates</i> the methodology (median-of-k A/B) and its limit (goodput@SLO is too noisy to resolve KV
+configs even at K=5; report stable metrics). One residual limit remains, honestly: K=5 characterizes
+run-variance for one node (ondem-3); a full node×run grid would map both axes jointly. The methodological
+claim is now demonstrated, not conjectured: single-run — and especially cross-node — A/B on goodput@SLO is
+void, and even same-node median-of-k does not rescue it for KV-cache comparison.</li>
 <li><b>Per-rate cache flush.</b> The harness cold-starts the cache before each rate (the load generator
 issues <code>/flush_cache</code> per invocation), compounding the metastability by ramping the queue to
 90–184 before it drains (§5.3). We tested the no-flush condition with an off-contract, node-controlled
@@ -571,9 +592,10 @@ The frozen eval is <code>eval-on-pool.sh kleinrock &lt;version&gt;</code> (λ∈
 warmup burst, max-concurrency 256, 2-tier <code>--hicache-size 96</code>, p99-TTFT-≤-8 s SLO). Runs:
 <b>v0-stock</b>, <b>v0-stock-r2</b>, <b>v0-stock-r3</b> (three stock replicates, §3.1);
 <b>v1-writeback</b> (adds <code>--hicache-write-policy write_back</code>, §5.1);
-<b>v0-medk</b> (same-node median-of-k, <code>tools/medk_eval.sh</code>: one stock server on ondem-3, K=5
-back-to-back λ=3 draws, each flushed at the load generator's start; <code>medk.csv</code> + <code>summary.json</code>
-in <code>runs/v0-medk/</code>, §3.1); and the off-contract
+<b>v0-medk</b> and <b>v0-medk-wb</b> (same-node median-of-k for stock and write-back respectively,
+<code>tools/medk_eval.sh</code> / <code>medk_wb_eval.sh</code>: one server on ondem-3, K=5 back-to-back λ=3
+draws each flushed at the load generator's start; <code>medk.csv</code> + <code>summary.json</code> in
+<code>runs/v0-medk{,-wb}/</code>, §3.1); and the off-contract
 diagnostic <b>v0-warmdiag</b> (identical stock server/sweep with the per-rate <code>/flush_cache</code>
 disabled, run on the same node as v0-stock, §5.3). Each run's <code>curve.csv</code> and
 <code>summary.json</code> hold the per-rate points and the goodput headline; every number in this paper is

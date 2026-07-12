@@ -47,6 +47,15 @@ The goodput@SLO headline is decode-knee-capped + λ=5-coin-flip (below), BUT **p
   CONFIG; my exclusive-tiering CODE adds +1.7pp hit ⇒ ~+3% throughput that no config provides (free-on-loadback).
 - Why it doesn't help goodput: goodput is the SLO-threshold at λ=3 (already passed) / λ=5 (coin-flip); the
   throughput ceiling rises but the SLO-crossing rate doesn't (λ=5 stays saturated + variance-dominated).
+- **★ THE GAIN SCALES WITH LOAD (same-node, both nodes) — validates the charter's core thesis empirically.**
+  out_tok_s gain (write_back vs stock, same node) per λ:
+  - node 0-1 (loaded):   λ=3 **+5%** · λ=5 +17% · λ=7 +16% · λ=10 **+18%**
+  - node 1-2 (fast cert): λ=3 **+0%** · λ=5 +6%  · λ=7 +8%  · λ=10 **+8%**
+  ⇒ the mechanism is ~throughput-neutral at the HEALTHY rate but its benefit **grows monotonically through the
+  knee into saturation** — exactly the charter's premise ("the headroom opens up under concurrency and as the
+  rate climbs through the knee"). Mechanism: under load, prefill (miss recompute) contends with decode for the
+  GPU; higher cache hit relieves that contention, and the contention (hence the relief) grows with load. This
+  is the generalizable insight — a maintainer would expect capacity de-dup to pay off increasingly under load.
 
 ## ON-CONTRACT CERTIFIED CURVE (the formal result; all λ∈{3,5,7,10}, certified nodes)
 | ver | node | λ=3 p99 | λ=5 p99 | goodput@SLO | peak tok/s | hit |

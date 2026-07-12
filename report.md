@@ -233,6 +233,26 @@ its prefix recency-refreshed, mirroring fcfs per-step match). Findings (robust t
   not a contribution). Either way, a NOVEL top-venue mechanism looks unlikely; the contribution is the
   characterization + the P-vs-SLO criterion + (pending baseline) the measured verdict.
 
+## 13. ★★ FORK RESOLVED (diagnostic 19452 on nodeset-0) — P≈35K tok/s → CACHE-AFFECTABLE
+
+Off-contract diagnostic (idle non-certified nodeset-0, NUMP=400, λ=3) — steady-state over 164 real prefill
+batches: **prefill throughput P ≈ 35,000 tok/s** (input-throughput p50 35.5K/p90 37.3K; the 25–119 tok/s
+first-3-batch reading was warmup, idle-diluted — do NOT use it). Timestamp method floors at 6144 (1s log
+granularity), so trust the input-throughput field under load.
+
+Apply §11 criterion: 8s×35K = **280K-token budget > max document 192.7K** ⇒ **NO single request's cold
+prefill exceeds the SLO** (max doc = 5.5s single-request). ⇒ p99 TTFT under load is **queue/load-driven,
+not single-request-irreducible ⇒ CACHE-AFFECTABLE.** The pure "irreducible cold tail" bounded-negative is
+REFUTED. Reducing total prefill work (fewer warm-turn misses) reduces queueing ⇒ can lower p99 ⇒ raise
+goodput@SLO. **Mechanism branch is LIVE**; target = the ~18.5M-token (~49%) avoidable recompute.
+
+**Revised plan:** (1) certified baseline (19437, NUMP=1553, pressured) → real hit/goodput/p99 anatomy;
+(2) resolve whether the avoidable recompute is capturable ONLY by textbook LRU-variants (SLRU/GDSF — then
+the contribution is the methodological/characterization result: "eviction is a dead end" is FALSE for
+goodput@SLO-under-load though true at a single point) OR whether a novel residency/admission signal beats
+them (stronger). Test via `--radix-eviction-policy {lru,slru,lfu}` sweeps (allowed) + a candidate mechanism.
+Caveat: P from a non-certified node; certified P may differ ±, but 35K ≫ 8K threshold so the fork is robust.
+
 ## Versions (test submissions)
 - **v0-baseline** (stock sweep, clean reference) — job 19437, QUEUED. [pending curve]
 

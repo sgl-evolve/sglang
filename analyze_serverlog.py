@@ -12,9 +12,17 @@ Usage: python3 analyze_serverlog.py runs/<version>/server.log
 """
 import sys, os, re, json, numpy as np
 
+def _ts(line):
+    m = re.search(r"\[(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)", line)
+    if not m: return None
+    Y, Mo, D, h, mi, s = map(int, m.groups())
+    return ((D * 24 + h) * 60 + mi) * 60 + s  # seconds within the month (fine for deltas)
+
 def main(path):
     txt = open(path, errors="ignore").read()
     rows = []
+    # timestamp-based prefill rate: pair each prefill-batch line with its ts; Δt to next prefill line
+    pf_lines = [(l, _ts(l)) for l in txt.splitlines() if "Prefill batch" in l]
     for m in re.finditer(
         r"#new-seq:\s*(\d+),\s*#new-token:\s*(\d+),\s*#cached-token:\s*(\d+)"
         r".*?#running-req:\s*(\d+),\s*#queue-req:\s*(\d+),\s*#pending-token:\s*(\d+)"
@@ -24,6 +32,21 @@ def main(path):
                          run=int(rr), queue=int(qr), pending=int(pt), thr=float(thr)))
     if not rows:
         print("no prefill-batch lines found; check log path/format"); return
+    # robust P: for consecutive LARGE prefill batches (#new-token>=2000, back-to-back), tok/s = newtok/Δt
+    rates = []
+    ntoks = [int(re.search(r"#new-token:\s*(\d+)", l).group(1)) for l, _ in pf_lines if re.search(r"#new-token:\s*(\d+)", l)]
+    tss = [t for _, t in pf_lines]
+    for i in range(len(pf_lines) - 1):
+        nt_i = ntoks[i] if i < len(ntoks) else 0
+        if nt_i >= 2000 and tss[i] is not None and tss[i+1] is not None:
+            dt = tss[i+1] - tss[i]
+            if 0 < dt <= 30: rates.append(nt_i / dt)
+    if rates:
+        rates = np.array(rates)
+        print(f"** timestamp-based prefill rate on large chunks (#new>=2000): n={len(rates)} "
+              f"p50={np.median(rates):.0f} p90={np.percentile(rates,90):.0f} tok/s  (ROBUST P estimate) **")
+    else:
+        print("** no large (#new>=2000) back-to-back prefill batches yet -> P estimate not ready (warmup only) **")
     thr = np.array([r["thr"] for r in rows if r["thr"] > 0])
     newt = np.array([r["new_tok"] for r in rows])
     cach = np.array([r["cached_tok"] for r in rows])

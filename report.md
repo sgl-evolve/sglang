@@ -671,3 +671,18 @@ tail (LRU keeps recent whales → they displace live KV). MUST TEST ON GPU: does
 yes → OVERTURN impossibility → mechanism WIN. If no → refine §4.2 (size predicts turn-0 continuation but the
 expensive tail is later-turn proven-conv context, not turn-0). Campaign REOPENED — impossibility claim was
 premature; the observable size signal is the hole.
+
+## 39. ★★★ whale-first λ=3 — SIZE SIGNAL WORKS (best policy, borderline SLO): partial overturn
+whale λ=3: req/s 3.02, p50 562ms, p99 **9287ms**, hit **0.7056**. vs lru {10360,11254}/car90 {10727,11174}.
+whale-first is the BEST policy measured: LOWEST p99 (9.29s, ~−12 to −18% vs lru) + HIGHEST hit (0.706, +2.6pp
+vs lru 0.68 — hit is low-variance so this is REAL). The turn-0 SIZE signal (evict big-unproven whales, protect
+small continuers) genuinely captures headroom — REFUTES §4.2 "liveness unobservable@turn-0" (size IS an
+observable, exploitable liveness proxy).
+★ BUT goodput@SLO still 0: p99 9.29s > 8s SLO. HOWEVER only ~16% over (vs lru 30-40%) — coin-flip-ADJACENT
+given the high p99 metastable variance. So whether whale-first achieves goodput>0 is now an OPEN, replicate-
+dependent question. MUST replicate whale λ=3 (n=2-3): if any run <8s → goodput 0→2.9 MECHANISM WIN; if
+consistently ~9.3s → whale is the best policy (hit+p99) but doesn't cross the SLO (impossibility holds but
+REFINED: size helps substantially, nearly bridges).
+★ PAPER IMPACT: no longer a clean impossibility. Reframe to feature the SIZE SIGNAL as the key lever + whale-
+first as the best causal policy (hit +2.6pp, p99 −~15%, closes most of the gap). Let full whale sweep finish
+(curve), then replicate λ=3. This is the campaign's strongest lead — the observable signal I initially missed.

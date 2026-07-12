@@ -162,10 +162,14 @@ cache-aware scheduling, which overlaps unavoidable <i>loads</i> with compute; he
 that turns a cheap reload into an expensive recompute. It is <i>not</i> a config flag (write-through/write-back,
 exclusive tiering): those change <i>what is backed up</i>, not whether an about-to-be-reused prefix survives
 contention. The primitive is a <b>reuse-intent signal flowing from scheduler to cache</b>.</p>
-<p class="note"><b>Extension (v2, if headroom):</b> server-queue pinning covers only the time a continuation
-spends in the <i>server</i> queue, not the client think/send gap before it arrives. A post-completion variant
-protects a just-finished conversation's leaf for a bounded horizon, covering that gap too. Evaluated as an
-ablation.</p>
+<p><b>Two components, one primitive.</b> (i) <i>Queued pinning</i>: pin at enqueue, release at admission
+(the running-request lock then takes over). This covers the server-queue window — significant at high load,
+where the server queue is deep (measured p99≈95 even at λ=3). (ii) <i>Post-completion extension</i>: because
+the client caps concurrency near the server's, much of a continuation's inter-turn gap is spent
+<i>behind the client semaphore</i> (unprotected by (i)); we cover it by simply <b>keeping the pin alive for a
+bounded horizon after admission</b> instead of releasing it. Elegantly, this reuses the exact same pinned
+node/handle — the pin protects the document+history prefix (the reuse-dominant part); only the turn's small
+new question is recomputed. Both components share one host-token budget and a leak-proof release sweep.</p>
 
 <h2>4&nbsp;&nbsp;Implementation</h2>
 <p>Active cache: <code>UnifiedRadixCache</code> (the hybrid-Mamba + hierarchical path;
@@ -174,9 +178,13 @@ ablation.</p>
 <code>UnifiedRadixCache.inc_host_lock_ref(last_host_node)</code> (capturing <code>to_dec_params()</code> so the
 release mirrors the acquire, incl. the mamba component's <code>skip_lock_node_ids</code>); release via a
 tick-start sweep over pinned requests no longer in the waiting queue (leak-proof across all admit/abort paths).
-No engine data-structure changes; no new tiers; budget = fraction × L2 size. Lossless by construction: the
-mechanism only changes which KV is retained. <span class="note">Commit: <code>28a775ae9</code>
-(<code>evolve/valiant</code>).</span></p>
+The post-completion extension is the same sweep keeping an admitted req's pin until a wall-clock horizon
+expires. All configurable by env (`VALIANT_PIN_ENABLE`, `VALIANT_PC_ENABLE`, `VALIANT_PIN_FRACTION`,
+`VALIANT_PC_HORIZON_S`) so every ablation is one code version. No engine data-structure changes; no new tiers;
+budget = fraction × L2 size. Lossless by construction: the mechanism only changes which KV is retained (reuse
+is bit-identical to recompute). CPU unit tests cover the pin bookkeeping and the horizon logic.
+<span class="note">Commit: <code>d10eabb5e</code> (<code>evolve/valiant</code>); ~110 LOC in
+<code>managers/scheduler.py</code>.</span></p>
 
 <h2>5&nbsp;&nbsp;Evaluation <span class="tbd">[PENDING]</span></h2>
 <p>Protocol (frozen): one 8×H100 node, Qwen3.5-122B-A10B-FP8 TP8, 2-tier L1+L2, full-decode Poisson rate

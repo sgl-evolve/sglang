@@ -235,6 +235,29 @@ coin-flip. The write-back run's p99 (7.53 s) sits <b>within 500 ms of a stock re
 lands on the opposite side of the 8 s threshold, so the binary goodput metric records "write-back 3, stock
 0." This apparent 0→3 win is an artifact of the SLO-straddling variance, not a real effect of write-back.
 [<span class="mut">n=3 stock replicate (v0-stock-r3) in progress; median-of-k reported in final.</span>]</p>
+<figure>
+<svg width="520" height="240" viewBox="0 0 520 240" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="11">
+  <line x1="70" y1="200" x2="470" y2="200" stroke="#333"/><line x1="70" y1="200" x2="70" y2="20" stroke="#333"/>
+  <text x="270" y="230" text-anchor="middle">run (λ=3)</text>
+  <text x="20" y="110" text-anchor="middle" transform="rotate(-90 20 110)">λ=3 p99 TTFT (s)</text>
+  <text x="64" y="203" text-anchor="end">0</text><text x="64" y="150" text-anchor="end">5</text><text x="64" y="97" text-anchor="end">10</text><text x="64" y="44" text-anchor="end">15</text>
+  <line x1="66" y1="150" x2="70" y2="150" stroke="#333"/><line x1="66" y1="97" x2="70" y2="97" stroke="#333"/><line x1="66" y1="44" x2="70" y2="44" stroke="#333"/>
+  <!-- y = 200 - s*10.6 ; SLO 8s -> 200-84.8=115 -->
+  <line x1="70" y1="115" x2="470" y2="115" stroke="#c00" stroke-dasharray="5,3"/><text x="410" y="111" fill="#c00">SLO = 8 s</text>
+  <!-- stock draws (red): v0-stock 14.06->y51 x150 ; r2 8.01->y115 x230 -->
+  <circle cx="150" cy="51" r="5" fill="#7a2020"/><text x="158" y="48">stock 14.1s (fail)</text>
+  <circle cx="230" cy="115" r="5" fill="#7a2020"/><text x="238" y="112">stock-r2 8.0s (fail)</text>
+  <!-- write_back (green): 7.53 -> y=200-79.8=120 x310 -->
+  <circle cx="310" cy="120" r="5" fill="#3a7a3a"/><text x="318" y="130">write_back 7.5s (pass)</text>
+  <!-- r3 placeholder -->
+  <text x="390" y="118" fill="#999">r3: pending</text>
+</svg>
+<figcaption><b>Figure (coin-flip).</b> λ=3 p99 TTFT for three runs. Two <span style="color:#7a2020">identical
+stock</span> runs land at 14.1 s and 8.0 s — a 1.76× spread straddling the 8 s SLO. The
+<span style="color:#3a7a3a">write-back</span> run (7.5 s) sits within 500 ms of stock-r2 (8.0 s) but on the
+passing side. The binary goodput@SLO thus reports "write-back 3, stock 0" from &lt;500 ms of noise around
+the deadline.</figcaption>
+</figure>
 
 <h3>3.2 Why the tail is a coin-flip: cold-start metastability</h3>
 <p>The p99 is metastable because prefill service time is heavy-tailed and bimodal (§2.1): a request is

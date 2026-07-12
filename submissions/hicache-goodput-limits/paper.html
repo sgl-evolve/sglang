@@ -372,10 +372,24 @@ decomposition is from a screening node; certified-node goodput numbers are pendi
 </ul>
 
 <h2>8 Reproducibility</h2>
-<p>Branch <code>evolve/wilkes</code> (base <code>a334877e5</code>). Offline analysis: <code>sim/build_trace.py</code>,
-<code>sim/simulate.py</code>, <code>sim/prefill_tail.py</code>, <code>analyze.py</code>,
-<code>analyze_serverlog.py</code>. Eval via the frozen <code>eval-on-pool.sh &lt;name&gt; &lt;version&gt;</code>.
-⟨commit hashes + run dirs per number pending.⟩</p>
+<p>Branch <code>evolve/wilkes</code>, base <code>a334877e5</code> (clean upstream main); results at <code>2ab3c7804</code>.
+<b>Mechanism code:</b> <code>CARStrategy</code> (3-segment, grace via <code>SGLANG_CAR_GRACE_S</code>) in
+<code>python/sglang/srt/mem_cache/evict_policy.py</code>; factory + argparse registration in
+<code>utils.py</code> / <code>server_args.py</code> (commit <code>e65d1cc58</code>); completion-time stamp
+(<code>car_completed_at</code>) in <code>unified_radix_cache.py:773</code>; per-prefill JSONL trace behind
+<code>SGLANG_WILKES_TRACE</code> in <code>scheduler.py</code>.
+<b>Eval:</b> the frozen <code>evaluation-sop/scripts/eval.sh &lt;name&gt; &lt;version&gt; [--radix-eviction-policy P]</code>
+(warmup 300 @λ3 → sweep λ∈{3,5,7,10}, NUMP 1553, conc 256, SLO 8 s; 2-tier write_through, page 64, TP8, ctx 262144),
+on an exclusive 8×H100 node.
+<b>Per-number provenance</b> (each dir has <code>curve.csv</code>, <code>server.log</code>, <code>trace.rank0</code>):
+lru = <code>runs/screen-v0b</code> (λ=3) + <code>runs/cert-lru-full</code> (full curve);
+slru = <code>runs/screen-slru</code> (<code>--radix-eviction-policy slru</code>);
+car grace 90 = <code>runs/screen-car90</code> (<code>SGLANG_CAR_GRACE_S=90 … --radix-eviction-policy car</code>);
+car grace 300 = <code>runs/screen-car300</code> (grace 300).
+<b>Offline analysis</b> (from the trace + tokenized dataset): tail decomposition, peak-live-KV, turn-0→turn-1
+gap, and grace-demand via the conversation-id trace; Belady headroom + Fig 3 via <code>sim/simulate.py</code> /
+<code>sim/gen_figures.py</code>; workload facts via <code>sim/build_trace.py</code> / <code>sim/prefill_tail.py</code>.
+W&B evolution curve: project <code>sgl-evolve</code>, run <code>wilkes</code>.</p>
 
 <h2>9 Conclusion</h2>
 <p>For a two-tier HiCache serving concurrent multi-turn long-context conversations under a tail-latency SLO,

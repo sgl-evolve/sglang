@@ -3,7 +3,55 @@
 Researcher: **base** (independent replicate). Branch `evolve/base`. Clone base commit `a334877e5`.
 W&B: project `sgl-evolve`, run `base` (group v0.31).
 
-## SUMMARY (running)
+## ★★ DEFINITIVE (certified, same-node): λ=5 is a MECHANISM-INDEPENDENT COIN-FLIP; goodput=3 reliably
+**Same node 1-2, λ=5 p99 TTFT, sequential runs:**
+- v0-cert (stock, hit 0.671): **10258 ms**  |  v-wb-cert (write_back, hit 0.733): **20650 ms**
+- SAME node, and the **higher-hit run (write_back) was 2× WORSE** ⇒ λ=5 p99 is **run-variance-dominated
+  (metastable near-knee queue), NOT hit/mechanism-determined.** (Cross-node adds more: v1x-cert 0-3 = 20.9 s.)
+- **λ=3 is reliable** across all certified runs (6505 / 6972 / 6607 ms — all well under 8 s) ⇒ **goodput@SLO
+  = 3.02 for stock AND every mechanism, on-contract.** No mechanism reaches λ=5 (coin-flip 10–21 s).
+- Also at λ=3 same-node: write_back p99 6972 ≥ stock 6505 despite +6pp hit ⇒ **on a fast certified node the
+  p99 is NOT hit-limited** (the "write_back −40% p99" on 0-1 was purely a *slow-node* effect).
+- **This reproduces the v0.3 coin-flip on v0.31**: the warmup burst stabilized λ=3 but NOT the near-knee λ=5.
+  Single-run / single-node λ=5 A/Bs are VOID (my [[base-v03-researcher]] + [[hoare-v03-researcher]] lesson,
+  re-confirmed). Certified nodes + replication are mandatory; uncertified 0-1 (1.8× slower) manufactured a
+  false "goodput 0→3".
+- **HONEST FINAL: no lossless KV mechanism produces a reliable on-contract goodput gain.** goodput=3 is the
+  decode-knee ceiling; λ=5 is unreachable (variance). Contribution = this rigorous characterization +
+  mechanistic diagnosis + a lossless exclusive-tiering mechanism (+1.7pp hit, config-independent) + honest negatives.
+
+## ⚠️⚠️ λ=5 IS VARIANCE-DOMINATED (near the knee) — the goodput headline is a coin-flip [superseded by the definitive block above]
+Certified λ=5 p99 TTFT across nodes/runs (all warm-steady-state v0.31 protocol):
+- v0-cert (1-2, stock): **10.3 s** | v1x-cert (0-3, write_back+exclusive): **20.9 s** | (uncertified 0-1 stock: 24.5 s)
+- The two certified nodes matched within **1.5% at λ=3** (6505 vs 6607 ms) but **diverge 2× at λ=5** (10.3 vs
+  20.9 s). ⇒ **λ=5 sits at the knee and its p99 is metastable/high-variance** — cross-node (even
+  cross-run) comparison there is unreliable. This is the v0.3 coin-flip, reproduced: **goodput@SLO is
+  RELIABLE at λ=3 (=3) but a COIN-FLIP at λ=5** (whether p99 lands 10 s or 21 s is variance, not mechanism).
+- ⇒ Any "goodput 3→4.16 (λ=5 crossing)" claim requires a SAME-NODE A/B **replicated** to beat the knee
+  variance. Single-run λ=5 A/Bs are VOID (my v0.3 memory's exact lesson). v-wb-cert (1-2, same node as
+  v0-cert) is the clean same-node test; its λ=5 + replication decide whether de-dup reliably crosses λ=5.
+- Honest bottom line so far: **goodput@SLO = 3 (reliable, λ=3); λ=5 crossing is variance-dominated.**
+
+## ⚠️ CRITICAL CORRECTION (2026-07-12, certified run) — the "goodput 0→3" was NODE VARIANCE
+- **v0-cert (stock write_through) on CERTIFIED node 1-2: λ=3 p99 TTFT = 6504 ms ≤ 8 s → goodput ~3**, hit 0.671.
+- My uncertified **v0 on node 0-1: λ=3 p99 = 11663 ms → goodput 0**. SAME stock config; **1.8× p99 by node.**
+- ⇒ **The "goodput 0→3 via capacity de-dup" headline is RETRACTED as an on-contract claim** — node 0-1 is
+  ~1.8× slower on p99, so stock *failed* there and write_back *rescued* it; but on a proper certified node
+  **stock already passes** (goodput already at the decode-knee cap ~3). The p99-threshold metric is
+  node/run-variance-sensitive (the v0.3 coin-flip; this is exactly why the contract mandates certified nodes).
+- **What SURVIVES (same-node, still valid):** write_back lowers λ=3 p99 on 0-1 (11663→7032, −40%, same node);
+  exclusive tiering adds +1.7pp hit (same-node); these are real *mechanism* effects. What does NOT survive:
+  the claim that any of this moves on-contract **goodput** (stock is already at the cap on a certified node).
+- **BUT the certified node REVEALS a real opportunity (reframe, not just retraction):** on certified 1-2,
+  stock λ=5 p99 = **10258 ms — only 28% over the 8 s SLO** (vs node 0-1's 24.5 s). The same-node write_back
+  p99 reduction is **−40%** (11663→7032 on 0-1); −40% on 10.3 s → **~6.2 s < 8 s ⇒ λ=5 would CROSS the SLO
+  ⇒ goodput 3 → ~4.16** (a real +40% on-contract win). So the honest on-contract story is likely:
+  *stock already clears λ=3 (goodput 3); capacity de-dup (write_back/exclusive) clears λ=5 (goodput ~4.2).*
+  **v0-cert (1-2, stock, λ=5 10.3 s) vs v1x-cert (0-3, write_back+exclusive) tests this** (cross-node first
+  look); a same-node certified A/B (v0 + mechanism on ONE certified node) will confirm. THIS is the headline
+  to nail on-contract — and it needs certified nodes (the 0-1 slow-node masked it as a λ=3 crossing).
+
+## SUMMARY (running) — SUPERSEDED by the correction above for the goodput claim
 - **v0.31 recalibration works**: the cache genuinely binds (hit 0.62, host_util≈1.0), unlike v0.3 (under-
   provisioned/bimodal). A KV mechanism CAN move the metric.
 - **Headline: goodput@SLO 0 → ~3.** Stock write_through (inclusive tiering) fails the 8 s TTFT-SLO even at
@@ -30,6 +78,22 @@ W&B: project `sgl-evolve`, run `base` (group v0.31).
   **not** help here: write_back already caches most reusable contexts, and the residual λ=3 tail is
   **capacity-floored** (working set 19M ≫ L1+L2 10.7M → ~26% miss is near the floor; the long contexts that
   cause the tail are simply too large/numerous to fit regardless of retention policy). Honest negative.
+
+## MECHANISTIC DIAGNOSIS of the goodput cap (from v-wb server.log, λ=5 window, GPU-free)
+Why does λ=5 achieve only 4.4 req/s (p99 21 s) when the server hits 5.1 at λ=10? Analyzed 590 decode
+batches + prefill batches in the λ=5 window:
+- **Decode running-req is BIMODAL**: min 1, p25 3, **median 17**, p75 242, max 256. The decode batch
+  repeatedly DRAINS to a handful then spikes to the 256 cap — it is NOT held full.
+- **Prefills are short / cache-served**: #new-token 64–384 vs **#cached-token 15K–57K**, **#queue-req≈0**.
+  ⇒ the cache is working (few new tokens to compute) and there is NO prefill backlog. Prefill token-VOLUME
+  is not the bottleneck.
+- ⇒ The p99 TTFT tail at λ≥5 is **admission-wait when the 256-concurrency decode slots saturate** with
+  long-response requests, compounded by expensive continuation-prefill *attention over the long cached
+  prefix* (64 new tokens attending 57K cached ⇒ a real per-turn cost that grows with conversation length,
+  pausing decode ⇒ batch drains). Both drivers — **decode duration (output length) × the 256 concurrency
+  cap** — are FROZEN protocol/model facts, **not KV-cache-addressable**. Caching removes prefill *recompute*
+  (crosses the healthy-rate SLO) but cannot shorten decode or lift the concurrency cap ⇒ goodput cap ≈ 3.
+This is the evidence behind "goodput is decode-knee-capped": it's decode-slot saturation, not a cache miss.
 
 ## OVERALL CONCLUSION (honest)
 - The v0.31 recalibration works (cache binds). **goodput@SLO 0→~3** is reachable and is a

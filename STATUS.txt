@@ -5,3 +5,4 @@
 08:09:05 DONE v1_c :: good@SLO=0.00 peak_tok=587 best_hit=0.701 | req_s@3=3.0 ttft_p99@3=8031.3 req_s@5=4.0 ttft_p99@5=23019.2 req_s@7=4.5 ttft_p99@7=35077.3 req_s@10=4.6 ttft_p99@10=40976.8
 09:07:05 DONE pc_e :: good@SLO=3.02 peak_tok=598 best_hit=0.671 | req_s@3=3.0 ttft_p99@3=6556.2 req_s@5=4.0 ttft_p99@5=23370.2 req_s@7=4.5 ttft_p99@7=34388.0 req_s@10=4.7 ttft_p99@10=26777.6
 09:43:06 DONE pc_c :: good@SLO=3.02 peak_tok=527 best_hit=0.673 | req_s@3=3.0 ttft_p99@3=6982.8 req_s@5=4.1 ttft_p99@5=12811.1 req_s@7=0.2 ttft_p99@7=26012.0
+10:19:06 DONE pc_b :: good@SLO=3.02 peak_tok=603 best_hit=0.674 | req_s@3=3.0 ttft_p99@3=6293.8 req_s@5=4.0 ttft_p99@5=24001.7 req_s@7=4.5 ttft_p99@7=33966.2 req_s@10=4.7 ttft_p99@10=40494.2

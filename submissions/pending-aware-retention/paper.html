@@ -312,7 +312,8 @@ entire +2.5&nbsp;pp gain</b>. This is not a prediction failure — continuation 
 LRU retains most reused-soon KV, so reserving capacity for all recent conversations merely reshuffles it and,
 under the pin budget, can evict other useful KV — netting ≤0. Only the narrow set that LRU provably mishandles
 — continuations already waiting in the scheduler's queue — is worth protecting. The signal that matters is the
-<i>pending set</i>, not broad recency.</p>
+<i>pending set</i>, not broad recency. Two clean post-completion full sweeps confirm the pattern at every rate
+(hit ≈ stock and below v1 at λ=3/5/7/10).</p>
 <p><b>Broad pinning also destabilizes eviction (a third strike).</b> Beyond gaining nothing, the
 post-completion config <i>intermittently</i> crashed the scheduler at high load (one of three post-completion
 runs, at λ=7) with a tree-consistency assertion in device eviction; the shipped queued-pin never crashed

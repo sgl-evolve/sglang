@@ -259,8 +259,14 @@ node as the lru baseline (λ=3; node variance is the dominant confound so all ro
 <tr><th>policy (λ=3, same node)</th><th>hit</th><th>p50 TTFT</th><th>p99 TTFT</th><th>EVICTED %work</th><th>EVICTED %of ≥40K tail</th><th>goodput@SLO</th></tr>
 <tr><td>lru (stock)</td><td>0.679</td><td>876 ms</td><td>11,254 ms</td><td>58%</td><td>63%</td><td>0</td></tr>
 <tr><td>slru (protect proven)</td><td><b>0.507</b></td><td>1,498 ms</td><td>10,091 ms</td><td><b>73%</b></td><td><b>83%</b></td><td>0</td></tr>
-<tr><td>car (this work, grace 90 s)</td><td class="todo">pending</td><td class="todo">—</td><td class="todo">—</td><td class="todo">—</td><td class="todo">—</td><td class="todo">—</td></tr>
+<tr><td>car (this work, grace 90 s)</td><td>0.679</td><td>722 ms</td><td>11,174 ms</td><td class="todo">≈lru</td><td class="todo">≈lru</td><td>0</td></tr>
 </table>
+<p><b>CAR (grace 90) ≈ LRU</b>, exactly as §4.2 predicts: p99 11,174 ms vs LRU's 11,254 ms (within noise, still
+≫8 s → goodput 0), hit 0.679 identical to LRU, and — unlike SLRU — it does <i>not</i> hurt (the turn-0 grace
+probation protects turn-0s without sacrificing them). At grace 90 s the policy fits the cache (0.85×) but covers
+only 14% of the 460 s turn-0→turn-1 gaps, so it captures essentially none of the avoidable recompute. This is
+the small-grace horn of the grace trap (§4.2); the large-grace horn (a grace approaching the 460 s gap swamps
+the cache and hurts, like SLRU) is the complementary failure. No capacity-feasible grace moves goodput@SLO.</p>
 <p><b>SLRU is counterproductive</b> — protecting proven conversations made the cache <i>worse</i> (hit
 0.68→0.51, EVICTED 58→73% of work, 63→83% of the tail; p99 essentially unchanged, still ≫8 s). The reason is
 structural and is the key insight of this section: <b>SLRU protects hit_count≥1 by evicting hit_count=0 nodes

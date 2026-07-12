@@ -63,18 +63,28 @@ def main(path):
               " the chash-enabled trace. (old match-only classification is UNSAFE.)")
         return
     cls = np.array(classify(rows))
-    tail = unc >= q(unc, 99)  # top ~1% by uncached = p99-tail requests
-    print("\nclass         %reqs   %uncached-work   %of-p99-tail")
+    print("\noverall class    %reqs   %uncached-work")
     for c in ["COLD-TURN0", "WARM-HIT", "EVICTED"]:
         m = cls == c
-        pr = 100 * m.mean()
-        pw = 100 * unc[m].sum() / max(1, unc.sum())
-        pt = 100 * (m & tail).sum() / max(1, tail.sum())
-        print(f"  {c:<12} {pr:6.1f}   {pw:12.1f}   {pt:11.1f}")
+        print(f"  {c:<12} {100*m.mean():6.1f}   {100*unc[m].sum()/max(1,unc.sum()):12.1f}")
+    # SLO-breaching lens: a request breaches the SLO iff its uncached prefill exceeds ~8s*P_eff tokens.
+    # cold docs are simply the biggest prefills; the goodput question is the CLASS MIX among big-enough
+    # (SLO-threatening) prefills. Report composition above several uncached thresholds.
+    print("\nclass mix among requests with uncached >= T (the SLO-breaching-size candidates):")
+    print(f"{'T(tok)':>8} {'#reqs':>6} {'%COLD-TURN0':>12} {'%EVICTED(avoid)':>16} {'%WARM-HIT':>10}")
+    for T in [20000, 40000, 60000, 100000]:
+        big = unc >= T
+        nb = int(big.sum())
+        if nb == 0:
+            print(f"{T:>8} {nb:>6}   (none)"); continue
+        pc = 100 * (cls[big] == "COLD-TURN0").mean()
+        pe = 100 * (cls[big] == "EVICTED").mean()
+        pw = 100 * (cls[big] == "WARM-HIT").mean()
+        print(f"{T:>8} {nb:>6} {pc:>12.1f} {pe:>16.1f} {pw:>10.1f}")
     ev = cls == "EVICTED"
-    print(f"\nAVOIDABLE (EVICTED) = {100*unc[ev].sum()/max(1,unc.sum()):.1f}% of uncached work, "
-          f"{100*(ev&tail).sum()/max(1,tail.sum()):.1f}% of the p99 tail")
-    print("VERDICT: EVICTED dominates tail => CACHE-AFFECTABLE (mechanism); COLD-TURN0 dominates => cold-bound (negative)")
+    print(f"\nAVOIDABLE (EVICTED) overall = {100*unc[ev].sum()/max(1,unc.sum()):.1f}% of uncached work")
+    print("VERDICT: if EVICTED is a large share of big/SLO-breaching prefills => CACHE-AFFECTABLE (a residency")
+    print("mechanism protecting proven convs cuts them); if big prefills are ~all COLD-TURN0 => cold-doc-bound.")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

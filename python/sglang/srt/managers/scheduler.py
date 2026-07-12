@@ -2931,6 +2931,27 @@ class Scheduler(
         if len(can_run_list) == 0:
             return None
 
+        # --- wilkes per-prefill trace (lossless observability; env-gated SGLANG_WILKES_TRACE=<path>) ---
+        _wt = os.environ.get("SGLANG_WILKES_TRACE")
+        if _wt:
+            try:
+                import json as _json, time as _time
+                _rank = getattr(self, "tp_rank", 0) or 0
+                _now = _time.time()
+                with open(f"{_wt}.rank{_rank}", "a") as _f:
+                    for _r in can_run_list:
+                        _plen = len(_r.origin_input_ids)
+                        _dev = len(_r.prefix_indices) if _r.prefix_indices is not None else 0
+                        _host = getattr(_r, "host_hit_length", 0) or 0
+                        _f.write(_json.dumps({
+                            "t": round(_now, 3), "rid": _r.rid, "plen": _plen,
+                            "dev": int(_dev), "host": int(_host),
+                            "uncached": max(0, _plen - int(_dev) - int(_host)),
+                            "wq": len(self.waiting_queue), "run": len(self.running_batch.reqs),
+                        }) + "\n")
+            except Exception:
+                pass
+
         can_run_set = set(can_run_list)
         self.waiting_queue = [x for x in self.waiting_queue if x not in can_run_set]
         if adder.preempt_list:

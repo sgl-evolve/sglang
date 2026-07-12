@@ -345,3 +345,24 @@ show goodput invariant to eviction (empirically airtight, though structurally im
 confirmation (job 19437) for official numbers. Then finalize the characterization/impossibility paper:
 "goodput@SLO for long-context multiturn on a tiered KV cache is bounded by the cold-document prefill tail,
 not cache efficiency; lossless cache mechanisms are confined to R_thru (p50/p90), the tail is R_p99."
+
+## 19. ⚠️ RETRACTION of §18 verdict — CLASSIFICATION FLAW (integrity)
+
+§18 ("p99-tail 100% COLD => bounded-negative") is **PREMATURE / RETRACTED**. resolve_fork.py's "COLD"
+class = prefix-match <5% of prompt, which **conflates two very different things**:
+(a) genuine turn-0 documents (first request of a conversation — never cacheable, irreducible), and
+(b) fully-EVICTED later turns (turn-N whose entire accumulated prefix was evicted mid-conversation → the
+    request recomputes its whole 40K+ history — this is AVOIDABLE, exactly what a better cache would prevent).
+Both have match≈0, so my tool mislabeled (b) as COLD/irreducible.
+
+Tell-tale: COLD was 24% at low pressure (diag NUMP=400 ≈ the 22% genuine-turn-0 fraction) but 49% under
+pressure (screen-v0) — the extra ~25% are almost certainly **evicted later turns (avoidable)**, NOT cold
+docs. If those dominate the pressured p99 tail, the cache CAN help ⇒ the verdict may be MECHANISM-VIABLE,
+not bounded-negative. Also confound: the screen-v0 trace read was only 8-10% into λ=3 (turn-0-heavy startup),
+inflating COLD%.
+
+**FIX (in progress):** added a conversation prefix-hash `chash` (hash of first 48 origin tokens; a conv's
+turns share it) to the trace (scheduler.py). Offline: first request per chash = genuine turn-0; a repeat
+chash with low match = evicted later turn (avoidable). A pressured chash-enabled run + steady-state (full
+λ=3, not the startup) will correctly classify the p99 tail. Verdict is RE-OPENED pending that run.
+LESSON: match-fraction alone cannot distinguish irreducible-cold from avoidable-evicted; need conv identity.

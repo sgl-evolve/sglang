@@ -583,3 +583,12 @@ Consistent method (tail = uncached≥40K): lru EVICTED 61%work/65%tail; slru 73%
 car90 ≈ lru (both far below slru's 83%). CAR grace-90 does NOT reduce the evicted tail → captures ~none of the
 avoidable recompute (grace 90 covers only 14% of the 460s gaps). Confirms §32 mechanistically. paper §5.3 rows
 now consistent (all uncached-tail method). Next: car300 (19502, swamp horn).
+
+## 33. Deliverables status (2026-07-12 ~10:08)
+- paper.html: COMPLETE bounded-impossibility (10 sections §1-9 + abstract; Belady figure; grace-trap table; §5.3
+  lru/slru/car90 λ=3; §5.4 controls; §9 conclusion). Registered in submissions/INDEX.md.
+- W&B (sgl-evolve/wilkes): logged baseline v0_official + v_lru_l3/v_slru_l3/v_car90_l3 (all goodput@SLO=0) =
+  the bounded-impossibility curve. churn py net 76 (CARStrategy+hooks+argparse).
+- car300 (19502, swamp horn) queued behind sibling eval-base-vca on nodeset-0 (~2.5h); cron 1d70e5e7 catches.
+- Certified confirmation + full rate curves: contended/pending (screening on nodeset-0 is valid; result
+  categorical goodput=0). Core result COMPLETE; remainder = refinements.

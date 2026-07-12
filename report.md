@@ -308,6 +308,15 @@ everything). Resolves flush-vs-structural. Needs a diagnostic worktree (flush-di
 runner. Prioritize AFTER v1-writeback if compute allows; else rely on model+queue-timeline argument (§7
 flags it as untested-because-frozen).
 
+## ★ warmdiag (no-flush) — node-controlled flush effect (ondem-3)
+Same node (ondem-3), λ=3: v0-stock (FLUSH) p99 14.06s, p50 1.02s, hit .677 vs warmdiag (NO-FLUSH) p99
+**9.12s**, p50 0.54s, hit .697. ⇒ **removing per-rate flush lowers λ=3 p99 by 35% (14.1→9.1s), same node**
+(+higher hit, lower p50) — the flush is a MAJOR tail contributor (validates the warm-steady-state methodology
+fix). BUT 9.1s still > 8s SLO ⇒ even warm, the structural cold-turn-0 floor keeps p99 near the SLO → coin-flip
+persists (shifted lower, not eliminated). Honest nuance: flush inflates the tail a lot, but the fix doesn't
+fully remove the metastability. Awaiting warmdiag λ=5/7/10 (cumulative cross-rate flush effect: no-flush keeps
+cache hot across rates vs flush cold-starts each).
+
 ## Controls (impossibility evidence)
 - **v1-writeback** (`--hicache-write-policy write_back`, config; job 19490 QUEUED): tests lever-1 (hit rate
   ↑ +13pp per prior work → predict goodput@SLO still 0). Flag-only, lossless.

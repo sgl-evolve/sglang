@@ -46,13 +46,16 @@ gap, not just a better victim signal. This gap-cap is an honest bound, and the s
 (scheduling) is separately evidenced. The offline/online split is a feature (it localizes exactly what blocks the
 win), not hand-waving.
 
-**W4 — the "scheduling" mechanism is inferred, not directly measured.**
-Attack: you attribute the median win to "avoiding the LRU cascade + load-back churn" but don't isolate that.
-Defense: we show p99/median is decoupled from hit rate (whale-r2 lower hit, lower p99) → it is not a residency-hit
-effect, so it must be scheduling/timing; whale cuts the count of large (≥20K) prefills ~10%; the aggregate
-load_back/evict counters are noisy run-to-run. Action (stated as future work): a per-admission cascade/load-back
-trace to isolate the queue mechanism directly. The claim is scoped as "the realized benefit is on the scheduling
-axis" without over-specifying the microscopic cause.
+**W4 — the "scheduling" mechanism is not fully isolated (and one plausible story was refuted).**
+Attack: you attribute the median win to timing but can't say how.
+Defense (updated, honest): we establish what it is NOT — p99/median is decoupled from hit rate (a whale run with
+lower hit had lower p99) so it is not a residency-hit effect; and it is NOT "shorter queues" — a trace of the
+worst whale run shows the waiting-queue depth is unchanged vs LRU (mean 3.7 vs 3.6). What differs is the
+running-batch composition at prefill admission (whale p50 21 vs LRU p50 246) and the count of large prefills
+(−10%), but we do not claim a definite microscopic pathway; the paper (§4.2/§5.5/§9) now states this explicitly
+and scopes the exact timing cause as future work. We deliberately retracted the earlier "reduces queueing" wording
+once the wq trace refuted it — the empirical claim (whale robustly lowers median TTFT, losslessly, not via hit
+rate) stands independent of the unresolved mechanism.
 
 **W5 — AUC 0.78 is imperfect; size-ranked eviction will wrongly drop big continuers.**
 Attack: 22% of the ranking is wrong; you will evict live big-turn-0 conversations.

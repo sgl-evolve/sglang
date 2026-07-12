@@ -931,3 +931,21 @@ sit well above (never cross). NOT a deterministic goodput 0→3.02 win; a distri
 crossing + robust median. The two FAILs (8.7, 9.3s) are close misses (unlucky queue draws), consistent w/ the
 metastable-p99 finding (§47: p99 decoupled from recompute). No paper change needed beyond n=2/3 → n=4 numbers.
 whale-r4 NOT scancelled → full sweep continues (λ5/7/10 curve + summary.json for W&B). lru-r3 PD behind.
+
+## 54. ★★ INTEGRITY: wq analysis REFUTES the "whale reduces queueing" mechanism claim — soften the paper
+Traced whale-r1 (WORST whale run) vs lru (screen-v0b), λ=3 window, wq=len(waiting_queue) & run=len(running_batch)
+at prefill admission (scheduler.py trace fields):
+  whale-r1: wq mean 3.7 p90 10 p99 26 | run mean 121 p50 21 p90 256
+  lru:      wq mean 3.6 p90  8 p99 21 | run mean 149 p50 246 p90 256
+⇒ whale's WAITING-QUEUE DEPTH is NOT lower (slightly higher). So my paper's specific mechanistic claim — "evicting
+whales reduces queueing for big prefills, lowering TTFT" — is NOT supported by the queue data. MUST SOFTEN.
+The `run` (decode batch at prefill-admission) DOES differ sharply (whale p50 21 vs lru p50 246) but I can't cleanly
+interpret it from a single (worst-run) trace, and it may be a prefill/decode-interleaving artifact.
+★ HONEST REVISED MECHANISM: whale robustly lowers MEDIAN TTFT ~25% (n=4 tight) and it is NOT a recompute-rate
+effect (hit ~flat, §46/47); but the precise scheduling cause is NOT isolated — waiting-queue depth is unchanged;
+running-batch composition differs but murkily. So the paper should say: "whale lowers median TTFT via a scheduling/
+victim-choice effect we do not fully isolate (queue depth unchanged; batch composition differs); microscopic cause
+is future work." This is MORE defensible than the queueing claim I can't support.
+★ CAVEAT on the median win itself: lru median is n=2 {678,876}; whale {550-568} is tight but the GAP depends on
+lru's median being reliably ~700-900 → lru-r3 (running later) confirms. If lru-r3 median ≈550 the median win
+shrinks. Flag as pending. (The offline size-signal result + metastability finding do NOT depend on this.)

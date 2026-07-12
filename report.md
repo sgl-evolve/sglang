@@ -101,7 +101,35 @@ bounded-impossibility for lossless KV-movement).
 
 ## Versions
 
-### v0-stock (config) — baseline rate sweep — RUNNING (job 19436, ondem-3)
+### ★ DIRECTION DECIDED (from v0-stock data): BOUNDED IMPOSSIBILITY ★
+Full baseline curve (v0-stock, commit 9a7fbe472, churn py **net 0** = genuinely stock; W&B logged):
+| λ | req/s | out_tok/s | p50 TTFT | **p99 TTFT** | hit |
+|---|-------|-----------|----------|--------------|-----|
+| 3 | 2.85  | 365       | 1023ms   | **14062ms**  | .677|
+| 5 | 3.67  | 470       | 1033ms   | **25449ms**  | .666|
+| 7 | 4.07  | 521       | 1024ms   | **33314ms**  | .660|
+| 10| 4.21  | 538       | 1043ms   | **42008ms**  | .656|
+**goodput@SLO = 0** (no rate ≤ 8s p99). peak req/s 4.21 (knee ~3.5), peak tok/s 538.
+**Tail decomposition (analyze_run.py + calibrate.py):**
+- **p50 DEAD FLAT ~1.0s across all λ** — the cache serves the median (warm follow-ups) perfectly,
+  load-independent. **p99 explodes 14→42s** — the tail.
+- **Load-back is FAST: p99 ≤ 8.6ms, mean ~1.3ms** (despite 330M load-back tok/rate, 40% of hits from
+  host). ⇒ **L2→L1 transfer is NOT on the critical path → SLOP escape hatch is RULED OUT** (nothing to
+  overlap). This is the decisive kill of the one positive candidate.
+- eviction ~2.4B tok cumulative (massive host churn) — but p50 flat + hit stable ⇒ eviction/recompute is
+  NOT gating the tail either.
+- Calibrated **P≈20.5K tok/s** (peak). Measured p99 is **6–8× above** the perfect-cache P-K prediction
+  (λ3 pred 2.4s vs meas 14s) — the tail is a HEAVY-TAIL + SERIALIZATION phenomenon (cold turn-0 docs
+  65K–192K tok, serialized one-chunked_req-at-a-time), NOT hit-rate or transfer.
+**CONCLUSION:** The KV cache is a **mean/median optimizer, not a tail optimizer**. goodput@SLO (a p99
+metric) is **structurally 0 and cache-immune** on this heavy-tailed cold-prefill workload: the p99 is set
+by unique cold turn-0 document prefills (14% of requests, lossless-irreducible) + their serialized
+queueing; neither higher hit rate nor faster movement (both already near-ideal: p50 flat, load-back <9ms)
+can touch it. This is a genuinely-new bounded impossibility that EXPLAINS the field's repeated negatives.
+**Controls to nail it (cheap, config-only):** v1-writeback (hit↑ +13pp per prior work → predict goodput@SLO
+still 0) [job 19490 QUEUED]. Consider a v0-stock replicate for error bars.
+
+### v0-stock (config) — baseline rate sweep — ✅ DONE (job 19436, ondem-3, ~2.5h)
 FIRST DATA (λ=3): req/s 2.85, out_tok/s 365, TTFT **p50 1023ms, p99 14062ms**, hit 0.677.
 Warmup (cold, discarded): p99 48284ms. ⇒ **λ=3 already FAILS the 8s SLO → baseline goodput@SLO = 0**
 (higher rates worse). p50 1.0s vs p99 14s = the heavy-tailed cold-turn-0 + cold-start-per-rate tail.

@@ -134,6 +134,24 @@ them; SLO-feedback-tuned. NOT SRPF (bandwidth reservation, not global reorder).
 heavy-tailed cold-doc prefill service time; no lossless KV-movement mechanism shifts it (cache helps mean,
 not the tail). Establish with the curve + tail decomposition + ablations.
 
+## Queueing model of the prefill tail (tools/queue_model.py) — motivation core
+M/G/1 P-K model of the prefill server (rate P tok/s), driven by the real trace. Per-request prefill-token
+demand under two cache bounds: perfect (follow-ups=Q≈16 tok; only turn-0 pays the doc) vs none (recompute
+full context each turn). Results:
+- **none-cache is UNSTABLE (ρ>1) at every λ, every P** (E[tok]=13.7K) → caching is essential just for
+  stability. perfect-cache E[tok]=2671, p99=39.2K (the cold turn-0 doc).
+- **Predicted perfect-cache goodput@SLO = 3 / 7 / 10 at P = 15K / 25K / 40K tok/s.** Goodput is set by P
+  and the real-vs-perfect gap.
+- Tail is QUEUEING-dominated: p99 TTFT ≈ Wq + p99_service; Wq ∝ λ·E[tok²]/(2P²(1−ρ)) — heavy-tail
+  variance E[tok²] and saturation (1−ρ) drive it; own-service floor p99_doc/P is <8s at plausible P.
+- **Calibration target = P.** Old baseline (λ=3, p99=6.3s) sits ABOVE perfect-cache prediction
+  (1.9–3.8s) ⇒ the real imperfect cache leaves a measurable gap (recompute/load-back/cold-ramp). Size of
+  that gap, from the baseline curve, decides POSITIVE (close the gap → raise goodput) vs IMPOSSIBILITY
+  (gap is irreducible cold-turn-0 variance). Overlay predicted-vs-measured = the paper's motivation figure.
+- Novel-lever hint: since Wq ∝ E[tok²], **variance reduction** of prefill work may beat hit-rate (mean)
+  gains for the tail — but SRPT/SRPF HURT here (they starve the big turn-0 docs that ARE the p99). Room
+  for a genuinely new tail-aware primitive, TBD from data.
+
 ## Related work / novelty positioning (governs which direction is publishable)
 - **AttentionStore / CachedAttention (OSDI'24)** — hierarchical KV caching for MULTI-TURN convs with
   scheduler-aware prefetch of a conversation's KV ahead of its next turn (layer-wise pre-load, positional

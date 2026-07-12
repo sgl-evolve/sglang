@@ -101,6 +101,10 @@ class UnifiedTreeNode:
         self.id = UnifiedTreeNode.counter
         UnifiedTreeNode.counter += 1
         self.write_through_pending_id: Optional[int] = None
+        # wilkes CAR: wall-time of the last request completion on this leaf (0 = never). The
+        # continuation-aware residency policy protects a conversation's prefix for a grace window
+        # after completion so it survives the think-gap until the next turn reuses it.
+        self.car_completed_at: float = 0.0
 
     def component(self, component_type: ComponentType) -> ComponentData:
         return self.component_data[component_type]
@@ -763,6 +767,16 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             self.token_to_kv_pool_allocator.free(kv_indices[page_aligned_len:])
         else:
             self.token_to_kv_pool_allocator.free(kv_indices[req.cache_protected_len :])
+
+        # wilkes CAR: stamp this conversation's leaf with the completion wall-time so the
+        # continuation-aware residency policy protects it across the think-gap until the next turn.
+        if self.eviction_policy == "car":
+            try:
+                import time as _t
+                if req.last_node is not None:
+                    req.last_node.car_completed_at = _t.time()
+            except Exception:
+                pass
 
         self.dec_lock_ref(
             req.last_node,

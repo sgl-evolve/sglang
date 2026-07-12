@@ -46,6 +46,28 @@ class PriorityStrategy(EvictionStrategy):
         return (node.priority, node.last_access_time)
 
 
+class CARStrategy(EvictionStrategy):
+    """Continuation-Aware Residency (wilkes). A conversation's prefix is protected from eviction for a
+    grace window (wall-seconds ~ the observed think-gap) after each request completes on it, so it
+    survives the idle gap until the next turn reuses it — capturing the turn-0->turn-1 first-reuse race
+    that hit-count policies (SLRU/LFU) miss (turn-0 has hit_count=0). Multi-turn convs are reused within
+    grace (re-pinned, kept); single-turn "whale" documents' grace expires and they are evicted. Soft:
+    within each segment falls back to LRU, so eviction always makes progress under full pressure.
+
+    Priority (heap pops MIN = evict first):
+      segment 0 (evict first): grace expired / never completed -> ordered by last_access_time (LRU)
+      segment 1 (protect):     completed within grace           -> ordered by last_access_time (LRU)
+    """
+
+    def __init__(self, grace_s: float = 30.0):
+        self.grace_s = grace_s
+
+    def get_priority(self, node: TreeNode) -> Tuple[int, float]:
+        import time as _t
+        protected = (_t.time() - getattr(node, "car_completed_at", 0.0)) <= self.grace_s
+        return (1 if protected else 0, node.last_access_time)
+
+
 class SLRUStrategy(EvictionStrategy):
     def __init__(self, protected_threshold: int = 2):
         self.protected_threshold = protected_threshold

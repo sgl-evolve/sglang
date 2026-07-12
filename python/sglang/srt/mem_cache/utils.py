@@ -16,8 +16,11 @@
 import hashlib
 from typing import Any, Callable, List, Optional, Tuple
 
+import os as _os
+
 from sglang.srt.environ import envs
 from sglang.srt.mem_cache.evict_policy import (
+    CARStrategy,
     EvictionStrategy,
     FIFOStrategy,
     FILOStrategy,
@@ -60,6 +63,8 @@ _EVICTION_POLICY_FACTORIES: dict[str, Callable[[], EvictionStrategy]] = {
     "filo": FILOStrategy,
     "priority": PriorityStrategy,
     "slru": SLRUStrategy,
+    # wilkes continuation-aware residency; grace window (wall-s ~ think-gap) via SGLANG_CAR_GRACE_S
+    "car": lambda: CARStrategy(grace_s=float(_os.environ.get("SGLANG_CAR_GRACE_S", "30.0"))),
 }
 
 

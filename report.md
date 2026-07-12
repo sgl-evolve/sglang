@@ -193,6 +193,30 @@ reference will likely be a stock+trace DIAGNOSTIC to decompose the p99 tail and 
   per-layer-overlapped, client-side-invisible, or a textbook policy ⇒ strengthens the bounded-negative
   hypothesis; the rigorous question the baseline settles is WHAT actually bounds goodput@SLO under load.
 
+## 11. ★ SHARP FORK CRITERION — prefill-throughput vs SLO (sim/prefill_tail.py)
+
+Under PERFECT within-conv cache, **99% of irreducible prefill work is cold turn-0 documents** (1% is later
+turns). Per-turn uncached-prefill distribution: PERFECT-cache p99=39K tok (max 193K); NO-cache p99=58K tok.
+So whether p99 TTFT is IRREDUCIBLY over the 8s SLO depends on the real prefill throughput P:
+| P (tok/s) | 8s budget | %turns w/ PERFECT-cache prefill >8s | verdict |
+|-----------|-----------|-------------------------------------|---------|
+| 4000  | 32K  | 2.23% (>1%) | p99 IRREDUCIBLE → cache can't raise goodput@SLO (BOUNDED-NEGATIVE) |
+| 8000  | 64K  | 0.16%       | cache CAN affect p99 → mechanism viable |
+| 15000 | 120K | 0.03%       | cache CAN affect p99 → mechanism viable |
+
+**Avoidable-recompute headroom** (if cache-affectable): baseline uncached ≈37.8M tok (hit0.62) vs perfect
+≈19.3M → **~18.5M tok (~49% of baseline prefill) is avoidable recompute** = warm-turn misses a finite-cache
+policy could reduce. (Belady-finite < perfect-infinite; my sim put finite headroom ~23%.)
+
+⇒ **The FORK is decided by measuring P from the baseline** (curve.csv λ=3 + server.log per-batch prefill
+timing). This resolves at the FIRST rate (~40 min into the run), not the full sweep. Plan:
+- estimate P = (Σ #new-token over prefill batches)/(prefill wall time) from server.log at λ=3.
+- if p99(cold-prefill) > 8s for >~1% of turns → **bounded-negative** (characterize + a couple policy
+  controls showing eviction policy doesn't move goodput → cache not the lever; p99=cold-context-tail-bound).
+- else → **mechanism**: target the ~18.5M avoidable recompute (finite-cache residency beating LRU under
+  load) — but must beat textbook SLRU/GDSF/LFU novelly (open problem; may still be negative if only
+  turn-count-predictable). Keep both live until P is known.
+
 ## Versions (test submissions)
 - **v0-baseline** (stock sweep, clean reference) — job 19437, QUEUED. [pending curve]
 

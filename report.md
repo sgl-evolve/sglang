@@ -145,6 +145,20 @@ Certified λ=5 p99 TTFT across nodes/runs (all warm-steady-state v0.31 protocol)
   **capacity-floored** (working set 19M ≫ L1+L2 10.7M → ~26% miss is near the floor; the long contexts that
   cause the tail are simply too large/numerous to fit regardless of retention policy). Honest negative.
 
+## MECHANISTIC DIAGNOSIS #2 — the p99 tail is DEVICE-KV-pressure during bursts (why host-tier mechs can't help)
+Device KV pool usage during serving (v0-cert, per decode step): p50 **0.01**, p90 0.26, p99 **0.92**, max 0.99.
+- The device is **bursty**: nearly empty most of the time, but **nearly FULL (p99 0.92) during concurrency
+  bursts** of long-context requests. The p99 TTFT tail coincides with these bursts: the device KV pool fills
+  with running requests' (locked) KV ⇒ cached prefixes evicted ⇒ load-backs + evictions + prefills all contend
+  under device pressure. load_back volume is large (λ=3: 327 M tokens H→D; λ=5: 668 M) — 60% of hits are host.
+- ⇒ **The burst tail is DEVICE-capacity-bound, not host-capacity or hit-bound.** Running-request KV (the 12
+  full-attn layers' growing KV) is locked and **cannot be offloaded losslessly** (attention needs all of it;
+  the 36 Mamba layers are fixed tiny state). So **host-tier mechanisms (exclusive tiering, cost-aware retention)
+  cannot address the burst tail** — this is the mechanistic reason they're goodput-neutral. There is no free
+  device room during the bursts that matter, so a "keep long prefixes device-resident" placement lever is also
+  bounded out. Two independent diagnoses (decode-slot saturation + device-KV-pressure bursts) both conclude the
+  goodput tail is NOT lossless-KV-addressable.
+
 ## MECHANISTIC DIAGNOSIS of the goodput cap (from v-wb server.log, λ=5 window, GPU-free)
 Why does λ=5 achieve only 4.4 req/s (p99 21 s) when the server hits 5.1 at λ=10? Analyzed 590 decode
 batches + prefill batches in the λ=5 window:

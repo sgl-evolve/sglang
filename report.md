@@ -311,3 +311,15 @@ LESSON: future diagnostics must include a warmup burst.
 
 ## Formal submissions
 - (none yet)
+
+## 17. ★ PRESSURED PREVIEW (screen-v0 live trace, warmup+8% of λ=3) — supports cold-doc-bound
+
+From the live SGLANG_WILKES_TRACE under NUMP=1553 pressure (hit dropping 0.83→**0.57** as working set fills):
+- **COLD turn-0 docs = 47% of reqs but 95% of uncached WORK**; WARM-HIT 41.6%reqs/0.6%work;
+  **WARM-MISS (avoidable) = 11.4% reqs but only 4.4% of uncached work.**
+- ⇒ Even under building pressure, avoidable warm-miss recompute is ~4-5% — because **stock schedule-time
+  matching already protects active convs' prefixes** (empirically confirms §3). The irreducible cold-document
+  floor dominates (95%). A residency/eviction mechanism can only touch ~4-5% of prefill work ⇒ minimal
+  goodput headroom ⇒ **leading verdict: goodput@SLO is COLD-DOCUMENT-BOUND (bounded-negative).**
+- PENDING: the λ=3 p99 (curve.csv) confirms goodput@SLO (R_p99); full sweep + resolve_fork.py finalize.
+  Caveat: partial (8% of λ=3); warm-miss% may shift over the full sweep, but it's stable vs NUMP=400 (4.6%).

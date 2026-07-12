@@ -163,7 +163,7 @@ goodput (mechanism). Note the irreducible <b>cold-document floor</b>: ≈94% of 
 turn-0 documents; the cache only addresses the warm-miss remainder, which grows with pressure. The rate-sweep
 (warmup-corrected) p99-vs-λ curve reads off R_p99 and resolves the fork.</p>
 
-<h2>5 Evaluation <span class="todo">numbers PENDING (screen-v0 pressured sweep + certified 19437)</span></h2>
+<h2>5 Evaluation <span class="todo">λ=3 same-node numbers landed (lru, slru); car + full curves + certified confirm pending (job 19480)</span></h2>
 <p>Frozen rate-sweep (λ∈{3,5,7,10}, warmup burst, NUMP=1553, conc 256) on a certified 8×H100 node; headline
 goodput@SLO (max req/s with p99 TTFT ≤ 8 s). Lossless verified vs the no-cache run.</p>
 <h3>5.1 The goodput@SLO baseline &amp; the binding bound</h3>

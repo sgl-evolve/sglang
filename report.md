@@ -176,7 +176,13 @@ combined code with pin on / pc off (= queued-only). Clean same-node A/B on ondem
 |-----|-----|--------|---------------------|----------|----------|
 | v0_official | baseline | stock single-point | (W&B reference point) | — | logged |
 | v0-baseline | baseline | pristine sweep (job 19434) | running | — | calibrates real curve |
-| v1-pinpend | mechanism | pin on, pc off (queued-only) | queued (19443) | expect yes | — |
+| stock_b (0-3) | config | PIN_ENABLE=0 (stock, same binary) | **0** (p99 8.1/27.0/35.3/41.6s; hit .678/.664/.659/.658) | n/a | node-0-3 stock ref (W&B) |
+| stock_c (1-2) | config | PIN_ENABLE=0 (stock, same binary) | **3.02** (p99 6.3/13.0/34.8/41.5s; hit .673/.668/.663/.659) | n/a | node-1-2 stock ref (W&B); coin-flip vs stock_b |
+| v1_b (0-3) | mechanism | pin on, pc off (queued-only) | running (mechanism confirmed active) | expect yes | vs stock_b same-node |
+| v1_c (1-2) | mechanism | pin on, pc off (queued-only) | running | expect yes | vs stock_c same-node |
+
+**n=2 stock hit consistency (±0.5pp across nodes):** λ=3 .678/.673, λ=5 .664/.668, λ=7 .659/.663, λ=10 .658/.659.
+**Coin-flip confirmed:** identical stock → goodput 0 (0-3) vs 3.02 (1-2). Hit is the robust metric.
 
 ## Formal submissions
 _(none yet)_

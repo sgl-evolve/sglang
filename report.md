@@ -118,6 +118,16 @@ From baseline hit=0.678 + structural perfect-cache (18.7M irreducible new tokens
   queues (chunked-prefill interleaves, so less total work speeds every request incl. the cold-doc tail)
   → the mechanism should pull p99 down materially, plausibly under the 8s SLO.
 
+## ★ Node-variance finding (validates same-node A/B)
+Same STOCK config on two nodes, λ=3: **ondem-3 p99=11.8s vs 0-3 p99=8.1s (−45%!)**, but hit identical
+(0.678 vs 0.678). ⇒ p99/goodput are strongly node-variance-sensitive; **hit-rate is node-independent**.
+Conclusion: compare v1_b/pc_b to **stock_b (same node 0-3)** and stock_c on 1-2; report the **p99 DELTA (%)**
+as the robust metric (absolute goodput@SLO is node-boundary-sensitive). Bonus: on 0-3 stock λ=3 p99=8.1s sits
+right at the 8s SLO, so a small mechanism-driven p99 cut can flip goodput 0→3.02 there.
+Baseline (ondem-3) stays a stock reference; the primary A/B lives on 0-3 and 1-2.
+
+Real stock reference (node 0-3, stock_b): λ=3 req=3.02 p50=749ms **p99=8128ms** hit=0.678.
+
 ## Parallelization (robust, boundary-surviving)
 Discovered: plain `nohup &` processes survive session boundaries (only harness `run_in_background` tasks are
 torn down). So parallel evals via nohup'd `srun --overlap` into the manager's idle held nodes are robust.

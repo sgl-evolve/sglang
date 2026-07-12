@@ -312,7 +312,10 @@ raises hit ~+13 pp, yields goodput@SLO still 0 — <span class="mut">result pend
 tok/s. The measured p99 is <b>6–8× above</b> the perfect-cache P-K prediction (λ=3: 2.4 s predicted vs
 14.1 s measured), and the gap grows with λ — consistent with heavy-tailed cold turn-0 documents
 (65 K–192 K tokens) serialized one-chunk-at-a-time through the prefill engine (§2.4), which the mean-based
-model under-predicts. This is the K·t queueing tail, and it is lossless-irreducible.</li>
+model under-predicts. This is the K·t queueing tail, and it is lossless-irreducible. Direct evidence from
+the scheduler log: of 34,071 prefill batches, <b>65% are full 6144-token chunks</b> (median #new-token =
+6144) and <b>69% are cold</b> (#cached-token = 0) — the prefill engine is dominated by serialized big
+cold-document chunks, exactly the K·t process.</li>
 </ul>
 
 <h3>5.3 Honest controls & attribution</h3>

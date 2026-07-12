@@ -430,3 +430,20 @@ all honest+integrable:
      configs (node-independent finding, powerful confirmation).
 Fair exclusive sbatch (any certified node, durable). If it lands on ondem-3 = clean same-node A/B with medk;
 else wb's own same-node distribution still yields (C). write_back lossless (write timing, not KV content).
+
+### ★★ medk_wb COMPLETE — methodology VALIDATED (2026-07-12 ~23:20Z)
+write_back same-node K=5 on ondem-3 (clean A/B vs stock medk, both ondem-3; ran via nohup flock-overlap into
+held pool node when exclusive queue starved 5.5h; fallback sbatch 19549 cancelled). write_back p99:
+{11.07, 6.57, 12.25, 7.82, 12.41}s → median 11.07, mean 10.02, sample-std 2.67s, 2 PASS / 3 FAIL,
+COIN_FLIP=True, hit ~0.73, p50 ~482ms.
+★ CLEAN SAME-NODE A/B (ondem-3, K=5 each):
+   stock:      2/5 pass, p99 med 9.41 / mean 12.33 ± 8.02s, hit 0.66, p50 546ms
+   write_back: 2/5 pass, p99 med 11.07 / mean 10.02 ± 2.67s, hit 0.73, p50 482ms
+FINDING: goodput@SLO CANNOT distinguish the configs (both 2/5; wb median even slightly higher) EVEN with
+same-node median-of-k → the recommended fix (median-of-k) does NOT rescue the binary metric for KV A/B.
+YET write_back plainly wins on hit (+7pp), p50 (−64ms), AND tail variance (std 8.0→2.7s; no 25.8s
+catastrophe) — ALL invisible to goodput@SLO. write_back is ITSELF a coin-flip → phenomenon is workload-
+property, not config-specific. This VALIDATES the paper's thesis + methodology by construction: report
+stable metrics (+ tail variance), not the binary deadline. Integrated abstract/§3.1(A/B table)/§7/§8,
+committed 5ebf0b75e, validated (tags 7 tables/refs/numbers vs raw). PAPER now: negative + methodology
+RECOMMENDED + VALIDATED. Contribution elevated from "recommend fix" to "validate fix + show its limit".

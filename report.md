@@ -118,7 +118,22 @@ From baseline hit=0.678 + structural perfect-cache (18.7M irreducible new tokens
   queues (chunked-prefill interleaves, so less total work speeds every request incl. the cold-doc tail)
   → the mechanism should pull p99 down materially, plausibly under the 8s SLO.
 
-## ★ Node-variance finding (validates same-node A/B)
+## ★★ COIN-FLIP FINDING (decisive for metric choice)
+Three **identical stock** runs (3 nodes), λ=3:
+| node | p99 | hit | goodput@SLO |
+|------|-----|-----|-------------|
+| ondem-3 (baseline) | 11.8s | 0.678 | 0 |
+| 0-3 (stock_b) | 8.1s | 0.678 | 0 |
+| 1-2 (stock_c) | **6.3s** | 0.673 | **3.02** |
+
+Stock **goodput@SLO flips 0↔3.02** across nodes (λ=3 p99 straddles the 8s SLO: 6.3–11.8s, 1.9× spread), while
+**hit is stable (0.673–0.678)**. ⇒ goodput@SLO is variance-dominated at the boundary (matches the v0.3
+coin-flip). **Headline = hit-rate / recompute reduction (robust, node-independent); p99 reported as same-node
+delta with n≥2 and the metric's variance quantified.** The mechanism must reduce λ=3 p99 enough (same-node)
+to push it reliably under 8s across the variance — a ~30% p99 cut would flip goodput positive on ~all nodes.
+Full baseline sweep (ondem-3): p99 11.8/24.5/34.2/39.7s @ λ=3/5/7/10, hit 0.678/0.662/0.658/0.658, peak 4.5 req/s.
+
+## Node-variance finding (validates same-node A/B)
 Same STOCK config on two nodes, λ=3: **ondem-3 p99=11.8s vs 0-3 p99=8.1s (−45%!)**, but hit identical
 (0.678 vs 0.678). ⇒ p99/goodput are strongly node-variance-sensitive; **hit-rate is node-independent**.
 Conclusion: compare v1_b/pc_b to **stock_b (same node 0-3)** and stock_c on 1-2; report the **p99 DELTA (%)**

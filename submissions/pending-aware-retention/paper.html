@@ -313,6 +313,13 @@ LRU retains most reused-soon KV, so reserving capacity for all recent conversati
 under the pin budget, can evict other useful KV — netting ≤0. Only the narrow set that LRU provably mishandles
 — continuations already waiting in the scheduler's queue — is worth protecting. The signal that matters is the
 <i>pending set</i>, not broad recency.</p>
+<p><b>The win is small because the exploitable set is small — not because of tuning.</b> Two controls rule out
+cheaper explanations. (i) v1 never uses more than <b>9% of its pin budget</b> at any rate (peak ≈6 concurrent
+pins at λ=3), so raising the budget/fraction cannot help — the gain is bounded by the <i>size</i> of the
+provably-at-risk queued set, which is inherently small. (ii) The mechanism's code is fully guarded by a single
+enable flag; with it off, the binary is byte-for-byte the stock path (no extra prefix match), so the
++2.5&nbsp;pp is the pin itself, not incidental overhead — consistent with stock (pristine) and stock (same
+binary, flag off) being statistically identical.</p>
 
 <p><b>goodput@SLO is not a reliable single-run headline.</b> v1 reduced λ=3 p99 by 2% on node 0-3 (8.13→7.98 s),
 which crossed the 8 s SLO (goodput 0→3.02); on node 1-2 the stock p99 was a "lucky" 6.3 s and v1's 8.0 s read

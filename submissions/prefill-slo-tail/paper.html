@@ -58,9 +58,11 @@ each rate — the load generator issues <code>/flush_cache</code> at the start o
 warmup burst warms the compute pipeline (CUDA graphs, JIT) but not the cache. Contributions: (1) <b>a measurement result</b>
 — goodput@SLO is unreliable for single-run KV-cache A/B on heavy-tailed cold-prefill workloads, a pitfall
 that explains a family of null and contradictory results; (2) <b>a queueing characterization</b> of the
-metastability and the SLO-straddling tail; (3) <b>a methodology</b> — warm steady-state (no per-rate
-flush), median-of-k, and reporting the cache's <i>stable</i> effects (hit, mean/p50, peak throughput)
-rather than the variance-dominated tail metric. The KV cache reliably optimizes the body of the latency
+metastability and the SLO-straddling tail; (3) <b>a methodology and a reusable diagnostic</b> — a workload-
+agnostic σ/m test for when goodput@SLO is trustworthy at all, warm steady-state (no per-rate flush),
+same-node median-of-k, and (since even median-of-k cannot resolve the tail here) reporting the cache's
+<i>stable</i> effects (hit, mean/p50, peak throughput) and the p99 distribution rather than the
+variance-dominated binary metric. The KV cache reliably optimizes the body of the latency
 distribution; the SLO tail it does not reliably move is the wrong lens for evaluating it.
 </div>
 
@@ -89,8 +91,11 @@ mechanism. Single-run KV-cache A/B on this workload is therefore void.</li>
 <li><b>A separation of stable vs unstable signals</b>: the cache's effect on hit rate, mean/p50 TTFT, and
 peak throughput is stable and real (write-back: hit +6 pp, peak throughput +18%); only the tail SLO metric
 is variance-dominated. Evaluating caches by goodput@SLO measures the noise, not the cache.</li>
-<li><b>A methodology</b> (§7): warm steady-state (no per-rate flush), median-of-k replicates, and reporting
-the stable metrics — which restores the ability to A/B KV-cache mechanisms.</li>
+<li><b>A methodology + a reusable diagnostic</b> (§4, §7): a workload-agnostic <b>σ/m variance-domination
+test</b> — trust goodput@SLO only when its run-to-run p99 σ is small versus the SLO margin m = |SLO −
+median(p99)| — plus warm steady-state and same-node median-of-k. Since we find even median-of-k cannot
+resolve KV configs on the tail here (§3.1), the reliable comparison uses the cache's <i>stable</i> metrics
+(hit, median TTFT, throughput) and the p99 <i>distribution</i>, not a single binary deadline.</li>
 </ul>
 
 <h2>2 Motivation</h2>
@@ -399,6 +404,19 @@ and an off-contract <b>warm-steady-state diagnostic</b> (v0-warmdiag: per-rate f
 per-batch queue timeline (§5.3) is parsed from the scheduler log. We also designed a speculative L2→L1
 load-back-overlap mechanism ("SLOP", <code>tools/SLOP_design.md</code>); the decomposition (§5.2) shows
 load-back is already ≤8.6 ms, so it has nothing to overlap — a designed-and-ruled-out negative.</p>
+
+<p><b>A reusable diagnostic: is your goodput@SLO trustworthy?</b> Our results yield a simple test any
+evaluator can apply <i>before</i> reporting goodput@SLO, on any workload. Measure the run-to-run standard
+deviation σ of the gating-rate p99 TTFT with a small same-node median-of-k (k≈5), and compare it to the
+margin <b>m = |SLO − median(p99)|</b> at that rate. <b>If σ ≳ m, goodput@SLO is variance-dominated</b>: a
+single run — and even median-of-k — cannot resolve configuration differences, and the metric should be
+replaced by the stable metrics (hit rate, median TTFT, throughput) plus, if the tail matters, the p99
+<i>distribution</i> rather than a binary deadline. In our data the gating rate is λ=3: stock has σ = 8.0 s
+against m = 1.4 s (<b>σ/m ≈ 5.7</b>, deeply variance-dominated), and even the tighter write-back config has
+σ = 2.7 s against m = 3.1 s (σ/m ≈ 0.9, still on the edge). The test is workload-agnostic — it follows from
+the p99 being a metastable queueing tail (§2.2) and needs only k measurements, no model — and it "flips
+safe": it certifies goodput@SLO as trustworthy only when the deadline sits many run-to-run standard
+deviations from the typical p99, i.e. far from the queueing knee.</p>
 
 <h2>5 Evaluation</h2>
 <p>Frozen protocol: λ∈{3,5,7,10} Poisson, 1553 conversations (7163 turns), warmup burst, max-concurrency

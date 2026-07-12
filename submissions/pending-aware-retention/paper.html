@@ -39,9 +39,14 @@ the future. We propose <b>pending-aware KV retention</b>: the cache protects the
 conversation's prefix precisely while that conversation has a request the scheduler is <i>already holding in
 its queue</i> — a guaranteed-imminent-reuse signal — and releases it at admission. This is a scheduler↔cache
 co-design, not a replacement policy or config flag. On the frozen 122B rate-sweep protocol it delivers a
-modest but <b>robust, lossless</b> win: <b>hit&nbsp;+2.5&nbsp;pp</b> at the operating rate and
-<b>+2–6% higher sustained throughput at moderate load</b> (λ=5,7; the gain converges to ~0 at full
-saturation where GPU compute binds), n=2 same-node, reproducibly. Two findings sharpen the picture.
+<b>lossless, reliably-positive but modest and variance-affected</b> win: the pin always engages and never hurts
+hit, but its magnitude ranges <b>+0.4 to +2.8&nbsp;pp</b> at the operating rate across three same-node A/B nodes
+(mean ≈+1.8&nbsp;pp; the +2.5&nbsp;pp we first measured on two nodes was the high end — a third node gave
++0.4&nbsp;pp despite the pin engaging <i>more</i>), plus <b>+2–6% sustained throughput at moderate load</b> on the
+two nodes where we measured it (λ=5,7; converging to ~0 at saturation where GPU compute binds). The gain diminishes
+with load and is scheduler-independent (it appears under both FCFS and LPM). That the gain's <i>size</i> is itself
+variance-affected is consistent with this workload's central methodological finding (below). Two findings sharpen
+the picture.
 (1) <b>Targeting is everything, and the target is narrow</b>: the natural extension — retaining <i>every</i>
 recently-finished conversation for a horizon to also cover the client think-gap — does <i>not</i> help and
 mildly hurts. Not because continuation is unpredictable (it is 78% predictable from turn count), but because
@@ -57,7 +62,7 @@ artifact, and switching schedulers is not a way to buy cache efficiency; pending
 transfers from the analysis is model-free: a <b>recency-inversion</b> (Spearman ρ=+0.81 on the trace) — among
 queued continuations the least-recently-used prefix is the soonest-reused, so LRU is <i>anti</i>-Bélády on
 exactly this set — which is why the narrow pending signal is the right target. The realized gain is small
-(+2.5&nbsp;pp vs a ~+7&nbsp;pp single-tier ceiling) for the very same reason the host tier absorbs eviction
+(~1–2&nbsp;pp vs a ~+7&nbsp;pp single-tier ceiling) for the very same reason the host tier absorbs eviction
 order. Underlying all of it is a structural point: a lossless
 KV cache reduces re-prefill of <i>already-seen</i> prefixes, so it moves the mean and the sustainable
 throughput but not the p99 tail, which is set by <i>first-turn</i> long-document prefills that are never
@@ -88,7 +93,8 @@ evicted-continuation recompute</b> (prefixes that were cached and reused, then d
 an oracle policy would remove most of it — a large gap the LRU≈Bélády intuition misses in this regime.</li>
 <li><b>Pending-aware KV retention</b>: couple L2 retention to the scheduler's pending-request set (a
 guaranteed-imminent-reuse signal). Realizable, non-oracle, capacity-bounded, lossless. It gives a
-<b>modest but robust</b> win: hit +2.5&nbsp;pp and +2–6% sustained throughput at moderate load (n=2, same-node).</li>
+<b>modest, lossless, reliably-positive</b> win: hit +0.4–2.8&nbsp;pp (n=3 same-node, mean ≈+1.8; magnitude
+variance-affected, sign always non-negative) and +2–6% sustained throughput at moderate load (n=2 nodes).</li>
 <li>A <b>scheduler/tier analysis, tested on the real system</b> (the deeper insight): a single-tier sim makes
 the eviction gap look scheduler-created (FCFS 7–23&nbsp;pp, ≈0 under prefix-aware pull), but a same-node
 FCFS-vs-LPM A/B on the 122B system shows real hit is <b>scheduler-insensitive</b> (Δ&lt;0.5&nbsp;pp) while LPM
@@ -99,8 +105,8 @@ recency-based retention (the post-completion ablation) does not. Reporting a dir
 own simulation's magnitude is part of the contribution.</li>
 <li>A <b>targeting ablation + a realizability characterization</b>: extending retention to <i>all</i>
 recently-finished conversations does not beat LRU — not because continuation is unpredictable (78% predictable)
-but because it pins by recency, precisely the ≈0%-capture set. The realizable gain (+2.5&nbsp;pp) is much
-smaller than the single-tier oracle ceiling (~+7&nbsp;pp) because the 2-tier host layer absorbs most device
+but because it pins by recency, precisely the ≈0%-capture set. The realizable gain (~1–2&nbsp;pp, variance-affected)
+is much smaller than the single-tier oracle ceiling (~+7&nbsp;pp) because the 2-tier host layer absorbs most device
 evictions. The scheduler's pending set, not broad recency, is the only exploitable signal.</li>
 <li>A <b>measurement finding</b>: goodput@SLO is variance-dominated at the SLO boundary on this workload
 (identical stock runs flip goodput 0↔3.0 across nodes); hit-rate/recompute is the robust metric.</li>
@@ -196,9 +202,10 @@ Second, the winning signal is <i>free</i>: the scheduler already tracks which co
 request.</p>
 <p class="note"><b>This offline number is an optimistic upper bound.</b> It assumes idealized targeting and no
 displacement of the rest of the working set. On the real system (§5) LRU is higher and the realized gain is
-<b>+2.5&nbsp;pp</b>, not +7–11&nbsp;pp: the 2-tier host layer already absorbs most device evictions (an
-evicted-from-L1 prefix still hits in L2), so only the narrow provably-at-risk queued set is worth protecting.
-We report the offline figure as motivation that a gap exists, and the +2.5&nbsp;pp as what is realizable.</p>
+<b>~1–2&nbsp;pp</b> (variance-affected, +0.4–2.8 across three nodes), not +7–11&nbsp;pp: the 2-tier host layer
+already absorbs most device evictions (an evicted-from-L1 prefix still hits in L2), so only the narrow
+provably-at-risk queued set is worth protecting. We report the offline figure as motivation that a gap exists,
+and the ~1–2&nbsp;pp as what is realizable.</p>
 
 <h3>2.4&nbsp;&nbsp;In simulation, the eviction gap tracks the scheduler — and a recency-inversion that <i>does</i> transfer</h3>
 <p>Why does eviction <i>order</i> — which §2's premise (and the LRU≈Bélády folklore) calls a solved problem —
@@ -305,12 +312,12 @@ sim predicts) and worsens the p99 tail at every rate (+41–65% at moderate load
 On the real system the L2 host layer is large enough that a prefix evicted from L1 still hits in L2, so hit-rate
 is nearly <i>insensitive to admission/eviction order</i>: FCFS and LPM land within 0.5&nbsp;pp at every rate. The
 sim's dramatic FCFS-vs-Bélády gap is thus a single-tier artifact — and it is the same reason our mechanism's
-realized gain (+2.5&nbsp;pp) is far below the single-tier ceiling (~+7&nbsp;pp): the host tier has already
+realized gain (~1–2&nbsp;pp) is far below the single-tier ceiling (~+7&nbsp;pp): the host tier has already
 captured most of what eviction order could. What the scheduler <i>does</i> control is the p99 <b>tail</b>: LPM's
 prefix reordering starves first-turn (short-prefix) requests, inflating p99 by 41–65% at moderate load. The
 upshot sharpens our thesis rather than weakening it: switching schedulers is <i>not</i> a way to buy cache
 efficiency here (LPM gives no hit gain and a large tail penalty), whereas pending-aware retention delivers a
-genuine, lossless +2.5&nbsp;pp on top of FCFS while <i>preserving</i> FCFS's tail. Retention is the realizable
+genuine, lossless, always-non-negative hit gain on top of FCFS while <i>preserving</i> FCFS's tail. Retention is the realizable
 hit lever; the recency-inversion (ρ=+0.81) is why the narrow pending signal targets it correctly. (The sim
 remains useful as the mechanism's origin and as the reason the pending signal is Bélády-aligned; we simply do
 not claim its single-tier magnitudes transfer.)</p>
@@ -395,10 +402,18 @@ saturating workload needs same-node, replicated measurement to be meaningful.</p
 bit-identical to recomputing it, so outputs are unchanged vs the stock run by construction (verified: no
 change to the decode path or the KV values).</p>
 <h3>5.2&nbsp;&nbsp;Results</h3>
-<p><b>Pending-aware retention (v1) is a robust, lossless win (n=2 same-node).</b> Table&nbsp;1 shows stock vs
-v1 (means of two same-node A/B pairs, nodes 0-3 and 1-2). Hit rate rises consistently on both nodes, largest
-at the operating rate and tapering under saturation; sustained throughput rises 2–6% at moderate load (&lambda;=5,7), converging at full saturation. p50
-TTFT falls ~25% at λ=3. All lossless (v1 only changes which KV is retained).</p>
+<p><b>Pending-aware retention (v1) is a lossless, reliably-positive, but modest and variance-affected win.</b>
+Table&nbsp;1 shows stock vs v1 on the first two same-node A/B pairs (nodes 0-3 and 1-2): hit rises at every rate,
+largest at the operating rate and tapering under saturation; sustained throughput rises 2–6% at moderate load
+(&lambda;=5,7); p50 TTFT falls ~25% at λ=3. All lossless (v1 only changes which KV is retained).</p>
+<p><b>A third same-node A/B (ondem-2) revises the magnitude down and reveals variance.</b> Re-running the same
+A/B on a third node gave hit λ3 0.673→0.677 = <b>+0.4&nbsp;pp</b> — far below the +2.2/+2.8&nbsp;pp of the first
+two — <i>despite the pin engaging more strongly there</i> (up to 19 concurrent pins vs ≤6 on the earlier nodes).
+So the +2.5&nbsp;pp we first reported (n=2) was the high end: across three nodes the operating-rate gain is
+<b>+0.4 to +2.8&nbsp;pp (mean ≈+1.8&nbsp;pp)</b>. The mechanism is <i>reliably positive</i> — every measured
+A/B, under both schedulers, showed a non-negative hit change (it is lossless and only ever protects) — but its
+<i>magnitude</i> is variance-affected, exactly as this workload's other metrics are (§5.1). We therefore state
+the result as a modest, lossless, always-non-negative gain of order ~1–2&nbsp;pp, not a precise +2.5&nbsp;pp.</p>
 <table>
 <tr><th>λ</th><th>hit stock→v1</th><th>Δhit</th><th>req/s stock→v1</th><th>Δreq</th><th>p50 stock→v1 (λ=3)</th></tr>
 <tr><td>3</td><td>0.676→0.701</td><td><b>+2.5 pp</b></td><td>3.02→3.02</td><td>+0%</td><td>721→534 ms (<b>−26%</b>)</td></tr>
@@ -406,9 +421,10 @@ TTFT falls ~25% at λ=3. All lossless (v1 only changes which KV is retained).</p
 <tr><td>7</td><td>0.661→0.670</td><td>+0.9 pp</td><td>4.28→4.48</td><td><b>+4.7%</b></td><td>—</td></tr>
 <tr><td>10</td><td>0.658→0.665</td><td>+0.65 pp</td><td>4.59→4.61</td><td>+0.4%</td><td>—</td></tr>
 </table>
-<p class="note">Table 1. Stock vs v1 (pending-aware retention), n=2 same-node means. Hit gain is
-node-independent and reproducible (per-node: λ=3 +2.2/+2.8 pp; λ=5 +1.5/+0.8 pp). Throughput gain peaks at the
-mid-load knee (λ=5,7) and vanishes at full saturation (λ=10, GPU-compute-bound). Peak decode throughput is
+<p class="note">Table 1. Stock vs v1 (pending-aware retention) on the first two same-node A/B pairs (nodes 0-3,
+1-2; per-node λ=3 +2.2/+2.8 pp). A third node (ondem-2, above) gave only +0.4 pp — so the hit <i>magnitude</i>
+is variance-affected, not node-independent; the <i>sign</i> is reliably non-negative. Throughput gain peaks at
+the mid-load knee (λ=5,7) and vanishes at full saturation (λ=10, GPU-compute-bound); peak decode throughput is
 flat (589→592 tok/s) — the mechanism moves prefill, not the decode ceiling, as expected.</p>
 <figure>
 <svg viewBox="0 0 620 290" width="620" height="290" font-family="sans-serif" font-size="12">
@@ -496,9 +512,10 @@ frequency features; we instead use an exact, workload-structural signal (in-flig
 
 <h2>7&nbsp;&nbsp;Limitations &amp; when it fails</h2>
 <ul>
-<li><b>Modest magnitude.</b> The realizable win is modest (hit +2.5&nbsp;pp, +2–6% throughput) — far below the
-oracle gap — because only the server-queue signal is safe to act on (see below). It is a real, robust,
-lossless improvement, not a large one.</li>
+<li><b>Modest, variance-affected magnitude.</b> The realizable win is modest (hit +0.4–2.8&nbsp;pp across three
+same-node nodes, mean ≈+1.8; +2–6% throughput) — far below the oracle gap — because only the server-queue signal
+is safe to act on (see below). It is a real, lossless, reliably-non-negative improvement, but a small one whose
+exact size varies run-to-run/node-to-node like this workload's other metrics; we do not claim a precise number.</li>
 <li><b>The client think-gap is not server-realizable.</b> A prefix evicted during the client's think/send gap
 (before its next turn reaches the server) cannot be protected by a server-queue signal. The obvious fix —
 retain every recently-finished conversation for a horizon — <i>hurts</i> (§5): it spends scarce L2 on
@@ -515,7 +532,7 @@ simulation predicts a large FCFS eviction gap that prefix-aware scheduling close
 A/B on the 122B system <i>refutes the hit half of that prediction</i>: real hit is scheduler-insensitive
 (Δ&lt;0.5&nbsp;pp at every rate), because the 2-tier host absorbs eviction order — LPM only worsens the p99 tail.
 We report this refutation of our own sim rather than the sim's optimistic magnitude. It does not affect the
-measured contribution (retention's +2.5&nbsp;pp is a real, lossless FCFS-native gain) and it sharpens the thesis
+measured contribution (retention's ~1–2&nbsp;pp is a real, lossless FCFS-native gain) and it sharpens the thesis
 (retention, not scheduling, is the hit lever). The model-free part of the analysis — the recency-inversion
 ρ=+0.81 that makes the pending signal well-targeted — does transfer. Remaining open item: a same-node v1-under-LPM
 vs v1-under-FCFS A/B (in flight) to confirm the pin's gain is scheduler-independent, as retention-is-the-lever

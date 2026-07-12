@@ -14,11 +14,16 @@ are DORMANT.
 conversation's prefix while it has a request in the scheduler's queue; release at admission. ~110 LOC in
 `managers/scheduler.py`, env-gated, lossless-by-construction. **Registered formal submission:**
 `submissions/pending-aware-retention/paper.html`.
-- **v1 (queued-pin) WINS but MAGNITUDE IS VARIABLE (⚠️ n=3 revises the headline):** hit gain@λ3 = +2.2/+2.8pp
-  (shipped nodes 0-3/1-2) BUT **+0.4pp on ondem-2** (2026-07-12 coupling run) — pin ENGAGED there (max 19 concurrent
-  pins, MORE than shipped's 6) yet small gain ⇒ gain is positive+lossless but VARIANCE-AFFECTED (~+0.4 to +2.8pp,
-  mean ~+1.8pp), NOT a robust +2.5pp. Consistent w/ paper's variance theme. Peak throughput +2–6%@knee, p50 −25%@λ3.
-  ⇒ MUST soften headline magnitude to a range + honest variance (pending full v1_fcfs sweep λ5/7/10 on ondem-2).
+- **v1 (queued-pin) — RELIABLY POSITIVE + LOSSLESS but MODEST & VARIANCE-AFFECTED (⚠️ n=3 revised the headline):**
+  hit gain@λ3 = +2.2/+2.8pp (shipped nodes 0-3/1-2) BUT **+0.4pp on ondem-2** (pin ENGAGED, max 19 pins > shipped's 6,
+  yet small gain) ⇒ magnitude VARIABLE +0.4…+2.8pp (mean ~+1.8pp), NOT a robust +2.5pp. Under LPM (ondem-2, full sweep):
+  +0.77/+0.33/+0.22/+0.15pp @λ3/5/7/10 — pin helps under BOTH schedulers (retention scheduler-independent), diminishing
+  with load. ALL measured gains positive (+0.15…+2.8pp); pin never hurts hit (lossless+protective). Ties to variance theme.
+  Peak throughput +2–6%@knee (shipped n=2), p50 −25%@λ3.
+- **OPS: ondem-2 (on-demand) RECLAIMED mid-run 19:07** — manager pool reshuffle ended my hold jid19376; server got
+  "Gracefully exiting" (not a code crash — my eviction fix held, 0 asserts); v1_fcfs λ5/7/10 LOST (have λ3). ondem-2
+  reallocated to sibling. Flock auto-released. Lesson: on-demand held nodes can vanish mid-eval; skip-if-done pipeline
+  preserved completed curves. Did NOT re-run (enough data + pending sibling; good-neighbor).
 - **pc (post-completion extension) HURTS — n=2 same-node confirmed @λ3 AND λ5:** hit@λ3 pc 0.674/0.673 ≈ stock
   0.678/0.673 ≪ v1 0.700/0.701; hit@λ5 pc 0.661/0.672 ≈ stock 0.664/0.668 ≪ v1 0.680/0.677 → the extension
   CANCELS v1's gain across rates (pc_e full curve corroborates: pc < stock at λ5/7/10).

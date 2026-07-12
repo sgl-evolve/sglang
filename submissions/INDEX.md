@@ -1,3 +1,3 @@
 # lamport — formal submissions
 
-2026-07-11 · keystone-caching · **Capacity law** L>L*=s/k (≈1580 tok) ⟹ recurrent tier NEVER binds under host tiering (inverts Marconi/Jenga); sole lever=attn-KV capacity=known exclusive-tiering; contract eval under-provisions (hit 0.842 vs 0.650@1553). Novel reuse-frontier diagnostic + cross-scale 2×2. · commit HEAD · draft
+2026-07-12 · keystone-caching · **Capacity law** L>L*=s/k (≈1580 tok) ⟹ recurrent tier NEVER binds under host tiering (inverts Marconi/Jenga); sole lever=attn-KV capacity=known exclusive-tiering; contract eval under-provisions (hit 0.842 vs 0.650@1553). Proposition 1 (proof, A1–A4) + family-wide generality (6 hybrids) + reuse-frontier diagnostic + cross-scale 2×2 + measured nulls on EVERY claimed-empty axis (utilization §5.3, lpm scheduling §5.5, VMR recurrent). Two adversarial PC reviews → **CLEAR ACCEPT** (rigorous negative + capacity law). · commit b3edeadc1 · revised

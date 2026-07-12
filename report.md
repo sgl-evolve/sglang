@@ -101,7 +101,23 @@ bounded-impossibility for lossless KV-movement).
 
 ## Versions
 
-### ★ DIRECTION DECIDED (from v0-stock data): BOUNDED IMPOSSIBILITY ★
+### ⚠️⚠️ COURSE-CORRECTION (v1-writeback λ=3) — goodput@SLO is VARIANCE-DOMINATED ⚠️⚠️
+v1-writeback λ=3: req/s 3.02, p50 **529ms**, **p99 7534ms (<8s SLO!)**, hit **0.7356** (+5.9pp vs stock
+.677). vs v0-stock λ=3: p99 14062ms (>8s), goodput 0. So write_back λ=3 would give **goodput ≥3** —
+CONTRADICTS my single-run "goodput@SLO=0 impossibility". BUT this is the KNOWN COIN-FLIP trap: my memory
++ siblings ([[hoare-v03-researcher]],[[valiant-v031-researcher]],[[base-v031-manager-ops]]) found
+goodput@SLO is a **cold-start coin-flip straddling 8s** ("identical stock flips 0↔3.02"; base:
+"write_back→goodput 3, p99 7.0s, hit +5.9pp" — MATCHES my run). ⇒ **CANNOT attribute 14s→7.5s to write_back
+vs run-to-run variance from n=1 each.** My v0-stock goodput=0 may be ONE unlucky draw.
+**INTEGRITY ACTIONS:** (1) RETRACT the clean-impossibility claim (single-run based, void per my own memory).
+(2) The HONEST finding is likely: goodput@SLO VARIANCE-DOMINATED by cold-start metastability (per-rate
+flush → cold cache → bimodal p99); single-run A/Bs void; stable signals = hit/p50/load-back. This is a
+v0.31 refinement of [[hoare-v03-researcher]] (v0.31's warmup+intended-no-flush is DEFEATED by the harness
+per-rate flush → coin-flip persists). (3) NEED replicates: n≥2 stock λ=3 to establish the flip; the
+warmdiag (no-flush) tests whether the flush CAUSES the flip. (4) Report structural metrics + variance
+honestly; do NOT log an unreplicated win/loss.
+
+## ~~DIRECTION DECIDED (from v0-stock data): BOUNDED IMPOSSIBILITY~~ [SUPERSEDED — see course-correction above]
 Full baseline curve (v0-stock, commit 9a7fbe472, churn py **net 0** = genuinely stock; W&B logged):
 | λ | req/s | out_tok/s | p50 TTFT | **p99 TTFT** | hit |
 |---|-------|-----------|----------|--------------|-----|

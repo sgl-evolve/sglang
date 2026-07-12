@@ -106,8 +106,13 @@ bounded-impossibility for lossless KV-movement).
 | run (λ=3)     | p99 TTFT | hit    | req/s | goodput |
 |---------------|----------|--------|-------|---------|
 | v0-stock      | 14062ms  | 0.677  | 2.85  | 0 (fail)|
-| v0-stock-r2   | **8008ms** | 0.673 | 3.02 | 0 (barely fail) |
+| v0-stock-r2   | 8008ms   | 0.673  | 3.02  | 0 (barely fail) |
+| v0-stock-r3   | **6786ms** | 0.672 | 3.02 | **3 (PASS)** |
 | v1-writeback  | 7534ms   | 0.736  | 3.02  | 3 (pass)|
+**★n=3 CLINCHER: 3 IDENTICAL stock runs → λ=3 p99 {14.06, 8.01, 6.79}s (2.07× spread, straddles SLO) →
+stock's OWN goodput@SLO = {0,0,3}. Stock ALONE flips. Moreover stock-r3 (6.79s, goodput 3) BEATS
+write_back (7.53s) at LOWER hit (.672 vs .736) → write_back's 'goodput 3' is NOT a write_back effect.
+Airtight.**
 **Two IDENTICAL stock runs: λ=3 p99 = 14.1s vs 8.0s (1.76× spread, STRADDLES the 8s SLO).** And stock-r2
 (8.0s) ≈ write_back (7.5s) despite write_back's +6pp hit ⇒ the p99 varies ~7.5–14s around the SLO
 REGARDLESS of config; the binary pass/fail metric flips on NOISE. **write_back's apparent "goodput 0→3" is

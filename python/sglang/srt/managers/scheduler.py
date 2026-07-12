@@ -349,6 +349,20 @@ class Scheduler(
         self.page_size = server_args.page_size
         self.enable_hierarchical_cache = server_args.enable_hierarchical_cache
         self.enable_hicache_storage = server_args.hicache_storage_backend is not None
+        # --- valiant: pending-aware host-prefix retention (2-tier, no L3) ---
+        # Protect the L2 (host) residency of the cached prefix of conversations that have a request
+        # currently waiting in the queue, so a running batch cannot evict a soon-to-be-reused
+        # continuation prefix out of the cache and force a full recompute. Enabled only for the
+        # hierarchical (2-tier) path without an L3 storage backend. See report.md.
+        self.valiant_pin_enable = (
+            self.enable_hierarchical_cache
+            and not self.enable_hicache_storage
+            and os.environ.get("VALIANT_PIN_ENABLE", "1") == "1"
+        )
+        self.valiant_pin_fraction = float(os.environ.get("VALIANT_PIN_FRACTION", "0.5"))
+        self._valiant_pin_tokens = 0
+        self._valiant_pinned_reqs = set()
+        self._valiant_pin_budget = None  # lazily computed from L2 size
         self.enable_decode_hicache = (
             server_args.disaggregation_decode_enable_radix_cache
             and self.enable_hierarchical_cache
@@ -2277,6 +2291,78 @@ class Scheduler(
         for tokenized_req in recv_req:
             self.handle_generate_request(tokenized_req)
 
+    def _valiant_pin_budget_tokens(self) -> int:
+        """L2-token budget for pending-prefix pinning (lazily computed)."""
+        if self._valiant_pin_budget is None:
+            try:
+                host = self.tree_cache.cache_controller.mem_pool_host
+                self._valiant_pin_budget = int(self.valiant_pin_fraction * host.size)
+            except Exception:
+                self._valiant_pin_budget = 0
+        return self._valiant_pin_budget
+
+    def _valiant_pin_pending_prefix(self, req: Req):
+        """Protect the matched host prefix of a waiting request from eviction.
+
+        Assumes req.init_next_round_input(...) has just matched the prefix. Pins the last host
+        node (protects the whole matched chain, since host eviction is leaf-first) up to a token
+        budget; overflow gracefully falls back to LRU (no pin)."""
+        node = getattr(req, "last_host_node", None)
+        if node is None or node is self.tree_cache.root_node:
+            return
+        tok = len(req.prefix_indices) + int(getattr(req, "host_hit_length", 0) or 0)
+        if tok <= 0 or getattr(req, "_valiant_pin_node", None) is not None:
+            return
+        if self._valiant_pin_tokens + tok > self._valiant_pin_budget_tokens():
+            return
+        try:
+            # Capture dec-params (skip_lock_node_ids) so release exactly mirrors the acquire —
+            # required because the mamba component's host-lock release decrements
+            # unconditionally, and acquire skips components whose host_value is None.
+            dec_params = self.tree_cache.inc_host_lock_ref(node).to_dec_params()
+        except Exception:
+            return
+        req._valiant_pin_node = node
+        req._valiant_pin_params = dec_params
+        req._valiant_pin_tok = tok
+        self._valiant_pin_tokens += tok
+        self._valiant_pinned_reqs.add(req)
+
+    def _valiant_release_pin(self, req: Req):
+        node = getattr(req, "_valiant_pin_node", None)
+        if node is None:
+            return
+        try:
+            self.tree_cache.dec_host_lock_ref(
+                node, getattr(req, "_valiant_pin_params", None)
+            )
+        except Exception:
+            pass
+        req._valiant_pin_params = None
+        self._valiant_pin_tokens -= getattr(req, "_valiant_pin_tok", 0)
+        if self._valiant_pin_tokens < 0:
+            self._valiant_pin_tokens = 0
+        req._valiant_pin_node = None
+        self._valiant_pinned_reqs.discard(req)
+
+    def _valiant_sweep_pins(self):
+        """Release pins for any pinned req no longer in the waiting queue (admitted/aborted).
+
+        Single funnel that catches every removal path, so pins never leak."""
+        waiting = set(self.waiting_queue)
+        for req in list(self._valiant_pinned_reqs):
+            if req not in waiting:
+                self._valiant_release_pin(req)
+        self._valiant_tick = getattr(self, "_valiant_tick", 0) + 1
+        if self._valiant_tick % 500 == 0:
+            logger.info(
+                "[valiant] pinned_reqs=%d pinned_tok=%d budget=%d waiting=%d",
+                len(self._valiant_pinned_reqs),
+                self._valiant_pin_tokens,
+                self._valiant_pin_budget_tokens(),
+                len(self.waiting_queue),
+            )
+
     def _prefetch_kvcache(self, req: Req):
         if self.enable_hicache_storage:
             req.init_next_round_input(self.tree_cache, cow_mamba=False)
@@ -2309,6 +2395,10 @@ class Scheduler(
             if self._abort_on_queued_limit(req):
                 return
             self._prefetch_kvcache(req)
+            if self.valiant_pin_enable:
+                # match the prefix now and pin its host residency while the req waits
+                req.init_next_round_input(self.tree_cache, cow_mamba=False)
+                self._valiant_pin_pending_prefix(req)
             self.waiting_queue.append(req)
             req.time_stats.set_wait_queue_entry_time()
         elif self.disaggregation_mode == DisaggregationMode.PREFILL:
@@ -2765,6 +2855,9 @@ class Scheduler(
                 self._add_request_to_queue(req)
 
         if self.enable_hierarchical_cache:
+            if self.valiant_pin_enable:
+                # release pins for reqs that left the waiting queue (admitted/aborted)
+                self._valiant_sweep_pins()
             self.tree_cache.check_hicache_events()
 
         if self.enable_priority_preemption or self.is_hybrid_swa:

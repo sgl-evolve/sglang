@@ -65,3 +65,17 @@ If car300 (large grace) *improved* goodput (unexpected) → the grace-trap is wr
 rewrite as a positive. If a continuation *predictor* (turn-0 features) could separate live from dead → the
 "unobservable" premise weakens → future work, explicitly scoped. Neither is expected given the 460 s gap and the
 turn-0 feature poverty, but both are falsifiable — a strength.
+
+## Resolution status (updated 2026-07-12 13:16)
+- W1 (replicates/error-bars): IN PROGRESS — full lru sweep (job 19515) + full car sweep queued serve as
+  same-node replicates of the λ=3 points; error bars to add once both land.
+- W2 (full rate curve): IN PROGRESS — full lru sweep 19515 running (λ{3,5,7,10}); full car sweep next.
+- W3 (swamp horn): RESOLVED — car grace-300 measured (§34); it did NOT catastrophically swamp (hit 0.676 ≈lru).
+  This CORRECTED the prediction: finite cache clips grace>~90s → CAR≈LRU across feasible grace; only the SLRU
+  extreme hurts. Paper reframed throughout (abstract/§4.2/§5.3/§7). A cleaner impossibility than the original.
+- W4 (certified): IN PROGRESS — the full lru/car sweeps are full eval.sh runs on a usable node; a VERIFIED-node
+  run will confirm (numbers expected identical; result categorical).
+- W5 (grace-trap model wording): RESOLVED — reframed as conservative resident-DEMAND; finite cache clips it.
+- §6 caching-theory distinction: RESOLVED (decision-time observability vs competitive ratio).
+- §8 reproducibility (hashes/run-dirs): RESOLVED (commit hashes + per-number run dirs filled).
+- Minor title subtitle: optional, deferred.

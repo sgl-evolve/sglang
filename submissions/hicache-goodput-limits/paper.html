@@ -25,32 +25,33 @@
 <h1>What Bounds Goodput@SLO in a Two-Tier HiCache under Concurrent Multi-Turn Long-Context Serving?</h1>
 <div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>DRAFT v0.1</b></div>
 
-<p class="todo">DRAFT — ⚠️ VERDICT UNDER ACTIVE CORRECTION. The §5.2 decomposition below used a match-fraction
-classifier that conflated genuine turn-0 cold documents (irreducible) with fully-EVICTED later turns
-(avoidable recompute) — both show ≈0 prefix match. A corrected, conversation-id-aware (chash) pressured run
-is in flight to re-derive whether the p99 tail is cold-documents (⇒ bounded-negative, cold-document-bound)
-or evicted later turns (⇒ CACHE-AFFECTABLE, mechanism-viable). Treat §5.2 numbers and the abstract's verdict
-as PRELIMINARY pending that run. Stable regardless: the two-bound model (§4), the workload characterization
-(§2), engine analysis (§3), related work (§6).</p>
+<p class="todo">DRAFT — verdict RESOLVED to CACHE-AFFECTABLE (mechanism). A conversation-id-aware (chash)
+pressured run shows ~47% of prefill work under pressure is avoidable recompute from EVICTED proven multi-turn
+conversations, and ~38% of the SLO-breaching (≥40K-tok) tail is such evicted turns. So the cache CAN move
+goodput; a residency mechanism that protects proven convs (evicting single-turn "whales" first) is the lever.
+The mechanism's goodput gain is being measured (eviction-policy screens + a novel continuation-aware policy).
+NOTE: an earlier match-only classifier wrongly labeled evicted turns as cold documents (retracted); the chash
+correction was decisive. Stable: two-bound model (§4), workload characterization (§2), engine analysis (§3).</p>
 
 <div class="abstract">
-<b>Abstract.</b> Hierarchical KV caching (HiCache) tiers attention KV across GPU HBM (L1) and host DRAM (L2),
-and the community optimizes eviction, tiering, prefetch, and admission to raise cache efficiency. We show
-that for long-context multi-turn serving under a tail-latency SLO — a hybrid Mamba–Transformer MoE
-(Qwen3.5-122B) serving a Mooncake-style 1:1:1 mix under a Poisson rate sweep scored by <i>goodput@SLO</i>
-(max req/s with p99 TTFT ≤ 8 s) — <b>the cache is not the goodput lever</b>. We cast goodput as
-<b>goodput@SLO = min(R_thru, R_p99)</b>: a throughput bound (R_thru = P/avg-uncached-prefill), which the
-cache raises by improving hit rate, and a tail bound (R_p99), set by the largest <i>cold-document</i>
-prefills under concurrency, which the cache cannot shrink. A per-request decomposition of a warmup-corrected
-rate sweep shows the p99-TTFT tail is <b>≈100% cold turn-0 documents (≈0% warm-miss) even under memory
-pressure</b>; avoidable warm-miss recompute is ≤~5% of prefill work and never in the tail — because the stock
-scheduler already re-matches every server-waiting request each step (refreshing LRU recency) and L2→L1
-load-back is already per-layer overlapped with compute. Hence R_p99 &lt; R_thru: goodput is
-<b>cold-document-bound</b>, and any lossless KV-cache mechanism is confined to a bounded ≤~(warm-miss
-fraction) indirect effect via freeing prefill capacity — a headroom stock already nearly captures. We confirm
-goodput is invariant across eviction policies. The contribution is a rigorous, per-request-validated
-<b>bounded-negative</b> plus the two-bound model: for tail-SLO long-context serving, optimize prefill and
-context length, not the cache. ⟨goodput numbers + certified confirmation pending.⟩
+<b>Abstract.</b> Hierarchical KV caching (HiCache) tiers attention KV across GPU HBM (L1) and host DRAM (L2).
+For long-context multi-turn serving under a tail-latency SLO — a hybrid Mamba–Transformer MoE (Qwen3.5-122B)
+serving a Mooncake-style 1:1:1 mix under a Poisson rate sweep scored by <i>goodput@SLO</i> (max req/s with
+p99 TTFT ≤ 8 s) — we ask what bounds goodput and whether the cache is the lever. We cast goodput as
+<b>goodput@SLO = min(R_thru, R_p99)</b>: a throughput bound R_thru = P/avg-uncached-prefill (P≈35K tok/s
+measured) and a tail bound R_p99 set by the largest prefills under concurrency. A per-request decomposition
+of a warmup-corrected pressured rate sweep — using a conversation-id trace to distinguish genuine cold turn-0
+documents (irreducible) from later turns whose accumulated prefix was <i>evicted</i> mid-conversation
+(avoidable recompute) — shows that <b>≈47% of prefill work under pressure is avoidable recompute from evicted
+proven multi-turn conversations, and ≈38% of the SLO-breaching-size prefills are such evicted turns.</b> The
+cache is therefore a real goodput lever here: a residency policy that protects <i>proven</i> multi-turn
+conversations from eviction (evicting single-turn "whale" documents first) shrinks both bounds — fewer
+avoidable recomputes (higher R_thru) and fewer big evicted turns in the tail (higher R_p99). We evaluate
+eviction policies and a novel continuation-aware residency mechanism that protects a conversation's prefix
+across its think-gap (capturing the turn-0→turn-1 first-reuse race that hit-count policies miss).
+<span class="todo">goodput gains + certified confirmation pending screens.</span> A methodological finding:
+a match-fraction classifier conflates evicted turns with cold documents and hides this headroom entirely —
+conversation identity is required to see it.
 </div>
 
 <h2>1 Introduction</h2>

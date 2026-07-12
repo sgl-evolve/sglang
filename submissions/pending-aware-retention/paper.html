@@ -278,13 +278,14 @@ flat (589→592 tok/s) — the mechanism moves prefill, not the decode ceiling, 
 
 <p><b>Targeting ablation — the post-completion extension hurts.</b> Extending retention to <i>every</i>
 recently-finished conversation for a 20 s horizon (to cover the client think-gap) pins ~15× more prefixes
-(≈70–99 vs ≤6 for queued-only) but delivers <b>no hit gain</b>: hit@λ3 = 0.671 (≈ stock 0.676, and below v1's
-0.701). This is not a prediction failure — continuation is 78% predictable from turn count (only 22% of
-finished turns are terminal). Rather, broad retention <i>displaces</i> a working set LRU already keeps well:
+(≈70–99 vs ≤6 for queued-only) but delivers <b>no hit gain</b>: hit@λ3 = 0.674 / 0.673 (n=2 same-node), ≈ stock (0.678 / 0.673) and far below
+v1 (0.700 / 0.701). Since the combined config <i>is</i> v1 plus post-completion, the extension <b>cancels v1's
+entire +2.5&nbsp;pp gain</b>. This is not a prediction failure — continuation is 78% predictable from turn count
+(only 22% of finished turns are terminal). Rather, broad retention <i>displaces</i> a working set LRU already keeps well:
 LRU retains most reused-soon KV, so reserving capacity for all recent conversations merely reshuffles it and,
 under the pin budget, can evict other useful KV — netting ≤0. Only the narrow set that LRU provably mishandles
 — continuations already waiting in the scheduler's queue — is worth protecting. The signal that matters is the
-<i>pending set</i>, not broad recency. <span class="note">(pc_e n=1; n=2 same-node confirmation in progress.)</span></p>
+<i>pending set</i>, not broad recency.</p>
 
 <p><b>goodput@SLO is not a reliable single-run headline.</b> v1 reduced λ=3 p99 by 2% on node 0-3 (8.13→7.98 s),
 which crossed the 8 s SLO (goodput 0→3.02); on node 1-2 the stock p99 was a "lucky" 6.3 s and v1's 8.0 s read

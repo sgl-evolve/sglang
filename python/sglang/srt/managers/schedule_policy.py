@@ -135,6 +135,7 @@ class CacheAwarePolicy(Enum):
 
     LPM = "lpm"  # longest prefix match
     DFS_WEIGHT = "dfs-weight"  # depth-first search weighting
+    SRPF = "srpf"  # shortest remaining prefill first (kleinrock control: tail-optimal-ish scheduling)
 
 
 class CacheAgnosticPolicy(Enum):
@@ -201,6 +202,18 @@ class SchedulePolicy:
                 )
             elif policy == CacheAwarePolicy.DFS_WEIGHT:
                 SchedulePolicy._sort_by_dfs_weight(waiting_queue, self.tree_cache)
+            elif policy == CacheAwarePolicy.SRPF:
+                # kleinrock control: shortest-remaining-prefill-first. Sort the waiting queue
+                # by uncached (to-be-prefilled) tokens ascending. Lossless (reordering only).
+                # Tests whether tail-optimal scheduling helps goodput@SLO (hypothesis: it does
+                # NOT — it starves the long cold turn-0 documents that ARE the p99).
+                waiting_queue.sort(
+                    key=lambda r: (
+                        len(r.origin_input_ids)
+                        + len(r.output_ids)
+                        - getattr(r, "num_matched_prefix_tokens", 0)
+                    )
+                )
             else:
                 raise ValueError(f"Unknown CacheAware Policy: {policy=}")
         else:

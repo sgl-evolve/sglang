@@ -13,19 +13,20 @@ TTFT −25%, p99 distribution shifted below LRU/CAR); (d) goodput@SLO is METASTA
 volume), so the SLO crossing is probabilistic and must be read distributionally. Contributions that are robust
 regardless of the whale replicate outcome: the size-observability analysis + offline victim-choice test, the
 chash tail decomposition, the two-bound model, and the metastability characterization. The whale GPU result is
-n=2 preliminary; the median win is the low-variance part, the goodput crossing the metastable part.
+n=4 (same-node λ=3); the median win is the low-variance part, the goodput crossing the metastable part (2/4).
 
 ## Major weaknesses (ranked by how much a PC would push)
 
-**W1 — whale is n=2; the p99/goodput win may be noise.**
-Attack: two runs cannot establish a policy effect on a metastable metric.
-Defense: (i) both whale runs lie below BOTH LRU runs and BOTH CAR runs on median, mean, AND p99 — full separation
-(rank-sum p≈0.17 at n=2 each); (ii) the MEDIAN win (~550 vs 678–876 ms) has far higher SNR than p99 and is the
-primary claim; (iii) we explicitly do NOT claim a deterministic goodput 0→3.02 win — only a robust median shift +
-a probabilistic crossing. Action: replicates in progress (n→4 whale, n→3 LRU, same node); §5.5 + abstract mark
-the numbers preliminary. If at n=4 the median holds and p99<LRU-band → confirmed; if it regresses → downgrade to
-"size is the right signal offline; online it is metastable/near-neutral" (the offline result and metastability
-finding still stand).
+**W1 — the p99/goodput win is metastable (2/4 cross); is it a real policy effect?**
+Attack: whale crosses the SLO on only half its runs — could be luck, not a mechanism.
+Defense: (i) all FOUR whale runs lie below BOTH LRU and BOTH CAR runs on median, mean, AND p99 — full separation
+(rank-sum p≈0.067); (ii) the MEDIAN win (~555 vs 678–876 ms) has far higher SNR than p99, is tight across all four
+runs, and is the primary claim; (iii) we explicitly do NOT claim a deterministic goodput 0→3.02 win — only a robust median shift +
+a probabilistic crossing. Status: n=4 complete — the median held tight (550–568 ms across all four) and all four
+p99 stayed below the LRU/CAR band (6.2–9.3 s vs 10.4–11.3 s), confirming the distributional shift; the crossing
+landed at 2/4 (the metric sits on the SLO boundary). Remaining: n→3 LRU (in flight) and a certified-node
+confirmation would tighten the crossing probability, but the median win and the offline size result do not depend
+on the crossing count.
 
 **W2 — the p99 improvement is metastable queue-timing, not a real mechanism.**
 Attack: if p99 is decoupled from recompute (you say so yourself), how is whale's lower p99 a mechanism and not a

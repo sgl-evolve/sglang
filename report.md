@@ -898,3 +898,36 @@ clear 8s comfortably (~6.2-6.6s); only r1 (9.3s) failed (likely the unlucky draw
 ⇒ UPGRADE the framing: whale is not just "shifts distribution / occasional cross" — it crosses the SLO on the
 MAJORITY of runs (2/3) while lru/car NEVER do (0/4). goodput@SLO: lru/car categorical 0 → whale mostly-3.02.
 Awaiting whale-r4 (n=4) to state the pass-rate; if r4 also passes → 3/4, a clear "whale reliably crosses" WIN.
+
+## 51. PLAN: whale-r4 runs FULL SWEEP (do NOT scancel) — one run gives n=4 λ=3 + whale curve + W&B summary
+Revised from scancel-after-λ3: let whale-r4 (19560) run the complete λ{3,5,7,10} sweep. Yields simultaneously:
+(a) the n=4 λ=3 datapoint (sweep's λ=3 row, ~48min in) for the pass-rate decision + paper §5.5;
+(b) the whale GOODPUT CURVE (λ5/7/10) — closes reviewer W2 (currently only lru/car have full curves);
+(c) a real summary.json (eval.sh writes it only on full completion) → enables W&B v_whale log per report-sop.
+λ≥5 near-certain-fail (lru λ5=28.5s; whale can't 3.5× that under 8s) so goodput@SLO=3.02 expected, but the
+measured curve is worth it. lru-r3 (19561) PD behind → runs after (lower priority; lru n=2 already categorical).
+ACTION when λ=3 row lands (~21:57): record whale-r4 λ=3, rerun sim/fig_whale.py (auto n=4), update §5.5/abstract
+to n=4 pass-rate — but LET THE RUN CONTINUE (do not scancel). W&B + final commit after full sweep completes.
+
+## 52. ★ DEAD-PATH CHECK PASSED: WhaleStrategy is on the ACTIVE eviction path (device + host)
+Verified full_component.drive_eviction (the eviction routine for UnifiedRadixCache = the active cache) builds its
+victim heap via self.cache.eviction_strategy.get_priority(n) for BOTH device leaves (drive_eviction, L1) AND host
+leaves (drive_host_eviction, L2) — lines 137/150/158/171. eviction_strategy = get_eviction_strategy("whale") =
+WhaleStrategy (unified_radix_cache.py:322). So whale governs victim choice on every eviction across both tiers.
+⇒ the GPU whale-vs-lru differences (p99, hit, big-prefill count) are REAL policy effects, not a dead-path
+artifact (cf. [[sgl-active-code-paths-trap]] / [[onyx-7q2-researcher]] warnings). The offline sim independently
+confirms whale makes different victim choices (5.55M vs lru 7.24M). Mechanism is genuinely exercised + lossless
+(victim-only, radix prefix match is exact → outputs bit-identical).
+
+## 53. ★★ whale-r4 λ=3 = 8715ms FAIL (9% over) — n=4 pass-rate = 2/4. REFINE outcome (robust median + metastable p99)
+whale-r4 λ=3: req 3.02, median 552.6, p99 **8714.8ms → FAIL** (9% over 8s), hit 0.6725.
+whale λ=3 n=4: p99 {6189 P, 6574 P, 8715 F, 9287 F} → **2/4 cross the SLO (50%)**; mean ~7691, range 6.2-9.3s.
+lru {10360,11254} + car {10727,11174} = 0/4 cross (all 30-40% over). ALL 4 whale p99 < ALL lru/car (fully
+separated; whale-vs-lru rank-sum p≈0.067 at n=4 vs n=2).
+★ ROBUST MEDIAN (n=4, extremely tight): whale median {550,553,563,568}≈555 vs lru {678,876} (−25%). CONFIRMED.
+★ VERDICT = the honest v0.2 framing is EXACTLY right: whale robustly lowers median TTFT ~25% and shifts the p99
+distribution down onto the SLO boundary (mean ~7.7s), crossing 8s on ~half of runs (metastable), while lru/car
+sit well above (never cross). NOT a deterministic goodput 0→3.02 win; a distributional shift + probabilistic
+crossing + robust median. The two FAILs (8.7, 9.3s) are close misses (unlucky queue draws), consistent w/ the
+metastable-p99 finding (§47: p99 decoupled from recompute). No paper change needed beyond n=2/3 → n=4 numbers.
+whale-r4 NOT scancelled → full sweep continues (λ5/7/10 curve + summary.json for W&B). lru-r3 PD behind.

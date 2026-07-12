@@ -395,3 +395,22 @@ multi-turn convs would cut those evictions → lower p99 → higher goodput). Th
 bounded-negative lean. Waiting for λ=3 steady-state (hit~0.55, ~15 min) to confirm the tail EVICTED fraction.
 PLAN if confirmed: screen --radix-eviction-policy slru (protect hit_count>=1 proven convs; no code) as the
 first mechanism test; if it moves goodput, design a novel continuation/cost-aware residency to beat it.
+
+## 22. ★★★ VERDICT: CACHE-AFFECTABLE / MECHANISM-VIABLE (corrected, chash)
+
+As λ=3 pressure builds (hit 0.82→0.79→0.67, → ~0.55 steady-state), EVICTED(avoidable) recompute grows
+MONOTONICALLY: 8%→23%→**47% of prefill work**; EVICTED share of big/tail (≥40K) prefills: 0%→20%→**38%**
+(n=21). COLD-TURN0 stable ~21% (=genuine turn-0). ⇒ **~half the pressured prefill work is avoidable recompute
+from evicted PROVEN multi-turn conversations, and they are a large fraction of the SLO-breaching tail.**
+The cache CAN move goodput ⇒ MECHANISM-VIABLE. (The retracted match-only analysis hid this by mislabeling
+evicted turns as cold — the chash fix was decisive; integrity check paid off.)
+
+**Mechanism direction:** protect PROVEN multi-turn convs (hit_count≥1) from eviction; evict single-turn
+"whale" turn-0s (hit_count=0, 39% of convs, never reused) first — freeing capacity for proven convs across
+their think-gaps. This shrinks both bounds: fewer avoidable recomputes → higher R_thru; fewer big evicted
+turns in the tail → lower p99 → higher R_p99.
+Plan: (1) v0b (lru) finishes = baseline curve; (2) screen slru (hit_count segments) + lfu (evict fewest-
+reused) — existing policies, no code, directly protect proven convs; (3) if a policy moves goodput, that
+overturns "eviction is dead" for goodput@SLO-under-load; (4) design a NOVEL continuation/cost-aware residency
+to beat textbook (protect proven convs weighted by recompute-cost/continuation, targeting the p99 tail);
+(5) certified confirmation. Paper pivots from bounded-negative to a mechanism + the two-bound analysis.

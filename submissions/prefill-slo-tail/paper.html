@@ -374,8 +374,13 @@ and analyze the intra-node prefill tail. <b>HiCache</b> (sglang) is the tiered c
 its next turn using scheduler hints during think-time gaps; our setting has no think-time (follow-ups
 re-enter an open-loop Poisson stream) and our analysis targets whether such prefetch can move goodput@SLO
 at all. <b>LMCache/CacheGen</b> compress and stream KV for cross-request reuse; we remain lossless.
-Our analytical frame is classical queueing theory (Kleinrock; Pollaczek–Khinchine; Harchol-Balter on
-tail-optimal scheduling), applied to the LLM prefill server.
+<b>Chunked-prefill scheduling</b> (Sarathi-Serve and related) splits long prefills into fixed chunks and
+mixes them with decode to avoid decode stalls; we take this mechanism as given and show its consequence
+for the tail — a single in-flight chunked request serializes concurrent heavy documents, giving the
+p99 ≈ K·t we exploit (§2.4). Our analytical frame is classical queueing theory (Kleinrock;
+Pollaczek–Khinchine; Harchol-Balter on tail-optimal scheduling), applied to the LLM prefill server; to our
+knowledge we are the first to use it to establish that goodput@SLO is cache-immune on a heavy-tailed
+cold-prefill workload.
 </p>
 
 <h2>7 Limitations &amp; threats to validity</h2>

@@ -151,6 +151,9 @@ def trace_headroom(access_order, convs, cap):
                     elif policy=="car":    # 3-seg: 0=unproven&stale(dead whale) 1=unproven&recent(turn-0 probation) 2=proven
                         seg = 2 if proven[cj] else (1 if (p-last[cj])<=W else 0)
                         sc=(seg, last[cj])
+                    elif policy=="whale":  # evict BIGGEST unproven first (size-aware liveness); protect proven, LRU tiebreak
+                        size=sum(rs(cj,k) for k in range(depth[cj]))
+                        sc=(1 if proven[cj] else 0, -size, last[cj])
                     else:  # opt: evict conv whose NEXT access is farthest (or none)
                         sc = (-(fut[cj][0] if fut[cj] else 10**12),)
                     if best is None or sc<best: best=sc; victim=cj
@@ -158,7 +161,7 @@ def trace_headroom(access_order, convs, cap):
                 dd=depth[victim]; used-=rs(victim,dd-1); depth[victim]=dd-1
             used+=add; depth[ci]=t+1; last[ci]=p
         return recompute
-    return {k:run(k) for k in ("lru","slru","car","opt")}
+    return {k:run(k) for k in ("lru","slru","car","whale","opt")}
 
 if __name__=="__main__":
     convs=load()

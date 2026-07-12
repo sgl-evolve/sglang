@@ -1,79 +1,90 @@
-# Self-PC-review — "What Bounds Goodput@SLO in a Two-Tier HiCache…" (wilkes, v0.31)
+# Self-PC-review — "The Turn-0 Size Signal: Observable Liveness for KV Eviction under a Metastable Tail-SLO" (wilkes, v0.31)
 
-Adversarial read as a skeptical top-venue PC. Each point: the attack, then the paper's defense / action.
+Adversarial read as a skeptical top-venue PC, for DRAFT v0.2 (reframed from the earlier bounded-impossibility once
+the size signal was found). Each point: the attack, then the paper's defense / action.
 
 ## Summary judgment
-A bounded-impossibility for *causal* lossless residency under a tail-SLO, concurrent, multi-turn, long-context
-regime. The core is **analytic and trace-driven** (§4.2): (a) the real-time live set fits (9.3M = 0.87× cache →
-Belady≈0), (b) the turn-0→turn-1 reuse gap is p50 460 s, (c) liveness is unobservable at turn-0 (hit_count=0 for
-both continuing convs and single-turn whales) ⇒ a quantified grace-trap. Two empirical horns confirm it (SLRU
-backfires; CAR grace-90 ≈ LRU). The strength is that the verdict does not hinge on a single A/B — it follows
-from measured workload structure. Accept-leaning IF the empirical gaps below are closed.
+The paper's spine is: (a) the p99 tail is avoidable recompute over a live set that fits (chash decomposition +
+peak-live-KV); (b) liveness IS partially observable at the eviction decision point via turn-0 SIZE (AUC 0.78),
+and in an offline replay size-aware eviction is the UNIQUE causal policy that captures Belady headroom (−23%;
+recency/grace capture 0%) — refuting a natural "unobservable" impossibility; (c) online, the 460 s reuse gap caps
+the realized recompute capture ≈0 (grace-trap generalizes to all residency), leaving a SCHEDULING benefit (median
+TTFT −25%, p99 distribution shifted below LRU/CAR); (d) goodput@SLO is METASTABLE (p99 decoupled from recompute
+volume), so the SLO crossing is probabilistic and must be read distributionally. Contributions that are robust
+regardless of the whale replicate outcome: the size-observability analysis + offline victim-choice test, the
+chash tail decomposition, the two-bound model, and the metastability characterization. The whale GPU result is
+n=2 preliminary; the median win is the low-variance part, the goodput crossing the metastable part.
 
 ## Major weaknesses (ranked by how much a PC would push)
 
-**W1 — n=1 per policy; no error bars.**
-Attack: goodput@SLO on this workload has been reported metastable/coin-flip near the SLO; a single run is
-unreliable.
-Defense: (i) the result is *categorical*, not marginal — p99 ≈ 11 s misses the 8 s SLO by ~40%, far outside the
-±30% node-variance band, so it is not a boundary flip (the coin-flip regime was runs *straddling* 8 s; ours are
-not close). (ii) All rows are same-node (the dominant confound). (iii) The verdict rests on §4.2 (analytic), not
-the A/B. Action: add ≥2 replicates of lru and car at λ=3 for error bars (cheap; pending compute).
+**W1 — whale is n=2; the p99/goodput win may be noise.**
+Attack: two runs cannot establish a policy effect on a metastable metric.
+Defense: (i) both whale runs lie below BOTH LRU runs and BOTH CAR runs on median, mean, AND p99 — full separation
+(rank-sum p≈0.17 at n=2 each); (ii) the MEDIAN win (~550 vs 678–876 ms) has far higher SNR than p99 and is the
+primary claim; (iii) we explicitly do NOT claim a deterministic goodput 0→3.02 win — only a robust median shift +
+a probabilistic crossing. Action: replicates in progress (n→4 whale, n→3 LRU, same node); §5.5 + abstract mark
+the numbers preliminary. If at n=4 the median holds and p99<LRU-band → confirmed; if it regresses → downgrade to
+"size is the right signal offline; online it is metastable/near-neutral" (the offline result and metastability
+finding still stand).
 
-**W2 — λ=3 only; no full rate curve.**
-Attack: goodput@SLO is defined over λ∈{3,5,7,10}; you only show λ=3.
-Defense: λ=3 is the *lowest* rate; p99 already > SLO there and is monotone-nondecreasing in λ, so goodput@SLO=0
-across the whole sweep — λ=3 is sufficient for a *zero* goodput claim. Action: run one full lru + car sweep for
-the curve figure (pending compute); state the monotonicity argument explicitly (done, §5 intro).
+**W2 — the p99 improvement is metastable queue-timing, not a real mechanism.**
+Attack: if p99 is decoupled from recompute (you say so yourself), how is whale's lower p99 a mechanism and not a
+lucky draw?
+Defense: this is exactly why we separate the two axes. The median/mean/std reduction (whole-body shift) IS the
+mechanism claim and is low-variance. The p99 is a queue draw, but whale shifts the DISTRIBUTION it draws from
+(both runs below LRU). We frame goodput@SLO as distributional, not a point — and the metastability itself is a
+first-class finding (it makes single-run A/Bs on this metric unreliable, which we demonstrate: whale-r2 recomputed
+MORE than LRU yet had a lower p99).
 
-**W3 — the "swamp" horn (large grace hurts) is shown via SLRU proxy + analysis, not a direct large-grace CAR.**
-Attack: you measured car at grace 90 (≈lru) but not a large grace; the swamp horn is inferred.
-Defense: §31 quantifies it (grace 300 → 1.97× cache forced-resident); SLRU is the limiting case (protect proven
-indefinitely) and does hurt. Action: car300 (grace 300) is running (job 19502) to show it directly — the one
-open empirical point. If car300 ≈ lru rather than hurting, the claim weakens to "no grace *helps*" (still
-supports the impossibility); the paper states this contingency honestly.
+**W3 — the offline −23% recompute does not materialize on GPU; is the size signal actually useless?**
+Attack: your headline offline number evaporates online.
+Defense: no — the offline replay proves size is the UNIQUE causal signal that CAN capture headroom (LRU/SLRU/CAR
+capture 0%), i.e. it establishes the correct residency signal in principle. We are explicit that online the 460 s
+reuse gap caps the realized recompute capture (§4.2 synthesis, §5.5): durable recompute wins require closing the
+gap, not just a better victim signal. This gap-cap is an honest bound, and the surviving online benefit
+(scheduling) is separately evidenced. The offline/online split is a feature (it localizes exactly what blocks the
+win), not hand-waving.
 
-**W4 — screening node, not the certified eval-on-pool path.**
+**W4 — the "scheduling" mechanism is inferred, not directly measured.**
+Attack: you attribute the median win to "avoiding the LRU cascade + load-back churn" but don't isolate that.
+Defense: we show p99/median is decoupled from hit rate (whale-r2 lower hit, lower p99) → it is not a residency-hit
+effect, so it must be scheduling/timing; whale cuts the count of large (≥20K) prefills ~10%; the aggregate
+load_back/evict counters are noisy run-to-run. Action (stated as future work): a per-admission cascade/load-back
+trace to isolate the queue mechanism directly. The claim is scoped as "the realized benefit is on the scheduling
+axis" without over-specifying the microscopic cause.
+
+**W5 — AUC 0.78 is imperfect; size-ranked eviction will wrongly drop big continuers.**
+Attack: 22% of the ranking is wrong; you will evict live big-turn-0 conversations.
+Defense: whale-first is SOFT (evict LARGEST unproven first, LRU tiebreak) so it drops the safest victims first and
+reaches a big continuer only under extreme pressure; and a true continuer's turn-1 is small + near-immediate in
+closed-loop, so it is promoted to the protected segment before a size-ranked eviction reaches it. §4.2/§7 state
+the imperfection and that a different gap/continuation structure could weaken the signal.
+
+**W6 — screening node, not the certified eval pool.**
 Attack: numbers are off the blessed pool.
-Defense: identical frozen eval.sh + config on a verified-usable 8×H100 node; the "certified" distinction is node
-reliability, not a different measurement. Action: one certified lru + car confirmation (pending; result expected
-identical — goodput 0).
-
-**W5 — the grace-trap "forced-resident KV" model is a simplification.**
-Attack: it assumes a grace-G policy holds *everything* touched in the last G s; CAR's 3-segment structure holds
-proven indefinitely and unproven only for G, so the real resident set differs.
-Defense: the model is an upper bound on the unproven-hold pressure and the conclusion is robust to it — the live
-set alone is 0.87×, so *any* material dead-KV hold pushes over cap; and car90 (fits) ≈ lru empirically validates
-the "fits ⇒ no coverage ⇒ ≈lru" horn. Action: soften wording to "resident pressure model" and note CAR's
-segmentation only *reduces* the pressure vs the model, so the swamp threshold is a lower bound on grace.
-
-**W6 — Belady 100% headroom came first from a timing-blind serial replay.**
-Attack: the replay ignores concurrency/wall-time, so opt=0 could be an artifact.
-Defense: independently confirmed by the *real-time* peak-live-KV sweep (9.3–9.4M = 0.87–0.88× cache), which does
-account for wall-time + 902-way concurrency. Both agree: live set fits. Action: lead with the real-time number
-(done, §4.2); present the replay as corroboration only.
+Defense: identical frozen eval.sh + config on a verified-usable 8×H100 node; "certified" is a node-reliability tag,
+not a different measurement; all comparisons are same-node (the dominant confound). Action: a certified-node
+confirmation of the whale vs LRU λ=3 comparison is queued.
 
 ## Minor
-- Title is a question; some venues prefer a claim. Optional: subtitle "…is online-unrecoverable despite full
-  offline headroom."
-- §6 related work could add a sentence distinguishing from Belady-headroom studies in classic caching (ours
-  adds the *unobservability-at-decision-point* obstruction, absent in block caches).
-- Reproducibility §8 needs commit hashes + run dirs per number (pending final pass).
+- §5.3 could add a one-line bridge to §5.5 ("the grace-trap motivates changing the SIGNAL, not the retention time
+  — §5.5"). (pending)
+- §6 related work: add a sentence distinguishing the size-observability result from continuation-predictor /
+  TTL-aware works (Continuum, Predictive-Multi-Tier) — we identify a SPECIFIC observable (turn-0 size) and show
+  offline it is uniquely sufficient among causal victim rules. (pending)
+- Reproducibility §8: add whale run dirs (runs/whale-full, whale-r2..r4) + the simulate.py whale branch commit. (pending)
 
 ## What would change the verdict
-If car300 (large grace) *improved* goodput (unexpected) → the grace-trap is wrong and CAR is a mechanism win →
-rewrite as a positive. If a continuation *predictor* (turn-0 features) could separate live from dead → the
-"unobservable" premise weakens → future work, explicitly scoped. Neither is expected given the 460 s gap and the
-turn-0 feature poverty, but both are falsifiable — a strength.
+- If whale replicates (n=4) keep the median low and p99 below the LRU band → the mechanism claim strengthens to a
+  robust median win + reliable-enough crossing (positive mechanism paper).
+- If whale regresses to LRU at n=4 → the GPU win was n=2 noise; retract the crossing claim, keep (i) the size
+  signal + offline unique-capture (the "right signal in principle" result), (ii) the metastability finding, and
+  (iii) the gap-cap synthesis — a characterization paper rather than a mechanism paper. Both are falsifiable now.
 
-## Resolution status (updated 2026-07-12 13:16)
-- W1 (replicates): CLOSED — lru λ=3 twice (11254, 10360 ms), car λ=3 twice (11174, 10727 ms), all ≫8s same-node. Categorical (40% over SLO), not a coin-flip.
-- W2 (full rate curve): CLOSED — full lru AND car(grace90) curves λ{3,5,7,10}, goodput@SLO=0 at every rate for both (paper §5.1/§5.3); peak req 4.31/4.33.
-- W3 (swamp horn): RESOLVED — car grace-300 measured (§34); it did NOT catastrophically swamp (hit 0.676 ≈lru).
-  This CORRECTED the prediction: finite cache clips grace>~90s → CAR≈LRU across feasible grace; only the SLRU
-  extreme hurts. Paper reframed throughout (abstract/§4.2/§5.3/§7). A cleaner impossibility than the original.
-- W4 (certified): CLOSED-ENOUGH — full lru + car sweeps are complete frozen eval.sh runs (summary.json) on a verified-usable node; 'certified pool' is a node-reliability tag not a different measurement. Result categorical (goodput 0).
-- W5 (grace-trap model wording): RESOLVED — reframed as conservative resident-DEMAND; finite cache clips it.
-- §6 caching-theory distinction: RESOLVED (decision-time observability vs competitive ratio).
-- §8 reproducibility (hashes/run-dirs): RESOLVED (commit hashes + per-number run dirs filled).
-- Minor title subtitle: optional, deferred.
+## Resolution status (v0.2 reframe, 2026-07-12)
+- Reframed from bounded-impossibility → size-signal after discovering AUC 0.78 + offline whale unique-capture; the
+  earlier "liveness unobservable" premise is RETRACTED (self-caught hole).
+- Old W-list (single-run/full-curve/swamp/certified for the impossibility) folded in: full LRU/CAR curves +
+  car300 (no swamp) + replicates remain in the record (§5.1/§5.3); they now support the recency/grace-negative,
+  not an impossibility.
+- OPEN: whale n=4 replicates (W1), certified confirmation (W6), direct scheduling-mechanism trace (W4).

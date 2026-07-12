@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>What Bounds Goodput@SLO in a Two-Tier HiCache under Concurrent Multi-Turn Long-Context Serving? — wilkes (DRAFT)</title>
+<title>The Turn-0 Size Signal: Observable Liveness for KV Eviction under a Metastable Tail-SLO — wilkes (DRAFT)</title>
 <style>
   body{font:16px/1.55 Georgia,serif;max-width:52em;margin:2em auto;padding:0 1.2em;color:#161616}
   h1{font-size:1.6em;line-height:1.25;margin-bottom:.1em}
@@ -22,44 +22,56 @@
 </head>
 <body>
 
-<h1>What Bounds Goodput@SLO in a Two-Tier HiCache under Concurrent Multi-Turn Long-Context Serving?</h1>
-<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>DRAFT v0.1</b></div>
+<h1>The Turn-0 Size Signal: Observable Liveness for KV Eviction under a Metastable Tail-SLO</h1>
+<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>DRAFT v0.2</b></div>
 
 <p class="abstract"><b>Summary.</b> The p99 tail is AVOIDABLE recompute (chash: <b>63% of the ≥40K-tok tail is evicted
 proven multi-turn convs</b>, 37% cold docs) and the real-time live set <b>fits</b> (peak 9.3M = 0.87× cache) →
-liveness-bound, Belady≈0 → cache-addressable <i>offline</i>. BUT it is <b>online-UNRECOVERABLE</b>: liveness is
-unobservable at turn-0 (live conv vs single-turn whale both hit_count 0) and the turn-0→turn-1 gap is minutes
-(p50 460s) while the cache affords only ~90s of turn-0 retention (grace>90s clipped by finite capacity) → a
-turn-0 is evicted long before its 460s reuse under ANY grace. <b>CAR ≈ LRU across feasible grace</b> (MEASURED
-grace 90 AND 300: goodput 0, hit 0.68 unchanged); the <b>SLRU</b> extreme (evict-all-unproven) <b>backfires</b>
-(hit 0.68→0.51). = rigorous BOUNDED-IMPOSSIBILITY for causal residency, distinct from textbook "eviction≈Belady". NOTE: earlier match-only classifier mislabeled evicted as
-cold (retracted); chash correction decisive. Stable: §4.1 two-bound+P, §4.2 online-barrier, §5.2 decomposition,
-§5.3 SLRU-backfire.</p>
+liveness-bound, Belady≈0 → cache-addressable <i>offline</i>. Liveness is <b>partially OBSERVABLE at turn-0 — via
+SIZE</b>: single-turn "whales" have a big turn-0 (median 17,051 tok) while continuers start tiny (median 241),
+AUC(turn-0 size→single-turn)=<b>0.78</b>. In an offline replay this size signal is the <b>only</b> causal policy
+that captures Belady headroom (whale-first: −23% recompute; LRU/SLRU/CAR capture 0%). <b>But two obstacles remain.</b>
+(1) <b>Online the 460 s reuse gap caps the realized recompute capture ≈ 0</b> (no residency can hold a continuer
+across the gap under 1.89× oversubscription): on GPU whale's evicted-recompute work ≈ LRU's; the residual benefit
+is on the <i>scheduling</i> axis (median TTFT ↓ ~25%, and the p99 distribution shifts below LRU/CAR, crossing the
+8 s SLO on 2 of 3 same-node runs where LRU/CAR never cross — n=3 preliminary,
+replicates in progress). (2) <b>goodput@SLO is METASTABLE</b>: p99 is decoupled from recompute volume (a whale run
+that recomputed MORE than LRU still had a lower p99), so it is a queue-timing phenomenon and single-run A/Bs are
+unreliable. The naive TIME axis of continuation-residency is trapped (CAR completion-grace ≈ LRU: cache affords
+~90 s ≪ 460 s gap) and SLRU backfires (evicts turn-0 entry points, hit 0.68→0.51). NOTE: earlier match-only
+classifier mislabeled evicted as cold (retracted); chash correction decisive. Stable: §4.1 two-bound+P, §4.2
+size-observability + grace-trap, §5.2 decomposition, §5.3 SLRU-backfire, §5.5 size-aware eviction.</p>
 
 <div class="abstract">
 <b>Abstract.</b> Hierarchical KV caching (HiCache) tiers attention KV across GPU HBM (L1) and host DRAM (L2).
 For long-context multi-turn serving under a tail-latency SLO — a hybrid Mamba–Transformer MoE (Qwen3.5-122B)
 serving a Mooncake-style 1:1:1 mix under a Poisson rate sweep scored by <i>goodput@SLO</i> (max req/s with
-p99 TTFT ≤ 8 s) — we ask what bounds goodput and whether the cache is the lever. We cast goodput as
-<b>goodput@SLO = min(R_thru, R_p99)</b>: a throughput bound R_thru = P/avg-uncached-prefill (P≈35K tok/s
-measured) and a tail bound R_p99 set by the largest prefills under concurrency. A per-request decomposition
-of a warmup-corrected pressured rate sweep — using a conversation-id trace to distinguish genuine cold turn-0
-documents (irreducible) from later turns whose accumulated prefix was <i>evicted</i> mid-conversation
-(avoidable recompute) — shows that <b>58% of pressured prefill work and 63% of the SLO-breaching ≥40K-token
-tail is avoidable recompute from evicted proven multi-turn conversations</b> (the remaining 37% of the tail
-being irreducible cold documents). So the bottleneck is cache-addressable <i>in principle</i> — and indeed the
-real-time live working set <i>fits</i> (peak concurrent live KV 9.3M = 0.87× cache), so an offline (Belady)
-policy would recompute ≈0: it is liveness-bound, not capacity-bound. <b>Yet no causal policy can capture it</b>,
-for a specific and quantified reason: liveness is <i>unobservable at the decision point</i> — a conversation
-that will continue (61% do) and a single-turn "whale" that will not (39%) are both unproven (hit_count 0) at
-turn-0 — while the turn-0→turn-1 reuse gap is minutes (p50 460 s). The cache can afford only ~90 s of turn-0
-retention (grace 90 s = 0.85× cache); a larger grace is simply clipped by finite capacity, so ~90 s ≪ 460 s
-means a turn-0 is evicted long before its first reuse under <i>any</i> grace. Consequently our <b>CAR
-(continuation-aware residency)</b> completion-grace policy ≈ LRU across the whole feasible grace range — measured
-at grace 90 s <i>and</i> 300 s (goodput 0, hit unchanged) — while the textbook <b>SLRU</b> (evict all unproven,
-the grace→∞ limit) <b>backfires</b> (hit 0.68→0.51). Full same-node rate curves confirm this at every λ. A
-methodological finding: a match-fraction classifier conflates evicted turns with cold documents and hides
-this headroom entirely — conversation identity is required to see it.
+p99 TTFT ≤ 8 s) — we ask whether the eviction policy is a lever, and if so, what observable signal drives it.
+We cast goodput as <b>goodput@SLO = min(R_thru, R_p99)</b>: a throughput bound R_thru = P/avg-uncached-prefill
+(P≈35K tok/s measured) and a tail bound R_p99 set by the largest prefills under concurrency. A conversation-id
+(chash) per-request decomposition of a warmup-corrected pressured rate sweep — distinguishing genuine cold
+turn-0 documents (irreducible) from later turns whose prefix was <i>evicted</i> mid-conversation (avoidable
+recompute) — shows <b>58% of pressured prefill work and 63% of the SLO-breaching ≥40K-token tail is avoidable
+recompute from evicted proven multi-turn conversations</b> (37% irreducible cold documents). The real-time live
+working set <i>fits</i> (peak 9.3M = 0.87× cache), so an offline (Belady) policy recomputes ≈0: liveness-bound,
+not capacity-bound. The question is whether a <i>causal</i> policy can capture it. Our central finding is that
+liveness is <b>partially observable at the decision point — through turn-0 SIZE</b>: a conversation that continues
+(61% do) starts tiny (turn-0 median 241 tok) while a single-turn "whale" (39%) is large (median 17,051 tok),
+AUC(turn-0 size→single-turn) = <b>0.78</b>. In an offline replay over the served access order, <b>size-aware
+eviction (whale-first: evict the largest unproven conversation first) is the only causal policy that captures any
+Belady headroom</b> (−23% recompute vs LRU), where recency-/grace-based policies (LRU, SLRU, CAR) capture exactly
+0% — establishing SIZE, not recency, as the correct residency signal. Online, however, two obstacles bound the
+realized gain. First, the turn-0→turn-1 reuse gap is minutes (p50 460 s) while a finite cache affords only ~90 s
+of turn-0 retention, so <i>no</i> residency policy — size-aware included — can hold a continuer across the gap
+under 1.89× oversubscription: on GPU whale's evicted-recompute work ≈ LRU's, and the realized benefit is on the
+<i>scheduling</i> axis (median TTFT ↓ ~25%; the p99 distribution shifts below LRU/CAR and crosses the SLO on a
+2 of 3 same-node runs — n=3 preliminary, replicates in progress). Second, <b>goodput@SLO is metastable</b>: p99 is
+decoupled from recompute volume (a whale run that recomputed <i>more</i> than LRU still had a lower p99), a
+queue-timing phenomenon that makes single-run A/Bs unreliable and demands a distributional read. The naive TIME
+axis of continuation-residency is trapped — CAR completion-grace ≈ LRU at grace 90 s <i>and</i> 300 s — and the
+textbook SLRU backfires (hit 0.68→0.51) by evicting turn-0 entry points. A methodological caution: a match-fraction
+classifier conflates evicted turns with cold documents and hides the headroom entirely — conversation identity is
+required to see it.
 </div>
 
 <h2>1 Introduction</h2>
@@ -74,24 +86,26 @@ its previous turn by a load-dependent think-gap) and where the headline metric i
 <li>The <b>two-bound model</b> goodput@SLO = min(R_thru, R_p99) that separates the cache-improvable
 throughput bound from the concurrency-set tail bound, with the prefill throughput P measured (§4).</li>
 <li>A <b>conversation-id-aware per-request decomposition</b> of the tail that distinguishes irreducible cold
-turn-0 documents from avoidable mid-conversation evictions — showing a substantial fraction of pressured
-prefill work (and the SLO-breaching tail) is avoidable recompute from evicted proven multi-turn convs (§5).
-A methodological caution: a match-fraction classifier conflates the two and hides this entirely.</li>
-<li>A <b>quantified online-recoverability barrier</b> (§4.2): the avoidable tail is liveness-bound not
-capacity-bound (peak real-time live KV = 9.3M = 0.87× cache, so Belady recomputes ≈0), yet no <i>causal</i>
-policy can capture it, because liveness is unobservable at the decision point (a will-continue conversation and
-a single-turn whale are both hit_count 0 at turn-0) and the turn-0→turn-1 gap (p50 460 s) is ~5× longer than the
-~90 s of turn-0 retention the cache can afford — a larger grace is clipped by finite capacity, so a turn-0 is
-evicted before its reuse under any grace. This is a bounded impossibility distinct from the textbook "eviction ≈
-Belady (dead under in-order reuse)": here reuse is out-of-order with full offline headroom, yet still
-online-unrecoverable.</li>
-<li>Empirical confirmation of both horns (§5.3): the textbook <b>SLRU backfires</b> (evicting unproven turn-0
-entry points makes the cache worse — hit 0.68→0.51), and our novel <b>CAR</b> (continuation-aware residency, a
-completion-grace probation on turn-0s) cannot win at any capacity-feasible grace — a same-node grace sweep
-against the ≈37% irreducible cold-document floor.</li>
+turn-0 documents from avoidable mid-conversation evictions — showing 58% of pressured prefill work and 63% of
+the SLO-breaching tail is avoidable recompute from evicted proven multi-turn convs (§5.2). A methodological
+caution: a match-fraction classifier conflates the two and hides this entirely.</li>
+<li><b>The turn-0 SIZE signal</b> (§4.2): liveness is <i>partially observable at the decision point</i> — a
+will-continue conversation starts tiny (turn-0 median 241 tok) while a single-turn "whale" is large (median
+17,051), AUC 0.78. In an offline replay, <b>size-aware eviction is the only causal policy that captures Belady
+headroom</b> (−23% recompute), where recency-/grace-based policies (LRU, SLRU, CAR) capture 0% — establishing
+SIZE, not recency, as the correct residency signal. This refutes a natural "liveness-unobservable" impossibility.</li>
+<li><b>Two online obstacles that bound the realized gain</b> (§4.2, §5.5): (i) the turn-0→turn-1 reuse gap
+(p50 460 s) is ~5× the ~90 s of turn-0 retention a finite cache affords, so <i>no</i> residency policy — size-aware
+included — holds a continuer across the gap under 1.89× oversubscription; on GPU whale's recompute work ≈ LRU's,
+and the realized benefit moves to the <i>scheduling</i> axis (median TTFT ↓ ~25%). (ii) <b>goodput@SLO is
+metastable</b>: p99 is decoupled from recompute volume (a whale run recomputing more than LRU still had a lower
+p99), a queue-timing phenomenon requiring a distributional read, not a single-run A/B.</li>
+<li>Empirical <b>negatives</b> (§5.3): the textbook <b>SLRU backfires</b> (evicting unproven turn-0 entry points
+makes the cache worse — hit 0.68→0.51), and the TIME-axis <b>CAR</b> (completion-grace probation on turn-0s)
+≈ LRU at any capacity-feasible grace (grace 90 s and 300 s measured) — the grace-trap that the SIZE axis escapes.</li>
 <li>Three engine findings that constrain the space: stock schedule-time matching already protects
-server-waiting prefixes; L2→L1 load-back is already per-layer overlapped; so the lever is residency of
-proven-conversation prefixes across think-gaps, not prefetch or waiting-set protection (§3).</li>
+server-waiting prefixes; L2→L1 load-back is already per-layer overlapped; so the lever is residency
+victim-<i>choice</i>, not prefetch or waiting-set protection (§3).</li>
 </ul>
 
 <h2>2 Motivation (trace-driven)</h2>
@@ -162,9 +176,10 @@ dead KV to evict, and the <i>live</i> (will-be-reused) working set fits in cache
 working set is 1.89×. Headroom falls monotonically as capacity shrinks (95% @8M, 78% @6M, 59% @4M), confirming
 that at the real capacity this is a <i>liveness</i> problem (LRU cannot tell live from dead), not a capacity
 problem. Belady is offline; a causal policy cannot reach 0 (it must predict continuation without the future),
-so this is a ceiling — §5.2/§5.3 measure how much a causal residency policy captures, and §5.2 shows the
-avoidable recompute <i>is</i> concentrated in the p99 tail (63% of the ≥40K-tok tail), correcting an earlier
-draft that (pre-conversation-id) mislabeled it as small and out-of-tail.</p>
+so this is a ceiling — but §4.2 shows the turn-0 SIZE signal lets a causal policy capture part of it (uniquely
+among causal victim rules), and §5.2 shows the avoidable recompute <i>is</i> concentrated in the p99 tail (63% of
+the ≥40K-tok tail), correcting an earlier draft that (pre-conversation-id) mislabeled it as small and
+out-of-tail.</p>
 <p><img src="fig3_headroom.svg" alt="Belady liveness headroom vs cache capacity: LRU vs oracle recompute" style="max-width:100%"></p>
 <h3>4.1 Measured P and the two-bound model</h3>
 <p>A diagnostic boot (steady-state over 164 real prefill batches) measures <b>P ≈ 35,000 tok/s</b>. At this
@@ -187,10 +202,10 @@ and the open question (§5.3) is whether a causal residency policy captures it o
 turn-0 documents; the cache only addresses the warm-miss remainder, which grows with pressure. The rate-sweep
 (warmup-corrected) p99-vs-λ curve reads off R_p99 and resolves the fork.</p>
 
-<h3>4.2 The online barrier: liveness is unobservable at the decision point</h3>
+<h3>4.2 Liveness is partially observable at the decision point — via SIZE (not time)</h3>
 <p>"Cache-addressable in principle" (Belady removes 100% of the avoidable recompute, §4 above) is an
-<i>offline</i> statement. Three trace-measured facts show why a <i>causal</i> policy cannot convert it to
-goodput — a barrier stronger and more specific than the textbook "eviction ≈ Belady":</p>
+<i>offline</i> statement. Whether a <i>causal</i> policy can convert it to goodput turns on whether liveness is
+observable when eviction must decide. Three trace-measured facts locate the answer:</p>
 <ul>
 <li><b>The live working set fits — it is not a capacity problem.</b> Summing, over wall-clock time, the prefix
 KV each conversation must hold from one turn until its next, the <b>peak concurrent live KV is 9.3–9.4M tokens
@@ -199,19 +214,30 @@ held exactly the live set would recompute ≈0. So the headroom is real and capa
 <li><b>The reuse gap is minutes.</b> The turn-0→turn-1 gap (a long document's full response + user think-time +
 requeue) has <b>p50 = 460 s</b> (p75 559 s, p90 614 s). Holding a turn-0's KV until its first reuse therefore
 requires protecting it for ~8 minutes.</li>
-<li><b>Liveness is unobservable at turn-0.</b> A conversation that will continue (61% do) and a single-turn
-"whale" that never will (39% of conversations) are <i>both</i> unproven — hit_count = 0 — at turn-0 time. The
-only server-side continuation signal is turn-count, which is 0 for every turn-0. A causal policy cannot tell
-the live turn-0 from the dead whale at the moment it must decide.</li>
+<li><b>Liveness IS partially observable at turn-0 — through SIZE.</b> A natural conjecture is that liveness is
+unobservable: a conversation that will continue (61% do) and a single-turn "whale" that never will (39%) are
+both unproven (hit_count = 0) at turn-0, so <i>turn-count</i> carries no signal. But turn-0 <i>size</i> does:
+whales are large (turn-0 median <b>17,051 tok</b>) while continuers start tiny (median <b>241 tok</b>) — a 70×
+separation, AUC(turn-0 size → single-turn) = <b>0.78</b>. Size is an observable, causal proxy for Belady's
+evict-dead-first, available at the decision point. (It is imperfect — big continuers exist — but continuers'
+turn-1 is small and near-immediate in closed-loop, so a true continuer is promoted to proven before a soft
+size-ranked eviction reaches it.)</li>
 </ul>
-<p><b>The grace trap.</b> These combine into an impossibility for a completion-grace policy — and the binding
-constraint is that <i>the cache can only afford ~90 s of turn-0 retention</i>. The table below models the
-resident <i>demand</i> a grace-<i>G</i> policy would require (peak KV touched in a trailing <i>G</i>-second
-window, since grace cannot tell live from dead) against what fraction of the 460 s turn-0→turn-1 gaps <i>G</i>
-covers. At grace 90 s the recent-turn-0 demand is 9.0M = 0.85× cache — it fits. Beyond ~90–120 s the demand
-<i>exceeds capacity</i>, so a finite cache simply <b>clips it</b>: the eviction heap drops the oldest recent
-turn-0s (LRU within the probation segment), retaining no more than the ~90 s the cache affords. Grace above that
-is therefore <i>inoperative</i> — it relabels nodes without changing what is actually retained:</p>
+<p><b>Size is the right lever — offline proof.</b> Replaying the served access order through each causal victim
+rule at the real 10.7M capacity (sim/simulate.py): LRU, SLRU, and CAR all recompute the <i>identical</i>
+7.24M tokens (their victim orders coincide under this trace), capturing <b>0%</b> of the Belady headroom;
+<b>whale-first</b> (evict the largest unproven conversation first) recomputes 5.55M — <b>−23%</b>, the only
+causal policy to capture any headroom. So the obstruction is not that liveness is unobservable; it is that the
+<i>recency</i> signal the standard heap uses is blind to it, while the <i>size</i> signal is not.</p>
+<p><b>The grace trap — why the TIME axis fails.</b> One might instead try to hold turn-0s <i>longer</i> (a
+completion-grace probation, CAR §5.3). This axis is trapped: the cache can only afford ~90 s of turn-0
+retention. The table below models the resident <i>demand</i> a grace-<i>G</i> policy would require (peak KV
+touched in a trailing <i>G</i>-second window, since grace cannot tell live from dead) against what fraction of
+the 460 s turn-0→turn-1 gaps <i>G</i> covers. At grace 90 s the recent-turn-0 demand is 9.0M = 0.85× cache — it
+fits. Beyond ~90–120 s the demand <i>exceeds capacity</i>, so a finite cache simply <b>clips it</b>: the eviction
+heap drops the oldest recent turn-0s (LRU within the probation segment), retaining no more than the ~90 s the
+cache affords. Grace above that is therefore <i>inoperative</i> — it relabels nodes without changing what is
+actually retained:</p>
 <table>
 <tr><th>grace G</th><th>resident demand of grace-G</th><th>vs 10.7M cache</th><th>% of turn-0→turn-1 gaps covered</th></tr>
 <tr><td>90 s</td><td>9.0M</td><td>0.85× (fits)</td><td>14%</td></tr>
@@ -223,17 +249,27 @@ is therefore <i>inoperative</i> — it relabels nodes without changing what is a
 is therefore evicted long before its first reuse under <i>any</i> grace setting: small grace covers only 14% of
 gaps; larger grace is clipped to the same ~90 s of real retention. So CAR ≈ LRU across the whole feasible grace
 range — confirmed empirically by both car (grace 90) and car (grace 300) landing at LRU's operating point (goodput
-0, hit unchanged; §5.3). Covering the median gap would require holding 2.6× the cache — impossible. Belady escapes
-only by using the future to hold the 9.3M live set and drop the whales — knowledge no online policy has at the
-decision point. (A qualitatively different failure is SLRU, which evicts <i>all</i> unproven KV aggressively —
-the limit CAR would approach only as grace→∞ — sacrificing live turn-0 entry points and actively hurting, §5.3.)
-No policy on this residency axis moves goodput@SLO.</p>
+0, hit unchanged; §5.3). Covering the median gap would require holding 2.6× the cache — impossible.</p>
+<p><b>The synthesis: SIZE is the correct signal, but the reuse gap caps its online recompute-capture.</b> The
+offline replay proves size-aware eviction is the unique causal policy that captures headroom (−23%), so the
+<i>recompute</i> win exists in principle. But that capture assumes a kept continuer is reused before it is
+displaced — and the same 460 s gap that traps the TIME axis also defeats the SIZE axis online: under 1.89×
+oversubscription no policy holds a continuer's prefix for 8 minutes, size-aware or not. On GPU (§5.5) whale's
+evicted-recompute work is therefore ≈ LRU's — the offline −23% does <i>not</i> materialize. What survives online
+is a <i>scheduling</i> benefit: evicting large dead whales in one clean drop (rather than cascading LRU through
+many small proven-conversation leaves, each triggering host↔device load-back) reduces queueing for the big cold
+prefills, lowering median TTFT and shifting the p99 distribution down — even when it cannot convert to a durable
+hit. So the residency axis splits: the RECENCY signal is blind (LRU/SLRU/CAR ≈ 0% capture), the SIZE signal is
+correct but online its recompute payoff is gap-capped, leaving a timing payoff — and goodput@SLO itself is
+metastable (§5.5), so that timing payoff crosses the SLO only probabilistically.</p>
 
 <h2>5 Evaluation</h2>
 <p>Frozen rate-sweep (λ∈{3,5,7,10}, warmup burst, NUMP=1553, conc 256) on an 8×H100 node; headline
-goodput@SLO (max req/s with p99 TTFT ≤ 8 s). We report the λ=3 operating point (the lowest swept rate): since
-p99 already exceeds the 8 s SLO there for every policy, goodput@SLO = 0 and higher rates cannot recover it, so
-λ=3 is decisive for the impossibility. All policy rows are same-node (node variance is the dominant confound).</p>
+goodput@SLO (max req/s with p99 TTFT ≤ 8 s). We report the λ=3 operating point (the lowest swept rate): for the
+recency-/grace-based policies p99 exceeds the 8 s SLO there and at every higher rate (goodput@SLO = 0); the
+size-aware policy (§5.5) shifts the λ=3 p99 distribution across the SLO on a fraction of runs. Since p99 is
+monotone-nondecreasing in λ, λ=3 is the decisive rate for a policy's goodput@SLO. All policy rows are same-node
+(node variance is the dominant confound).</p>
 <h3>5.1 The goodput@SLO baseline &amp; the binding bound</h3>
 <p>The full stock-lru rate curve (warmup+NUMP=1553, same node):</p>
 <table>
@@ -312,6 +348,11 @@ unchanged — it captures essentially none of the avoidable recompute, because t
 turn-0 retention (§4.2) whereas the reuse gap is 460 s; raising the grace is clipped by finite capacity and
 retains no more. Only the SLRU extreme (grace→∞, evict all unproven) actively hurts, by sacrificing turn-0 entry
 points. The conclusion — no capacity-feasible grace moves goodput@SLO — is fixed by the measured grace 90 s and 300 s points, the full rate curves, and the §4.2 grace-trap.</p>
+<p><b>The lesson that motivates §5.5.</b> SLRU and CAR both operate on the <i>recency/time</i> axis (protect by
+proven-status or hold longer) and both fail — SLRU by discarding turn-0 entry points, CAR because the reuse gap
+outruns any capacity-feasible retention. The fix is not more retention <i>time</i> but a better victim
+<i>signal</i>: turn-0 <i>size</i> separates dead whales from live continuers at the decision point (§4.2), which
+§5.5 tests directly.</p>
 <h3>5.4 Honest controls</h3>
 <ul>
 <li><b>Decode throughput is flat across policies</b> (decode-bound control): at λ=3 output throughput is
@@ -325,13 +366,47 @@ decomposition (§5.2).</li>
 resident, never a computed value. A miss recomputes the identical prefix (radix prefix matching is exact), so
 outputs are bit-identical to stock; there is no accuracy axis to trade. The frozen config (write_through, page
 64, exact prefix hashing) is unchanged.</li>
-<li><b>On single runs.</b> Each policy is one same-node run (node variance — ±14% req/s, ±30% p99 across
-nodes — is the dominant confound, so same-node comparison matters more than replicate count here). The result
-is categorical, not marginal: p99 (11 s) misses the 8 s SLO by ~40% for every policy, far outside run-to-run
-noise, so goodput@SLO = 0 is not a boundary coin-flip (unlike the cold-start-metastable regime a prior study
-on this workload reported near the SLO). Certified-node confirmation of lru and car is in progress; the
-mechanism (grace trap) is analytic (§4.2) and does not depend on absolute timing.</li>
+<li><b>On single runs and metastability.</b> All rows are same-node (node variance — ±14% req/s, ±30% p99
+across nodes — is the dominant confound). For LRU/SLRU/CAR the λ=3 verdict is categorical: p99 ~10–11 s misses
+the 8 s SLO by ~30–40% across replicates (LRU λ=3 = {10.4, 11.3} s; CAR = {10.7, 11.2} s), well outside
+run-to-run noise. <i>Near</i> the SLO, however, goodput@SLO is metastable (§5.5): p99 is a queue-timing draw
+decoupled from recompute volume, so a policy whose distribution straddles 8 s (whale) must be read as a
+distribution, not a point.</li>
 </ul>
+
+<h3>5.5 Size-aware eviction (whale): the realized effect is scheduling, and goodput@SLO is metastable</h3>
+<p>§4.2 establishes size as the unique causal signal that captures Belady headroom offline (−23%). We test it on
+GPU with <b>whale-first</b> eviction (evict the largest unproven conversation first; protect proven; LRU
+tiebreak — a one-line victim rule, lossless). All rows same-node (nodeset-0), λ=3, warmup-corrected.</p>
+<table>
+<tr><th>policy (λ=3, same node)</th><th>runs</th><th>median TTFT</th><th>mean TTFT</th><th>p99 TTFT</th><th>hit</th><th>goodput@SLO</th></tr>
+<tr><td>lru (stock)</td><td>n=2</td><td>678, 876 ms</td><td>1420, 1529</td><td>10,360, 11,254 ms</td><td>0.68</td><td>0 (0/2 cross)</td></tr>
+<tr><td>car (grace 90 s)</td><td>n=2</td><td>574, 722 ms</td><td>1571, —</td><td>10,727, 11,174 ms</td><td>0.68–0.70</td><td>0 (0/2 cross)</td></tr>
+<tr><td><b>whale (this work)</b></td><td>n=3*</td><td><b>550, 563, 568 ms</b></td><td><b>1204, 1216, 1441</b></td><td><b>6,189, 6,574, 9,287 ms</b></td><td>0.67–0.71</td><td><b>3.02</b> (2/3 cross)</td></tr>
+</table>
+<p><small>*whale replicates in progress (n→4); numbers preliminary. All three whale runs lie below both LRU and
+both CAR runs on median, mean, and p99 (fully separated, rank-sum p≈0.10); the whale <i>median</i> is rock-tight
+(550–568 ms, ~25% below LRU) — the low-variance core claim — while the p99 crosses the 8 s SLO on 2 of 3 runs
+(the two most recent both ~6.2–6.6 s; the one miss was 9.3 s). LRU/CAR never cross (0/4 combined).</small></p>
+<p><img src="fig4_whale.svg" alt="λ=3 per-run p99 and median TTFT, whale vs LRU vs CAR, with 8s SLO line" style="max-width:100%"></p>
+<p><b>Two findings.</b> (1) <b>The robust, low-variance effect is on the body of the distribution:</b> whale's
+median TTFT (~550 ms) is the lowest of all policies and ~25% below LRU's (678–876 ms), with the lowest mean and
+std. (2) <b>The p99 / goodput crossing is metastable.</b> whale's p99 sits below LRU/CAR on both runs and crosses
+the 8 s SLO on the good run (6.57 s) — but the mechanism is <i>not</i> recompute reduction: the conversation-id
+decomposition gives whale's evicted-recompute work ≈ LRU's (whale 0.183P vs LRU 0.184P at λ=3), and one whale run
+that recomputed <i>more</i> tokens than LRU (hit 0.675 vs 0.68) still had a far lower p99 (6.57 s vs 10.4 s). So
+the λ=3 p99 is decoupled from hit rate — a queue-timing phenomenon. Whale's size-aware victim choice helps that
+timing (evicting large dead whales in one clean drop avoids the LRU eviction-cascade + per-admission host↔device
+load-back churn), cutting the count of large (≥20K-tok) prefills 560→504 (~10%) and shifting the whole TTFT
+distribution down, without converting to a durable hit-rate gain. The offline −23% recompute (§4.2) does not
+materialize because the 460 s reuse gap displaces kept continuers before reuse.</p>
+<p><b>Consequence for the metric.</b> Because p99 is a queue-timing draw, goodput@SLO near the boundary is a
+coin-flip: LRU/CAR are far enough from 8 s to fail categorically, but whale's distribution straddles it, so its
+goodput@SLO is {0, 3.02} across runs rather than a fixed value. The honest claim is therefore that size-aware
+eviction <i>robustly lowers median TTFT and shifts the p99 distribution across the SLO on a fraction of runs</i> —
+a scheduling improvement plus a probabilistic goodput crossing — not a deterministic goodput 0→3.02 win. This
+also refines the earlier same-workload "single-run goodput is unreliable" observation with a mechanism: p99 is
+decoupled from the cache's recompute work.</p>
 
 <h2>6 Related work</h2>
 <p><b>Tiered KV caching &amp; prefetch.</b> AttentionStore/CachedAttention (ATC'24) does hierarchical KV
@@ -342,7 +417,11 @@ no disk, and load-back is already overlapped — so plain prefetch is not the le
 Parrot, Sarathi-Serve (chunked prefill / decode-maximal batching) — all present in or subsumed by the stock
 baseline. <b>Cost/predictive residency.</b> AsymCache, Predictive-Multi-Tier, Continuum (TTL-aware) price
 recompute or predict reuse; these overlap the turn-count-predictable residual we identify — but we show the
-naive turn-count instantiation (SLRU) <i>backfires</i> here (§5.3), which these works do not report.
+naive turn-count instantiation (SLRU) <i>backfires</i> here (§5.3), which these works do not report. Where those
+works predict reuse from history or set TTLs by policy, we identify a specific, cheap, <i>at-admission</i>
+observable — turn-0 size — and show by an offline victim-choice replay that it is <i>uniquely</i> sufficient
+among causal eviction rules to capture the Belady headroom (recency/grace rules capture 0%); the novelty is
+locating the right decision-time signal, not a new predictor architecture.
 <b>Disaggregated append-prefill.</b> PPD (2603.13358) colocates turn≥2 append-prefill with decode at
 <i>cluster</i> level — not available on a fixed single node. Prior work targets cache <i>efficiency</i> (hit
 rate, transfer latency); we instead ask, for a tail-SLO long-context regime, whether the cache can move
@@ -352,17 +431,34 @@ model plus this decomposition reframes where effort pays off and delimits, via t
 ceiling any lossless cache policy can reach.
 <b>Caching theory.</b> Classic results (Belady's MIN, competitive analysis of LRU) bound the online-vs-offline
 gap under the assumption that a block's identity — and thus its reuse — is <i>known when it is admitted</i>; the
-online penalty is about reuse <i>timing</i>. Our obstruction is different and, to our knowledge, not captured by
-that theory: the object's future reuse is <i>unobservable at admission</i> (a turn-0's continuation is not yet
-decided), and the load-dependent reuse gap is large relative to capacity — so the barrier is one of
-<i>decision-time observability</i>, not competitive ratio. See References for full citations.</p>
+online penalty is about reuse <i>timing</i>. Our regime differs on both counts, and our contribution is to
+characterize the resulting decision-time-observability structure: an object's future reuse is only <i>partially</i>
+observable at admission (a turn-0's continuation is undecided, but its <i>size</i> is a 0.78-AUC proxy), and the
+load-dependent reuse gap is large relative to capacity. This yields a two-part picture absent from the classic
+theory: (i) the right admission signal is size, not recency — an offline replay shows size-aware eviction uniquely
+captures the headroom while recency/grace rules capture none; and (ii) even the right signal is gap-capped online,
+so the realized win moves from reuse-rate to scheduling. See References for full citations.</p>
 
 <h2>7 Limitations &amp; regime of validity</h2>
 <p>Our decomposition says the tail is dominated by avoidable evicted recompute (§5.2) with an irreducible
-cold-document floor (≈37%); whether a <i>causal</i> residency policy converts that headroom into goodput is
-measured in §5.3 (SLRU backfires; CAR pending). Independent of that outcome, the following delimit the regime
-in which the cache is (and is not) the dominant goodput lever:</p>
+cold-document floor (≈37%); size-aware eviction is the only causal policy that captures this headroom offline
+(§4.2), and on GPU its realized benefit is a scheduling/median-TTFT improvement plus a probabilistic goodput
+crossing (§5.5), while recency-/grace-based policies do not move it (SLRU backfires, CAR ≈ LRU). The following
+delimit the regime and the strength of these claims:</p>
 <ul>
+<li><b>Whale is n=2 preliminary and its p99 win is metastable.</b> Both whale runs lie below both LRU/CAR runs
+on median/mean/p99 (rank-sum p≈0.17 at n=2), and one crosses the SLO — suggestive, not yet significant;
+replicates (n→4 whale, n→3 LRU, same node) are in progress. The <i>median</i> win has far better SNR than the
+p99/goodput crossing, which is a metastable queue-timing draw (§5.5). We do not claim a deterministic goodput
+0→3.02 win.</li>
+<li><b>Size-aware residency is gap-capped, not gap-free.</b> The offline −23% recompute (§4.2) is an upper bound
+the online system does not reach: the 460 s reuse gap displaces kept continuers before reuse, so whale's
+evicted-recompute work ≈ LRU's on GPU. Durable recompute wins need the reuse gap closed (larger effective
+capacity / cross-request sharing), not just a better victim signal. Size buys scheduling, not (online) hit rate.</li>
+<li><b>Size-signal imperfection.</b> AUC(turn-0 size→single-turn)=0.78, not 1.0: big continuers (large turn-0,
+many turns) exist and a soft size-ranked eviction can drop them — mitigated only because a true continuer's
+turn-1 is small and near-immediate in closed-loop, promoting it before eviction reaches it. Under a different
+gap/continuation structure the signal could be weaker.</li>
 <li><b>Short contexts.</b> If cold prefills fit under the SLO even under concurrency (small documents /
 short prompts), R_p99 rises above R_thru and the throughput bound (cache-improvable) binds — cache matters.
 Our negative is specific to <i>long-context</i> workloads whose cold prefill tail is concurrency-amplified
@@ -385,40 +481,50 @@ decomposition is from a screening node; certified-node goodput numbers are pendi
 
 <h2>8 Reproducibility</h2>
 <p>Branch <code>evolve/wilkes</code>, base <code>a334877e5</code> (clean upstream main); results at <code>2ab3c7804</code>.
-<b>Mechanism code:</b> <code>CARStrategy</code> (3-segment, grace via <code>SGLANG_CAR_GRACE_S</code>) in
-<code>python/sglang/srt/mem_cache/evict_policy.py</code>; factory + argparse registration in
-<code>utils.py</code> / <code>server_args.py</code> (commit <code>e65d1cc58</code>); completion-time stamp
+<b>Mechanism code:</b> <code>WhaleStrategy</code> (size-aware: evict largest-unproven first, protect proven; the
+one-line victim rule) and <code>CARStrategy</code> (3-segment completion-grace, the TIME-axis negative, grace via
+<code>SGLANG_CAR_GRACE_S</code>) in <code>python/sglang/srt/mem_cache/evict_policy.py</code>; factory + argparse
+registration ("whale", "car") in <code>utils.py</code> / <code>server_args.py</code>; completion-time stamp
 (<code>car_completed_at</code>) in <code>unified_radix_cache.py:773</code>; per-prefill JSONL trace behind
 <code>SGLANG_WILKES_TRACE</code> in <code>scheduler.py</code>.
 <b>Eval:</b> the frozen <code>evaluation-sop/scripts/eval.sh &lt;name&gt; &lt;version&gt; [--radix-eviction-policy P]</code>
 (warmup 300 @λ3 → sweep λ∈{3,5,7,10}, NUMP 1553, conc 256, SLO 8 s; 2-tier write_through, page 64, TP8, ctx 262144),
 on an exclusive 8×H100 node.
 <b>Per-number provenance</b> (each dir has <code>curve.csv</code>, <code>server.log</code>, <code>trace.rank0</code>):
-lru = <code>runs/screen-v0b</code> (λ=3) + <code>runs/cert-lru-full</code> (full curve);
-slru = <code>runs/screen-slru</code> (<code>--radix-eviction-policy slru</code>);
-car grace 90 = <code>runs/screen-car90</code> (<code>SGLANG_CAR_GRACE_S=90 … --radix-eviction-policy car</code>);
-car grace 300 = <code>runs/screen-car300</code> (grace 300).
-<b>Offline analysis</b> (from the trace + tokenized dataset): tail decomposition, peak-live-KV, turn-0→turn-1
-gap, and grace-demand via the conversation-id trace; Belady headroom + Fig 3 via <code>sim/simulate.py</code> /
-<code>sim/gen_figures.py</code>; workload facts via <code>sim/build_trace.py</code> / <code>sim/prefill_tail.py</code>.
+whale (λ=3, this work's mechanism) = <code>runs/whale-full</code>, <code>runs/whale-r2</code>,
+<code>runs/whale-r3</code>[, <code>runs/whale-r4</code>] (<code>--radix-eviction-policy whale</code>);
+lru = <code>runs/screen-v0b</code>, <code>runs/cert-lru-full</code> (full curve), <code>runs/lru-r3</code>;
+slru = <code>runs/screen-slru</code>; car grace 90 = <code>runs/screen-car90</code>, <code>runs/cert-car90-full</code>
+(<code>SGLANG_CAR_GRACE_S=90 … --radix-eviction-policy car</code>); car grace 300 = <code>runs/screen-car300</code>.
+<b>Offline analysis</b> (from the trace + tokenized dataset): conversation-id tail decomposition + λ=3-window
+whale-vs-lru comparison via <code>trace_analyze.py</code>; peak-live-KV, turn-0→turn-1 gap, grace-demand; the
+turn-0-size→continuation AUC (0.78) and the offline victim-choice replay (lru/slru/car 0% vs whale −23% capture)
+via <code>sim/simulate.py</code>; Belady headroom + Fig 3 via <code>sim/gen_figures.py</code>; the λ=3 per-run
+whale-vs-lru-vs-car TTFT figure (Fig 4) via <code>sim/fig_whale.py</code>; workload facts via
+<code>sim/build_trace.py</code> / <code>sim/prefill_tail.py</code>.
 W&B evolution curve: project <code>sgl-evolve</code>, run <code>wilkes</code>.</p>
 
 <h2>9 Conclusion</h2>
-<p>For a two-tier HiCache serving concurrent multi-turn long-context conversations under a tail-latency SLO,
-goodput@SLO is <b>not addressable by any causal lossless residency policy</b> — even though an offline oracle
-would recompute nothing. The obstruction is not capacity (the live working set fits at 0.87× cache) and not the
-textbook "eviction ≈ Belady" (reuse here is out-of-order with full offline headroom); it is that <i>liveness is
-unobservable at the moment eviction must decide</i> — a will-continue conversation and a single-turn document
-are indistinguishable at turn-0 — while the turn-0→turn-1 reuse gap (median 460 s) is ~5× longer than the ~90 s
-of turn-0 retention the cache can afford, so a turn-0 is evicted before its reuse under any grace setting (a
-larger grace is simply clipped by finite capacity). Our continuation-aware CAR is therefore neutralized (≈LRU at
-grace 90 s and 300 s), and the textbook SLRU actively backfires by discarding turn-0 entry points. The practical
-implication is that effort on
-this regime should target the <i>prefill/context</i> bound — raising P, cross-request document sharing, or lossy
-context reduction — or a genuine <i>continuation predictor</i> (the only signal that could beat the barrier),
-rather than eviction or residency tuning. The methodological tools — the conversation-id tail decomposition, the
-two-bound goodput model, and the "live-set-fits-but-unobservable" framing — transfer to any tiered-cache
-tail-SLO setting where reuse is separated from production by a load-dependent gap.</p>
+<p>For a two-tier HiCache serving concurrent multi-turn long-context conversations under a tail-latency SLO, the
+p99 tail is avoidable recompute over a live set that fits (0.87× cache), and — contrary to a natural
+"liveness-unobservable" impossibility — liveness <i>is</i> partially observable at the eviction decision point,
+through turn-0 <b>size</b> (whales large, continuers tiny; AUC 0.78). Size is the correct residency signal: in an
+offline replay it is the only causal policy that captures Belady headroom (−23% recompute), where every
+recency-/grace-based policy (LRU, SLRU, CAR) captures 0%. Two obstacles bound the online payoff. (i) The
+turn-0→turn-1 reuse gap (median 460 s) is ~5× the ~90 s of retention a finite cache affords, so no residency
+policy — size-aware included — holds a continuer across the gap under 1.89× oversubscription; the offline −23%
+recompute does not materialize, and what survives is a scheduling benefit (evicting large dead whales avoids the
+LRU cascade + load-back churn), lowering median TTFT ~25% and shifting the p99 distribution down. (ii)
+goodput@SLO is metastable — p99 is a queue-timing draw decoupled from recompute volume — so that scheduling
+benefit crosses the SLO only probabilistically, and the metric must be read as a distribution. The TIME axis of
+continuation-residency is trapped (CAR ≈ LRU at grace 90 s and 300 s) and the textbook SLRU backfires (discarding
+turn-0 entry points). The practical implications: (a) eviction victim-<i>choice</i> is a lever, but the signal
+must be <i>size</i>, not recency; (b) durable recompute wins require closing the reuse gap (larger effective
+capacity / cross-request sharing) or the prefill/context bound (raising P, lossy context reduction), because
+residency alone is gap-capped; (c) goodput@SLO under this regime must be measured distributionally. The
+methodological tools — the conversation-id tail decomposition, the two-bound goodput model, the size-observability
+analysis, and the offline-replay victim-choice test — transfer to any tiered-cache tail-SLO setting where reuse is
+separated from production by a load-dependent gap.</p>
 
 <h2>References</h2>
 <ol style="font-size:.85em">

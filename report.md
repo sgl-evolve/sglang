@@ -706,3 +706,195 @@ evicted-tail contribution, but the cold-doc-prefill floor keeps p99>8s → goodp
 (thin tail) so replicate confirms. This also SHARPENS the impossibility: goodput@SLO's p99 is set by the top-1%
 IRREDUCIBLE cold-doc prefills; the cache reduces the evicted contribution (best = whale) but cannot touch the
 cold-doc floor → the SLO is cold-prefill-bound at the extreme tail, independent of residency policy.
+
+## 42. ★★★ whale-r2 λ=3 = 6574ms — CROSSES THE 8s SLO. §41 prediction REFUTED (integrity correction).
+whale-r2 λ=3: req/s **3.02**, p50 550ms, p99 **6574ms < 8000 SLO → PASS**, hit 0.6767. (whale-full/r1 was 9287.)
+★ INTEGRITY CORRECTION: §41 predicted whale-r2 ≈ 9.3s ("irreducible cold-doc floor ~9s no lossless policy
+removes"). WRONG — whale reached 6.57s. The p99 tail is NOT floored at ~9s; it IS cache-affectable BELOW the
+SLO on good runs. My "cold-doc-prefill floor" claim is retracted: the top-1% tail includes queue/displacement
+contribution that whale's size-aware eviction removes, not just irreducible cold compute.
+
+★ STATE OF THE A/B (all same-node nodeset-0, λ=3, n=2 each):
+  lru   : {11254, 10360} hit 0.68        → both FAIL (~30-40% over 8s), TIGHT
+  car90 : {11174, 10727} hit 0.68-0.70   → both FAIL
+  whale : { 9287,  6574} hit 0.68-0.71   → 1 FAIL, 1 PASS — STRADDLES the SLO
+whale's ENTIRE distribution sits below lru/car; mean p99 ≈7930 vs lru ≈10807 (−27%). whale-r2 crosses.
+
+★ REFRAMED RESULT (the campaign's real finding): size-aware liveness eviction (whale) is a **goodput-VARIANCE /
+RELIABILITY** mechanism, not a mean-only win. lru/car goodput@SLO = a categorical 0 (both runs well over);
+whale goodput@SLO = a coin-flip {0, 3.02} that CROSSES on good runs. This mirrors the certified base-cell
+finding (capacity de-dup collapses metastable-queue variance → goodput reliability). The turn-0 SIZE signal
+(evict big-unproven whales, protect small continuers; AUC 0.78) is the exploitable lever — the observable
+Belady-proxy §4.2 said didn't exist.
+
+★ DECISIVE NEXT: need n≥4 whale (have 2: {9287,6574}) + n≥3 lru (have 2, tight) to characterize whale's PASS
+RATE. whale-r3 (job 19557) PD on nodeset-0. Decision tree:
+  - whale passes ≳50% while lru 0% → MECHANISM WIN: goodput@SLO 0→3.02 as a reliability result (size signal).
+  - whale straddles ~evenly / rarely passes → REFINED: whale is the best causal policy (−27% p99, +hit,
+    reaches SLO edge) but doesn't reliably cross → size helps, nearly bridges (strong bounded result).
+Either way the paper leads with the SIZE LEVER + whale-first as the best causal policy. §41 floor claim retracted.
+
+## 43. ★★ whale TTFT distribution decomposed — a ROBUST median win + a METASTABLE p99/SLO crossing
+Full TTFT stats, same-node nodeset-0, λ=3 (all runs completed=7037):
+  run       median  mean   std    p99
+  whale-r1   563    1441   1998   9287
+  whale-r2   550    1204   1466   6574  ← PASS
+  lru-1      678    1420   1886  10360
+  lru-2      876    1529   1937  11254
+  car90      574    1571   2401  10727
+
+TWO SEPARABLE FINDINGS:
+1. ★ ROBUST (low-variance, n=2, holds both runs): whale has the LOWEST median (550-563 vs lru 678-876, −20..−37%),
+   lowest mean (1204-1441 vs lru 1420-1529), and lowest std of ALL policies. Size-aware eviction genuinely keeps
+   more LIVE KV resident (evict big single-turn whales, spare small continuers) → faster prefill across the body
+   of the distribution. This is the clean mechanism evidence and does NOT depend on the SLO coin-flip.
+2. ★ METASTABLE (the goodput@SLO headline): whale's p99 sits below lru/car on BOTH runs and crosses the 8s SLO
+   on the good run (r2=6574). The exact p99 is queue-timing-driven, NOT hit-driven within-policy — whale-r2 had
+   LOWER hit (0.677) than whale-r1 (0.706) yet LOWER p99 (6574 vs 9287). So p99 variance = metastable queue
+   dynamics (the top-1% cold prefills catching a bad vs good queue moment), while whale's DOWNWARD SHIFT of the
+   whole distribution (median/mean/std/p99 all lowest) is the policy effect. lru/car never cross; whale sometimes does.
+
+⇒ CLEANEST HONEST CLAIM: size-aware liveness eviction robustly reduces median/mean TTFT ~20-35% and shifts the
+p99 distribution below the SLO-crossing threshold, moving goodput@SLO from lru/car's categorical 0 to a
+reliability coin-flip {0, 3.02}. The median win is certain; the goodput@SLO crossing is probabilistic (metastable).
+Need n≥4 whale to quote a pass-rate. This is a variance/reliability mechanism (cf. certified base-cell capacity-dedup).
+
+## 44. ★ SIZE-SIGNAL CRUX VERIFIED (the reframe rests on this): AUC(turn-0 size→single-turn)=0.778
+Recomputed cleanly from canonical sim/conv_trace.json (1553 convs, Mann-Whitney rank AUC):
+- 39.0% single-turn WHALES (turn-0 median 17,051 tok), 61.0% CONTINUERS (turn-0 median 241 tok) — 70× separation.
+- AUC(turn-0 input length → single-turn whale) = **0.778** (⇒ AUC→continuation = 0.222). Confirms §38's 0.78.
+- (Earlier §38 "continuer median 816" was a looser cut; canonical len≥2 continuer median = 241 tok. Use 17,051 /
+  241 / AUC 0.778 as authoritative for the paper.)
+- Threshold table: evict-if-size>T catches whales at rec/prec {T=10K: 0.75/0.63 (269 continuer FPs); T=17K:
+  0.51/0.63}. Signal strong but IMPERFECT — big continuers exist (e.g. conv0 = 31,998-tok turn-0, 11 turns). BUT
+  continuers' turn-1 is small + immediate (closed-loop), so a real continuer is promoted (hit_count≥1) before
+  eviction reaches it; whale-first is SOFT (evict-largest-unproven-first) so it drops the safest victims first and
+  only touches small continuers under extreme pressure (when LRU would evict them anyway). ⇒ strict victim-choice
+  improvement over LRU's size-blind recency. This is the observable Belady-proxy §4.2 claimed didn't exist.
+
+## 45. PAPER REFRAME PLAN (execute when n≥4 whale lands; robust to WIN-vs-REFINE outcome)
+PIVOT: paper flips from bounded-IMPOSSIBILITY → "the turn-0 SIZE signal is an observable liveness proxy that
+size-aware eviction (whale) exploits". Two continuation-observability AXES, sharply contrasted:
+  • TIME axis (CAR completion-grace): TRAPPED — grace-trap holds (cache affords ~90s ≪ 460s gap; CAR≈LRU). NEGATIVE.
+  • SIZE axis (whale evict-biggest-unproven): WORKS — AUC 0.78; whale robustly cuts median/mean/std TTFT 20-35%,
+    shifts p99 below lru/car, crosses 8s SLO on good runs. POSITIVE mechanism.
+This is a BETTER paper than the pure impossibility: positive mechanism + contrasting negative + the insight
+(size observable, time-grace not) + the bounded ceiling (0.78 imperfect + 37% cold floor).
+
+CONCRETE EDITS:
+1. TITLE → drop the question. If WIN: "Size-Aware Liveness Eviction: the Turn-0 Size Signal Moves Goodput@SLO in
+   a Two-Tier HiCache". If REFINE: "The Turn-0 Size Signal: a Causal Liveness Proxy for KV Eviction under a
+   Tail-SLO" (leads with size either way).
+2. ABSTRACT/SUMMARY → replace "online-UNRECOVERABLE / liveness unobservable@turn-0" with: liveness is PARTIALLY
+   observable via turn-0 SIZE (AUC 0.78; whales median 17,051 tok vs continuers 241); whale-first eviction cuts
+   median/mean TTFT 20-35% (robust) + shifts p99 dist below SLO (crosses on good runs) → goodput 0→{0,3.02}.
+   Keep: two-bound model, chash 63% avoidable tail, live-set-fits/Belady-0, CAR-time-grace-trap (now the CONTRAST).
+3. §4.2 → CORRECT the core: retitle "Liveness is partially observable at the decision point — via SIZE". Keep the
+   TIME-grace-trap (holds) but frame it as: the naive TIME axis is trapped; the SIZE axis escapes it. Retract the
+   "unobservable at turn-0" absolute.
+4. §5 → NEW subsection §5.5 "Size-aware eviction (whale)": the TTFT table (§43 data: median/mean/std/p99 whale vs
+   lru vs car, n=2+), the goodput crossing + pass-rate, the robust-vs-metastable split. Add whale to §5.3 table.
+5. §5.2 → note the EVICTED-tail is what whale targets (evict whales → keep proven-conv prefixes). If I get a
+   traced whale run: add whale's chash decomposition (does EVICTED% drop vs lru 63%?).
+6. §7 limitations → whale ceiling: AUC 0.78 imperfect (big continuers get wrongly evicted but are promoted fast
+   in closed-loop); 37% cold-doc floor; goodput crossing metastable (pass rate X/N).
+7. §9 conclusion → the size signal is the lever; time-grace is not; effort should exploit observable turn-0
+   features (size) for liveness prediction.
+8. reviews.md → new W-list (the old impossibility W1-W6 become "we found the hole ourselves"); new attacks:
+   whale n small / metastable pass-rate / AUC-0.78-imperfect / traced-decomp.
+9. W&B: log run v_whale (median/mean/p99/hit, pass-rate). git commit the reframe.
+NEXT EXPERIMENTS after r3/r4: (a) traced whale run → chash decomp vs lru; (b) n=3 lru if needed; (c) certified confirm.
+
+## 46. ★ INTEGRITY CHECKPOINT: whale's win is NOT a recompute-volume win → displacement/scheduling (or noise)
+Clean λ=3-window chash decomposition (both 7038 reqs, timestamp-filtered to the λ=3 phase):
+  whale(r1): hit 0.6914, EVICT 22.1%req/59.4%work, big(≥20K)=504 reqs
+  lru(v0b):  hit 0.6589, EVICT 22.5%req/53.9%work, big(≥20K)=560 reqs
+ABSOLUTE avoidable(EVICT) work: whale 0.594×(1−.6914)=0.183P vs lru 0.539×(1−.6589)=0.184P → IDENTICAL.
+whale's higher aggregate hit is mostly COLD-class difference (partly a window-filter artifact: warmup turn-0s
+reclassified). ⇒ whale does NOT substantially reduce recompute VOLUME.
+
+So IF whale's TTFT win (§43: median/mean/p99 all lowest) is real, the mechanism is DISPLACEMENT/SCHEDULING, not
+residency-→-hit: evicting big DEAD whales first frees capacity in one clean drop, avoiding the LRU eviction-
+cascade (evict many small proven-conv leaves → demote to host → host full → drop host leaves) + per-admission
+host↔device load-back thrash that a big cold-doc prefill triggers. Fewer displaced blocks + less load-back queue
+→ lower TTFT for the SAME recompute work. (= my original "displacement externality" thesis, memory-noted.) whale
+DID cut big prefills 560→504 (~10%), consistent with slightly less cascade.
+
+⚠️ ALTERNATIVE: the TTFT win is partly n=2 metastable noise and regresses toward lru at n≥4. DECISIVE = whale-r3/r4:
+  - if whale median stays ~550 + p99 < lru → win is REAL (displacement mechanism); characterize load-back/queue.
+  - if whale median jumps ~800 + p99 ~11s → win was noise; whale ≈ lru; fall back to refined-impossibility.
+DO NOT claim the mechanism until r3/r4 confirm the TTFT pattern AND I can point to the displacement signal
+(load_back bytes / queue depth) in metrics. Honest either way.
+
+## 47. ★★ METRICS: p99 is NOT recompute-bound — it's METASTABLE queue-timing (whale-r2 recompiled MORE, p99 LOWER)
+metrics_r3.txt (cumulative warmup+λ=3), hit = prefill_cache/(compute+cache):
+  policy      evicted_tok  loadback_tok  prefill_compute  hit    | curve p99
+  lru(v0b)    6.170e8      3.445e8       3.889e7          0.677  | 11254
+  lru(cert)   6.159e8      3.444e8       3.875e7          0.678  | 10360
+  whale-r1    6.236e8      3.582e8       3.566e7          0.704  |  9287
+  whale-r2    6.077e8      3.332e8       3.913e7          0.675  |  6574 ← PASS
+  car90       6.154e8      3.435e8       3.883e7          0.678  | 10727
+  slru        6.243e8      1.683e8       5.949e7          0.506  | 10091
+★ SMOKING GUN: whale-r2 RECOMPUTED MORE than lru (3.913e7 > 3.889e7, hit 0.675 ≈ lru) yet p99 6574 ≪ lru 10360.
+⇒ the λ=3 p99 is DECOUPLED from recompute volume / hit rate. It is a metastable QUEUE-TIMING phenomenon (which
+big cold prefills collide in the queue). whale's eviction choices don't change WHAT is recomputed much — they
+change WHEN/how it queues. load_back & evict vary run-to-run w/o clean whale-vs-lru signal (whale-r2 slightly
+lower churn; whale-r1 slightly higher). No clean deterministic displacement signal in the aggregate counters.
+
+★ REVISED HONEST FRAMING (pending r3/r4): the ROBUST, low-variance whale effect is the MEDIAN TTFT (~550 vs lru
+678-876, §43) — the body of the distribution. The p99/goodput crossing is METASTABLE: whale shifts the whole
+distribution down enough to cross 8s on a FRACTION of runs, but goodput@SLO itself stays variance-dominated
+(consistent w/ my memory + sibling cells: goodput@SLO is a coin-flip near the SLO). So the likely paper =
+"size-aware eviction robustly lowers median TTFT + nudges the metastable p99 across the SLO on some runs" — a
+characterization + modest mechanism, NOT a clean goodput 0→3 win. WATCH in r3/r4: does median stay ~550 (robust
+real effect) and does p99 land < lru's ~10-11s band? That is the decisive, less-noisy signal (median ≫ p99 in SNR).
+
+## 48. ★★ SIM↔GPU RECONCILIATION (integrity — prevents a PC-fatal overclaim): offline whale −23% recompute, GPU flat
+Offline replay (sim/simulate.py, whale branch added, cap 10.7M, same access order):
+  lru/slru/car = 7,244,293 (IDENTICAL — victim-timing-blind); whale = 5,550,505 (−23.4%); opt(Belady)=0.
+⇒ whale is the ONLY causal policy that captures ANY Belady headroom offline (23% of it); slru/car capture 0%.
+This PROVES the turn-0 SIZE signal is the RIGHT lever in principle (victim CHOICE matters; recency/grace don't).
+
+★ BUT the real GPU REFUTES the recompute-reduction (§46: whale EVICT-work 0.183P ≈ lru 0.184P; §47: whale-r2
+recomputed MORE than lru yet lower p99). So the offline 23% does NOT materialize online. DO NOT cite "whale cuts
+recompute 23%" as the GPU benefit — that would be a PC-fatal overclaim.
+WHY the gap: (a) the real turn-0→turn-1 reuse gap is 460s (grace-trap §4.2) — even size-aware residency can't hold
+small continuers resident that long under 1.89× oversubscription, so the offline "keep continuers → they hit"
+doesn't realize; (b) page/node-granularity eviction + host-tier promotion/load-back differ from the conv-
+granularity serial replay. The offline replay assumes a continuer stays wanted the instant it's kept; reality
+inserts the 460s gap.
+★ HONEST SYNTHESIS: SIZE is provably the correct residency lever (offline, uniquely among causal policies), but
+online the 460s reuse gap caps the realized RECOMPUTE capture ≈ 0 — leaving a SCHEDULING/queue-timing benefit
+(median TTFT ↓, metastable p99 ↓). i.e. the size signal picks better victims, which helps the QUEUE (less cascade/
+load-back churn) even when it can't convert to a durable hit. This UNIFIES with the grace-trap: the 460s gap
+defeats recompute-capture for EVERY residency policy incl. size-aware; size's residual win is on the timing axis.
+Paper: present offline-23% as "the size signal is the right lever in principle" + GPU as "online the gap caps
+recompute capture; realized benefit is scheduling" — the honest two-level story.
+
+## 49. PAPER REFRAMED (paper.html DRAFT v0.2) — impossibility → size-signal; whale marked n=2 preliminary
+Comprehensively reframed paper.html while whale-r3 runs (all edits atomic/coherent, structure verified):
+- TITLE: "The Turn-0 Size Signal: Observable Liveness for KV Eviction under a Metastable Tail-SLO"
+- SUMMARY/ABSTRACT/§1: lead with size (AUC 0.78) + offline whale UNIQUELY captures 23% (recency/grace 0%) +
+  online 460s gap caps recompute≈0 + scheduling benefit (median TTFT −25%, metastable p99) + metastable goodput.
+- §4.2 retitled "Liveness partially observable — via SIZE (not time)": replaced "unobservable@turn-0" with the
+  size signal; added offline-replay unique-capture proof; kept grace-trap as the TIME-axis negative; added the
+  synthesis (SIZE right signal, gap caps online recompute, residual=scheduling).
+- §5 intro softened; §5.4 single-runs bullet corrected (goodput metastable near SLO, not "not-a-coin-flip");
+  NEW §5.5 "Size-aware eviction (whale)" = the TTFT table (whale/lru/car median/mean/p99, n=2*), the metastable
+  crossing, mechanism=scheduling-not-recompute, honest "not a deterministic 0→3 win".
+- §7 limitations: added whale-n=2-preliminary + gap-capped + AUC-0.78-imperfect bullets.
+- §9 conclusion: size is the correct signal; gap-capped online; metastable metric; distributional measurement.
+PENDING (on whale-r3/r4/lru-r3): fill §5.5 table with n=4 numbers + final pass-rate; abstract pass-rate wording;
+reviews.md new W-list; W&B v_whale; git commit. Draft scaffolding in submissions/.../draft_reframe.md.
+The deliverable is now HONEST + CURRENT (no false impossibility) regardless of the pending replicate outcome.
+
+## 50. ★★★ whale-r3 λ=3 = 6189ms — SECOND consecutive PASS. Trending to a WIN (2/3 cross), median rock-tight.
+whale-r3 λ=3: req 3.02, median 568, mean 1216, std 1416, p99 **6189ms < 8000 → PASS**, hit 0.6736.
+whale λ=3 now n=3: p99 {9287 FAIL, 6574 PASS, 6189 PASS} → **2/3 cross the SLO**; the two most recent runs both
+clear 8s comfortably (~6.2-6.6s); only r1 (9.3s) failed (likely the unlucky draw).
+★ ROBUST MEDIAN CONFIRMED (n=3, very tight): whale median {563, 550, 568} ≈ 560 vs lru {678, 876}. mean {1441,
+1204, 1216}, std {1998, 1466, 1416}. r2≈r3 nearly identical. The median/mean/std win is now solid (low-variance).
+★ hit stays ~0.67-0.71 (r3 0.6736 ≈ lru) — confirms the win is NOT hit-driven (metastable/scheduling, per §47).
+⇒ UPGRADE the framing: whale is not just "shifts distribution / occasional cross" — it crosses the SLO on the
+MAJORITY of runs (2/3) while lru/car NEVER do (0/4). goodput@SLO: lru/car categorical 0 → whale mostly-3.02.
+Awaiting whale-r4 (n=4) to state the pass-rate; if r4 also passes → 3/4, a clear "whale reliably crosses" WIN.

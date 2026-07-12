@@ -9,6 +9,21 @@ Headline metric = **goodput@SLO** = max req/s over λ∈{3,5,7,10} with p99 TTFT
 `--enable-hierarchical-cache` → `_create_unified_radix_cache`); `hiradix_cache.py` / `hi_mamba_radix_cache.py`
 are DORMANT.
 
+## ⭐ BOTTOM LINE (result as of 2026-07-12)
+**Contribution = Pending-aware KV retention** (scheduler↔cache co-design): pin the L2 residency of a
+conversation's prefix while it has a request in the scheduler's queue; release at admission. ~110 LOC in
+`managers/scheduler.py`, env-gated, lossless-by-construction. **Registered formal submission:**
+`submissions/pending-aware-retention/paper.html`.
+- **v1 (queued-pin) WINS, n=2 same-node:** hit **+2.5pp@λ3** (→+0.65pp@λ10), **peak throughput +2–6%@knee (λ5,7)**,
+  p50 −25%@λ3, lossless. Robust (both nodes; hit is node-independent).
+- **pc (post-completion extension) HURTS:** hit@λ3 0.671 < v1 0.700, and hit@λ5 0.659 < stock 0.666 →
+  broad retention DISPLACES LRU's working set. Not misprediction (continuation 78% predictable). **Targeting
+  (the pending set) is the lever, not recency.**
+- **Bound:** realized +2.5pp ≪ idealized offline oracle (+7pp) ⇒ LRU is near-optimal for concurrent multiturn
+  EXCEPT its one scheduler-visible failure (evicting queued continuations), which v1 removes.
+- **Metric finding:** goodput@SLO is variance-dominated at the 8s boundary (identical stock runs flip 0↔3.02
+  across nodes) ⇒ hit-rate/throughput is the robust metric.
+
 ---
 
 ## Direction (ONE ambitious line): Pending-aware prefix retention — scheduler↔cache co-design

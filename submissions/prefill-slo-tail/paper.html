@@ -297,9 +297,11 @@ Any real per-config difference is smaller than the coin-flip.</p>
 <p><b>Scope / when it does NOT hold.</b> The coin-flip is specific to workloads whose SLO-tail mass is
 heavy-tailed cold prefills evaluated near the knee with a binary p99-SLO. It would shrink or vanish if
 (a) the SLO were on the mean/median (which the cache moves stably, §5.1), (b) documents repeated so the
-tail warmed, (c) the eval ran true warm steady-state with median-of-k (our recommendation, §7), or (d) the
-load were far below the knee so the tail were service- not queueing-dominated. §2's model makes each
-boundary quantitative.</p>
+tail warmed, (c) the eval ran true warm steady-state — which §5.3 shows shrinks the tail ~35% (though on
+this workload not below the SLO) and removes the flush transient's arrival-phase variance — or (d) the
+load were far below the knee so the tail were service- not queueing-dominated. Orthogonally, reporting
+median-of-k rather than a single draw (§7) does not shrink the variance but makes the metric <i>reliable</i>
+by exposing it. §2's model makes each boundary quantitative.</p>
 
 <h2>4 Methodology</h2>
 <p>We evaluate on the frozen protocol (§5) with stock sglang at commit <code>a334877e5</code> (zero python

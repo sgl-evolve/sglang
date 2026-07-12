@@ -74,6 +74,27 @@ class CARStrategy(EvictionStrategy):
         return (seg, node.last_access_time)
 
 
+class WhaleStrategy(EvictionStrategy):
+    """Size-aware liveness eviction (wilkes). Exploits the measured turn-0-SIZE => continuation signal:
+    single-turn "whale" documents have a LARGE turn-0 (median ~17K tok) while multi-turn conversations start
+    SMALL (median ~816 tok) — AUC(turn-0 size -> continuation) ~= 0.78. So among UNPROVEN nodes (hit_count==0),
+    the LARGEST are the likeliest single-turn whales (safe to evict: never reused), and the smallest are the
+    likeliest multi-turn turn-0s (protect: first reuse is coming). A CAUSAL proxy for Belady's evict-dead-first,
+    using an observable turn-0 feature (size) instead of the future.
+
+    Priority (heap pops MIN = evict first):
+      unproven (hit_count==0): (0, -size, last_access) -> evict LARGEST unproven (whale) first, LRU tiebreak
+      proven   (hit_count>=1): (1, 0, last_access)     -> protect; plain LRU within the proven segment
+    Rationale vs SLRU: SLRU evicts unproven by RECENCY (sacrificing recent small turn-0 continuers => it HURT);
+    Whale evicts unproven by SIZE (dropping big whales, sparing small continuers)."""
+
+    def get_priority(self, node: TreeNode) -> Tuple:
+        if node.hit_count >= 1:
+            return (1, 0.0, node.last_access_time)
+        size = float(len(node.key)) if node.key is not None else 0.0
+        return (0, -size, node.last_access_time)
+
+
 class SLRUStrategy(EvictionStrategy):
     def __init__(self, protected_threshold: int = 2):
         self.protected_threshold = protected_threshold

@@ -29,6 +29,7 @@ from sglang.srt.mem_cache.evict_policy import (
     MRUStrategy,
     PriorityStrategy,
     SLRUStrategy,
+    WhaleStrategy,
 )
 from sglang.srt.mem_cache.triton_ops.mla_buffer import (
     get_mla_kv_buffer_kernel as get_mla_kv_buffer_kernel,
@@ -65,6 +66,8 @@ _EVICTION_POLICY_FACTORIES: dict[str, Callable[[], EvictionStrategy]] = {
     "slru": SLRUStrategy,
     # wilkes continuation-aware residency; grace window (wall-s ~ think-gap) via SGLANG_CAR_GRACE_S
     "car": lambda: CARStrategy(grace_s=float(_os.environ.get("SGLANG_CAR_GRACE_S", "30.0"))),
+    # wilkes size-aware liveness: evict big-unproven "whales" (large turn-0 => single-turn) first
+    "whale": WhaleStrategy,
 }
 
 

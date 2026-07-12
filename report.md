@@ -185,7 +185,11 @@ _(none yet)_
   `base ->` symlink the manager/base-cell used).
 - ⚠️ Eval runs the WORKING TREE via PYTHONPATH at run time → keep `python/` STOCK until the queued
   baseline job (19436) actually runs, else the "baseline" isn't stock. Engine edits only after v0-stock lands.
-- Compute contention: v0.3 research manager holds 3/4 certified nodes (0-3,1-2,ondem-2) with 24h
-  sleep-infinity + runs evals into them; ondem-3 cycles v0.3 evals. v0.31 `_pool/held` is EMPTY → my
-  cell's evals fall back to exclusive sbatch and QUEUE. Not fighting for resources unfairly; study while
-  queued.
+- Compute contention (ROOT CAUSE, 02:47Z): v0.3 manager holds 3/4 certified nodes (0-3,1-2,ondem-2) with
+  24h sleep-infinity — and `squeue -s` shows ONLY `.batch/.extern` steps on them → **RESERVED-BUT-IDLE**
+  (no evals running). Meanwhile ≥4 v0.31 evals (kleinrock/valiant/wilkes/base) starve on the 1 cycling
+  node (ondem-3). This is WASTED capacity / a fleet resource-allocation problem — fix is manager/supervisor
+  (release idle v0.3 holds OR v0.31 mgr establishes a shared flock pool). As a researcher: do NOT srun into
+  another campaign's holds (collision+fairness), do NOT monopolize ondem-3 with a session hold (unfair to 3
+  siblings). Keep fair one-shot exclusive queue; slurm fair-share should raise my priority (I've used 0
+  compute). Study while queued.

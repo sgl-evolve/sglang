@@ -625,3 +625,15 @@ goodput@SLO=0 (p99 ≫ 8s at EVERY rate: 10.4/28.5/25.7/36.7s). peak req/s 4.31,
 control rises w/ λ). p50 stays sub-1.1s (tail phenomenon, not systemic). λ=3 p99 10360 REPLICATES screen-v0b's
 11254 (both ≫8s, within node noise) → W1 partially closed. Confirms the goodput=0 claim over the whole sweep,
 not just λ=3 (W2 closed). Full car90 sweep (19525) queued next for the same-node car curve.
+
+## 36. ★ FULL CAR(grace90) RATE CURVE (cert-car90-full, 19525) — ≈ LRU across ALL λ; goodput@SLO=0 (W1/W2/W4 closed)
+| λ  | car req/s | car p99 | (lru req/s | lru p99) |
+| 3  | 3.02  | 10727 | 2.99 | 10360 |
+| 5  | 3.88  | 15669 | 3.69 | 28531 |
+| 7  | 4.15  | 40270 | 4.19 | 25716 |
+| 10 | 4.33  | 45266 | 4.31 | 36695 |
+car peak req/s 4.33 (lru 4.31), peak tok/s 553 (lru 552), goodput@SLO=0 both. CAR grace-90 ≈ LRU across the FULL
+sweep (per-rate p99 differs within the metastable high-λ tail variance, all ≫8s). W1 CLOSED (car λ=3 twice:
+11174/10727; lru twice: 11254/10360; all ≫8s). W2 CLOSED (both full curves). W4 CLOSED (both full eval.sh runs).
+FINAL EMPIRICAL PICTURE: lru/car90/car300 all goodput@SLO=0 across the curve; slru HURTS. No causal lossless
+residency policy moves goodput@SLO — the bounded-impossibility is complete + empirically triangulated.

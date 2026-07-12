@@ -427,3 +427,21 @@ fluctuations as results — wait for the full sweep. NOTE also: mid-run COLD-TUR
 genuine-turn-0 fraction (chash first-occurrence noise from warmup/no-flush re-appearance) — another reason to
 trust only the completed run. Honest current read: cache CAN help (a residency mechanism protecting proven
 convs can cut ~18-29% avoidable recompute), gain to be measured by the policy screens on the FULL sweep.
+
+## 24. ★ Think-gap distribution (v0b chash+timestamps) — reshapes the mechanism + expectations
+
+Inter-turn gaps (time between a conv's consecutive prefill-admissions, proxy for think-gap) from 713
+multiturn convs / 2298 gaps: **p50=54.6s, p75=458.6s, p90=606s, mean=223s** (only 30% <30s; 53% <60s;
+60% <120s). These gaps are HUGE and QUEUE-dominated (turn N+1 waits in the re-enqueue/client backlog under
+load, not client think-time).
+Implications:
+- CAR grace=30s protects only 30% of reuses — TOO SHORT. Raising grace toward p75 (458s) over-protects
+  (holds KV minutes → evicts others, protects dead single-turn whales too long → ≈LRU). No single grace fits
+  the wide gap distribution. Set CAR grace to ~90s (covers median + margin; ~55% of reuses) for the screen.
+- The avoidable evicted recompute is PARTLY CAPACITY-FORCED: holding a conv's KV for 55-600s under 1.89×
+  oversubscription is hard, so a residency mechanism can only capture the SHORTER-gap reuses. This tempers
+  the expected goodput gain (the mechanism helps, but the long-gap tail is capacity-limited).
+- SLRU (protect proven hit_count>=1 indefinitely, evict single-turn whales) may suit large gaps better than
+  a grace-pin, BUT it misses the turn-0->turn-1 first reuse (turn-0 hit_count=0 evicted during the long gap;
+  61% of turn-0s continue). CAR-with-adequate-grace can capture that first reuse — its distinguishing value.
+The screens (lru/slru/car) will EMPIRICALLY measure which helps goodput and by how much.

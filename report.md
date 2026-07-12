@@ -108,6 +108,16 @@ multiturn regime*. At tight capacity the working set genuinely overflows and pro
   below 8s at some rate (0 → positive goodput), OR at minimum shift the p99 curve down materially. The
   recompute reduction lowers total prefill load ⇒ shorter queues ⇒ lower p99 for all requests.
 
+## ★ Prefill-work decomposition (why the mechanism has leverage on the tail)
+From baseline hit=0.678 + structural perfect-cache (18.7M irreducible new tokens):
+- total prompt = 99.9M; baseline **prefill work = 32.2M (32%)**.
+  - irreducible first-compute: 18.7M (58% of prefill).
+  - **evicted-continuation recompute: 13.5M (42% of prefill)** ← the mechanism's target.
+- Recovering the Bélády gap (hit 0.678→0.808) cuts prefill work **32.2M→19.2M (−40%)**; hit→0.75 = −22%.
+- The p99 tail is queue-bound (median 1.0s, p90 3.2s, p99 11.8s); a 22–40% prefill-load cut → shorter
+  queues (chunked-prefill interleaves, so less total work speeds every request incl. the cold-doc tail)
+  → the mechanism should pull p99 down materially, plausibly under the 8s SLO.
+
 ## Parallelization (robust, boundary-surviving)
 Discovered: plain `nohup &` processes survive session boundaries (only harness `run_in_background` tasks are
 torn down). So parallel evals via nohup'd `srun --overlap` into the manager's idle held nodes are robust.

@@ -93,6 +93,13 @@ only to the extent it actually retains the prefixes that will be reused.</p>
 prefix is a cache hit or a recompute. If the prefix (say a 12k-token document) has been evicted while the
 conversation was between turns, the server must re-prefill all 12k tokens — a spike two to three orders of
 magnitude larger than the turn's "real" work, which lands directly in the TTFT tail that defines goodput@SLO.</p>
+<p><b>Decomposition (measured).</b> On the frozen workload the stock cache (hit 0.678) prefills 32.2M of the
+99.9M prompt tokens. Of that prefill work, 18.7M is irreducible first-time compute, but <b>13.5M (42%) is
+evicted-continuation recompute</b> — prefixes that <i>were</i> cached and reused before the cache dropped them
+under concurrency. Recovering the oracle (Bélády) hit rate (0.808) would cut prefill work by 40%
+(32.2M→19.2M). Because TTFT under load is queue-bound (median 1.0s, p90 3.2s, but p99 11.8s &gt; the 8s SLO)
+and chunked prefill interleaves all in-flight work, cutting 22–40% of the prefill load shortens queues for
+<i>every</i> request — including the cold-document tail that sets p99. This is the lever the mechanism pulls.</p>
 
 <h3>2.3&nbsp;&nbsp;The loss is not eviction order — it is scheduler-visible imminent reuse</h3>
 <p>We replay the workload's issue order (an open-loop Poisson rate-λ pull with multiturn re-enqueue, matching

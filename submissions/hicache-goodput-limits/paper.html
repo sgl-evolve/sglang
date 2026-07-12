@@ -226,8 +226,11 @@ size-ranked eviction reaches it.)</li>
 <p><b>Size is the right lever — offline proof.</b> Replaying the served access order through each causal victim
 rule at the real 10.7M capacity (sim/simulate.py): LRU, SLRU, and CAR all recompute the <i>identical</i>
 7.24M tokens, capturing <b>0%</b> of the Belady headroom; <b>whale-first</b> (evict the largest unproven
-conversation first) recomputes 5.55M — <b>−23%</b>, the only causal policy to capture any headroom. The
-coincidence of LRU/SLRU/CAR is not a bug but the crux: LRU's least-recently-used victim is <i>already</i> the
+conversation first) recomputes 5.55M — <b>−23%</b>, the only causal policy to capture any headroom. This holds
+across the capacity axis: whale captures 12%/34%/32%/23% of the Belady-achievable headroom at 4M/6M/8M/10.7M
+(peaking in the mid-pressure regime, shrinking only at the extreme 4M where everything churns), while
+LRU/SLRU/CAR capture 0% at every capacity. The coincidence of LRU/SLRU/CAR is not a bug but the crux: LRU's
+least-recently-used victim is <i>already</i> the
 oldest unproven turn-0 (a proven conversation, just reused, has recent access and is not the LRU victim), which is
 exactly the node SLRU and CAR also target — so all three recency-based rules evict the same nodes. Only whale
 changes the victim, by ranking unproven nodes by size rather than age. So the obstruction is not that liveness is

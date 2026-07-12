@@ -949,3 +949,11 @@ is future work." This is MORE defensible than the queueing claim I can't support
 ★ CAVEAT on the median win itself: lru median is n=2 {678,876}; whale {550-568} is tight but the GAP depends on
 lru's median being reliably ~700-900 → lru-r3 (running later) confirms. If lru-r3 median ≈550 the median win
 shrinks. Flag as pending. (The offline size-signal result + metastability finding do NOT depend on this.)
+
+## 55. ★ OFFLINE capacity-sweep strengthens the size-signal result (rock-solid, deterministic)
+whale headroom capture across cap (sim replay, % of Belady-achievable = (lru−whale)/(lru−opt)):
+  4M: 11.7% | 6M: 33.7% | 8M: 31.9% | 10.7M(real): 23.4%   — lru/slru/car = 0% at EVERY cap.
+whale captures a meaningful fraction across the whole capacity axis (peaks mid-pressure 6-8M; shrinks only at
+extreme 4M where everything churns). Robust across capacity, not a single-point artifact. Added to §4.2. This is
+the DETERMINISTIC, non-metastable core of the contribution (offline replay) — the size signal is provably the
+unique correct causal victim rule, independent of the noisy GPU p99.

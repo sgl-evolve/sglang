@@ -532,6 +532,15 @@ the client/router that the serving layer does not have.</li>
 degrades gracefully to LRU (never worse — pinning is bounded and released on admission/abort).</li>
 <li><b>Single-turn / low-reuse workloads.</b> If most conversations are one-shot, there is little pending reuse
 to protect and the mechanism is a safe no-op.</li>
+<li><b>Generality: the gain should grow where the cache is undersized.</b> Our measured gain is small because
+this system's L1+L2 (~10.7M tok) captures most of the workload's (concentrated) reuse (hit ~0.67), so little
+reused KV is ever at risk of eviction. As the cache shrinks relative to the working set, more reused KV becomes
+evictable-then-reused and the exploitable set grows — the simulator's LRU-vs-Bélády gap widens from ~7&nbsp;pp
+at 10.7M to ~23&nbsp;pp at 8M (Fig 2). We therefore expect pending-aware retention to matter <i>more</i> on
+tighter 2-tier provisioning (smaller host DRAM, larger or less-concentrated working sets, or more aggressive
+L1 occupancy under load). We did not measure undersized-cache regimes, and — per §2.5, where single-tier sim
+magnitudes did not transfer to the real 2-tier system — we state this as a qualitative direction only, not a
+quantified prediction.</li>
 <li><b>Metric.</b> On this workload goodput@SLO is variance-dominated at the boundary; we report it but rely on
 hit-rate/throughput. A different SLO or a less bursty workload could make goodput@SLO the cleaner headline.</li>
 <li><b>The sim's scheduler-coupling does not transfer to real hit (measured, §2.5).</b> §2.4's single-tier

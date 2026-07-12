@@ -59,9 +59,10 @@ closes it). We put this to a same-node A/B on the real system (re-running the ev
 <b>scheduler-insensitive</b> — LPM does <i>not</i> raise hit at any rate (Δ&lt;0.5&nbsp;pp) and it worsens the
 p99 tail by 41–65% — because the L2 host layer absorbs eviction order. So the sim's gap is a single-tier
 artifact, and switching schedulers is not a way to buy cache efficiency; pending-aware <i>retention</i> is. What
-transfers from the analysis is model-free: a <b>recency-inversion</b> (Spearman ρ=+0.81 on the trace) — among
-queued continuations the least-recently-used prefix is the soonest-reused, so LRU is <i>anti</i>-Bélády on
-exactly this set — which is why the narrow pending signal is the right target. The realized gain is small
+transfers is an arrival-<i>order</i> property that does not depend on the (refuted) cache-tier magnitude: a
+<b>recency-inversion</b> (Spearman ρ=+0.81, computed from the workload under the FIFO closed-loop pattern FCFS
+follows) — among queued continuations the least-recently-used prefix is the soonest-reused, so LRU is
+<i>anti</i>-Bélády on exactly this set — which is why the narrow pending signal is the right target. The realized gain is small
 (~1–2&nbsp;pp vs a ~+7&nbsp;pp single-tier ceiling) for the very same reason the host tier absorbs eviction
 order. Underlying all of it is a structural point: a lossless
 KV cache reduces re-prefill of <i>already-seen</i> prefixes, so it moves the mean and the sustainable
@@ -100,9 +101,10 @@ variance-affected, sign always non-negative) and +2–6% sustained throughput at
 the eviction gap look scheduler-created (FCFS 7–23&nbsp;pp, ≈0 under prefix-aware pull), but a same-node
 FCFS-vs-LPM A/B on the 122B system shows real hit is <b>scheduler-insensitive</b> (Δ&lt;0.5&nbsp;pp) while LPM
 worsens p99 by 41–65% — the 2-tier host absorbs eviction order, so <b>retention, not scheduling, is the hit
-lever</b>. What transfers is a model-free <b>recency-inversion</b> (ρ=+0.81: among queued continuations the LRU
-victim is the soonest-reused), which explains both why the narrow pending signal works and why broad
-recency-based retention (the post-completion ablation) does not. Reporting a directly-measured refutation of our
+lever</b>. What transfers is an arrival-order <b>recency-inversion</b> (ρ=+0.81 under the FIFO closed-loop
+pattern FCFS follows; independent of the cache-tier model: among queued continuations the LRU victim is the
+soonest-reused), which explains both why the narrow pending signal works and why broad recency-based retention
+(the post-completion ablation) does not. Reporting a directly-measured refutation of our
 own simulation's magnitude is part of the contribution.</li>
 <li>A <b>targeting ablation + a realizability characterization</b>: extending retention to <i>all</i>
 recently-finished conversations does not beat LRU — not because continuation is unpredictable (78% predictable)
@@ -212,8 +214,9 @@ and the ~1–2&nbsp;pp as what is realizable.</p>
 <p>Why does eviction <i>order</i> — which §2's premise (and the LRU≈Bélády folklore) calls a solved problem —
 suddenly leave 7–23&nbsp;pp on the table here? Because the gap is not a property of the cache alone; it is a
 property of the <b>scheduler×cache interaction</b> — at least in a single-tier model. We explore this with the
-same page-level simulator, varying the request <i>pull order</i>, and separately confirm one model-free fact on
-the trace (the recency-inversion). <b>We then test the coupling directly on the real 2-tier system in §2.5,
+same page-level simulator, varying the request <i>pull order</i>, and separately compute one arrival-order fact
+(the recency-inversion, which needs only the request order, not the cache-tier model). <b>We then test the
+coupling directly on the real 2-tier system in §2.5,
 where the hit-rate prediction does not hold</b> (hit turns out scheduler-insensitive) — so read this subsection
 as the mechanism's origin and the source of the transferable inversion, not as a real-system hit result.</p>
 <table>
@@ -275,9 +278,12 @@ pending signal the right target; the sim's absolute magnitudes do not.</figcapti
 <p><b>The mechanism: recency is <i>inverted</i> from reuse-distance among pending continuations.</b> Under FCFS,
 a conversation's next turn joins the back of a long queue when the previous turn completes; the
 <i>least-recently-active</i> waiting conversation is the one that has queued <i>longest</i>, hence is pulled
-<i>soonest</i> — nearest reuse. Measured directly on the trace: at each eviction decision, the Spearman
-correlation between a pending conversation's recency (last-active index) and its next-use distance is
-<b>ρ=+0.81</b> (median +0.84, n≈4900 decisions). So the prefix LRU is about to evict (its LRU victim among
+<i>soonest</i> — nearest reuse. Computed from the workload under the FIFO closed-loop arrival pattern (the order
+the FCFS scheduler and the benchmark's multiturn re-enqueue both follow — <i>not</i> from real server logs): at
+each eviction decision, the Spearman correlation between a pending conversation's recency (last-active index) and
+its next-use distance is <b>ρ=+0.81</b> (median +0.84, n≈4900 decisions). Crucially this depends only on the
+request <i>order</i>, not on the cache-tier model — so unlike the hit-magnitude (§2.5) it is not undone by the
+2-tier host layer, and it should hold on the real system, which runs the same FIFO order under FCFS. So the prefix LRU is about to evict (its LRU victim among
 pending convs) is precisely the one reused soonest — LRU is <i>anti-Bélády</i> on exactly this set. Pinning the
 LRU-victim (which our mechanism does implicitly: it pins in <i>arrival</i> order, and the oldest-waiting =
 lowest-recency = highest-risk conversations fill the budget first) is therefore Bélády-aligned. A budget sweep
@@ -289,8 +295,8 @@ scheduler pulls the largest-matching-prefix waiting request, re-admitting a conv
 prefix is still hot; reuse is <i>temporally clustered</i> and plain LRU already retains it (gap→0). This is why
 the sim shows no LPM gap. <b>On the real 2-tier system, however, the host layer already absorbs eviction order,
 so hit is scheduler-insensitive and this sim gap does not materialize (§2.5).</b> What survives to the real
-system is the model-free part — the recency-inversion above (it is measured on the trace, not the sim) — which
-is what makes the narrow pending signal the right target. The inversion also explains the §5 targeting ablation
+system is the arrival-order part — the recency-inversion above (it depends only on request order, not on the
+cache-tier model the hit-magnitude needs) — which is what makes the narrow pending signal the right target. The inversion also explains the §5 targeting ablation
 in one line: the rejected post-completion variant pins by <i>recency</i> (broad, recently-finished — including
 terminal conversations that never recur), spending the budget on essentially the ≈0%-capture set rather than the
 at-risk queued set, so it cannot help; only the queued (risk-aligned) set can.</p>
@@ -534,10 +540,12 @@ A/B on the 122B system <i>refutes the hit half of that prediction</i>: real hit 
 (Δ&lt;0.5&nbsp;pp at every rate), because the 2-tier host absorbs eviction order — LPM only worsens the p99 tail.
 We report this refutation of our own sim rather than the sim's optimistic magnitude. It does not affect the
 measured contribution (retention's ~1–2&nbsp;pp is a real, lossless FCFS-native gain) and it sharpens the thesis
-(retention, not scheduling, is the hit lever). The model-free part of the analysis — the recency-inversion
-ρ=+0.81 that makes the pending signal well-targeted — does transfer. Remaining open item: a same-node v1-under-LPM
-vs v1-under-FCFS A/B (in flight) to confirm the pin's gain is scheduler-independent, as retention-is-the-lever
-predicts.</li>
+(retention, not scheduling, is the hit lever). The arrival-order part of the analysis — the recency-inversion
+ρ=+0.81 (which needs only the request order, not the tier model) that makes the pending signal well-targeted —
+does transfer. We confirmed the pin's gain is scheduler-independent: a same-node v1-under-LPM A/B gave
++0.15–0.77&nbsp;pp across rates (smaller than under FCFS, consistent with LPM's shorter pending window). One
+caveat: ρ=+0.81 is computed under the FIFO closed-loop arrival model (matching FCFS + the harness), not
+extracted from real server logs; measuring it on production request timelines is future work.</li>
 <li><b>Eviction-interaction edge case.</b> Host-pinning a deep node keeps a host-only child alive, which can
 leave the child's ancestor a device-eviction candidate while non-empty; the engine's write-through
 delete-entirely path then trips a tree-consistency assertion. The shipped queued-pin releases at admission

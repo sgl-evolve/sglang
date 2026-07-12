@@ -285,6 +285,26 @@ arrive during the measured sweep. DECISIVE test = screen-v0 (eval.sh WITH warmup
 bring p99 under 8s (⇒ cache-affectable), or does the cold-doc tail persist (⇒ cold-bound negative)?
 LESSON: future diagnostics must include a warmup burst.
 
+## 16. Analytical spine — the two-bound goodput model (validate w/ screen-v0)
+
+**goodput@SLO = min(R_thru, R_p99):**
+- **R_thru** = prefill-throughput bound = P / avg_uncached_prefill_per_req. Cache REDUCES avg_uncached ⇒
+  RAISES R_thru. At P≈35K: baseline (hit 0.62, avg 5372 tok) ⇒ R_thru≈6.5 req/s; perfect cache (avg 2743
+  tok) ⇒ R_thru≈12.8 req/s. So cache could ~2× the throughput bound.
+- **R_p99** = max rate with p99 TTFT ≤ 8s = set by the cold-doc tail under concurrency. Cache does NOT
+  shrink the largest cold-doc prefills ⇒ does NOT raise R_p99 (except indirectly via queue).
+
+**The fork = which bound binds:**
+- If **R_p99 < R_thru** (p99 blows past 8s BELOW throughput saturation, i.e. a few cold whales tail-out
+  even at low load) ⇒ goodput is p99/cold-doc-bound ⇒ **cache can't raise goodput ⇒ BOUNDED-NEGATIVE.**
+- If **R_p99 ≈ R_thru** (p99 blows up only AT saturation = queue buildup) ⇒ cache (raising R_thru) delays
+  saturation ⇒ raises goodput ⇒ **MECHANISM viable** (capture the warm-miss recompute).
+- Caveat: R_p99 and R_thru are coupled via the queue; the cold-doc tail is what can DECOUPLE them (blow p99
+  before saturation). The diag λ=3 (req/s 2.72 ≪ R_thru 6.5, yet p99 48.5s) HINTS R_p99<R_thru — but that
+  p99 is cold-start-confounded (no warmup). **screen-v0 (warmup) measures the real p99-vs-λ curve ⇒ reads
+  off R_p99 and compares to R_thru ⇒ resolves the fork.** This min() model + its validation is the paper's
+  quantitative core (predicts goodput from workload-context-distribution + P, cache entering only via R_thru).
+
 ## Versions (test submissions)
 - **v0-baseline** (stock sweep, clean reference) — job 19437, QUEUED. [pending curve]
 

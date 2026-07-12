@@ -109,10 +109,15 @@ bounded-impossibility for lossless KV-movement).
 | v0-stock-r2   | 8008ms   | 0.673  | 3.02  | 0 (barely fail) |
 | v0-stock-r3   | **6786ms** | 0.672 | 3.02 | **3 (PASS)** |
 | v1-writeback  | 7534ms   | 0.736  | 3.02  | 3 (pass)|
-**★n=3 CLINCHER: 3 IDENTICAL stock runs → λ=3 p99 {14.06, 8.01, 6.79}s (2.07× spread, straddles SLO) →
-stock's OWN goodput@SLO = {0,0,3}. Stock ALONE flips. Moreover stock-r3 (6.79s, goodput 3) BEATS
-write_back (7.53s) at LOWER hit (.672 vs .736) → write_back's 'goodput 3' is NOT a write_back effect.
-Airtight.**
+**★n=3: 3 stock runs → λ=3 p99 {14.06, 8.01, 6.79}s (2.07× spread, straddles SLO) → stock's OWN
+goodput@SLO = {0,0,3}. Single-run goodput is a coin-flip.**
+⚠️ NODE CONFOUND (integrity): the 3 stock runs are on 3 DIFFERENT nodes (v0-stock=ondem-3, r2=node1-2,
+r3=node0-3); memory says ±45% p99 node var ([[valiant-v031-researcher]]). So the spread mixes run-variance
+(cold-start metastability) + node-variance. The only SAME-NODE pair (v0-stock 14s vs write_back 7.5s, both
+ondem-3) is n=1 each and write_back's higher hit + lower p99 is CONSISTENT with write_back helping. ⇒ do
+NOT claim "write_back win is not real" — claim: single-run CROSS-NODE A/B on goodput@SLO is VOID (can't
+attribute). write_back's STABLE gains (hit +6pp, tput +18%) are real; its goodput effect UNRESOLVED.
+KEY future exp = SAME-NODE median-of-k (isolate run-variance). Paper §3.1/§7 fixed to this honest framing.
 **Two IDENTICAL stock runs: λ=3 p99 = 14.1s vs 8.0s (1.76× spread, STRADDLES the 8s SLO).** And stock-r2
 (8.0s) ≈ write_back (7.5s) despite write_back's +6pp hit ⇒ the p99 varies ~7.5–14s around the SLO
 REGARDLESS of config; the binary pass/fail metric flips on NOISE. **write_back's apparent "goodput 0→3" is

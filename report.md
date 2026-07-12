@@ -16,8 +16,9 @@ conversation's prefix while it has a request in the scheduler's queue; release a
 `submissions/pending-aware-retention/paper.html`.
 - **v1 (queued-pin) WINS, n=2 same-node:** hit **+2.5pp@λ3** (→+0.65pp@λ10), **peak throughput +2–6%@knee (λ5,7)**,
   p50 −25%@λ3, lossless. Robust (both nodes; hit is node-independent).
-- **pc (post-completion extension) HURTS — n=2 same-node confirmed:** hit@λ3 pc 0.674/0.673 ≈ stock 0.678/0.673,
-  ≪ v1 0.700/0.701 → the extension CANCELS v1's entire +2.5pp gain. Also pc_e hit@λ5 0.659 < stock 0.666.
+- **pc (post-completion extension) HURTS — n=2 same-node confirmed @λ3 AND λ5:** hit@λ3 pc 0.674/0.673 ≈ stock
+  0.678/0.673 ≪ v1 0.700/0.701; hit@λ5 pc 0.661/0.672 ≈ stock 0.664/0.668 ≪ v1 0.680/0.677 → the extension
+  CANCELS v1's gain across rates (pc_e full curve corroborates: pc < stock at λ5/7/10).
   broad retention DISPLACES LRU's working set. Not misprediction (continuation 78% predictable). **Targeting
   (the pending set) is the lever, not recency.** (pc full sweeps → W&B pending, ~1.5h.)
 - **Bound:** realized +2.5pp ≪ idealized offline oracle (+7pp) ⇒ LRU is near-optimal for concurrent multiturn

@@ -577,3 +577,9 @@ better (722 vs 876). Unlike SLRU, CAR does NOT hurt (hit intact). goodput@SLO=0 
 prediction: grace 90 FITS cache (0.85x) but covers only 14% of the 460s turn0->turn1 gaps → no measurable effect
 → degrades to LRU. This is the SMALL-GRACE horn of the grace-trap, empirically confirmed. Next: car300 (grace
 300, 1.97x swamp) = the LARGE-GRACE horn (predicted to HURT). Both horns → the bounded-impossibility is airtight.
+
+## 32b. car90 tail decomposition (chash, uncached-tail) — mechanistically ≈ lru
+Consistent method (tail = uncached≥40K): lru EVICTED 61%work/65%tail; slru 73%/83%; car90 65%/69%.
+car90 ≈ lru (both far below slru's 83%). CAR grace-90 does NOT reduce the evicted tail → captures ~none of the
+avoidable recompute (grace 90 covers only 14% of the 460s gaps). Confirms §32 mechanistically. paper §5.3 rows
+now consistent (all uncached-tail method). Next: car300 (19502, swamp horn).

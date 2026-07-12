@@ -257,9 +257,9 @@ protect any node with hit_count≥1, evict unproven nodes first). We measure it 
 node as the lru baseline (λ=3; node variance is the dominant confound so all rows are same-node):</p>
 <table>
 <tr><th>policy (λ=3, same node)</th><th>hit</th><th>p50 TTFT</th><th>p99 TTFT</th><th>EVICTED %work</th><th>EVICTED %of ≥40K tail</th><th>goodput@SLO</th></tr>
-<tr><td>lru (stock)</td><td>0.679</td><td>876 ms</td><td>11,254 ms</td><td>58%</td><td>63%</td><td>0</td></tr>
+<tr><td>lru (stock)</td><td>0.679</td><td>876 ms</td><td>11,254 ms</td><td>61%</td><td>65%</td><td>0</td></tr>
 <tr><td>slru (protect proven)</td><td><b>0.507</b></td><td>1,498 ms</td><td>10,091 ms</td><td><b>73%</b></td><td><b>83%</b></td><td>0</td></tr>
-<tr><td>car (this work, grace 90 s)</td><td>0.679</td><td>722 ms</td><td>11,174 ms</td><td class="todo">≈lru</td><td class="todo">≈lru</td><td>0</td></tr>
+<tr><td>car (this work, grace 90 s)</td><td>0.679</td><td>722 ms</td><td>11,174 ms</td><td>65%</td><td>69%</td><td>0</td></tr>
 </table>
 <p><b>CAR (grace 90) ≈ LRU</b>, exactly as §4.2 predicts: p99 11,174 ms vs LRU's 11,254 ms (within noise, still
 ≫8 s → goodput 0), hit 0.679 identical to LRU, and — unlike SLRU — it does <i>not</i> hurt (the turn-0 grace

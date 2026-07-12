@@ -614,3 +614,14 @@ BOTH ≈lru (hit intact, goodput 0).
 SLRU extreme). But the honest mechanism is "CAR is NEUTRAL across the feasible grace range" (finite cache clips
 the swamp), NOT "large grace catastrophically swamps." Must correct §4.2/§31 "swamp horn" framing → "graceful
 degradation to ≈lru; hurt only at the SLRU extreme."
+
+## 35. ★ FULL LRU RATE CURVE (cert-lru-full, job 19515) — goodput@SLO=0 across ALL λ (W2 closed)
+| λ  | req/s | p50 ms | p99 ms  | hit    |
+| 3  | 2.99  | 678    | 10360   | 0.6799 |
+| 5  | 3.69  | 785    | 28531   | 0.6651 |
+| 7  | 4.19  | 909    | 25716   | 0.6641 |
+| 10 | 4.31  | 1009   | 36695   | 0.6623 |
+goodput@SLO=0 (p99 ≫ 8s at EVERY rate: 10.4/28.5/25.7/36.7s). peak req/s 4.31, peak tok/s 552 (decode-bound
+control rises w/ λ). p50 stays sub-1.1s (tail phenomenon, not systemic). λ=3 p99 10360 REPLICATES screen-v0b's
+11254 (both ≫8s, within node noise) → W1 partially closed. Confirms the goodput=0 claim over the whole sweep,
+not just λ=3 (W2 closed). Full car90 sweep (19525) queued next for the same-node car curve.

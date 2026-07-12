@@ -160,26 +160,32 @@ turn-0 documents; the cache only addresses the warm-miss remainder, which grows 
 <h2>5 Evaluation <span class="todo">numbers PENDING (screen-v0 pressured sweep + certified 19437)</span></h2>
 <p>Frozen rate-sweep (λ∈{3,5,7,10}, warmup burst, NUMP=1553, conc 256) on a certified 8×H100 node; headline
 goodput@SLO (max req/s with p99 TTFT ≤ 8 s). Lossless verified vs the no-cache run.</p>
-<h3>5.1 The goodput@SLO curve &amp; the binding bound</h3>
-<p>⟨Table: per-λ req/s, p99 TTFT, hit-rate, host-util. Read off R_p99 (rate where p99 crosses 8 s) and
-compare to R_thru = P/avg_uncached (§4.1). Verdict: which bound binds ⇒ cache-affectable vs cold-doc-bound.⟩</p>
+<h3>5.1 The goodput@SLO baseline &amp; the binding bound</h3>
+<p>Stock lru at λ=3 (the lowest swept rate; warmup+NUMP=1553; screening node): req/s 2.89, p50 TTFT 876 ms,
+<b>p99 TTFT 11,254 ms</b>, hit 0.679. Since p99 &gt; 8 s already at λ=3, <b>goodput@SLO = 0</b> — the p99
+tail bound R_p99 binds far below the throughput bound R_thru = P/avg-uncached ≈ 7.8 req/s. So the question is
+whether a cache mechanism can pull λ=3 p99 below 8 s (goodput 0 → 2.89+). <span class="todo">certified
+absolute numbers + full curve pending; nodeset-0 is a screening node.</span></p>
 <h3>5.2 Decomposing the p99 tail (per-request trace) — the core result</h3>
-<p>Per-request tracing (rid-deduped) classifies each prefill by prefix-match fraction into COLD (turn-0
-document, no match), WARM-HIT (mostly cached), WARM-MISS (partial match, prefix evicted mid-conversation =
-avoidable recompute). Under full NUMP=1553 pressure (hit ≈0.55, avg-uncached ≈5980 tok):</p>
+<p>We trace every prefill (rid-deduped) and, using a per-request conversation id (hash of the first tokens),
+classify it as COLD-TURN0 (first request of a conversation = an irreducible cold document), WARM-HIT (a later
+turn, mostly cached), or EVICTED (a later turn whose accumulated prefix was evicted mid-conversation =
+<i>avoidable</i> recompute). A prior match-fraction-only classifier conflates COLD-TURN0 and EVICTED (both
+show ≈0 prefix match) and must not be used. Full λ=3 under pressure (hit 0.68):</p>
 <table>
-<tr><th>class</th><th>% of requests</th><th>% of uncached (prefill) work</th><th>in p99 tail?</th></tr>
-<tr><td>COLD (turn-0 doc)</td><td>≈49%</td><td><b>≈95%</b></td><td><b>≈100% of tail</b></td></tr>
-<tr><td>WARM-HIT</td><td>≈40%</td><td>≈0.6%</td><td>no</td></tr>
-<tr><td>WARM-MISS (avoidable)</td><td>≈11%</td><td><b>≈5%</b></td><td><b>≈0% of tail</b></td></tr>
+<tr><th>class</th><th>% of requests</th><th>% of prefill work</th><th>% of the ≥40K-tok (SLO-breaching) tail</th></tr>
+<tr><td>COLD-TURN0 (irreducible)</td><td>≈19%</td><td>≈42%</td><td><b>≈37%</b></td></tr>
+<tr><td>WARM-HIT</td><td>≈56%</td><td>≈0.7%</td><td>≈0%</td></tr>
+<tr><td>EVICTED (avoidable)</td><td>≈25%</td><td><b>≈58%</b></td><td><b>≈63%</b></td></tr>
 </table>
-<p>The p99-TTFT tail is ≈100% cold-document prefills; the avoidable warm-miss recompute is ≤~5% of work and
-never enters the tail (consistent under-pressure and at low pressure). Because eviction/residency/prefetch
-can only affect warm-miss recompute — cold turn-0 documents are computed exactly once and are never a cache
-hit — <b>no lossless cache mechanism can shrink the p99 tail.</b> Its only route to goodput is indirect: the
-≤~5% work it frees slightly relaxes prefill contention (raising R_thru), a bounded effect that stock's
-schedule-time matching (§3) already nearly captures. <span class="todo">screening on nodeset-0; certified +
-full-curve numbers pending.</span></p>
+<p>The p99-TTFT tail is <b>dominated (≈63%) by avoidable recompute from evicted proven multi-turn
+conversations</b>, not by irreducible cold documents (≈37%). So the goodput bottleneck IS cache-addressable:
+a residency policy that protects proven multi-turn conversations from eviction (evicting single-turn "whale"
+documents first) can remove the evicted-turn recompute and pull p99 down. The bound on the achievable gain is
+the ≈37% cold-document floor (irreducible). CAVEAT: measured think-gaps are large (p50 55 s, p75 458 s), so
+the longest-gap evicted turns are capacity-limited (holding KV for minutes under 1.89× oversubscription is
+infeasible); §5.3 measures how much a residency policy actually recovers. <span class="todo">screening on
+nodeset-0; certified confirmation pending.</span></p>
 <h3>5.3 Does eviction/residency move goodput? (policy sweep)</h3>
 <p>⟨Sweep --radix-eviction-policy {lru, lfu, slru} (+ candidate) on the fixed protocol. The protocol claims
 eviction is a dead end (LRU≈Belady) — validated or overturned here for the goodput@SLO-under-load metric.

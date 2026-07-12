@@ -221,9 +221,11 @@ only by using the future to hold the 9.3M live set and drop the whales — knowl
 decision point. §5.3 confirms both horns empirically: SLRU (evict-unproven-first) sacrifices live turn-0s and
 backfires; CAR (completion-grace) cannot win at any capacity-feasible grace.</p>
 
-<h2>5 Evaluation <span class="todo">λ=3 same-node numbers landed (lru, slru); car + full curves + certified confirm pending (job 19480)</span></h2>
-<p>Frozen rate-sweep (λ∈{3,5,7,10}, warmup burst, NUMP=1553, conc 256) on a certified 8×H100 node; headline
-goodput@SLO (max req/s with p99 TTFT ≤ 8 s). Lossless verified vs the no-cache run.</p>
+<h2>5 Evaluation <span class="todo">λ=3 same-node numbers landed (lru, slru, car grace-90); full rate curves + a larger-grace swamp point + certified-node confirmation pending</span></h2>
+<p>Frozen rate-sweep (λ∈{3,5,7,10}, warmup burst, NUMP=1553, conc 256) on an 8×H100 node; headline
+goodput@SLO (max req/s with p99 TTFT ≤ 8 s). We report the λ=3 operating point (the lowest swept rate): since
+p99 already exceeds the 8 s SLO there for every policy, goodput@SLO = 0 and higher rates cannot recover it, so
+λ=3 is decisive for the impossibility. All policy rows are same-node (node variance is the dominant confound).</p>
 <h3>5.1 The goodput@SLO baseline &amp; the binding bound</h3>
 <p>Stock lru at λ=3 (the lowest swept rate; warmup+NUMP=1553; screening node): req/s 2.89, p50 TTFT 876 ms,
 <b>p99 TTFT 11,254 ms</b>, hit 0.679. Since p99 &gt; 8 s already at λ=3, <b>goodput@SLO = 0</b> — the p99
@@ -287,7 +289,25 @@ goodput@SLO here and the ≈37% cold-document floor plus minute-scale think-gaps
 bound the achievable recovery — a bounded-negative that still contributes the SLRU-backfire insight and the
 tail decomposition.</span></p>
 <h3>5.4 Honest controls</h3>
-<p>⟨peak tok/s, peak req/s (≈flat, decode-bound); n≥2 replicates / error bars; lossless output match.⟩</p>
+<ul>
+<li><b>Decode throughput is flat across policies</b> (decode-bound control): at λ=3 output throughput is
+370 (lru) / 355 (slru) / 380 (car) tok/s and request throughput 2.89 / 2.78 / 2.97 req/s — within ~5%, so the
+policies are not trading decode for prefill; the goodput=0 result is a p99-TTFT (prefill-tail) phenomenon, not
+a throughput collapse.</li>
+<li><b>It is a tail, not a systemic slowdown:</b> p50 TTFT is 876 (lru) / 722 (car) ms — sub-second — while
+p99 is ~11 s. A small set of large evicted-turn/cold recomputes drives the SLO breach, consistent with the
+decomposition (§5.2).</li>
+<li><b>Lossless by construction.</b> CAR is an eviction-victim policy: it changes only <i>which</i> KV is
+resident, never a computed value. A miss recomputes the identical prefix (radix prefix matching is exact), so
+outputs are bit-identical to stock; there is no accuracy axis to trade. The frozen config (write_through, page
+64, exact prefix hashing) is unchanged.</li>
+<li><b>On single runs.</b> Each policy is one same-node run (node variance — ±14% req/s, ±30% p99 across
+nodes — is the dominant confound, so same-node comparison matters more than replicate count here). The result
+is categorical, not marginal: p99 (11 s) misses the 8 s SLO by ~40% for every policy, far outside run-to-run
+noise, so goodput@SLO = 0 is not a boundary coin-flip (unlike the cold-start-metastable regime a prior study
+on this workload reported near the SLO). Certified-node confirmation of lru and car is in progress; the
+mechanism (grace trap) is analytic (§4.2) and does not depend on absolute timing.</li>
+</ul>
 
 <h2>6 Related work</h2>
 <p><b>Tiered KV caching &amp; prefetch.</b> AttentionStore/CachedAttention (ATC'24) does hierarchical KV

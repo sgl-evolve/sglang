@@ -313,6 +313,15 @@ LRU retains most reused-soon KV, so reserving capacity for all recent conversati
 under the pin budget, can evict other useful KV — netting ≤0. Only the narrow set that LRU provably mishandles
 — continuations already waiting in the scheduler's queue — is worth protecting. The signal that matters is the
 <i>pending set</i>, not broad recency.</p>
+<p><b>Broad pinning also destabilizes eviction (a third strike).</b> Beyond gaining nothing, the
+post-completion config crashed the scheduler at high load (λ=7) with a tree-consistency assertion in device
+eviction. Root cause: a host-pinned node keeps a host-only child alive, so the child's <i>ancestor</i> can
+remain a device-eviction candidate while non-empty; the write-through delete-entirely path then removes a node
+that still has a child, corrupting the radix tree. The long-lived pins of post-completion make this state
+common; the shipped mechanism (queued pinning) releases at admission, so its pins are short-lived and it ran
+clean across all rates in both same-node sweeps. This is a concrete instance of the general lesson: broad,
+long-held reuse-aware pinning interacts badly with the tiered eviction machinery, while the narrow pending-set
+pin does not.</p>
 <p><b>The win is small because the exploitable set is small — not because of tuning.</b> Two controls rule out
 cheaper explanations. (i) v1 never uses more than <b>9% of its pin budget</b> at any rate (peak ≈6 concurrent
 pins at λ=3), so raising the budget/fraction cannot help — the gain is bounded by the <i>size</i> of the
@@ -364,6 +373,13 @@ degrades gracefully to LRU (never worse — pinning is bounded and released on a
 to protect and the mechanism is a safe no-op.</li>
 <li><b>Metric.</b> On this workload goodput@SLO is variance-dominated at the boundary; we report it but rely on
 hit-rate/throughput. A different SLO or a less bursty workload could make goodput@SLO the cleaner headline.</li>
+<li><b>Eviction-interaction edge case.</b> Host-pinning a deep node keeps a host-only child alive, which can
+leave the child's ancestor a device-eviction candidate while non-empty; the engine's write-through
+delete-entirely path then trips a tree-consistency assertion. The shipped queued-pin releases at admission
+(short-lived pins) and was stable across both full same-node sweeps; the rejected long-held post-completion
+variant triggered it at high load. A robust fix is to tighten the device-leaf predicate to require a truly
+childless node (or demote-instead-of-delete when children remain); we leave hardening the engine path to
+future work and ship the short-pin mechanism, which does not exercise the failure in practice.</li>
 </ul>
 
 <h2>8&nbsp;&nbsp;Reproducibility</h2>

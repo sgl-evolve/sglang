@@ -25,6 +25,7 @@ conversation's prefix while it has a request in the scheduler's queue; release a
   EXCEPT its one scheduler-visible failure (evicting queued continuations), which v1 removes.
 - **Metric finding:** goodput@SLO is variance-dominated at the 8s boundary (identical stock runs flip 0↔3.02
   across nodes) ⇒ hit-rate/throughput is the robust metric.
+- **pc CRASH (3rd strike vs pc):** pc_c crashed @λ=7 (`assert v==node` in `_evict_device_leaf`→`_remove_leaf_from_parent`): host-pinning a deep node keeps a host-only child alive → its ancestor stays a device-leaf-with-child → write-through delete-entirely removes a non-empty node → tree corruption. pc's LONG pins make it common; v1's short pins (released at admission) ran clean n=2 all rates. Retracted pc_c from W&B. Fix (future): stricter `_is_device_leaf` (require childless) or demote-not-delete. Ship v1 (short-pin, unaffected).
 
 ---
 

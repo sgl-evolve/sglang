@@ -245,8 +245,12 @@ prefix so a running batch cannot evict it; release the pin the instant the reque
 then protected by the normal running-request lock) or aborted. Pinning is bounded by a token budget (a fraction
 of L2); when the pending set exceeds the budget the policy falls back to LRU for the overflow — it never
 deadlocks eviction and never uses more than the fixed memory budget.</p>
-<p><b>Why it is novel.</b> It is <i>not</i> a replacement policy (LRU/LFU/GDSF/2Q): those choose a victim from
-a fixed candidate set, and §2 shows that choice is near-optimal already. It is <i>not</i> Strata-style
+<p><b>Why it is novel.</b> It is <i>not</i> a replacement policy (LRU/LFU/GDSF/2Q): those pick a victim from the
+resident set by a recency/frequency <i>feature</i>, and §2.4 shows those features are <i>inverted</i> from
+reuse here (the LRU victim among pending continuations is the soonest-reused, ρ=+0.81) — so no fixed-candidate
+recency/frequency rule closes the gap. We instead change <i>the candidate set</i>: an about-to-be-reused
+waiting prefix is removed from eviction eligibility entirely, using the scheduler's exact reuse-intent signal
+rather than a recency proxy. It is <i>not</i> Strata-style
 cache-aware scheduling, which overlaps unavoidable <i>loads</i> with compute; here we <i>prevent the eviction</i>
 that turns a cheap reload into an expensive recompute. It is <i>not</i> a config flag (write-through/write-back,
 exclusive tiering): those change <i>what is backed up</i>, not whether an about-to-be-reused prefix survives

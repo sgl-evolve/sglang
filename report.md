@@ -251,6 +251,18 @@ budget ⇒ concurrent heavy turn-0 docs prefill ~one-at-a-time to completion (se
   A positive (SLOP/co-residency) is only publishable if baseline data shows load-back/recompute is a
   MATERIAL tail contributor at the knee AND I differentiate from CachedAttention. Decide from data.
 
+## Controls (impossibility evidence)
+- **v1-writeback** (`--hicache-write-policy write_back`, config; job 19490 QUEUED): tests lever-1 (hit rate
+  ↑ +13pp per prior work → predict goodput@SLO still 0). Flag-only, lossless.
+- **v2-srpf** (READY in worktree `evolve/kleinrock-srpf`, 2 commits — added SRPF schedule policy +
+  argparse choice; import+enum validated): tests lever-4 (tail-optimal scheduling). Stock default =
+  **fcfs**; SRPF = shortest-remaining-prefill-first. Predict goodput@SLO still 0 / WORSE (SRPF starves the
+  long cold turn-0 docs that ARE the p99). Lossless (reordering only). Merge into main clone AFTER
+  v1-writeback runs (keep main tree stock until then), then `eval-on-pool.sh kleinrock v2-srpf
+  --schedule-policy srpf`.
+- Lever-2 (movement) already covered empirically (load-back p99 <9ms). Lever-3 (residency) partly by
+  write_back + argued (no liveness oracle).
+
 ## Formal submissions
 _(none yet)_
 

@@ -155,7 +155,7 @@ class FullComponent(TreeComponent):
     ) -> None:
         """Evict host leaves to free KV host pool space."""
         heap = [
-            (self.cache.eviction_strategy.get_priority(n), n)
+            (self.cache._host_evict_priority(n), n)
             for n in self.cache.evictable_host_leaves
         ]
         heapq.heapify(heap)
@@ -168,7 +168,7 @@ class FullComponent(TreeComponent):
             if x.parent is not None and x.parent in self.cache.evictable_host_leaves:
                 heapq.heappush(
                     heap,
-                    (self.cache.eviction_strategy.get_priority(x.parent), x.parent),
+                    (self.cache._host_evict_priority(x.parent), x.parent),
                 )
 
     def acquire_component_lock(

@@ -102,6 +102,9 @@ class UnifiedTreeNode:
         self.id = UnifiedTreeNode.counter
         UnifiedTreeNode.counter += 1
         self.write_through_pending_id: Optional[int] = None
+        # Cumulative context length root->this node (tokens) = a proxy for the
+        # re-prefill (recompute) cost if this prefix is lost. Set on insert/split.
+        self.cum_len: int = 0
 
     def component(self, component_type: ComponentType) -> ComponentData:
         return self.component_data[component_type]
@@ -328,6 +331,17 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         # ack_id (== best_match_node.id) -> nodes whose host copy to free once the
         # async H->D load-back finishes (freeing at commit would race the live DMA).
         self._xtier_load_nodes: dict[int, list] = {}
+
+        # COST-AWARE HOST RETENTION (research mechanism). The goodput@SLO metric is
+        # bound by the p99 TTFT tail = long-context cache-MISS re-prefills (contexts
+        # evicted from BOTH L1 and L2 -> full recompute, seconds). Uniform capacity
+        # (write_back/exclusive) raises hit but doesn't target that tail. When on,
+        # HOST eviction prefers to drop SHORT (cheap-to-recompute) contexts first and
+        # RETAIN long (high-recompute-cost) ones -> the 768 GB host tier concentrates
+        # on the expensive KV that dominates the tail. Optimizes cost-weighted miss
+        # (the goodput objective), NOT miss-count -> may lower raw hit yet cut the tail.
+        self.cost_aware_enabled = os.environ.get("XTIER_COST_AWARE", "0") == "1"
+        self.cost_threshold = int(os.environ.get("XTIER_COST_THRESHOLD", "8192"))
 
         if self.token_to_kv_pool_allocator:
             self.device = self.token_to_kv_pool_allocator.device
@@ -1031,6 +1045,8 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         new_node.key = child.key[:split_len]
         new_node.hit_count = child.hit_count
         new_node.creation_time = child.creation_time
+        # new_node holds the prefix; child keeps its (unchanged) cum_len from root.
+        new_node.cum_len = new_node.parent.cum_len + split_len
 
         self._for_each_component_lru(child, UnifiedLRUList.remove_node)
 
@@ -1078,6 +1094,7 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         new_node.parent = parent
         new_node.key = key
         new_node.component_data[BASE_COMPONENT_TYPE].value = value.clone()
+        new_node.cum_len = parent.cum_len + len(value)  # recompute-cost proxy
         parent.children[key.child_key(self.page_size)] = new_node
         self.component_evictable_size_[BASE_COMPONENT_TYPE] += len(value)
         if self.enable_storage:
@@ -1472,6 +1489,16 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             self.evictable_host_leaves.add(node)
         else:
             self.evictable_host_leaves.discard(node)
+
+    def _host_evict_priority(self, node: UnifiedTreeNode):
+        """Host-eviction ordering key. Default = LRU (last_access_time). With
+        cost-aware retention on, segment by recompute cost: SHORT (cheap) contexts
+        are evicted before LONG (expensive) ones, LRU within each segment, so the
+        host tier retains the long contexts whose miss dominates the p99 TTFT tail."""
+        base = self.eviction_strategy.get_priority(node)
+        if self.cost_aware_enabled:
+            return (0 if node.cum_len < self.cost_threshold else 1, base)
+        return base
 
     def _evict_to_host(
         self, node: UnifiedTreeNode, tracker: Optional[dict[ComponentType, int]] = None

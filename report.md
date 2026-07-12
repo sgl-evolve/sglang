@@ -503,3 +503,20 @@ lru==slru==car EXACTLY (same victims, same 7.24M) because the compressed access 
 SLRU-backfire is driven by wall-time gap AGING (proven convs' KV idle for MINUTES → become LRU victims), which a
 timing-independent replay cannot reproduce. So the replay corroborates the HEADROOM (opt=0) but is BLIND to the
 slru/car distinction; the GPU eval is the only valid test of slru vs car (as already measured: slru HURTS §26).
+
+## 29. CAR's expected ceiling (interpretation prep for car90) — short-gap vs long-gap avoidable
+
+Belady gets 100% of the 7.24M avoidable (§28) using the FUTURE. An online policy cannot. Reasoning about CAR's
+reachable fraction of the 63%-avoidable tail:
+- CAR segment-2 protects ALL proven convs indefinitely (LRU within). A proven conv that has COMPLETED is DEAD
+  but still segment-2. Fine WHILE segment 0/1 (dead whales + expired turn-0s) has evictable KV; but once that's
+  exhausted, segment-2 LRU evicts the OLDEST-accessed proven — which for a LONG think-gap (p75=458s) could be a
+  LIVE conv mid-gap, not the completed one. Recency alone cannot separate live-old from dead-old proven.
+- So CAR captures the SHORT-gap avoidable recompute (protect recent turn-0s [seg1] + recently-active proven
+  [seg2 top]) but NOT the long-gap avoidable (can't hold minute-long-gap KV under 1.89x oversubscription, and
+  can't tell live-old from dead-old). Expected CAR gain = short-gap fraction of the 63%, NOT the full 63%.
+- ⇒ HONEST prediction for car90: p99 likely improves over lru (captures short-gap evicted turns) but may NOT
+  reach <8s if the tail's biggest evicted turns are long-gap (unreachable). The result quantifies the online-
+  reachable fraction. A future predictor (per-conv inter-turn-gap history → protect convs whose next turn is
+  near) could reach more, but is speculative; CAR is the clean principled first mechanism. This is the paper's
+  honest discussion regardless of car90's sign.

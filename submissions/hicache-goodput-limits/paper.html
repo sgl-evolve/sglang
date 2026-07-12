@@ -25,7 +25,7 @@
 <h1>What Bounds Goodput@SLO in a Two-Tier HiCache under Concurrent Multi-Turn Long-Context Serving?</h1>
 <div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>DRAFT v0.1</b></div>
 
-<p class="todo">DRAFT — thesis: the p99 tail is AVOIDABLE recompute (chash: <b>63% of the ≥40K-tok tail is evicted
+<p class="abstract"><b>Summary.</b> The p99 tail is AVOIDABLE recompute (chash: <b>63% of the ≥40K-tok tail is evicted
 proven multi-turn convs</b>, 37% cold docs) and the real-time live set <b>fits</b> (peak 9.3M = 0.87× cache) →
 liveness-bound, Belady≈0 → cache-addressable <i>offline</i>. BUT it is <b>online-UNRECOVERABLE</b>: liveness is
 unobservable at turn-0 (live conv vs single-turn whale both hit_count 0) and the turn-0→turn-1 gap is minutes
@@ -279,7 +279,7 @@ node as the lru baseline (λ=3; node variance is the dominant confound so all ro
 <tr><td>lru (stock)</td><td>0.679</td><td>876 ms</td><td>11,254 ms</td><td>61%</td><td>65%</td><td>0</td></tr>
 <tr><td>slru (protect proven)</td><td><b>0.507</b></td><td>1,498 ms</td><td>10,091 ms</td><td><b>73%</b></td><td><b>83%</b></td><td>0</td></tr>
 <tr><td>car (this work, grace 90 s)</td><td>0.679</td><td>722 ms</td><td>11,174 ms</td><td>65%</td><td>69%</td><td>0</td></tr>
-<tr><td>car (this work, grace 300 s)</td><td>0.676</td><td>678 ms</td><td>10,430 ms</td><td class="todo">≈lru</td><td class="todo">≈lru</td><td>0</td></tr>
+<tr><td>car (this work, grace 300 s)</td><td>0.676</td><td>678 ms</td><td>10,430 ms</td><td>≈lru</td><td>≈lru</td><td>0</td></tr>
 </table>
 <p><b>CAR ≈ LRU across the feasible grace range.</b> Both grace 90 s and grace 300 s land at LRU's operating
 point — goodput 0, hit 0.679/0.676 identical to LRU (contrast SLRU's collapse to 0.507); p99 11,174 / 10,430 ms

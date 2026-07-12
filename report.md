@@ -34,16 +34,19 @@ conversation's prefix while it has a request in the scheduler's queue; release a
   locality WITHOUT its reorder/TTFT-fairness cost. Realized +2.5pp ≪ +7pp sim-ceiling = 2-tier host absorbs
   device evictions. Analysis: `analysis/{build_convs,risk_sim,gap_decomp,compare_coupling}.py`, saved
   `analysis/results/sim_summary.txt`. Paper §2.4 + Fig 2 added (commits 97db816f1…df45d253b).
-- **GPU CONFIRMATION (in progress) — ⚠️ PARTIALLY REFUTES THE SIM's HIT-COUPLING (integrity: follow the data):**
-  same-node ondem-2. **λ3: stock_fcfs hit 0.6726 / p99 8052ms; stock_lpm hit 0.6715 / p99 11323ms.** ⇒ on the
-  REAL 2-tier system LPM does **NOT** raise hit (Δ=−0.1pp = null; sim predicted +7pp) AND LPM **hurts p99 (+40%)**.
-  Interpretation: hit is **scheduler-INSENSITIVE** on 2-tier (host tier absorbs eviction-order effects) — the
-  sim's big FCFS hit-gap was a SINGLE-TIER artifact; the p99 tail IS scheduler-sensitive (LPM worse). This is
-  CLEANER for the core story: **retention (pending-pin +2.5pp) is the hit lever; scheduling is not** — and you
-  wouldn't switch to LPM anyway (tail cost). ⇒ MUST honestly revise §2.4/Fig 2: sim shows POTENTIAL coupling under
-  idealized single-tier; real 2-tier shows hit scheduler-insensitive + LPM tail cost. Full stock_fcfs done
-  (0.673→0.658 hit, p99 8→41s); stock_lpm λ5/7/10 pending (~15:15Z), then v1_lpm/v1_fcfs. Awaiting full sweep
-  before rewrite. FCFS baseline matches shipped stock (node validated).
+- **★★ GPU COUPLING RESULT — COMPLETE (stock, n=1 same-node ondem-2) — REFUTES SIM's HIT-COUPLING (integrity win):**
+  | λ | hit FCFS | hit LPM | Δhit | p99 FCFS | p99 LPM | Δp99 |
+  | 3 | 0.6726 | 0.6715 | −0.11pp | 8052 | 11323 | +41% |
+  | 5 | 0.6662 | 0.6619 | −0.43pp | 16286 | 26938 | +65% |
+  | 7 | 0.6605 | 0.6578 | −0.27pp | 35029 | 36844 | +5% |
+  | 10| 0.6576 | 0.6550 | −0.26pp | 40770 | 43047 | +6% |
+  ⇒ Real 2-tier hit is **scheduler-INSENSITIVE** (LPM Δ<0.5pp ALL rates — decisively NOT the sim's +7pp) + LPM
+  **worsens p99 41–65%** at moderate load. Host tier absorbs eviction-order → sim's FCFS gap is single-tier
+  artifact (same reason realized +2.5pp ≪ +7pp sim ceiling). **retention (pin) is the hit lever; scheduling isn't**
+  (LPM: no hit gain, tail cost). Inversion ρ=+0.81 (model-free) still explains pin targeting → transfers. **Paper
+  HONESTLY REVISED: §2.5 + Table 2 added; §2.4/Fig2/abstract/contrib/§7 reframed to report the refutation of my
+  own sim (commit d27019401).** Still running: v1_lpm, v1_fcfs (does pin help under each scheduler? expect yes =
+  retention scheduler-independent). W&B logging pending.
 - **Metric finding:** goodput@SLO is variance-dominated at the 8s boundary (identical stock runs flip 0↔3.02
   across nodes) ⇒ hit-rate/throughput is the robust metric.
 - **pc CRASH (3rd strike vs pc):** pc_c crashed @λ=7 (`assert v==node` in `_evict_device_leaf`→`_remove_leaf_from_parent`): host-pinning a deep node keeps a host-only child alive → its ancestor stays a device-leaf-with-child → write-through delete-entirely removes a non-empty node → tree corruption. pc's LONG pins make it common; v1's short pins (released at admission) ran clean n=2 all rates. Retracted pc_c from W&B. Fix (future): stricter `_is_device_leaf` (require childless) or demote-not-delete. Ship v1 (short-pin, unaffected).

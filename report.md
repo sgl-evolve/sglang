@@ -88,6 +88,17 @@ multiturn regime*. At tight capacity the working set genuinely overflows and pro
 
 ---
 
+## Live baseline observations (rate=3, job 19434)
+- Reuse is real: 26% of prefill batches reuse a prefix (p90 cached 23.7k tok, max 277k). L1 usage 0.95–0.97
+  (genuine device pressure). Confirms the pressure + reuse regime.
+- **Server queue depth**: p50=2 but a deep tail (p90=21, p99=95, max=107) even at λ=3 → deeper at λ=7,10.
+  So v1 (server-queue pinning) has real scope at high load (where goodput@SLO is decided); the pending set
+  (~1M tok) fits the 0.5×L2 ≈ 4.2M budget. Running-req p50=252 (near the 270 cap) → L1-memory-bound admission.
+- **Client-gap caveat quantified**: because the client caps concurrency at 256 ≈ server capacity, much of a
+  continuation's inter-turn gap is spent *behind the client semaphore* (unprotected), not in the server queue.
+  v1 protects only the server-queue window; the post-completion variant (v2) targets the client gap. The v1
+  result will tell us what fraction of the offline Bélády gap the server-queue window alone captures.
+
 ## Ablation / iteration plan (as GPU frees)
 1. **v1 vs baseline** (same certified node): does pinning raise hit-rate + goodput@SLO, lossless? Confirm
    `[valiant]` pins activate.

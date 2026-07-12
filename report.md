@@ -99,3 +99,14 @@ Ran prefix-aware longest-prefix-match (lpm) vs stock fcfs at intended scale (NUM
 | fcfs | 0.6502 | 3.67 | 872ms | 25.9s | ~0 |
 | lpm  | 0.6458 | 3.79 | 769ms | 27.4s | ~0 |
 → lpm is a MEASURED NULL (hit −0.4pp, req/s +3.3%, latency mixed within noise). Prefix-aware scheduling does NOT help under capacity pressure — reordering shifts which requests wait, not total work (hit is capacity-bound). Confirms the scheduling-axis impossibility (argued→demonstrated). mamba_host_evict~0 under lpm too → capacity law holds orthogonally to scheduler. Folded into paper §5.5. Now every axis of the claimed-empty region has a measured or resource-bound null.
+
+## ★ FINAL RE-REVIEW = CLEAR ACCEPT (2026-07-12)
+Second adversarial PC re-review after the measured lpm null + utilization nulls + Proposition 1 were added. Verdict: **CLEAR ACCEPT** as a rigorous-negative + capacity-law contribution. "(a) §5.5+§5.3 satisfy the demonstrated-not-argued bar — the claimed-empty region now carries a measured/resource-bound null on every enumerated axis (recurrent=VMR no-op, movement/overlap/layout=<10% util resource-bound nulls, ordering=lpm A/B null); (b) yes, clear accept for a venue that values rigorous negatives — correct+predictive law inverting Marconi/Jenga, config-checkable family-wide generality, honestly-scoped impossibility, reusable diagnostic, exemplary integrity; (c) no blockers."
+
+Addressed the 3 residual COPY-level items (commit b3edeadc1, pushed; verify via `git ls-remote origin | grep lamport` — the `origin/evolve/lamport` remote-tracking ref is not stored locally so `git rev-parse @{u}` errors are false negatives):
+1. Abstract impossibility softened to "on this model and workload, across the enumerated axes" (was stated as unqualified fact).
+2. §3 universal quantifier "any current hybrid LLM" → "any mainstream hybrid LLM we examined" (finite 6-config table).
+3. §5.2 table caption: intended-scale (1553) cells marked single warm runs; attribution rests on stable hit rate (±0.1pp), not the noise-fragile p99 tail.
+
+## Optional hardening (reviewer item 2, off-contract, non-blocking): n=2 same-node paired replicate
+Reviewer's only optional non-blocker = n≥2 at intended scale (the +7.4pp WIN cell is single-run). Launched a NON-PREEMPTING detached waiter (tools/persist_rep_waiter.sh) that claimed genuinely-idle node 1-2 (1808G free, lock free, 0 sglang procs) @01:00Z and runs write_through then write_back BACK-TO-BACK in one srun allocation → a SAME-NODE matched pair (controls node variance ±14% req/s / ±30% p99, per prior lessons). Target: runs/diag1553rep_{wt,wb}/curve.csv (NUMP=1553, λ5, fcfs). Baseline pair to beat: wt 0.6502 / wb 0.7238 (+7.36pp). ON DONE → fold n=2 delta into §5.2 as mean±range over the 2 same-node pairs (confirm→solid n=2; diverge→report range honestly), then release node 1-2. Paper is submission-ready NOW regardless — this is pure bonus hardening of an already-disclosed limitation.

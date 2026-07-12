@@ -206,9 +206,11 @@ the live turn-0 from the dead whale at the moment it must decide.</li>
 <p><b>The grace trap.</b> These combine into an impossibility for a completion-grace policy: to catch the
 turn-0→turn-1 reuse, the grace must be ≥ ~460 s; but a 460 s grace also protects every dead whale for 460 s,
 accumulating (at λ=3) ~8M tokens of never-reused KV that, added to the 9.3M live set, far exceeds the 10.7M
-cache — swamping it and evicting live KV. A short grace covers almost none of the 460 s gaps and degrades to LRU. The trap is quantitative — the peak KV a
-grace-<i>G</i> policy is forced to hold (everything touched in a trailing <i>G</i>-second window, since grace
-cannot tell live from dead) versus what fraction of turn-0→turn-1 gaps <i>G</i> actually covers:</p>
+cache — swamping it and evicting live KV. A short grace covers almost none of the 460 s gaps and degrades to LRU. The trap is quantitative — a conservative model of the resident pressure a
+grace-<i>G</i> policy induces (peak KV touched in a trailing <i>G</i>-second window, since grace cannot tell
+live from dead; CAR's 3-segment form holds unproven KV only for <i>G</i> and proven KV by recency, so its actual
+pressure is no higher — the swamp threshold below is thus a lower bound on the offending grace) versus what
+fraction of turn-0→turn-1 gaps <i>G</i> actually covers:</p>
 <table>
 <tr><th>grace G</th><th>peak forced-resident KV</th><th>vs 10.7M cache</th><th>% of turn-0→turn-1 gaps covered</th></tr>
 <tr><td>90 s</td><td>9.0M</td><td>0.85× (fits)</td><td>14%</td></tr>

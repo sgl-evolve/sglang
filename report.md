@@ -34,10 +34,16 @@ conversation's prefix while it has a request in the scheduler's queue; release a
   locality WITHOUT its reorder/TTFT-fairness cost. Realized +2.5pp ≪ +7pp sim-ceiling = 2-tier host absorbs
   device evictions. Analysis: `analysis/{build_convs,risk_sim,gap_decomp,compare_coupling}.py`, saved
   `analysis/results/sim_summary.txt`. Paper §2.4 + Fig 2 added (commits 97db816f1…df45d253b).
-- **GPU CONFIRMATION RUNNING** (nohup `pipe_coupling.sh` on idle held ondem-2 jid19376): stock_fcfs→stock_lpm→
-  v1_lpm→v1_fcfs same-node. Tests if real LPM raises stock hit + shrinks pin gain + at what p99 cost. If
-  real-LPM improves BOTH hit AND p99, the "locality-without-reorder" value-prop weakens to fairness-preservation
-  (flagged §7 open measurement). Started 10:54Z; first curve ~13:15Z.
+- **GPU CONFIRMATION (in progress) — ⚠️ PARTIALLY REFUTES THE SIM's HIT-COUPLING (integrity: follow the data):**
+  same-node ondem-2. **λ3: stock_fcfs hit 0.6726 / p99 8052ms; stock_lpm hit 0.6715 / p99 11323ms.** ⇒ on the
+  REAL 2-tier system LPM does **NOT** raise hit (Δ=−0.1pp = null; sim predicted +7pp) AND LPM **hurts p99 (+40%)**.
+  Interpretation: hit is **scheduler-INSENSITIVE** on 2-tier (host tier absorbs eviction-order effects) — the
+  sim's big FCFS hit-gap was a SINGLE-TIER artifact; the p99 tail IS scheduler-sensitive (LPM worse). This is
+  CLEANER for the core story: **retention (pending-pin +2.5pp) is the hit lever; scheduling is not** — and you
+  wouldn't switch to LPM anyway (tail cost). ⇒ MUST honestly revise §2.4/Fig 2: sim shows POTENTIAL coupling under
+  idealized single-tier; real 2-tier shows hit scheduler-insensitive + LPM tail cost. Full stock_fcfs done
+  (0.673→0.658 hit, p99 8→41s); stock_lpm λ5/7/10 pending (~15:15Z), then v1_lpm/v1_fcfs. Awaiting full sweep
+  before rewrite. FCFS baseline matches shipped stock (node validated).
 - **Metric finding:** goodput@SLO is variance-dominated at the 8s boundary (identical stock runs flip 0↔3.02
   across nodes) ⇒ hit-rate/throughput is the robust metric.
 - **pc CRASH (3rd strike vs pc):** pc_c crashed @λ=7 (`assert v==node` in `_evict_device_leaf`→`_remove_leaf_from_parent`): host-pinning a deep node keeps a host-only child alive → its ancestor stays a device-leaf-with-child → write-through delete-entirely removes a non-empty node → tree corruption. pc's LONG pins make it common; v1's short pins (released at admission) ran clean n=2 all rates. Retracted pc_c from W&B. Fix (future): stricter `_is_device_leaf` (require childless) or demote-not-delete. Ship v1 (short-pin, unaffected).

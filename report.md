@@ -134,6 +134,52 @@ Either way the paper is honest: mechanism if capturable headroom exists, else a 
 ("concurrent multiturn does NOT break LRU≈Belady in practice because stock schedule-time matching + large
 L2 keep live prefixes resident; the p99 limiter is X").
 
+## 8. Prior-art synthesis (for related work + fork menu)
+
+Closest prior art per candidate (all cited in submissions later):
+- **AttentionStore/CachedAttention (ATC'24, 2403.19708):** hierarchical KV cache + layer-wise ASYNC
+  prefetch + async save for multiturn; 87% TTFT cut. Prefetch is REACTIVE (when a req enters the batch).
+  ⇒ plain L2→L1 prefetch is NOT novel. Gap = prefetch for reqs STILL WAITING (queue-depth-aware).
+- **Strata (2508.18572):** balanced batching (pair prefill w/ decode to hide I/O), GPU-assisted transfer.
+- **Mooncake (FAST'25, 2407.00079):** KVCache-centric disagg + streaming layer-wise KV transfer (cluster).
+- **PPD (2603.13358):** append-prefill (turn≥2) colocated w/ decode → 68% turn2+ TTFT — but CLUSTER-level
+  routing; NOT applicable to my fixed single-node config.
+- **RedKnot (2606.06256):** per-(layer,head) KV classes + SegPagedAttention (single-tier, kernel-heavy).
+- **Sarathi-Serve (OSDI'24):** chunked prefill / decode-maximal batching (already in stock, textbook).
+- **AsymCache (2606.02964)/Predictive-Multi-Tier (2604.26968)/Continuum (2511.02230):** cost/Bayesian/TTL
+  residency — overlaps my displacement-admission idea (which stock waiting-protection already blunts).
+
+**Refined fork menu (choose after baseline p99 anatomy):**
+- p99 = warm-turn LOAD-BACK bound → **queue-aware speculative L2→L1 prefetch** (novel vs AttentionStore's
+  reactive prefetch; lossless; orthogonal to eviction). ← leading candidate IF load-back is on crit path.
+- p99 = cold-whale HOL / prefill-congestion → hard to beat Sarathi/SRPF novelly → likely characterization
+  + modest refinement, or bounded-negative.
+- p99 = thrash/miss bound → residency, but stock schedule-time matching caps it → head-aware or negative.
+
+De-risk gate for the prefetch branch: **is load-back actually on the TTFT critical path, or already per-layer
+overlapped with compute?** → **VERDICT (from code): per-layer OVERLAPPED.** `start_loading` transfers on a
+separate `load_stream` with a per-layer `producer_event.complete(i)`; the model forward waits per-layer via
+`layer_transfer_counter.wait_until(layer_id)` (memory_pool.py:1526/1537) right before each layer's attention.
+So load-back overlaps suffix compute; prefetch-during-wait would only remove the ~layer-0 bubble (~10-50ms)
+→ **marginal, not a flagship.**
+
+## 9. Convergent assessment (pre-baseline) — the easy cache levers are already taken by stock
+
+Three independent code findings blunt the obvious mechanisms BEFORE spending an eval:
+- (§7) stock `fcfs` re-matches every server-waiting req each step → LRU already keeps at-server prefixes hot.
+- (§8) load-back is per-layer overlapped → prefetch is marginal.
+- residual warm-miss headroom lives in the CLIENT-blocked window (offered load > concurrency 256), which is
+  invisible to the server; the only server-side predictor of client-blocked continuation is turn-count
+  (=hit_count) → LFU/SLRU, which is non-novel and prior campaigns found neutral/harmful.
+⇒ A NOVEL, capturable residency/transfer win looks unlikely. Honest leading outcome = a **rigorous
+bounded-negative + characterization** ("in 2-tier no-disk HiCache under concurrent closed-loop multiturn,
+the cache is not the goodput@SLO lever; the p99 limiter is prefill congestion / cold-whale HOL, bounded
+by X; residency headroom is either already captured by stock schedule-time matching or non-capturable
+because the vulnerable window is client-side"). This is charter-valid IF rigorously demonstrated.
+**Still gated on baseline aggregates** (hit% vs λ, load_back vs λ, p50/p90/p99 vs λ) — if they surprise
+(e.g. hit collapses under load in a server-capturable way), revisit for a mechanism. Next eval after the
+reference will likely be a stock+trace DIAGNOSTIC to decompose the p99 tail and nail the limiter.
+
 ## Versions (test submissions)
 - **v0-baseline** (stock sweep, clean reference) — job 19437, QUEUED. [pending curve]
 

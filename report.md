@@ -271,6 +271,20 @@ warm-miss% = the decisive number:** large ⇒ mechanism materially helps; small 
 (bounded-negative). This is the crisp, quantified thesis either way: *goodput@SLO is set by the cold-context
 prefill floor; the cache addresses only the avoidable warm-miss remainder (X% under pressure).*
 
+## 15. Diag λ=3 result (CONFOUNDED — no warmup) — cold-doc tail signal
+
+Diag λ=3 (NUMP=400, nodeset-0): req/s 2.72, **median TTFT 1846ms but p99 TTFT 48,552ms** (26× median).
+⚠️ CONFOUND: my diag.sh omitted the warmup burst that official eval.sh runs (WARMUP_NUMP=300) to kill
+cold-start metastability → this p99 is cold-start-inflated, NOT directly comparable to official (old
+baseline.json λ=3 p99=6326ms WITH warmup + conc128). So treat 48.5s as an upper bound, not the real p99.
+
+SIGNAL (despite confound): the huge tail with only 4.6% warm-miss work ⇒ **p99 is driven by long COLD-DOC
+prefills under concurrency, NOT cache misses.** If this survives warmup (screen-v0), goodput@SLO is
+cold-context-bound (bounded-negative), because 1253/1553 conversations' cold turn-0 docs are never warmed and
+arrive during the measured sweep. DECISIVE test = screen-v0 (eval.sh WITH warmup + NUMP=1553): does warmup
+bring p99 under 8s (⇒ cache-affectable), or does the cold-doc tail persist (⇒ cold-bound negative)?
+LESSON: future diagnostics must include a warmup burst.
+
 ## Versions (test submissions)
 - **v0-baseline** (stock sweep, clean reference) — job 19437, QUEUED. [pending curve]
 

@@ -173,6 +173,34 @@ independent of any residency or movement policy. <span class="mut">[We report th
 signature from the baseline metrics in §5.]</span>
 </p>
 
+<h3>2.4 Why the tail is structural: serialization and the missing liveness oracle</h3>
+<p>
+Two mechanisms make the cold-prefill tail resistant to KV-cache intervention.
+</p>
+<p>
+<b>(a) Chunked prefill serializes heavy documents.</b> The scheduler tracks a single in-flight chunked
+request, and one full chunk (6144 tokens) exhausts the per-iteration prefill-token budget. Concurrent
+heavy turn-0 documents therefore prefill essentially one-at-a-time to completion. If K heavy documents are
+queued at the operating point and each takes mean time <i>t</i>, the p99 first-token latency is
+approximately <b>K·t</b>. This is close to optimal for the p99: round-robin or parallel chunking would
+make <i>all</i> K documents finish late, worsening the p99 — so the classic tail remedy
+(shortest-remaining-first) backfires here, because the long documents <i>are</i> the p99. Both <i>t</i>
+and the count of unique cold turn-0 documents are lossless-irreducible; only K's inflation by
+<b>follow-up recomputes</b> (documents evicted mid-conversation and re-prefilled) is potentially
+addressable.
+</p>
+<p>
+<b>(b) There is no conversation-liveness oracle.</b> In open-loop serving, a conversation's turns arrive
+as independent requests with no conversation identifier; the server observes only token prefixes. To keep
+a document resident precisely while its conversation is still active — the only way to eliminate follow-up
+recomputes — the server would need to know which resident prefixes will be extended again. It cannot; it
+can only <i>predict</i> reuse from access patterns (recency, frequency, tree depth), which are exactly the
+signals stock LRU already exploits. Moreover, a conversation's document node is accessed on <i>every</i>
+turn (prefix match), so LRU already keeps hot documents resident, and follow-up recompute is rare unless
+the aggregate working set overflows both tiers. Consequently no lossless residency policy can
+systematically beat LRU on this workload — a claim we test directly with negative controls in §5.
+</p>
+
 <h2>3 Design</h2>
 <p class="todo">TODO (pending baseline decomposition). If the measured real operating point leaves a
 material, attributable gap below the perfect-cache bound that is due to follow-up load-back/recompute at

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pending-Aware KV Retention: Scheduler–Cache Co-Design for Multiturn LLM Serving</title>
+<style>
+  body{font:16px/1.55 Georgia,serif;max-width:860px;margin:40px auto;padding:0 20px;color:#1a1a1a}
+  h1{font-size:26px;line-height:1.25;margin-bottom:4px}
+  h2{font-size:20px;margin-top:32px;border-bottom:1px solid #ddd;padding-bottom:3px}
+  h3{font-size:17px;margin-top:22px}
+  .auth{color:#444;font-style:italic;margin-bottom:18px}
+  .abs{background:#f7f7f5;border-left:3px solid #888;padding:12px 16px;font-size:15px}
+  code,pre{font-family:ui-monospace,Menlo,Consolas,monospace}
+  code{background:#f2f2f0;padding:1px 4px;border-radius:3px;font-size:13px}
+  pre{background:#f7f7f5;padding:10px 12px;border-radius:5px;font-size:13px;overflow-x:auto}
+  table{border-collapse:collapse;margin:14px 0;font-size:14px;width:100%}
+  th,td{border:1px solid #ccc;padding:5px 9px;text-align:center}
+  th{background:#f0f0ee}
+  td.l,th.l{text-align:left}
+  .tbd{color:#b00;font-weight:bold}
+  figure{margin:18px 0;text-align:center}
+  figcaption{font-size:13px;color:#555;margin-top:6px}
+  .note{font-size:13px;color:#666}
+</style>
+</head>
+<body>
+
+<h1>Pending-Aware KV Retention: Scheduler–Cache Co-Design for Multiturn LLM Serving</h1>
+<div class="auth">valiant · sglang KV-cache research (v0.31) · <span class="tbd">DRAFT — evaluation pending</span></div>
+
+<div class="abs">
+<b>Abstract.</b> Hierarchical KV caches (HiCache-style L1&nbsp;GPU + L2&nbsp;host) are the standard way to
+reuse the growing prefix of a multiturn conversation and avoid re-prefilling it on every turn. Conventional
+wisdom holds that, once the tier sizes are fixed, the replacement <i>order</i> is a dead end — under in-order
+reuse LRU is within a fraction of a percent of Bélády's optimum. We show this conclusion breaks under
+<i>concurrent</i> multiturn load. When many conversations are interleaved, a conversation's cached prefix can
+be evicted by other requests <i>during the gap between its turns</i>, forcing a full recompute of a document
+that may be tens of thousands of tokens long — the single most expensive event on the prefill path. The loss
+is not eviction <i>order</i> (LRU ≈ Bélády among a fixed working set) but the eviction of prefixes whose reuse
+is <i>imminent and already visible to the scheduler</i>, a signal the cache ignores. We propose
+<b>pending-aware KV retention</b>: the cache protects the L2 residency of a conversation's prefix precisely
+while that conversation has an in-flight request the scheduler is holding, and releases it the instant the
+request is admitted. This is a scheduler↔cache co-design, not a replacement policy and not a config flag.
+A trace-driven analysis of the Mooncake-style 1:1:1 mix shows a realizable, non-oracle pending-aware policy
+recovers essentially the entire LRU→Bélády gap (up to <b>+11&nbsp;pp</b> hit rate, <b>~30% fewer recomputes</b>)
+at the cache capacities that arise in practice. <span class="tbd">[End-to-end goodput@SLO results on the
+frozen rate-sweep protocol are pending and will complete this abstract.]</span>
+</div>
+
+<h2>1&nbsp;&nbsp;Introduction</h2>
+<p>Modern LLM serving is dominated by <i>multiturn</i> and agentic workloads: each turn re-sends the
+accumulated conversation, so the server can skip re-prefilling the shared prefix if its KV is still cached.
+On long-context workloads the prefix is enormous (a document of tens of thousands of tokens) and the new work
+per turn is tiny (one short question), so a single missed prefix — a recompute of the whole document — is by
+far the most expensive event on the prefill path and the dominant source of tail time-to-first-token (TTFT)
+under load.</p>
+
+<p>HiCache tiers KV across L1 (GPU HBM) and L2 (host DRAM). When the working set exceeds L1+L2, the cache is
+genuinely over-subscribed and must evict. The prevailing view — and the explicit starting assumption of this
+protocol — is that eviction <i>order</i> is a solved problem: under in-order reuse LRU is within &lt;0.1&nbsp;pp
+of Bélády, so there is no headroom in "which victim to pick." We argue and demonstrate that this view misses
+the effect that actually matters under concurrency.</p>
+
+<p><b>Contributions.</b></p>
+<ul>
+<li>A trace-driven diagnosis showing that, under concurrent multiturn load, the cache's dominant loss is the
+eviction of conversation prefixes whose <i>next turn is already in flight</i> — not eviction order. We quantify
+a <b>+5–11&nbsp;pp</b> hit-rate gap between LRU and Bélády at realistic capacities, overturning the
+"LRU ≈ Bélády" assumption <i>in this regime</i>.</li>
+<li><b>Pending-aware KV retention</b>: a mechanism that couples the cache's L2 retention to the scheduler's
+pending-request set. It is realizable and non-oracle (the scheduler already knows which conversations have a
+waiting request), capacity-bounded (it degrades gracefully to LRU when the pending set exceeds a budget), and
+lossless (it only changes <i>which</i> KV is retained, never what is computed).</li>
+<li><span class="tbd">[An evaluation on the frozen full-decode rate-sweep protocol showing the mechanism shifts
+the throughput–latency curve and raises goodput@SLO, isolated by ablations, with error bars — pending.]</span></li>
+</ul>
+
+<h2>2&nbsp;&nbsp;Motivation (trace-driven)</h2>
+<p>All numbers below are computed directly from the frozen evaluation workload
+(<code>mooncake_mix_v1.jsonl</code>, the real-text Mooncake-style 1:1:1 mix of ShareGPT+LEval+LooGLE, 1553
+conversations) with the model's own tokenizer.</p>
+
+<h3>2.1&nbsp;&nbsp;The prefix is the workload</h3>
+<p>Each conversation is one long document (mean ≈ 11.8k tokens, p90 ≈ 28k, max ≈ 183k) followed by short
+follow-up questions (median ≈ 18 tokens); conversations average 4.6 turns (593 of 1553 are single-turn). The
+document prefix is reused across every turn of its conversation; there is no cross-conversation sharing. A
+cache that achieved perfect reuse would eliminate <b>80.9%</b> of all prefill work (98.0M prompt tokens →
+18.7M). Prefill is therefore the lever for throughput under load, and the value of the cache is enormous — but
+only to the extent it actually retains the prefixes that will be reused.</p>
+
+<h3>2.2&nbsp;&nbsp;Continuation turns are load-/reuse-bound, and a miss is catastrophic</h3>
+<p>Because the new work per continuation turn is tiny, the turn's entire cost is decided by whether its
+prefix is a cache hit or a recompute. If the prefix (say a 12k-token document) has been evicted while the
+conversation was between turns, the server must re-prefill all 12k tokens — a spike two to three orders of
+magnitude larger than the turn's "real" work, which lands directly in the TTFT tail that defines goodput@SLO.</p>
+
+<h3>2.3&nbsp;&nbsp;The loss is not eviction order — it is scheduler-visible imminent reuse</h3>
+<p>We replay the workload's issue order (an open-loop Poisson rate-λ pull with multiturn re-enqueue, matching
+the benchmark harness) through a page-level cache simulator at the model's real page size, and compare LRU,
+Bélády (oracle MIN), and a realizable <b>protect-pending</b> policy that simply refuses to evict a
+conversation whose next turn is currently in the system. Hit rate = cached&nbsp;/&nbsp;prompt tokens (the
+protocol's definition).</p>
+
+<figure>
+<svg viewBox="0 0 620 300" width="620" height="300" font-family="sans-serif" font-size="12">
+  <!-- axes -->
+  <line x1="60" y1="250" x2="580" y2="250" stroke="#333"/>
+  <line x1="60" y1="40" x2="60" y2="250" stroke="#333"/>
+  <text x="20" y="150" transform="rotate(-90 20,150)" text-anchor="middle">hit rate</text>
+  <text x="320" y="285" text-anchor="middle">combined L1+L2 capacity (M tokens)</text>
+  <!-- y ticks 0.3..0.85 -->
+  <g fill="#555" text-anchor="end">
+    <text x="55" y="254">.30</text><text x="55" y="204">.45</text>
+    <text x="55" y="154">.60</text><text x="55" y="104">.75</text><text x="55" y="60">.85</text>
+  </g>
+  <g stroke="#eee"><line x1="60" y1="200" x2="580" y2="200"/><line x1="60" y1="150" x2="580" y2="150"/>
+    <line x1="60" y1="100" x2="580" y2="100"/><line x1="60" y1="64" x2="580" y2="64"/></g>
+  <!-- x maps cap 6..14 -> x 80..560 ; y maps .30..0.85 -> 250..55  (scale: y=250-(v-.30)/(.85-.30)*195) -->
+  <!-- LRU: 6:.358 7:.438 8:.583 9:.725 10.7:.737 12:.745 14:.758 -->
+  <polyline fill="none" stroke="#c0392b" stroke-width="2"
+    points="80,230 140,201 200,150 260,99 362,95 440,92 560,88"/>
+  <!-- Belady -->
+  <polyline fill="none" stroke="#27ae60" stroke-width="2" stroke-dasharray="5,3"
+    points="80,105 140,88 200,76 260,72 362,72 440,72 560,72"/>
+  <!-- protect-pending -->
+  <polyline fill="none" stroke="#2c3e80" stroke-width="2.5"
+    points="80,206 140,174 200,109 260,72 362,72 440,72 560,72"/>
+  <!-- x labels -->
+  <g fill="#555" text-anchor="middle">
+    <text x="80" y="265">6</text><text x="200" y="265">8</text><text x="260" y="265">9</text>
+    <text x="362" y="265">10.7</text><text x="560" y="265">14</text>
+  </g>
+  <!-- legend -->
+  <g font-size="12">
+    <rect x="400" y="40" width="14" height="3" fill="#c0392b"/><text x="418" y="45" >LRU</text>
+    <rect x="400" y="58" width="14" height="3" fill="#2c3e80"/><text x="418" y="63">protect-pending (realizable)</text>
+    <rect x="400" y="76" width="14" height="3" fill="#27ae60"/><text x="418" y="81">Bélády (oracle)</text>
+  </g>
+</svg>
+<figcaption>Fig.&nbsp;1 — Hit rate vs combined cache capacity (λ=5). A non-oracle <b>protect-pending</b> policy
+tracks Bélády and, at the ≈8–9M-token effective capacity that arises once running requests consume L1, beats
+LRU by up to +11&nbsp;pp (≈30% fewer recomputes). Eviction <i>order</i> (LRU) leaves this on the table; the
+scheduler-visible "pending" signal recovers it.</figcaption>
+</figure>
+
+<p>Two facts make this actionable. First, the gap is largest exactly at the capacities that occur in practice:
+at nominal capacity 10.7M the effective reuse-cache is smaller because ~255 concurrently-running requests
+occupy L1 (measured: L1 usage ≈ 0.95–0.97 under load), placing the operating point near the +11&nbsp;pp knee.
+Second, the winning signal is <i>free</i>: the scheduler already tracks which conversations have a waiting
+request. protect-pending equals oracle admission-of-terminals in this workload because a conversation "with a
+pending turn" is exactly a conversation "with future reuse."</p>
+
+<h2>3&nbsp;&nbsp;Design</h2>
+<p><b>Mechanism.</b> While a request waits in the scheduler's queue, pin the host (L2) residency of its matched
+prefix so a running batch cannot evict it; release the pin the instant the request is admitted (its prefix is
+then protected by the normal running-request lock) or aborted. Pinning is bounded by a token budget (a fraction
+of L2); when the pending set exceeds the budget the policy falls back to LRU for the overflow — it never
+deadlocks eviction and never uses more than the fixed memory budget.</p>
+<p><b>Why it is novel.</b> It is <i>not</i> a replacement policy (LRU/LFU/GDSF/2Q): those choose a victim from
+a fixed candidate set, and §2 shows that choice is near-optimal already. It is <i>not</i> Strata-style
+cache-aware scheduling, which overlaps unavoidable <i>loads</i> with compute; here we <i>prevent the eviction</i>
+that turns a cheap reload into an expensive recompute. It is <i>not</i> a config flag (write-through/write-back,
+exclusive tiering): those change <i>what is backed up</i>, not whether an about-to-be-reused prefix survives
+contention. The primitive is a <b>reuse-intent signal flowing from scheduler to cache</b>.</p>
+<p class="note"><b>Extension (v2, if headroom):</b> server-queue pinning covers only the time a continuation
+spends in the <i>server</i> queue, not the client think/send gap before it arrives. A post-completion variant
+protects a just-finished conversation's leaf for a bounded horizon, covering that gap too. Evaluated as an
+ablation.</p>
+
+<h2>4&nbsp;&nbsp;Implementation</h2>
+<p>Active cache: <code>UnifiedRadixCache</code> (the hybrid-Mamba + hierarchical path;
+<code>hiradix_cache.py</code>/<code>hi_mamba_radix_cache.py</code> are dormant). The mechanism is ~90 lines in
+<code>managers/scheduler.py</code>: pin at <code>_add_request_to_queue</code> via
+<code>UnifiedRadixCache.inc_host_lock_ref(last_host_node)</code> (capturing <code>to_dec_params()</code> so the
+release mirrors the acquire, incl. the mamba component's <code>skip_lock_node_ids</code>); release via a
+tick-start sweep over pinned requests no longer in the waiting queue (leak-proof across all admit/abort paths).
+No engine data-structure changes; no new tiers; budget = fraction × L2 size. Lossless by construction: the
+mechanism only changes which KV is retained. <span class="note">Commit: <code>28a775ae9</code>
+(<code>evolve/valiant</code>).</span></p>
+
+<h2>5&nbsp;&nbsp;Evaluation <span class="tbd">[PENDING]</span></h2>
+<p>Protocol (frozen): one 8×H100 node, Qwen3.5-122B-A10B-FP8 TP8, 2-tier L1+L2, full-decode Poisson rate
+sweep λ∈{3,5,7,10}, warm steady-state, headline goodput@SLO (max req/s with p99 TTFT ≤ 8s).</p>
+<table>
+<tr><th class="l">config</th><th>goodput@SLO</th><th>hit@λ3</th><th>hit@λ5</th><th>p99 TTFT knee</th><th>peak tok/s (control)</th><th>lossless</th></tr>
+<tr><td class="l">baseline (stock 2-tier)</td><td colspan="6" class="tbd">running (job 19434)</td></tr>
+<tr><td class="l">+ pending-aware retention</td><td colspan="6" class="tbd">pending</td></tr>
+<tr><td class="l">ablations (fraction, on/off, post-completion)</td><td colspan="6" class="tbd">pending</td></tr>
+</table>
+<p class="note">Attribution controls: peak tok/s expected ~flat (decode-bound); the mechanism must shift the
+<i>knee</i>, not the decode ceiling. Error bars from n≥2 replicates.</p>
+
+<h2>6&nbsp;&nbsp;Related work</h2>
+<p><b>Strata</b> (2025) attacks the data plane and scheduler: GPU-assisted I/O to defragment transfers and
+cache-aware scheduling to overlap load stalls with compute, making a loading-bound system compute-bound. It
+does not prevent the eviction that turns a reload into a recompute, and its data-plane fix (the
+<code>kernel</code> I/O path) is unavailable for hybrid-Mamba models, which are frozen to
+<code>direct</code>/<code>page_first_direct</code> by the Mamba host pool. <b>Mooncake</b> (FAST'25) and
+<b>AttentionStore</b> use a KV store and scheduling for reuse across requests; <b>LMCache</b> caches/streams KV;
+the <b>SGLang HiCache</b> blog contributes tiering, write policies, layer-wise load/compute overlap, and L3
+prefetch staging. All treat retention as (recency-ordered) eviction plus (optional) prefetch. Our contribution
+is orthogonal: a scheduler-sourced reuse-intent signal that decides <i>retention</i> under contention, which
+the above leave to LRU. Classic cache-admission/replacement (TinyLFU, GDSF, 2Q, ARC) operates on recency/
+frequency features; we instead use an exact, workload-structural signal (in-flight continuation).</p>
+
+<h2>7&nbsp;&nbsp;Limitations &amp; when it fails</h2>
+<ul>
+<li><b>Client-gap.</b> Server-queue pinning protects only the server-queue window; a prefix evicted during the
+client think/send gap before its turn arrives is not recovered (addressed by the post-completion extension).</li>
+<li><b>Capacity.</b> When the pending set exceeds L2, pinning can only protect a budgeted subset; the gain
+shrinks toward LRU (Fig.&nbsp;1, cap&lt;8M).</li>
+<li><b>Single-turn heavy workloads.</b> If most conversations are one-shot, there is little pending reuse to
+protect and the mechanism is a no-op (safe).</li>
+</ul>
+
+<h2>8&nbsp;&nbsp;Reproducibility</h2>
+<p>Branch <code>evolve/valiant</code>, base <code>a334877e5</code>, mechanism <code>28a775ae9</code>.
+Offline analysis: <code>analysis/cache_sim.py</code>, <code>analysis/cache_sim_capsweep.py</code>,
+<code>analysis/wl_struct.py</code> (CPU-only, tokenizer-exact). Evals: <code>runs/&lt;version&gt;/</code> via the
+frozen <code>eval.sh</code>; configs toggled by <code>VALIANT_PIN_ENABLE</code>/<code>VALIANT_PIN_FRACTION</code>.
+<span class="tbd">Version→number mapping filled on completion.</span></p>
+
+</body>
+</html>

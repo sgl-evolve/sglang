@@ -341,10 +341,29 @@ Our analytical frame is classical queueing theory (Kleinrock; Pollaczek–Khinch
 tail-optimal scheduling), applied to the LLM prefill server.
 </p>
 
-<h2>7 Limitations &amp; when it fails</h2>
-<p class="todo">TODO. The queueing model is single-server M/G/1 (ignores decode contention, chunked-prefill
-interleaving, and the device-vs-host KV split); it is a motivation bound, validated against the measured
-curve in §5. Conclusions are specific to this benchmark class (flush-per-rate, unique-document, open-loop).</p>
+<h2>7 Limitations &amp; threats to validity</h2>
+<ul>
+<li><b>Per-rate cache flush.</b> The benchmark driver flushes the KV cache at the start of each rate, so
+each measured point begins cold and warms over its run; the warmup burst is likewise flushed. This inflates
+the absolute p99 via a cold-start transient. We argue the impossibility is nonetheless <i>structural</i>,
+not a flush artifact: turn-0 documents are unique and thus cold <i>throughout</i> a rate (not only during
+the transient), and the scheduler log shows 69% of all prefill batches are cold, not just the early ones.
+A true warm-steady-state eval (no per-rate flush) would lower the absolute p99 but leaves the tail set by
+the same unique cold turn-0 prefills; goodput@SLO would be bounded by cold-prefill throughput either way.
+We could not test this directly — the eval is frozen — and flag it as the primary threat to the absolute
+numbers (not to the qualitative claim).</li>
+<li><b>n = 1 per configuration.</b> goodput@SLO = 0 is robust (every p99 exceeds the SLO by 1.8–5.3×, far
+outside run-to-run noise), but per-rate p99 values are single runs; error bars from replicates are future
+work.</li>
+<li><b>Model simplification.</b> The M/G/1 model is single-server and ignores decode contention, mixed
+prefill/decode batching, and the device/host KV split; it is a bound/explanatory tool, and it
+<i>under</i>-predicts the tail (reality is worse), so it does not overstate the impossibility.</li>
+<li><b>Scope.</b> One model (Qwen3.5-122B, hybrid-Mamba), one hardware point (8×H100, 2-tier, no L3), one
+workload family. The result is explicitly bounded to heavy-tailed unique-cold-prefill workloads under a
+p99-tail SLO (§3 scope); it does not claim caches are useless (they are essential for stability and the
+median) nor that goodput@SLO is unimprovable by non-cache means (faster prefill kernels, more compute,
+disaggregation, or admission/rejection would move it — but those are not lossless KV-cache mechanisms).</li>
+</ul>
 
 <h2>8 Reproducibility</h2>
 <p>Base commit <code>a334877e5</code> (stock sglang). Trace stats: <code>tools/tokenize_trace.py</code> →

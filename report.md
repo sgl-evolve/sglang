@@ -400,3 +400,19 @@ medk (19516): dependency satisfied (warmdiag COMPLETED), now PENDING Reason=Reso
 busy (node-0 wilkes, ondem-3 sibling eval, 3 held-pool). Kept as fair exclusive sbatch (not overlapped into
 shared pool → no 3h monopoly); slurm-durable, runs when a node frees. Last paper piece = medk K=5 same-node
 λ=3 coin-flip → §3.1/§3.2 + §7 bullet-1.
+
+### ★★ medk COMPLETE + integrated — node confound RESOLVED (2026-07-12 ~19:25Z)
+Same-node median-of-k (job 19516, ondem-3 = SAME node as v0-stock/writeback/warmdiag; STOCK server,
+commit ce281d9ff = stock engine verified; K=5 back-to-back λ=3 draws, each flushed at bench start = i.i.d.
+cold λ=3 = the eval's λ=3 point). RESULT:
+  rep1 13.39s FAIL | rep2 6.61s PASS | rep3 25.76s FAIL | rep4 6.47s PASS | rep5 9.41s FAIL
+  n=5: min 6.47 / median 9.41 / max 25.76s, sample-std 8.0s, spread 3.98×, 2 pass / 3 fail, COIN_FLIP=True.
+  p50 dead-flat 0.53-0.56s across ALL draws (cache serves body identically); only p99 swings 4×.
+DECISIVE: same node + same config + same workload → goodput@SLO flips {3,3,0,0,0} on pure run-to-run
+cold-start metastability. Node heterogeneity is an ADDITIONAL layer, not the cause. Std (8.0s) > median-to-SLO
+gap (1.4s) = formal variance-dominated condition. write_back's 7.53s draw sits INSIDE this stock same-node
+band (below 2 of 5 stock draws) → single-run A/B doubly void. Integrated: abstract, §1, §3.1 (same-node
+table+para), §4, §7 bullet-1 (future→demonstrated), §8. Dropped DRAFT. Committed 3f355586f. Tags balanced,
+refs valid, numbers vs raw medk.csv/summary.json.
+PAPER NOW COMPLETE: n=3 cross-node + K=5 same-node coin-flip + queueing model + warmdiag node-controlled
+flush + metastable-failures grounding + methodology. All three planned experiments done & integrated.

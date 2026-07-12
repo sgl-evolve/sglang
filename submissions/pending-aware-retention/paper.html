@@ -314,8 +314,9 @@ under the pin budget, can evict other useful KV — netting ≤0. Only the narro
 — continuations already waiting in the scheduler's queue — is worth protecting. The signal that matters is the
 <i>pending set</i>, not broad recency.</p>
 <p><b>Broad pinning also destabilizes eviction (a third strike).</b> Beyond gaining nothing, the
-post-completion config crashed the scheduler at high load (λ=7) with a tree-consistency assertion in device
-eviction. Root cause: a host-pinned node keeps a host-only child alive, so the child's <i>ancestor</i> can
+post-completion config <i>intermittently</i> crashed the scheduler at high load (one of three post-completion
+runs, at λ=7) with a tree-consistency assertion in device eviction; the shipped queued-pin never crashed
+(0 of 4 stock/v1 runs, 0 of 2 v1 runs across all rates). Root cause: a host-pinned node keeps a host-only child alive, so the child's <i>ancestor</i> can
 remain a device-eviction candidate while non-empty; the write-through delete-entirely path then removes a node
 that still has a child, corrupting the radix tree. The long-lived pins of post-completion make this state
 common; the shipped mechanism (queued pinning) releases at admission, so its pins are short-lived and it ran

@@ -359,6 +359,21 @@ decomposition is from a screening node; certified-node goodput numbers are pendi
 <code>analyze_serverlog.py</code>. Eval via the frozen <code>eval-on-pool.sh &lt;name&gt; &lt;version&gt;</code>.
 ⟨commit hashes + run dirs per number pending.⟩</p>
 
+<h2>9 Conclusion</h2>
+<p>For a two-tier HiCache serving concurrent multi-turn long-context conversations under a tail-latency SLO,
+goodput@SLO is <b>not addressable by any causal lossless residency policy</b> — even though an offline oracle
+would recompute nothing. The obstruction is not capacity (the live working set fits at 0.87× cache) and not the
+textbook "eviction ≈ Belady" (reuse here is out-of-order with full offline headroom); it is that <i>liveness is
+unobservable at the moment eviction must decide</i> — a will-continue conversation and a single-turn document
+are indistinguishable at turn-0 — while the turn-0→turn-1 reuse gap (median 460 s) is long enough that any grace
+wide enough to bridge it pins the dead documents and overflows the cache. SLRU backfires on one horn of this
+trap and our continuation-aware CAR is neutralized on the other. The practical implication is that effort on
+this regime should target the <i>prefill/context</i> bound — raising P, cross-request document sharing, or lossy
+context reduction — or a genuine <i>continuation predictor</i> (the only signal that could beat the barrier),
+rather than eviction or residency tuning. The methodological tools — the conversation-id tail decomposition, the
+two-bound goodput model, and the "live-set-fits-but-unobservable" framing — transfer to any tiered-cache
+tail-SLO setting where reuse is separated from production by a load-dependent gap.</p>
+
 <h2>References</h2>
 <ol style="font-size:.85em">
 <li>Strata: Hierarchical Context Caching for LLM Serving. arXiv:2508.18572.</li>

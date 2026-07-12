@@ -46,8 +46,11 @@ Granite-4, Nemotron-H, and our Qwen3.5-122B) the element-ratio crossover L*<sub>
 single-model artifact. We contribute the capacity law, a
 reuse-frontier diagnostic, a cross-scale 2×2 characterization, and a scoped impossibility corollary: no
 lossless, budget-respecting, non-capacity, non-classical cache mechanism can shift the curve (the only
-remaining axes — capacity and classical eviction — are budget-frozen and charter-excluded respectively). A
-candidate mechanism (Value-Density Mamba Retention) is a no-op by construction, a direct test of the law.
+remaining axes — capacity and classical eviction — are budget-frozen and charter-excluded respectively). We
+back the corollary with <b>measured nulls</b> in the claimed-empty region: host↔device utilization (&lt;10%)
+for the movement/overlap axes, and a direct prefix-aware (lpm) vs first-come scheduling test at the pressured
+scale (hit 0.650→0.646, neutral) for the ordering axis; a candidate recurrent-tier mechanism (VMR) is a
+no-op by construction, a direct test of the law.
 </div>
 
 <h2>1 Introduction</h2>
@@ -303,9 +306,9 @@ so transfer/overlap/layout mechanisms provably cannot shift the curve — no A/B
 The binding resource is prefill attention over reused long contexts, which is lossless-fixed. The one axis
 utilization does not settle — request <i>ordering</i> — we address by argument (with hit maximal and reuse
 near-monotone, per-request prefill cost is dominated by context length, so any cost-reducing reorder reduces
-to shortest-job-first, a charter-excluded classical policy that trades tail fairness, not total work) and, at
-intended scale, by a direct prefix-aware (<code>lpm</code>) vs <code>fcfs</code> test (§7 future work; our
-prediction is a null).</p>
+to shortest-job-first, a charter-excluded classical policy that trades tail fairness, not total work) and,
+decisively, by a direct prefix-aware (<code>lpm</code>) vs <code>fcfs</code> test at the pressured scale
+(§5.5), which is a measured null.</p>
 
 <p><b>5.4 Lossless, and why we attribute via stable counters.</b> All engine changes are pure counting /
 retention re-ordering; reuse is byte-exact (verified against the no-cache run). The headline p99-TTFT is a
@@ -318,6 +321,23 @@ statistical noise we can average away at n=3; it argues the SLO is set inside th
 therefore attribute via the <i>stable</i> counters — hit rate (±0.1 pp across runs), evict/load-back tokens,
 and host/mamba eviction counts — all of which show the recurrent-state and exclusive-tiering levers flat on
 the contract eval, and cleanly separated at intended scale (§5.1–5.2).</p>
+
+<p><b>5.5 Scheduling is not a lever — a measured null.</b> The one axis utilization alone does not settle is
+request <i>ordering</i>. We test it directly at the intended (pressured) scale by swapping the stock
+first-come scheduler for prefix-aware <b>longest-prefix-match (lpm)</b> scheduling — the natural
+"co-residency/locality" mechanism a reviewer would expect to help — holding everything else fixed:</p>
+<table>
+<tr><th>policy @ NUMP 1553, λ=5</th><th>hit rate</th><th>req/s</th><th>TTFT p50</th><th>TTFT p99</th><th>mamba host evict</th></tr>
+<tr><td>fcfs (stock)</td><td>0.6502</td><td>3.67</td><td>872 ms</td><td>25.9 s</td><td>~0</td></tr>
+<tr><td>lpm (prefix-aware)</td><td>0.6458</td><td>3.79</td><td>769 ms</td><td>27.4 s</td><td>~0</td></tr>
+</table>
+<p>lpm is a <b>measured null</b>: hit −0.4 pp (if anything slightly worse — reordering does not create reuse
+that capacity does not already permit), req/s +3.3%, p50/p99 mixed within the noise band of §5.4. This is the
+direct confirmation the impossibility needs on the one axis not covered by utilization: with hit
+capacity-bound and reuse near-monotone, reordering shifts <i>which</i> requests wait, not the total work, so
+it cannot move the curve. (It also re-confirms the capacity law orthogonally: the recurrent host pool still
+evicts essentially nothing under a completely different scheduler.) Together with the utilization nulls
+(§5.3), every axis of the claimed-empty region now carries either a measured or a resource-bound null.</p>
 
 <h2>6 Related work</h2>
 <p><b>Marconi</b> (MLSys'25): hybrid prefix caching with FLOP-efficiency eviction; GPU-HBM only, discards
@@ -340,9 +360,9 @@ never experiences. The p99 TTFT metric is warm-up- and burst-sensitive (≈6× c
 compare warm-to-warm and attribute via stable counters. The study is one model family (Qwen3.5 hybrid GDN)
 / one workload mix; the intended-scale (NUMP 1553) results are single-rate (λ=5) diagnostics, so the
 mechanism-space claim <i>at that scale</i> rests on the unconditional capacity law and the
-recurrent-never-evicts result (0 host evictions across 4 runs × 2 write-policies × 2 scales), not on the
-single-rate 2×2 alone — a full λ-sweep and a measured null for a non-capacity attention-KV mechanism at 1553
-are the natural next experiments. The over-provisioning of the recurrent host pool is partly an implementation artifact
+recurrent-never-evicts result (0 host evictions across 5 runs × 2 write-policies × 2 scales × 2 schedulers),
+not on the single-rate 2×2 alone; §5.5 adds a measured scheduling null (lpm) at 1553, and a full λ-sweep at
+1553 is the natural next experiment. The over-provisioning of the recurrent host pool is partly an implementation artifact
 (SGLang sizes it = <code>hicache_size</code>, i.e. 768 GB — equal to the KV host tier); a right-sized pool
 would still not bind: binding needs C·s &gt; H<sub>m</sub>, i.e. C &gt; H<sub>m</sub>/s ≈ 5333 concurrent cached
 sequences per rank at the stock 96 GB — but the node admits ≤270 running sequences and the entire workload has
@@ -370,7 +390,7 @@ quality-gated, not output-matched.</p>
 <h2>8 Reproducibility</h2>
 <p>Branch <code>evolve/lamport</code>. Baseline commit <code>a334877e5</code>; instrumentation+mechanism at
 HEAD. Runs: <code>runs/v0-baseline</code>, <code>runs/v1-instr</code> (instrumented baseline replicate),
-<code>runs/v2-writeback</code> (exclusive-tiering control), <code>runs/diag1553*</code> (pressured regime).
+<code>runs/v2-writeback</code> (exclusive-tiering control), <code>runs/diag1553*</code> (pressured regime, incl. <code>diag1553lpm</code> = prefix-aware scheduling).
 Instrumentation enabled via <code>LAMPORT_INSTR=1</code>; mechanism via <code>LAMPORT_MECH=vmr</code>.
 Capacity law reproducible on any HF config via <code>tools/capacity_law.py</code>. Fixed protocol: <code>.claude/skills/evaluation-sop/scripts/eval.sh</code> (λ∈{3,5,7,10}, NUMP 500, MAXC 256).</p>
 </body>

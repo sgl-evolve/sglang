@@ -637,3 +637,23 @@ sweep (per-rate p99 differs within the metastable high-λ tail variance, all ≫
 11174/10727; lru twice: 11254/10360; all ≫8s). W2 CLOSED (both full curves). W4 CLOSED (both full eval.sh runs).
 FINAL EMPIRICAL PICTURE: lru/car90/car300 all goodput@SLO=0 across the curve; slru HURTS. No causal lossless
 residency policy moves goodput@SLO — the bounded-impossibility is complete + empirically triangulated.
+
+## 37. ★★★ CAMPAIGN COMPLETE (2026-07-12 ~18:02) — bounded-impossibility, fully evidenced
+
+DELIVERABLE: submissions/hicache-goodput-limits/paper.html (0 pending todos) + reviews.md (self-PC-review, all
+6 weaknesses CLOSED/RESOLVED) + W&B curve (baseline + lru/slru/car90 λ=3 + v_lru_fullsweep + v_car90_fullsweep).
+
+RESULT — for a 2-tier HiCache under concurrent multi-turn long-context serving w/ tail SLO, goodput@SLO is NOT
+addressable by any causal lossless residency policy, despite 100% offline (Belady) headroom:
+- LIVENESS-bound not capacity: peak real-time live KV 9.3M = 0.87× cache → Belady≈0.
+- ONLINE-unrecoverable: liveness unobservable@turn-0 (live conv vs single-turn whale both hit_count 0) + turn-0→
+  turn-1 gap p50 460s ≫ the ~90s of turn-0 retention the cache affords → grace clipped → CAR≈LRU at ANY grace.
+- EMPIRICAL (full λ{3,5,7,10} same-node curves): lru goodput@SLO=0 (p99 10.4/28.5/25.7/36.7s, peak 4.31 req/s);
+  car90 ≈lru (peak 4.33); car300 ≈lru (no swamp — §34 correction); slru HURTS (hit 0.68→0.51). Replicated λ=3.
+- METHODOLOGY: chash conversation-id decomposition (a match-only classifier hides the headroom); two-bound model;
+  decision-time-observability barrier (distinct from classic Belady/competitive caching theory).
+
+CONTRIBUTION = a rigorous, trace-driven, self-reviewed BOUNDED-IMPOSSIBILITY + the novel online-recoverability
+barrier + honest negatives (SLRU-backfire, CAR-neutral) + the chash methodology. Top-venue-shaped negative result.
+Cron deleted, node released. Future (if invoked): VERIFIED-pool re-run (formality), or the continuation-predictor
+direction (the only signal that could beat the barrier — future work, scoped in §7/§9).

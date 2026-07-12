@@ -229,7 +229,8 @@ reorders requests, trading the head-of-line fairness of FCFS for cache locality 
 FCFS is often chosen to avoid. <b>Pending-aware retention gives FCFS the cache locality of prefix-aware
 scheduling without its reordering</b>: it changes <i>what is retained</i>, not <i>what runs next</i>. This also
 explains the §5 targeting ablation in one line: the rejected post-completion variant pins by <i>recency</i>
-(broad, recently-finished), i.e. exactly the ≈0%-capture set above, so it cannot help; only the queued
+(broad, recently-finished — including terminal conversations that never recur), spending the budget on
+essentially the ≈0%-capture set above rather than the at-risk queued set, so it cannot help; only the queued
 (risk-aligned) set can.</p>
 <p class="note"><b>Real-system confirmation (the decisive test).</b> The coupling predicts that re-running the
 frozen eval under <code>--schedule-policy lpm</code> should raise stock hit and shrink our mechanism's gain

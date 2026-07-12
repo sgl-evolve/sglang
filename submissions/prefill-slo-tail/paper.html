@@ -180,8 +180,9 @@ The benchmark driver posts <code>/flush_cache</code> at the start of every invoc
 invokes it once per rate. Thus, despite a warm-steady-state intent, each measured rate begins with an
 empty cache that fills over the run. Because documents are unique per conversation, a conversation's turn-0
 is always a cold miss <i>within a rate</i>; the observed ~0.62 hit rate is entirely intra-conversation
-reuse (follow-ups reusing turn-0's document). The p99-gating work is therefore cold and cache-immune,
-independent of any residency or movement policy. <span class="mut">[We report the empirical cold-ramp
+reuse (follow-ups reusing turn-0's document). The p99-gating work is therefore cold turn-0 prefill that a
+cache hit cannot shortcut — the tail's magnitude is set by prefill throughput, not residency/movement,
+which is why the cache moves the body but not the tail. <span class="mut">[We report the empirical cold-ramp
 signature from the baseline metrics in §5.]</span>
 </p>
 
@@ -323,8 +324,9 @@ write-back's 7.5 s but on the failing side of the threshold.</p>
 </svg>
 <figcaption><b>Figure 3.</b> Baseline rate sweep. <b>p50 TTFT is dead-flat at ~1.0 s across all loads</b> —
 the cache serves the median (warm follow-up) request perfectly and load-independently. <b>p99 TTFT
-explodes 14→42 s</b>, far above the 8 s SLO at <i>every</i> rate ⇒ <b>goodput@SLO = 0</b>. The cache
-optimizes the body of the distribution; the SLO tail is untouched.</figcaption>
+explodes 14→42 s</b> — the SLO tail. On this draw goodput@SLO = 0, but the λ=3 p99 is a coin-flip across
+replicates (§3.1). The cache stably optimizes the body (p50); the SLO tail is metastable, not reliably
+movable.</figcaption>
 </figure>
 
 <h3>5.2 Tail decomposition: the tail is cold, not slow-to-move or low-hit</h3>
@@ -338,8 +340,9 @@ transfer/compute-overlap direction is empirically dead here.</i></li>
 <li><b>Hit rate is not the bottleneck.</b> Hit rate is a stable ~0.66 and p50 is flat ~1 s across loads:
 warm follow-ups already resolve near-instantly. Raising hit rate cannot help requests that are already
 sub-second, and it cannot help the cold turn-0 documents that <i>are</i> the p99 (they are unique and
-seen for the first time). [Control: <code>--hicache-write-policy write_back</code>, which prior work shows
-raises hit ~+13 pp, yields goodput@SLO still 0 — <span class="mut">result pending, job queued</span>.]</li>
+seen for the first time). The write-back control confirms this: it raises hit +6 pp (0.67→0.73) and peak
+throughput +18%, yet its λ=3 p99 (7.5 s) is statistically indistinguishable from a stock replicate (8.0 s)
+— the higher hit lands on already-fast follow-ups, not the cold-prefill tail (§3.1).</li>
 <li><b>The tail is heavy-tailed cold prefill + serialization.</b> Calibrated prefill rate P ≈ 20.5 K
 tok/s. The measured p99 is <b>6–8× above</b> the perfect-cache P-K prediction (λ=3: 2.4 s predicted vs
 14.1 s measured), and the gap grows with λ — consistent with heavy-tailed cold turn-0 documents
@@ -350,7 +353,7 @@ the scheduler log: of 34,071 prefill batches, <b>65% are full 6144-token chunks<
 cold-document chunks, exactly the K·t process.</li>
 </ul>
 
-<h3>5.3 The tail has two cache-immune components (queue timeline)</h3>
+<h3>5.3 The tail: cold-start ramp + heavy-tailed cold prefill (queue timeline)</h3>
 <p>Per-batch scheduler timestamps + queue depth (#queue-req) decompose the p99 into two parts, <i>both</i>
 beyond reach of a lossless KV mechanism:</p>
 <ul>
@@ -364,10 +367,11 @@ per 2-minute window, roughly constant from start to finish (every conversation's
 document). Even in the warm phase (queue 2–8), the largest turn-0 documents take 3–9 s to prefill alone,
 so the tail floor stays near the 8 s SLO regardless of the ramp.</li>
 </ul>
-<p>Thus goodput@SLO = 0 combines a flush-induced cold-start ramp and a structural cold-prefill floor. We
-are explicit that the ramp inflates the <i>absolute</i> p99 (a warm-steady-state eval would be lower); the
-qualitative claim — the cache cannot move goodput@SLO — holds on the frozen eval because both components
-are lossless-irreducible, and holds asymptotically because the cold-prefill floor persists when warm.</p>
+<p>These two components make the p99 both large and <i>metastable</i>: the flush ramp is a transient whose
+severity depends on arrival phasing, and the cold-prefill floor is heavy-tailed — together they place the
+p99 in a wide band around the SLO, so which side of the deadline a given run lands on is largely chance
+(§3.1). The ramp inflates the absolute p99 (a warm-steady-state eval would be lower and likely less
+variable); testing that directly is the strongest remaining experiment (§7).</p>
 
 <h3>5.4 Honest controls & attribution</h3>
 <p>Peak output throughput rises monotonically (365→538 tok/s) — decode is <i>not</i> saturated; the knee
@@ -393,32 +397,30 @@ mixes them with decode to avoid decode stalls; we take this mechanism as given a
 for the tail — a single in-flight chunked request serializes concurrent heavy documents, giving the
 p99 ≈ K·t we exploit (§2.4). Our analytical frame is classical queueing theory (Kleinrock;
 Pollaczek–Khinchine; Harchol-Balter on tail-optimal scheduling), applied to the LLM prefill server; to our
-knowledge we are the first to use it to establish that goodput@SLO is cache-immune on a heavy-tailed
-cold-prefill workload.
+knowledge we are the first to show that the standard goodput@SLO metric is a metastable coin-flip on a
+heavy-tailed cold-prefill serving workload, and to separate the cache's stable gains from the noisy tail.
 </p>
 
 <h2>7 Limitations &amp; threats to validity</h2>
 <ul>
-<li><b>Per-rate cache flush.</b> The benchmark driver flushes the KV cache at the start of each rate, so
-each measured point begins cold and warms over its run; the warmup burst is likewise flushed. This inflates
-the absolute p99 via a cold-start transient. We argue the impossibility is nonetheless <i>structural</i>,
-not a flush artifact: turn-0 documents are unique and thus cold <i>throughout</i> a rate (not only during
-the transient), and the scheduler log shows 69% of all prefill batches are cold, not just the early ones.
-A true warm-steady-state eval (no per-rate flush) would lower the absolute p99 but leaves the tail set by
-the same unique cold turn-0 prefills; goodput@SLO would be bounded by cold-prefill throughput either way.
-We could not test this directly — the eval is frozen — and flag it as the primary threat to the absolute
-numbers (not to the qualitative claim).</li>
-<li><b>n = 1 per configuration.</b> goodput@SLO = 0 is robust (every p99 exceeds the SLO by 1.8–5.3×, far
-outside run-to-run noise), but per-rate p99 values are single runs; error bars from replicates are future
-work.</li>
+<li><b>Replicate count.</b> The coin-flip is established at n=2–3 stock runs (λ=3 p99 14.1 s vs 8.0 s [vs
+r3, in progress]); this is enough to show the metric straddles the SLO, but a full variance estimate
+(median-of-k, k≥5, per rate) is future work. Our claim is precisely that the metric is <i>too noisy</i>
+for single-run A/B — not a point estimate of goodput.</li>
+<li><b>Per-rate cache flush.</b> The harness flushes the cache before each rate, compounding the
+metastability by cold-starting every measured point (queue ramps to 90–184 before draining, §5.3). This
+inflates the absolute p99; a true warm-steady-state eval would lower it and likely narrow the coin-flip.
+We could not test the no-flush condition directly (the eval is frozen), so whether warm steady-state fully
+removes the variance or merely narrows it is open — the strongest remaining experiment (our §7
+recommendation is to run it).</li>
 <li><b>Model simplification.</b> The M/G/1 model is single-server and ignores decode contention, mixed
-prefill/decode batching, and the device/host KV split; it is a bound/explanatory tool, and it
-<i>under</i>-predicts the tail (reality is worse), so it does not overstate the impossibility.</li>
+prefill/decode batching, and the device/host KV split; it is an explanatory tool for the metastability,
+not a point predictor.</li>
 <li><b>Scope.</b> One model (Qwen3.5-122B, hybrid-Mamba), one hardware point (8×H100, 2-tier, no L3), one
-workload family. The result is explicitly bounded to heavy-tailed unique-cold-prefill workloads under a
-p99-tail SLO (§3 scope); it does not claim caches are useless (they are essential for stability and the
-median) nor that goodput@SLO is unimprovable by non-cache means (faster prefill kernels, more compute,
-disaggregation, or admission/rejection would move it — but those are not lossless KV-cache mechanisms).</li>
+workload family. The coin-flip is bounded to heavy-tailed cold-prefill workloads evaluated near the knee
+with a binary p99-SLO (§3 scope). We do <i>not</i> claim the cache is useless — it stably improves hit,
+median, and throughput — only that goodput@SLO cannot reliably resolve KV-cache differences on this
+benchmark.</li>
 </ul>
 
 <h2>8 Reproducibility</h2>

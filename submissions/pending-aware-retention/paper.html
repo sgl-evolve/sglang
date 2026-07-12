@@ -270,12 +270,20 @@ frequency features; we instead use an exact, workload-structural signal (in-flig
 
 <h2>7&nbsp;&nbsp;Limitations &amp; when it fails</h2>
 <ul>
-<li><b>Client-gap.</b> Server-queue pinning protects only the server-queue window; a prefix evicted during the
-client think/send gap before its turn arrives is not recovered (addressed by the post-completion extension).</li>
-<li><b>Capacity.</b> When the pending set exceeds L2, pinning can only protect a budgeted subset; the gain
-shrinks toward LRU (Fig.&nbsp;1, cap&lt;8M).</li>
-<li><b>Single-turn heavy workloads.</b> If most conversations are one-shot, there is little pending reuse to
-protect and the mechanism is a no-op (safe).</li>
+<li><b>Modest magnitude.</b> The realizable win is modest (hit +2.5&nbsp;pp, +2–6% throughput) — far below the
+oracle gap — because only the server-queue signal is safe to act on (see below). It is a real, robust,
+lossless improvement, not a large one.</li>
+<li><b>The client think-gap is not server-realizable.</b> A prefix evicted during the client's think/send gap
+(before its next turn reaches the server) cannot be protected by a server-queue signal. The obvious fix —
+retain every recently-finished conversation for a horizon — <i>hurts</i> (§5): it spends scarce L2 on
+conversations that are never reused. Closing this gap would require a session-level "will-continue" hint from
+the client/router that the serving layer does not have.</li>
+<li><b>Capacity.</b> When the pending set exceeds the L2 pin budget, only a subset is protected; the gain
+degrades gracefully to LRU (never worse — pinning is bounded and released on admission/abort).</li>
+<li><b>Single-turn / low-reuse workloads.</b> If most conversations are one-shot, there is little pending reuse
+to protect and the mechanism is a safe no-op.</li>
+<li><b>Metric.</b> On this workload goodput@SLO is variance-dominated at the boundary; we report it but rely on
+hit-rate/throughput. A different SLO or a less bursty workload could make goodput@SLO the cleaner headline.</li>
 </ul>
 
 <h2>8&nbsp;&nbsp;Reproducibility</h2>

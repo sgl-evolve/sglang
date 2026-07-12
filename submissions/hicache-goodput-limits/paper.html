@@ -57,8 +57,8 @@ retention (grace 90 s = 0.85× cache); a larger grace is simply clipped by finit
 means a turn-0 is evicted long before its first reuse under <i>any</i> grace. Consequently our <b>CAR
 (continuation-aware residency)</b> completion-grace policy ≈ LRU across the whole feasible grace range — measured
 at grace 90 s <i>and</i> 300 s (goodput 0, hit unchanged) — while the textbook <b>SLRU</b> (evict all unproven,
-the grace→∞ limit) <b>backfires</b> (hit 0.68→0.51). <span class="todo">A
-larger-grace swamp point and certified-node confirmation are in progress.</span> A
+the grace→∞ limit) <b>backfires</b> (hit 0.68→0.51). <span class="todo">Certified-node confirmation and full
+rate curves are in progress.</span> A
 methodological finding: a match-fraction classifier conflates evicted turns with cold documents and hides
 this headroom entirely — conversation identity is required to see it.
 </div>

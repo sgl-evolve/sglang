@@ -131,6 +131,10 @@ Max ~6 concurrent pins at λ=3 (shallow queue) yet cumulative hit gain is real. 
 dominated) — so v1 helps median/throughput, not the p99 tail; **pc (post-completion) expected to add more via
 client-gap coverage**. Awaiting v1_b λ=5/7/10 (hit gain may grow with load), v1_c (n=2), pc_b/pc_c.
 
+**★ v1_b λ=5** (vs stock_b@5): hit .6643→**.6795 (+1.5pp)**, p99 27.0→**23.6s (−12.5%)**, req/s 3.83→**4.02 (+5%)**.
+⇒ v1's systems impact (p99 −12.5%, throughput +5%) GROWS with load (deeper queue → more pins); hit gain ~1.5-2.5pp
+across rates. p99 still ≫8s at λ=5 (goodput SLO decided at λ=3). **pc scope = 70 pins (vs v1's 6) ⇒ pc read next.**
+
 **★ n=2 CONFIRMED (v1_c on 1-2, λ=3):** hit 0.6734→**0.7011 (+2.8pp)**, p50 692→**530ms (−23%)**, p99
 6286→8031ms (+28%). So across n=2: **hit +2.2/+2.8pp (robust ~+2.5pp), p50 −28/−23% (robust ~−25%), p99
 −2%/+28% (NOISE — coin-flip confirmed).** ⇒ Reliable contribution = hit + median; p99/goodput variance-dominated

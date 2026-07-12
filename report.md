@@ -109,10 +109,23 @@ multiturn regime*. At tight capacity the working set genuinely overflows and pro
    bounded horizon to also cover the *client* think/send gap (server-queue pinning only covers the
    server-queue window). Ablate the increment. Possibly + terminal-prefix write-admission.
 
+## Mechanism code (one version, env-configured — commit d10eabb5e)
+Combined engine change in `managers/scheduler.py` (~110 LOC). Env toggles (sbatch snapshots env, so
+configs queue independently):
+- `VALIANT_PIN_ENABLE` (default 1): master. `0` = stock behavior (dormant code) → the same-code control.
+- `VALIANT_PC_ENABLE` (default 0): post-completion extension. `0` = queued-only (v1); `1` = +post-completion (v2).
+- `VALIANT_PIN_FRACTION` (default 0.5): host-pin token budget = fraction × L2.
+- `VALIANT_PC_HORIZON_S` (default 20): post-completion pin lifetime after admission.
+
+Note: ondem-3 baseline (19434) runs the **pristine** commit a334877e5 (truly stock); v1 (19443) runs the
+combined code with pin on / pc off (= queued-only). Clean same-node A/B on ondem-3.
+
 ## Versions
-| ver | tag | hypothesis | change | goodput@SLO vs base | lossless | takeaway |
-|-----|-----|-----------|--------|---------------------|----------|----------|
-| v0_official | baseline | — | stock 2-tier | (reference; sweep running, job 19434) | — | logged to W&B |
+| ver | tag | config | goodput@SLO vs base | lossless | takeaway |
+|-----|-----|--------|---------------------|----------|----------|
+| v0_official | baseline | stock single-point | (W&B reference point) | — | logged |
+| v0-baseline | baseline | pristine sweep (job 19434) | running | — | calibrates real curve |
+| v1-pinpend | mechanism | pin on, pc off (queued-only) | queued (19443) | expect yes | — |
 
 ## Formal submissions
 _(none yet)_

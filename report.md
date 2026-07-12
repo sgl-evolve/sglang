@@ -380,3 +380,18 @@ do long-conversation full-evictions (accumulated 40-190K) grow into the ≥40K b
 If yes ⇒ cache-affectable; if the tail stays genuine-cold-docs ⇒ corrected bounded-negative confirmed.
 The correction MATTERS methodologically (separates avoidable-evicted from irreducible-cold) even if the
 verdict lands negative — it's the right way to make the claim.
+
+## 21. ★ TREND REVERSAL as pressure builds (v0b chash, early λ=3) — verdict trending CACHE-AFFECTABLE
+
+As λ=3 pressure begins (hit 0.82→0.79, still ramping to ~0.55 steady-state), the corrected chash
+classification SHIFTS toward avoidable recompute:
+- warmup (under-pressure): EVICTED 8% of work, 0% of ≥40K big/tail prefills.
+- early λ=3: EVICTED **23% of work**, and **20% of ≥40K big prefills are EVICTED** (avoidable) — evicted
+  later-turns are STARTING to reach SLO-breaching size and enter the tail.
+⇒ The flawed match-only analysis (retracted §18) would have hidden this (called them "COLD"); the chash fix
+reveals avoidable recompute GROWING under pressure and entering the tail. If steady-state confirms a large
+EVICTED-in-tail share ⇒ **CACHE-AFFECTABLE → mechanism-viable** (a residency policy protecting proven
+multi-turn convs would cut those evictions → lower p99 → higher goodput). This REVERSES the earlier
+bounded-negative lean. Waiting for λ=3 steady-state (hit~0.55, ~15 min) to confirm the tail EVICTED fraction.
+PLAN if confirmed: screen --radix-eviction-policy slru (protect hit_count>=1 proven convs; no code) as the
+first mechanism test; if it moves goodput, design a novel continuation/cost-aware residency to beat it.

@@ -563,3 +563,17 @@ Largest grace that FITS (~90s, 0.85x) covers only 14% of gaps → behaves ≈lru
 grace≥460 → 2.6x swamp → evicts live KV → fails. ~5× gap between feasible-grace-ceiling (~90-120s) and
 gap-floor (460s). NO grace both covers & fits ⇒ grace-trap is QUANTITATIVE + airtight. ★ PREDICTS car90 (grace
 90, fits 0.85x) ≈ lru (goodput 0, p99~11s) — car90 is the CONFIRMING measurement of this predicted horn.
+
+## 32. ★★ car90 λ=3 RESULT — PREDICTION CONFIRMED: CAR (grace 90) ≈ LRU (small-grace horn)
+
+| policy (λ=3, same node nodeset-0) | req/s | p50 TTFT | p99 TTFT | hit | goodput@SLO |
+|-----------------------------------|-------|----------|----------|-----|-------------|
+| lru                               | 2.89  | 876ms    | 11254ms  | 0.679 | 0 |
+| slru (protect proven)             | 2.78  | 1498ms   | 10091ms  | 0.507 | 0 |
+| **car (grace 90)**                | 2.97  | 722ms    | **11174ms** | **0.6792** | **0** |
+
+★ CAR grace-90 ≈ LRU EXACTLY: p99 11174 vs 11254ms (−0.7%, noise), hit 0.6792 vs 0.679 (identical), p50 slightly
+better (722 vs 876). Unlike SLRU, CAR does NOT hurt (hit intact). goodput@SLO=0 (p99≫8s). EXACTLY the §4.2/§31
+prediction: grace 90 FITS cache (0.85x) but covers only 14% of the 460s turn0->turn1 gaps → no measurable effect
+→ degrades to LRU. This is the SMALL-GRACE horn of the grace-trap, empirically confirmed. Next: car300 (grace
+300, 1.97x swamp) = the LARGE-GRACE horn (predicted to HURT). Both horns → the bounded-impossibility is airtight.

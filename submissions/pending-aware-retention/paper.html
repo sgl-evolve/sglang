@@ -41,13 +41,16 @@ its queue</i> — a guaranteed-imminent-reuse signal — and releases it at admi
 co-design, not a replacement policy or config flag. On the frozen 122B rate-sweep protocol it delivers a
 modest but <b>robust, lossless</b> win: <b>hit&nbsp;+2.5&nbsp;pp</b> at the operating rate and
 <b>+2–6% peak throughput</b> under load (n=2, same-node), reproducibly. Two findings sharpen the picture.
-(1) <b>Targeting is everything</b>: the natural extension — retaining <i>every</i> recently-finished
-conversation for a horizon to also cover the client think-gap — <i>hurts</i>, because it spends L2 on
-conversations that are never reused; the value is the scheduler's pending set, not recency. (2) The full
-Bélády gap is <b>not server-realizable</b>: reuse <i>timing</i> (the client think-gap) is unknowable
-server-side, so only the queued signal is safe to act on. We further show the protocol's headline goodput@SLO
-is <b>variance-dominated at the SLO boundary</b> (identical stock runs flip goodput 0↔3.0 across nodes), so
-recompute/hit-rate is the sound way to measure cache mechanisms on this workload.
+(1) <b>Targeting is everything, and the target is narrow</b>: the natural extension — retaining <i>every</i>
+recently-finished conversation for a horizon to also cover the client think-gap — does <i>not</i> help and
+mildly hurts. Not because continuation is unpredictable (it is 78% predictable from turn count), but because
+broad retention merely <i>displaces</i> a working set LRU already keeps well; the only exploitable failure of
+LRU is its eviction of the narrow, provably-at-risk set of continuations sitting in the scheduler's queue.
+(2) Consequently the <b>realizable</b> gain over LRU is small (+2.5&nbsp;pp), far below an idealized offline
+oracle (~+7&nbsp;pp) — i.e. LRU is near-optimal for concurrent multiturn <i>except</i> this one narrow,
+scheduler-visible failure, which our mechanism removes losslessly. We further show the protocol's headline
+goodput@SLO is <b>variance-dominated at the SLO boundary</b> (identical stock runs flip goodput 0↔3.0 across
+nodes), so recompute/hit-rate is the sound way to measure cache mechanisms on this workload.
 </div>
 
 <h2>1&nbsp;&nbsp;Introduction</h2>
@@ -72,11 +75,12 @@ an oracle policy would remove most of it — a large gap the LRU≈Bélády intu
 <li><b>Pending-aware KV retention</b>: couple L2 retention to the scheduler's pending-request set (a
 guaranteed-imminent-reuse signal). Realizable, non-oracle, capacity-bounded, lossless. It gives a
 <b>modest but robust</b> win: hit +2.5&nbsp;pp and +2–6% peak throughput (n=2, same-node).</li>
-<li>A <b>targeting ablation</b>: extending retention to <i>all</i> recently-finished conversations (to cover
-the client think-gap) <i>hurts</i> — it wastes L2 on never-reused conversations. The scheduler's pending set,
-not recency, is the signal that matters.</li>
-<li>A <b>realizability bound</b>: the oracle gap is not fully server-realizable because reuse timing (the
-client think-gap) is unknowable server-side; the queued signal captures the safely-realizable part.</li>
+<li>A <b>targeting ablation + a realizability characterization</b>: extending retention to <i>all</i>
+recently-finished conversations does not beat LRU — not because continuation is unpredictable (78% predictable)
+but because broad retention only <i>displaces</i> a working set LRU already keeps. LRU is near-optimal for
+concurrent multiturn <i>except</i> its eviction of queued continuations; the realizable gain (+2.5&nbsp;pp) is
+much smaller than an idealized offline oracle (~+7&nbsp;pp). The scheduler's pending set, not broad recency, is
+the only exploitable signal.</li>
 <li>A <b>measurement finding</b>: goodput@SLO is variance-dominated at the SLO boundary on this workload
 (identical stock runs flip goodput 0↔3.0 across nodes); hit-rate/recompute is the robust metric.</li>
 </ul>
@@ -168,8 +172,12 @@ scheduler-visible "pending" signal recovers it.</figcaption>
 at nominal capacity 10.7M the effective reuse-cache is smaller because ~255 concurrently-running requests
 occupy L1 (measured: L1 usage ≈ 0.95–0.97 under load), placing the operating point near the +11&nbsp;pp knee.
 Second, the winning signal is <i>free</i>: the scheduler already tracks which conversations have a waiting
-request. protect-pending equals oracle admission-of-terminals in this workload because a conversation "with a
-pending turn" is exactly a conversation "with future reuse."</p>
+request.</p>
+<p class="note"><b>This offline number is an optimistic upper bound.</b> It assumes idealized targeting and no
+displacement of the rest of the working set. On the real system (§5) LRU is higher and the realized gain is
+<b>+2.5&nbsp;pp</b>, not +7–11&nbsp;pp: LRU already retains most reused-soon KV, so broad retention only
+reshuffles it, and only the narrow provably-at-risk queued set is worth protecting. We report the offline
+figure as motivation that a gap exists, and the +2.5&nbsp;pp as what is realizable.</p>
 
 <h2>3&nbsp;&nbsp;Design</h2>
 <p><b>Mechanism.</b> While a request waits in the scheduler's queue, pin the host (L2) residency of its matched
@@ -265,9 +273,12 @@ flat (589→592 tok/s) — the mechanism moves prefill, not the decode ceiling, 
 <p><b>Targeting ablation — the post-completion extension hurts.</b> Extending retention to <i>every</i>
 recently-finished conversation for a 20 s horizon (to cover the client think-gap) pins ~15× more prefixes
 (≈70–99 vs ≤6 for queued-only) but delivers <b>no hit gain</b>: hit@λ3 = 0.671 (≈ stock 0.676, and below v1's
-0.701). The broad policy spends L2 on conversations that are never reused, cancelling the client-gap benefit.
-The scheduler's <i>pending set</i> — guaranteed imminent reuse — is the signal that matters, not recency.
-<span class="note">(n=1 here; n=2 same-node confirmation in progress.)</span></p>
+0.701). This is not a prediction failure — continuation is 78% predictable from turn count (only 22% of
+finished turns are terminal). Rather, broad retention <i>displaces</i> a working set LRU already keeps well:
+LRU retains most reused-soon KV, so reserving capacity for all recent conversations merely reshuffles it and,
+under the pin budget, can evict other useful KV — netting ≤0. Only the narrow set that LRU provably mishandles
+— continuations already waiting in the scheduler's queue — is worth protecting. The signal that matters is the
+<i>pending set</i>, not broad recency. <span class="note">(pc_e n=1; n=2 same-node confirmation in progress.)</span></p>
 
 <p><b>goodput@SLO is not a reliable single-run headline.</b> v1 reduced λ=3 p99 by 2% on node 0-3 (8.13→7.98 s),
 which crossed the 8 s SLO (goodput 0→3.02); on node 1-2 the stock p99 was a "lucky" 6.3 s and v1's 8.0 s read

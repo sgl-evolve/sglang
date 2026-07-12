@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>The Goodput@SLO Tail is Cold: Why No Lossless KV-Cache Mechanism Moves the Knee (kleinrock, DRAFT)</title>
+<title>goodput@SLO is a Coin-Flip: Cold-Start Metastability Undermines Tail-SLO Evaluation of KV Caches (kleinrock, DRAFT)</title>
 <style>
   :root{--ink:#1a1a1a;--mut:#666;--acc:#7a2020;--bg:#fff;--box:#f6f4f0;--line:#ddd}
   html{font-size:16px}
@@ -28,33 +28,31 @@
 </head>
 <body>
 
-<h1>The Goodput@SLO Tail is Cold: Why No Lossless KV-Cache Mechanism Moves the Knee in Tiered LLM Serving</h1>
-<div class="sub"><b>kleinrock</b> · sglang KV-cache architecture (v0.31) · <i>DRAFT — write-back control pending</i></div>
+<h1>goodput@SLO is a Coin-Flip: Cold-Start Metastability Undermines Tail-SLO Evaluation of KV Caches</h1>
+<div class="sub"><b>kleinrock</b> · sglang KV-cache architecture (v0.31) · <i>DRAFT — n=3 replicates in progress</i></div>
 
 <div class="abstract">
 <b>Abstract.</b> Tiered KV caching (GPU HBM + host DRAM) is widely credited with improving LLM serving
-under load, and prior systems optimize hit rate, eviction, and cross-tier movement. We ask a sharper
-question for <i>open-loop, SLO-constrained</i> serving: does a better KV cache raise <b>goodput@SLO</b> —
-the maximum request rate sustainable under a p99 TTFT deadline? Using a real Mooncake-style 1:1:1 workload
-(ShareGPT+LEval+LooGLE, 1553 conversations, 7163 turns) on Qwen3.5-122B, we show the workload is an
-<b>extreme compute-to-context asymmetry</b>: a conversation's first turn prefills a heavy-tailed document
-(median 16.7K, p99 65.6K, max 192.5K tokens) while its follow-up turns prefill only ~16 new tokens atop a
-huge resident prefix. We give a trace-driven Pollaczek–Khinchine analysis showing that goodput@SLO is a
-<b>queueing-tail</b> quantity governed by the second moment of prefill service time, which is dominated by
-<b>cold, unique, first-turn document prefills</b>. These are cache-immune. Measuring stock sglang on the
-frozen rate sweep, we find <b>goodput@SLO = 0</b>: p99 TTFT is 14–42 s across λ∈{3,5,7,10}, all far above
-the 8 s SLO — while <b>p50 TTFT is dead-flat at ~1 s</b>, i.e. the cache serves the median perfectly and
-load-independently. A tail decomposition shows the two cache-addressable causes are both absent: L2→L1
-load-back is already fast (p99 ≤ 8.6 ms) and hit rate is a healthy 0.66; the p99 is instead two
-cache-immune components — a per-rate cold-start queue ramp (the harness flushes between rates) and the
-serialized prefill of heavy-tailed cold documents (65 K–192 K tokens) that persists even warm. We prove a
-<b>bounded impossibility</b>: no
-lossless KV mechanism — hit rate, eviction, placement, or movement — can raise goodput@SLO on this
-benchmark class, because every lossless lever is inapplicable to unique cold prefills, oracle-limited to
-LRU, or (for tail-optimal scheduling) counterproductive. The contribution is a queueing-theoretic result +
-methodology explaining a family of published negative results: <b>the KV cache is a mean/median optimizer,
-not an SLO-tail optimizer</b>, and goodput@SLO is the wrong lens for cache mechanisms on heavy-tailed
-cold-prefill workloads.
+under load, and the community increasingly scores it with <b>goodput@SLO</b> — the maximum request rate
+sustaining a p99 TTFT deadline under an open-loop rate sweep. We show, on a real Mooncake-style 1:1:1
+workload (ShareGPT+LEval+LooGLE, 1553 conversations, 7163 turns, Qwen3.5-122B), that <b>goodput@SLO on
+this benchmark is not a reliably measurable quantity: it is a cold-start coin-flip</b>. The workload is an
+extreme compute-to-context asymmetry — a conversation's first turn prefills a heavy-tailed document
+(median 16.7K, p99 65.6K, max 192.5K tokens) while follow-ups prefill ~16 new tokens — so the p99 TTFT is
+a bimodal, metastable queueing tail that <b>straddles the 8 s SLO</b>. Across replicate stock runs, λ=3 p99
+TTFT is <b>14.1 s vs 8.0 s</b> (identical config), landing on opposite sides of the deadline; the binary
+goodput metric therefore flips on run-to-run noise. A write-back configuration that appears to lift
+goodput@SLO from 0 to 3 is an artifact of this variance — its λ=3 p99 (7.5 s) differs from a stock
+replicate (8.0 s) by under 500 ms across the 8 s threshold — even though write-back's <i>stable</i> effects
+are real (hit rate +6 pp, peak throughput +18%). We give a trace-driven Pollaczek–Khinchine account of why
+the tail is metastable, and show the effect is compounded by the harness flushing the cache before each
+rate (defeating the eval's intended warm-steady-state design). Contributions: (1) <b>a measurement result</b>
+— goodput@SLO is unreliable for single-run KV-cache A/B on heavy-tailed cold-prefill workloads, a pitfall
+that explains a family of null and contradictory results; (2) <b>a queueing characterization</b> of the
+metastability and the SLO-straddling tail; (3) <b>a methodology</b> — warm steady-state (no per-rate
+flush), median-of-k, and reporting the cache's <i>stable</i> effects (hit, mean/p50, peak throughput)
+rather than the variance-dominated tail metric. The KV cache reliably optimizes the body of the latency
+distribution; the SLO tail it does not reliably move is the wrong lens for evaluating it.
 </div>
 
 <h2>1 Introduction</h2>

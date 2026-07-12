@@ -416,3 +416,17 @@ table+para), §4, §7 bullet-1 (future→demonstrated), §8. Dropped DRAFT. Comm
 refs valid, numbers vs raw medk.csv/summary.json.
 PAPER NOW COMPLETE: n=3 cross-node + K=5 same-node coin-flip + queueing model + warmdiag node-controlled
 flush + metastable-failures grounding + methodology. All three planned experiments done & integrated.
+
+### BOLDER LINE — write_back same-node median-of-k (methodology validation), job 19549 (2026-07-12 ~19:40Z)
+The paper RECOMMENDS median-of-k but doesn't VALIDATE it resolves a mechanism. medk_wb (tools/medk_wb_eval.sh,
+= medk_eval.sh + --hicache-write-policy write_back, lossless config control; runs/v0-medk-wb/) runs K=5
+write_back λ=3 draws same-node, to compare vs medk (stock K=5, ondem-3 median 9.41s, 2/5 pass). Outcomes,
+all honest+integrable:
+ (A) wb median p99 distinguishably < stock (more passes) → same-node median-of-k RESOLVES write_back where
+     single-run couldn't → METHODOLOGY VALIDATED (constructive positive: elevates paper from recommend→validate).
+ (B) wb median ≈ stock (both straddle) → even K=5 median-of-k can't resolve write_back on goodput → its value
+     is stable metrics only (strengthens "report stable metrics, not the tail").
+ (C) wb ALSO spans a wide band straddling SLO → write_back is ALSO a coin-flip → metric broken for ALL
+     configs (node-independent finding, powerful confirmation).
+Fair exclusive sbatch (any certified node, durable). If it lands on ondem-3 = clean same-node A/B with medk;
+else wb's own same-node distribution still yields (C). write_back lossless (write timing, not KV content).

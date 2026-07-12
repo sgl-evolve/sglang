@@ -459,3 +459,17 @@ CORRECTION: my §23 "over-correction" to 29%/18% was itself a mid-run partial ar
 **Mechanism target (crisp):** cut the evicted recompute (63% of tail) to bring λ=3 p99 from 11.25s under 8s →
 goodput 0 → 2.89+ (a categorical win). OPEN: does removing evicted turns bring p99<8s, or does the 37%
 cold-doc floor keep p99>8s? The slru/car90 screens (next in pipeline) answer it directly.
+
+## 26. ★ MECHANISM RESULT #1: SLRU HURTS (motivates CAR's turn-0 probation)
+
+λ=3 equal-pressure comparison (nodeset-0 screening):
+| policy | hit | p50 TTFT | p99 TTFT | EVICTED %work | EVICTED %of≥40K-tail | goodput@SLO |
+|--------|-----|----------|----------|---------------|----------------------|-------------|
+| lru    | 0.679 | 876ms  | 11254ms | 58% | 63% | 0 |
+| slru   | 0.507 | 1498ms | 10091ms | **73%** | **83%** | 0 |
+SLRU (protect hit_count>=1) is WORSE: hit 0.68→0.51, p50 876→1498ms, EVICTED 58→73%work / 63→83% tail.
+WHY: protecting "proven" convs evicts UNPROVEN turn-0s more aggressively — but turn-0s are the ENTRY to
+multi-turn reuse (61% continue), so sacrificing them creates MORE evicted turns. Confirms prior campaigns'
+"SLRU/LFU neutral-or-harmful" AND directly motivates CAR: protect turn-0s with a grace PROBATION (capture the
+turn-0->turn-1 first reuse) while still protecting proven convs. Both lru & slru goodput@SLO=0 (p99>8s at λ=3);
+the open question is whether CAR (3-segment) can pull p99<8s. Screening car90 next.

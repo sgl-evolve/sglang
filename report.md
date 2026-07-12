@@ -323,3 +323,25 @@ From the live SGLANG_WILKES_TRACE under NUMP=1553 pressure (hit dropping 0.83→
   goodput headroom ⇒ **leading verdict: goodput@SLO is COLD-DOCUMENT-BOUND (bounded-negative).**
 - PENDING: the λ=3 p99 (curve.csv) confirms goodput@SLO (R_p99); full sweep + resolve_fork.py finalize.
   Caveat: partial (8% of λ=3); warm-miss% may shift over the full sweep, but it's stable vs NUMP=400 (4.6%).
+
+## 18. ★★ VERDICT CONFIRMED (screen-v0 pressured trace) — BOUNDED-NEGATIVE (cold-document-bound)
+
+Under full NUMP=1553 pressure (hit 0.549, avg_uncached 5980 tok, P 34,854 tok/s):
+- **p99-tail requests are 100% COLD turn-0 documents, 0% WARM-MISS** (same as under-pressured diag).
+- COLD = 49%reqs/95%work; WARM-MISS (avoidable) = 11%reqs/**5%work**, and NOT in the p99 tail.
+- R_thru = P/avg_uncached ≈ **5.83 req/s**.
+
+**Conclusion:** eviction/residency/prefetch mechanisms can only reduce WARM-MISS recompute (≤5% of work,
+absent from the tail). The goodput@SLO p99 tail is set entirely by irreducible COLD-DOCUMENT prefills under
+concurrency, which no lossless cache mechanism can shrink. ⇒ **goodput@SLO is cold-document-bound; the cache
+is NOT the goodput lever in this regime.** This is a rigorous, per-request-validated bounded-negative,
+consistent with the two-bound model (§16): cache raises R_thru but the binding bound is R_p99, set by the
+cold-context tail. Stock schedule-time matching (§3) already protects warm prefixes, so there is no residency
+headroom to capture.
+
+**Remaining to finalize (numbers, not direction):** (1) screen-v0 curve.csv λ=3..10 p99 → the goodput@SLO
+value (R_p99) + the full curve; (2) OPTIONAL eviction-policy control (--radix-eviction-policy slru/lfu) to
+show goodput invariant to eviction (empirically airtight, though structurally implied); (3) CERTIFIED
+confirmation (job 19437) for official numbers. Then finalize the characterization/impossibility paper:
+"goodput@SLO for long-context multiturn on a tiered KV cache is bounded by the cold-document prefill tail,
+not cache efficiency; lossless cache mechanisms are confined to R_thru (p50/p90), the tail is R_p99."

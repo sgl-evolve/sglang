@@ -550,3 +550,16 @@ causal residency — DISTINCT from the textbook "eviction≈Belady, dead under i
 out-of-order with 100% liveness-headroom, yet still online-unrecoverable because liveness is unobservable at the
 decision point + the reuse gap forces all-or-nothing under capacity. Top-venue-worthy as stated. car90 (grace 90,
 =small-grace point ≈lru) confirms one end; a large-grace run (swamp) would bracket the other. HONEST + strong.
+
+## 31. ★ GRACE-TRAP QUANTIFIED (airtight, ~5× feasible-vs-needed gap) + predicts car90≈lru
+
+Peak grace-forced resident KV (all convs touched in trailing G-sec window, since grace can't tell live/dead):
+  grace  90s:  9.0M = 0.85x cap  FITS  (covers 14% of turn0->turn1 gaps)
+  grace 180s: 14.9M = 1.39x cap  SWAMP (20%)
+  grace 300s: 21.1M = 1.97x cap  SWAMP (24%)
+  grace 460s: 27.7M = 2.59x cap  SWAMP (50% — the median gap)
+  grace 600s: 34.4M = 3.21x cap  SWAMP
+Largest grace that FITS (~90s, 0.85x) covers only 14% of gaps → behaves ≈lru. Covering the p50 460s gap needs
+grace≥460 → 2.6x swamp → evicts live KV → fails. ~5× gap between feasible-grace-ceiling (~90-120s) and
+gap-floor (460s). NO grace both covers & fits ⇒ grace-trap is QUANTITATIVE + airtight. ★ PREDICTS car90 (grace
+90, fits 0.85x) ≈ lru (goodput 0, p99~11s) — car90 is the CONFIRMING measurement of this predicted horn.

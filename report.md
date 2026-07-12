@@ -3,6 +3,35 @@
 Researcher: **base** (independent replicate). Branch `evolve/base`. Clone base commit `a334877e5`.
 W&B: project `sgl-evolve`, run `base` (group v0.31).
 
+## ABSTRACT (final, for a skeptical maintainer)
+On sglang's 2-tier HiCache (L1 GPU + L2 768 GB host, hybrid-Mamba Qwen3.5-122B, active cache =
+`UnifiedRadixCache`), under the v0.31 full-decode Poisson rate-sweep with a goodput@SLO (p99 TTFT ≤ 8 s) headline:
+1. **goodput@SLO is decode-bound and NOT KV-addressable.** On CERTIFIED nodes stock already clears the healthy
+   rate λ=3 (p99 ~6.5 s ⇒ goodput 3.02); λ=5 is past the decode knee and its p99 is a **mechanism-independent
+   coin-flip** (same node: 10.3 s vs 20.6 s across runs; the higher-hit run was *worse*). So goodput = 3.02 for
+   stock AND every mechanism. The p99 tail is decode-slot saturation (256 concurrency × long decodes), shown
+   mechanistically from batch composition (prefills are short/cache-served, #queue-req≈0, the tail is
+   admission-wait). Warm-up fixed the v0.3 cold-start coin-flip only at λ=3, not the near-knee λ=5.
+2. **A real lossless WIN on the stable throughput dimension:** capacity de-duplication of the host tier
+   (write_back-family, incl. my exclusive-tiering engine code) **raises the sustained decode-throughput ceiling
+   +8 % (fast node) to +18 % (prefill-contended node)**, monotonic with hit, same-node-attributable — because
+   fewer cache misses mean less prefill recompute competing with decode for the GPU. **This contradicts the
+   protocol's assumption that a cache mechanism cannot raise peak decode throughput.** It does not move the
+   goodput@SLO headline (λ=5 stays saturated), which is the honest attribution.
+3. **Novel engine mechanism (lossless, config-independent):** *exclusive device-XOR-host tiering* —
+   free the host copy once an H→D load-back completes (no write-policy provides this), + write-back-on-evict
+   so nothing is lost. +1.7 pp hit / +3 % throughput over the write_back config (commit e7d1eec41).
+4. **Honest negatives:** cost-aware host retention (drop short/cheap contexts) LOWERS hit −3.3 pp, tail-neutral
+   (the λ=3 tail is capacity-floored) — negative (a90cb79ce). And a self-correction: my initial "goodput 0→3
+   win" was a slow-node (0-1, ~1.8× slower) artifact, retracted after certified runs.
+5. **Methodology contribution:** on this metric, certified nodes + replication are mandatory; single-run /
+   single-node λ=5 A/Bs are void (variance swamps any mechanism effect at the knee).
+
+Deliverable = this rigorous characterization + mechanistic decode-slot diagnosis + a lossless throughput-ceiling
+win + a novel lossless exclusive-tiering mechanism + honest negatives + the methodology lesson. Commits on
+`evolve/base` (local): 4079f06c1, e7d1eec41, a90cb79ce, 12b8be214, d99f73c02, 8747bbcc5, 233f82f1c. W&B run
+`base`: on-contract certified points v0-cert/v-wb-cert/v1x-cert (all goodput 3.02); uncertified points node-tagged.
+
 ## ★ REAL LOSSLESS WIN (stable metric): capacity de-dup RAISES the decode throughput ceiling +8–18%
 The goodput@SLO headline is decode-knee-capped + λ=5-coin-flip (below), BUT **peak sustained throughput**
 (measured at saturation ⇒ STABLE, not variance-dominated) is a clean, same-node, mechanism-attributable win:

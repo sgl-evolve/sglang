@@ -25,13 +25,15 @@
 <h1>What Bounds Goodput@SLO in a Two-Tier HiCache under Concurrent Multi-Turn Long-Context Serving?</h1>
 <div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>DRAFT v0.1</b></div>
 
-<p class="todo">DRAFT — verdict RESOLVED to CACHE-AFFECTABLE (mechanism). A conversation-id-aware (chash)
-pressured run shows a substantial fraction (steady-state ≈20-30% of prefill work; ≈18% of the ≥40K-tok tail;
-⟨settling, full-sweep pending⟩) is avoidable recompute from EVICTED proven multi-turn convs. So the cache CAN move
-goodput; a residency mechanism that protects proven convs (evicting single-turn "whales" first) is the lever.
-The mechanism's goodput gain is being measured (eviction-policy screens + a novel continuation-aware policy).
-NOTE: an earlier match-only classifier wrongly labeled evicted turns as cold documents (retracted); the chash
-correction was decisive. Stable: two-bound model (§4), workload characterization (§2), engine analysis (§3).</p>
+<p class="todo">DRAFT — the p99 tail is dominated by AVOIDABLE recompute: a conversation-id-aware (chash) pressured
+λ=3 run shows <b>58% of prefill work and 63% of the ≥40K-tok SLO-breaching tail is evicted proven multi-turn
+convs</b> (vs 37% irreducible cold docs). So the bottleneck is cache-addressable <i>in principle</i>. But the
+textbook fix backfires: <b>SLRU (protect proven) HURT</b> (hit 0.68→0.51, EVICTED 58→73% work) — protecting
+hit_count≥1 evicts turn-0 <i>entry points</i> first, destroying the reuse it meant to protect. This motivates
+CAR (continuation-aware residency: a completion-grace probation for turn-0s). Whether CAR actually moves
+goodput@SLO is being measured (car90, job 19480, same-node). NOTE: an earlier match-only classifier wrongly
+labeled evicted turns as cold docs (retracted); the chash correction was decisive. Stable: two-bound model
+(§4), workload (§2), engine analysis (§3), tail decomposition (§5.2), SLRU-backfire (§5.3).</p>
 
 <div class="abstract">
 <b>Abstract.</b> Hierarchical KV caching (HiCache) tiers attention KV across GPU HBM (L1) and host DRAM (L2).
@@ -42,16 +44,18 @@ p99 TTFT ≤ 8 s) — we ask what bounds goodput and whether the cache is the le
 measured) and a tail bound R_p99 set by the largest prefills under concurrency. A per-request decomposition
 of a warmup-corrected pressured rate sweep — using a conversation-id trace to distinguish genuine cold turn-0
 documents (irreducible) from later turns whose accumulated prefix was <i>evicted</i> mid-conversation
-(avoidable recompute) — shows that <b>a substantial fraction (steady-state ≈20-30% of prefill work; ≈18% of the SLO-breaching
-≥40K-token tail) is avoidable recompute from evicted proven multi-turn conversations</b> (⟨settling; full-sweep
-number pending⟩), the remainder being irreducible cold documents. So goodput is <b>partially cache-affectable</b>: a residency policy that protects <i>proven</i> multi-turn
-conversations from eviction (evicting single-turn "whale" documents first) shrinks both bounds — fewer
-avoidable recomputes (higher R_thru) and fewer big evicted turns in the tail (higher R_p99). We evaluate
-eviction policies and a novel continuation-aware residency mechanism that protects a conversation's prefix
-across its think-gap (capturing the turn-0→turn-1 first-reuse race that hit-count policies miss).
-<span class="todo">goodput gains + certified confirmation pending screens.</span> A methodological finding:
-a match-fraction classifier conflates evicted turns with cold documents and hides this headroom entirely —
-conversation identity is required to see it.
+(avoidable recompute) — shows that <b>58% of pressured prefill work and 63% of the SLO-breaching ≥40K-token
+tail is avoidable recompute from evicted proven multi-turn conversations</b> (the remaining 37% of the tail
+being irreducible cold documents). So the bottleneck is cache-addressable <i>in principle</i>. Whether a
+<i>policy</i> captures it is a separate question, and the textbook answer is negative: <b>SLRU (protect proven
+conversations) is counterproductive</b> — it evicts hit_count=0 turn-0s first, but turn-0s are the entry point
+to multi-turn reuse, so protecting the proven destroys the not-yet-proven that become proven (hit 0.68→0.51,
+evicted work 58→73%). This motivates <b>CAR (continuation-aware residency)</b>, which adds a completion-grace
+probation that protects a turn-0 across its think-gap to capture the turn-0→turn-1 first reuse SLRU discards.
+<span class="todo">Whether CAR moves goodput@SLO (and by how much, against the 37% cold-document floor and
+minute-scale think-gaps under 1.89× oversubscription) is being measured (same-node A/B).</span> A
+methodological finding: a match-fraction classifier conflates evicted turns with cold documents and hides
+this headroom entirely — conversation identity is required to see it.
 </div>
 
 <h2>1 Introduction</h2>
@@ -69,10 +73,12 @@ throughput bound from the concurrency-set tail bound, with the prefill throughpu
 turn-0 documents from avoidable mid-conversation evictions — showing a substantial fraction of pressured
 prefill work (and the SLO-breaching tail) is avoidable recompute from evicted proven multi-turn convs (§5).
 A methodological caution: a match-fraction classifier conflates the two and hides this entirely.</li>
-<li>A <b>residency mechanism</b> that protects proven multi-turn conversations (evicting single-turn "whale"
-documents first) — including a novel continuation-aware policy that protects a conversation's prefix across
-its think-gap to capture the turn-0→turn-1 first-reuse race hit-count policies miss — with its goodput gain
-bounded and quantified against the irreducible cold-document floor (§5).</li>
+<li>A residency analysis showing the <b>textbook fix backfires</b>: SLRU (protect hit_count≥1 proven convs)
+makes the cache <i>worse</i> because it evicts turn-0 entry points first (§5.3) — a non-obvious negative that
+constrains the design space. We then propose <b>CAR</b>, a novel continuation-aware policy adding a
+completion-grace probation that protects a conversation's turn-0 across its think-gap (capturing the
+turn-0→turn-1 first reuse SLRU discards), with its goodput effect measured and bounded against the
+irreducible ≈37% cold-document floor (§5).</li>
 <li>Three engine findings that constrain the space: stock schedule-time matching already protects
 server-waiting prefixes; L2→L1 load-back is already per-layer overlapped; so the lever is residency of
 proven-conversation prefixes across think-gaps, not prefetch or waiting-set protection (§3).</li>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>The Goodput@SLO Tail is Cold: Why KV-Cache Movement Cannot Move the Knee (kleinrock, DRAFT)</title>
+<title>The Goodput@SLO Tail is Cold: Why No Lossless KV-Cache Mechanism Moves the Knee (kleinrock, DRAFT)</title>
 <style>
   :root{--ink:#1a1a1a;--mut:#666;--acc:#7a2020;--bg:#fff;--box:#f6f4f0;--line:#ddd}
   html{font-size:16px}
@@ -28,8 +28,8 @@
 </head>
 <body>
 
-<h1>The Goodput@SLO Tail is Cold: Why KV-Cache Movement Cannot Move the Knee in Tiered LLM Serving</h1>
-<div class="sub"><b>kleinrock</b> · sglang KV-cache architecture (v0.31) · <i>DRAFT — evaluation numbers pending baseline run</i></div>
+<h1>The Goodput@SLO Tail is Cold: Why No Lossless KV-Cache Mechanism Moves the Knee in Tiered LLM Serving</h1>
+<div class="sub"><b>kleinrock</b> · sglang KV-cache architecture (v0.31) · <i>DRAFT — write-back control pending</i></div>
 
 <div class="abstract">
 <b>Abstract.</b> Tiered KV caching (GPU HBM + host DRAM) is widely credited with improving LLM serving
@@ -45,8 +45,10 @@ huge resident prefix. We give a trace-driven Pollaczek–Khinchine analysis show
 frozen rate sweep, we find <b>goodput@SLO = 0</b>: p99 TTFT is 14–42 s across λ∈{3,5,7,10}, all far above
 the 8 s SLO — while <b>p50 TTFT is dead-flat at ~1 s</b>, i.e. the cache serves the median perfectly and
 load-independently. A tail decomposition shows the two cache-addressable causes are both absent: L2→L1
-load-back is already fast (p99 ≤ 8.6 ms) and hit rate is a healthy 0.66; the p99 is instead the serialized
-prefill of heavy-tailed cold documents (65 K–192 K tokens). We prove a <b>bounded impossibility</b>: no
+load-back is already fast (p99 ≤ 8.6 ms) and hit rate is a healthy 0.66; the p99 is instead two
+cache-immune components — a per-rate cold-start queue ramp (the harness flushes between rates) and the
+serialized prefill of heavy-tailed cold documents (65 K–192 K tokens) that persists even warm. We prove a
+<b>bounded impossibility</b>: no
 lossless KV mechanism — hit rate, eviction, placement, or movement — can raise goodput@SLO on this
 benchmark class, because every lossless lever is inapplicable to unique cold prefills, oracle-limited to
 LRU, or (for tail-optimal scheduling) counterproductive. The contribution is a queueing-theoretic result +

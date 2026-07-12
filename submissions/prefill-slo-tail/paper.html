@@ -39,12 +39,12 @@ workload (ShareGPT+LEval+LooGLE, 1553 conversations, 7163 turns, Qwen3.5-122B), 
 this benchmark is not a reliably measurable quantity: it is a cold-start coin-flip</b>. The workload is an
 extreme compute-to-context asymmetry — a conversation's first turn prefills a heavy-tailed document
 (median 16.7K, p99 65.6K, max 192.5K tokens) while follow-ups prefill ~16 new tokens — so the p99 TTFT is
-a bimodal, metastable queueing tail that <b>straddles the 8 s SLO</b>. Across replicate stock runs, λ=3 p99
-TTFT is <b>14.1 s vs 8.0 s</b> (identical config), landing on opposite sides of the deadline; the binary
-goodput metric therefore flips on run-to-run noise. A write-back configuration that appears to lift
-goodput@SLO from 0 to 3 is an artifact of this variance — its λ=3 p99 (7.5 s) differs from a stock
-replicate (8.0 s) by under 500 ms across the 8 s threshold — even though write-back's <i>stable</i> effects
-are real (hit rate +6 pp, peak throughput +18%). We give a trace-driven Pollaczek–Khinchine account of why
+a bimodal, metastable queueing tail that <b>straddles the 8 s SLO</b>. Across <b>three identical stock
+runs</b>, λ=3 p99 TTFT is <b>14.1 s, 8.0 s, and 6.8 s</b> (a 2.07× spread), so stock's own goodput@SLO is
+<b>{0, 0, 3}</b> — the binary metric flips on nothing but run-to-run noise. A write-back configuration that
+appears to lift goodput@SLO from 0 to 3 falls squarely inside this stock band (λ=3 p99 7.5 s); indeed a
+stock replicate (6.8 s) beats it despite a <i>lower</i> hit rate, so the apparent gain is not a write-back
+effect — even though write-back's <i>stable</i> effects are real (hit rate +6 pp, peak throughput +18%). We give a trace-driven Pollaczek–Khinchine account of why
 the tail is metastable, and show the effect is compounded by the harness flushing the cache before each
 rate (defeating the eval's intended warm-steady-state design). Contributions: (1) <b>a measurement result</b>
 — goodput@SLO is unreliable for single-run KV-cache A/B on heavy-tailed cold-prefill workloads, a pitfall
@@ -223,18 +223,21 @@ comparisons between KV-cache configurations are void. The cache's effect on the 
 metric is not. goodput@SLO, as operationalized here, measures the noise, not the cache.</div>
 
 <h3>3.1 The coin-flip (evidence)</h3>
-<p>Three λ=3 runs, two of them the identical stock configuration:</p>
+<p>Four λ=3 runs — <b>three of them the identical stock configuration</b>:</p>
 <table>
 <tr><th>run (λ=3)</th><th>config</th><th>p99 TTFT</th><th>vs 8 s SLO</th><th>hit</th><th>goodput@SLO</th></tr>
-<tr><td>v0-stock</td><td>stock</td><td>14.06 s</td><td>fail</td><td>0.677</td><td>0</td></tr>
-<tr><td>v0-stock-r2</td><td>stock</td><td>8.01 s</td><td>fail (by 8 ms)</td><td>0.673</td><td>0</td></tr>
+<tr><td>v0-stock</td><td>stock</td><td>14.06 s</td><td>fail</td><td>0.677</td><td><b>0</b></td></tr>
+<tr><td>v0-stock-r2</td><td>stock</td><td>8.01 s</td><td>fail (by 8 ms)</td><td>0.673</td><td><b>0</b></td></tr>
+<tr><td>v0-stock-r3</td><td>stock</td><td>6.79 s</td><td>pass (by 1.21 s)</td><td>0.672</td><td><b>3.0</b></td></tr>
 <tr><td>v1-writeback</td><td>write_back</td><td>7.53 s</td><td>pass (by 466 ms)</td><td>0.736</td><td>3.0</td></tr>
 </table>
-<p>Two identical stock runs differ by <b>1.76×</b> in λ=3 p99 (14.06 s vs 8.01 s) — the metric is a
-coin-flip. The write-back run's p99 (7.53 s) sits <b>within 500 ms of a stock replicate</b> (8.01 s) yet
-lands on the opposite side of the 8 s threshold, so the binary goodput metric records "write-back 3, stock
-0." This apparent 0→3 win is an artifact of the SLO-straddling variance, not a real effect of write-back.
-[<span class="mut">n=3 stock replicate (v0-stock-r3) in progress; median-of-k reported in final.</span>]</p>
+<p><b>Three identical stock runs give λ=3 p99 TTFT of 14.06 s, 8.01 s, and 6.79 s — a 2.07× spread
+straddling the 8 s SLO — so stock's own goodput@SLO is {0, 0, 3}. The metric flips on nothing but run-to-run
+noise.</b> The write-back configuration's p99 (7.53 s) falls squarely inside this stock band; its "goodput
+3" is indistinguishable from stock. Decisively, <b>stock-r3 (6.79 s, goodput 3) beats write-back (7.53 s)
+despite a <i>lower</i> hit rate (0.672 vs 0.736)</b> — so the higher hit did not cause the lower tail, and
+write-back's apparent 0→3 gain is not a write-back effect at all. Single-run A/B of KV-cache configurations
+on this benchmark is therefore void.</p>
 <figure>
 <svg width="520" height="240" viewBox="0 0 520 240" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="11">
   <line x1="70" y1="200" x2="470" y2="200" stroke="#333"/><line x1="70" y1="200" x2="70" y2="20" stroke="#333"/>
@@ -244,19 +247,19 @@ lands on the opposite side of the 8 s threshold, so the binary goodput metric re
   <line x1="66" y1="150" x2="70" y2="150" stroke="#333"/><line x1="66" y1="97" x2="70" y2="97" stroke="#333"/><line x1="66" y1="44" x2="70" y2="44" stroke="#333"/>
   <!-- y = 200 - s*10.6 ; SLO 8s -> 200-84.8=115 -->
   <line x1="70" y1="115" x2="470" y2="115" stroke="#c00" stroke-dasharray="5,3"/><text x="410" y="111" fill="#c00">SLO = 8 s</text>
-  <!-- stock draws (red): v0-stock 14.06->y51 x150 ; r2 8.01->y115 x230 -->
-  <circle cx="150" cy="51" r="5" fill="#7a2020"/><text x="158" y="48">stock 14.1s (fail)</text>
-  <circle cx="230" cy="115" r="5" fill="#7a2020"/><text x="238" y="112">stock-r2 8.0s (fail)</text>
-  <!-- write_back (green): 7.53 -> y=200-79.8=120 x310 -->
-  <circle cx="310" cy="120" r="5" fill="#3a7a3a"/><text x="318" y="130">write_back 7.5s (pass)</text>
-  <!-- r3 placeholder -->
-  <text x="390" y="118" fill="#999">r3: pending</text>
+  <!-- 3 stock draws (red): 14.06->y51 x140 ; 8.01->y115 x220 ; 6.79->y128 x300 -->
+  <circle cx="140" cy="51" r="5" fill="#7a2020"/><text x="148" y="48">stock 14.1s (fail)</text>
+  <circle cx="220" cy="115" r="5" fill="#7a2020"/><text x="228" y="110">stock-r2 8.0s (fail)</text>
+  <circle cx="300" cy="128" r="5" fill="#7a2020"/><text x="308" y="140">stock-r3 6.8s (PASS)</text>
+  <!-- write_back (green): 7.53 -> y=200-79.8=120 x380 -->
+  <circle cx="380" cy="120" r="5" fill="#3a7a3a"/><text x="300" y="120" text-anchor="end" fill="#3a7a3a">write_back 7.5s (pass)  </text>
 </svg>
-<figcaption><b>Figure (coin-flip).</b> λ=3 p99 TTFT for three runs. Two <span style="color:#7a2020">identical
-stock</span> runs land at 14.1 s and 8.0 s — a 1.76× spread straddling the 8 s SLO. The
-<span style="color:#3a7a3a">write-back</span> run (7.5 s) sits within 500 ms of stock-r2 (8.0 s) but on the
-passing side. The binary goodput@SLO thus reports "write-back 3, stock 0" from &lt;500 ms of noise around
-the deadline.</figcaption>
+<figcaption><b>Figure (coin-flip).</b> λ=3 p99 TTFT across four runs. <b>Three
+<span style="color:#7a2020">identical stock</span> runs land at 14.1 s, 8.0 s, and 6.8 s</b> — a 2.07×
+spread straddling the 8 s SLO, so stock's own goodput@SLO is {0, 0, 3}. The
+<span style="color:#3a7a3a">write-back</span> run (7.5 s) falls inside the stock band; stock-r3 (6.8 s)
+even beats it at lower hit. The binary goodput@SLO is decided by which side of the deadline the metastable
+p99 happens to land on — noise, not the cache.</figcaption>
 </figure>
 
 <h3>3.2 Why the tail is a coin-flip: cold-start metastability</h3>

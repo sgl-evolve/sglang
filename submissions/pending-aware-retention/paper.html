@@ -48,9 +48,12 @@ broad retention merely <i>displaces</i> a working set LRU already keeps well; th
 LRU is its eviction of the narrow, provably-at-risk set of continuations sitting in the scheduler's queue.
 (2) Consequently the <b>realizable</b> gain over LRU is small (+2.5&nbsp;pp), far below an idealized offline
 oracle (~+7&nbsp;pp) — i.e. LRU is near-optimal for concurrent multiturn <i>except</i> this one narrow,
-scheduler-visible failure, which our mechanism removes losslessly. We further show the protocol's headline
-goodput@SLO is <b>variance-dominated at the SLO boundary</b> (identical stock runs flip goodput 0↔3.0 across
-nodes), so recompute/hit-rate is the sound way to measure cache mechanisms on this workload.
+scheduler-visible failure, which our mechanism removes losslessly. Underlying both is a structural point: a lossless
+KV cache reduces re-prefill of <i>already-seen</i> prefixes, so it moves the mean and the sustainable
+throughput but not the p99 tail, which is set by <i>first-turn</i> long-document prefills that are never
+reusable. Accordingly the protocol's headline goodput@SLO is <b>variance-dominated at the SLO boundary</b>
+(identical stock runs flip goodput 0↔3.0 across nodes) and is the wrong yardstick for a cache mechanism;
+hit-rate, mean TTFT, and peak throughput — which all move robustly and losslessly — are the right ones.
 </div>
 
 <h2>1&nbsp;&nbsp;Introduction</h2>

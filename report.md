@@ -414,3 +414,16 @@ reused) — existing policies, no code, directly protect proven convs; (3) if a 
 overturns "eviction is dead" for goodput@SLO-under-load; (4) design a NOVEL continuation/cost-aware residency
 to beat textbook (protect proven convs weighted by recompute-cost/continuation, targeting the p99 tail);
 (5) certified confirmation. Paper pivots from bounded-negative to a mechanism + the two-bound analysis.
+
+## 23. ⚠ MAGNITUDE CORRECTION — §22's 47%/38% was a transient peak (read partial data too eagerly)
+
+The EVICTED fraction MOVED as λ=3 progressed and pressure settled to steady-state (hit → 0.55):
+  n=1865 hit0.674: EVICTED 47%work / 38% of ≥40K tail   (transient eviction burst, working set first oversubscribing)
+  n=2468 hit0.550: EVICTED 29%work / **18% of ≥40K tail** (COLD-TURN0 37%)  ← steady-state, more reliable
+⇒ CACHE-AFFECTABLE is CONFIRMED (evicted proven convs are a SUBSTANTIAL ~18-29% of tail/work, vs ~0% a pure
+bounded-negative would show), but the magnitude is SMALLER than §22's peak and still settling. Do NOT quote
+47%/38%; the settled figure (~29%work / ~18%tail so far) needs the FULL λ=3. LESSON: stop reading partial-run
+fluctuations as results — wait for the full sweep. NOTE also: mid-run COLD-TURN0 (37%) exceeds the 22%
+genuine-turn-0 fraction (chash first-occurrence noise from warmup/no-flush re-appearance) — another reason to
+trust only the completed run. Honest current read: cache CAN help (a residency mechanism protecting proven
+convs can cut ~18-29% avoidable recompute), gain to be measured by the policy screens on the FULL sweep.

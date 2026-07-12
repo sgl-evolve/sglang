@@ -25,11 +25,13 @@
 <h1>What Bounds Goodput@SLO in a Two-Tier HiCache under Concurrent Multi-Turn Long-Context Serving?</h1>
 <div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>DRAFT v0.1</b></div>
 
-<p class="todo">DRAFT — the direction is RESOLVED: the warmup-corrected pressured rate-sweep's per-request
-decomposition shows the p99-TTFT tail is ≈100% cold-document prefills (0% warm-miss) ⇒ <b>bounded-negative
-(cold-document-bound)</b>. Remaining is NUMBERS not direction: the goodput@SLO value/curve (screen-v0
-finishing), the eviction-policy control (queued), and certified confirmation (§5 tables). Motivation (§2),
-engine analysis (§3), two-bound model (§4), related work (§6) are stable.</p>
+<p class="todo">DRAFT — ⚠️ VERDICT UNDER ACTIVE CORRECTION. The §5.2 decomposition below used a match-fraction
+classifier that conflated genuine turn-0 cold documents (irreducible) with fully-EVICTED later turns
+(avoidable recompute) — both show ≈0 prefix match. A corrected, conversation-id-aware (chash) pressured run
+is in flight to re-derive whether the p99 tail is cold-documents (⇒ bounded-negative, cold-document-bound)
+or evicted later turns (⇒ CACHE-AFFECTABLE, mechanism-viable). Treat §5.2 numbers and the abstract's verdict
+as PRELIMINARY pending that run. Stable regardless: the two-bound model (§4), the workload characterization
+(§2), engine analysis (§3), related work (§6).</p>
 
 <div class="abstract">
 <b>Abstract.</b> Hierarchical KV caching (HiCache) tiers attention KV across GPU HBM (L1) and host DRAM (L2),

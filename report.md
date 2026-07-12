@@ -1,0 +1,85 @@
+# Researcher: valiant — sglang KV-cache (v0.31, full-decode rate sweep, goodput@SLO)
+
+**Name:** valiant · **Branch:** `evolve/valiant` · **W&B run:** `valiant` (project `sgl-evolve`, group `v0.31`)
+**Base commit:** `a334877e5` · **Cell:** `programs/sgl/v0.31/research`
+
+Headline metric = **goodput@SLO** = max req/s over λ∈{3,5,7,10} with p99 TTFT ≤ 8 s. 2-tier HiCache
+(L1 GPU 2.35 M tok + L2 host 768 GB ≈ 8.4 M tok, no L3). Model Qwen3.5-122B-A10B-FP8 (hybrid-Mamba,
+12/48 full-attn layers carry per-token KV). Active cache = **UnifiedRadixCache** (`is_hybrid_ssm` +
+`--enable-hierarchical-cache` → `_create_unified_radix_cache`); `hiradix_cache.py` / `hi_mamba_radix_cache.py`
+are DORMANT.
+
+---
+
+## Direction (ONE ambitious line): Pending-aware prefix retention — scheduler↔cache co-design
+
+**Thesis.** In concurrent *multiturn* serving the cache's dominant loss is **not** eviction *order*
+(LRU≈Belady among a fixed set) but the eviction of prefixes belonging to conversations that have an
+**in-flight continuation the scheduler already knows about** but the cache ignores. Coupling the cache's
+retention to the scheduler's *pending-request set* recovers (in the offline model) the full oracle
+(Belady) hit rate — with a realizable, non-oracle signal.
+
+### Trace-driven motivation (GPU-free, `mooncake_mix_v1.jsonl`, exact tokenizer)
+- Workload = 1553 conversations, mean **4.61 turns** (median 3, max 61); **593 are single-turn** (no
+  reuse). Each conversation = one huge document (mean **~11.8k tok**, p90 ~28k, max ~183k) reused across
+  all its turns; follow-up questions are tiny (median **~18 tok**). No cross-conversation sharing.
+- A perfect cache eliminates **80.9%** of prefill work (no-cache ≈ 98 M prompt tok → perfect ≈ 18.7 M).
+  So prefill is the goodput lever and the cache's potential value is enormous.
+- **Continuation turns are load-bound**: huge cached prefix + tiny new compute → the whole turn's cost is
+  reuse-or-recompute of the prefix. If a continuation's prefix is evicted before it runs, the entire
+  ~10k-token document is recomputed → a prefill spike → TTFT tail under load.
+- Multiturn issue model (verified in `bench_serving`): a turn's *next* turn is re-enqueued on completion
+  (line 190) and pulled per-Poisson → **turns interleave with other conversations**, so a continuation's
+  prefix ages under churn and LRU evicts it even though its reuse is imminent.
+
+### Offline cache simulation (page-level, real token counts, discrete-event issue order)
+Hit-rate = cached_tok / prompt_tok (real definition). Capacity = combined L1+L2.
+
+| λ | cap | LRU | Belady | **protect-pending (realizable)** | admit-no-terminal (oracle) |
+|---|-----|-----|--------|----------------------------------|----------------------------|
+| 3 | 10.7M | 0.736 | 0.808 | **0.808** | 0.808 |
+| 5 | 10.7M | 0.737 | 0.808 | **0.808** | 0.808 |
+| 10| 10.7M | 0.737 | 0.808 | **0.808** | 0.808 |
+| 3–10 | 8M | 0.57–0.60 | ~0.80 | 0.67–0.71 | 0.67–0.71 |
+
+**Finding:** at the real capacity a realizable *protect-pending* policy (protect conversations that have a
+request currently in the system) closes the **entire ~7 pp LRU→Belady gap** — a **~27% reduction in
+recompute**. The gap is conversation-structural (terminal-conversation pollution + eviction of pending
+continuations), which overturns the "LRU≈Belady, eviction is a dead end" assumption *in this concurrent
+multiturn regime*. At tight capacity the working set genuinely overflows and protection captures ~half.
+
+### Why it's novel (vs the excluded / prior-art baselines)
+- **Not an eviction-order policy** (LRU/LFU/2Q/GreedyDual are excluded and, per above, near-useless here):
+  it is a *scheduler→cache reuse-intent signal*. The lever is *which* prefixes are protected, sourced from
+  the scheduler's pending set — a co-design, not a replacement policy.
+- **Not Strata** (cache-aware scheduling overlaps *loads* with compute): this *prevents the eviction*
+  that causes the recompute in the first place; Strata's data-plane fix (GPU-assisted `kernel` I/O) is
+  moreover *unavailable* on hybrid-Mamba (frozen `direct`/`page_first_direct`).
+- **Not exclusive-tiering / write_back config** (those are the known ~13pp baseline, not a contribution).
+
+### Implementation hook (confirmed)
+- `_prefetch_kvcache(req)` (scheduler.py:2280) runs when a req enters the waiting queue; in 2-tier (no L3)
+  it is a **no-op** → a continuation's cached prefix is unprotected while it waits and can be evicted by
+  running requests. This is the insertion point.
+- `UnifiedRadixCache.inc_host_lock_ref(node)` / `dec_host_lock_ref(node)` pin/unpin a node's host (L2)
+  residency; `match_prefix` yields `last_host_node`. Eviction (`evict_host` via `get_prev_no_host_lock`)
+  already skips host-locked nodes. So: pin `last_host_node` of a waiting continuation; release on
+  admission/abort.
+
+### Honesty caveats to test (not assume)
+1. Offline LRU (0.737) > real baseline hit (0.62 in the old single-point). Real effective capacity may be
+   lower (fragmentation/pinning/mamba) → gain may shrink toward the 8M row. **Calibrate on the real sweep.**
+2. Server sees a continuation only during the *server-queue* window, not the client think/send gap; under
+   high λ (where goodput is decided) the server queue is deep, so this window should dominate — **verify**.
+3. Pinning reduces effective capacity for others; must be **capacity-aware** (degrade gracefully when the
+   pending set exceeds free L2). The real design contribution is *what to pin when you can't pin all*.
+
+---
+
+## Versions
+| ver | tag | hypothesis | change | goodput@SLO vs base | lossless | takeaway |
+|-----|-----|-----------|--------|---------------------|----------|----------|
+| v0_official | baseline | — | stock 2-tier | (reference; sweep running, job 19434) | — | logged to W&B |
+
+## Formal submissions
+_(none yet)_

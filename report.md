@@ -49,6 +49,44 @@ component of p99 at higher λ (the docs themselves don't get longer; the wait do
 Pollaczek–Khinchine tail: heavy-tailed prefill service time S (docs) → large E[S²] → the tail is
 queueing-delay-amplified variance, NOT mean hit rate.
 
+## Accurate trace stats (Qwen tokenizer; tools/trace_stats.json)
+- convs=1553 (1015 with a long doc, 538 empty-input ShareGPT-style short chats); requests(turns)=7163,
+  mean 4.6 turns/conv (p90=10, max=61).
+- **turn0 doc tokens (non-empty)**: p50=16.7K, p90=34.7K, **p99=65.6K, max=192.5K** (heavy-tailed).
+- **follow-up Q tokens: p50=16, mean=37** (TINY new prefill).
+- answer/output tokens: p50=29, p90=386, mean=129 (short decode).
+- ⇒ **Extreme compute-to-context asymmetry**: a follow-up computes ~16 new tokens but needs a
+  16K–192K-token prefix resident. Follow-up TTFT is TRI-modal: instant (prefix on device) /
+  load-back-latency (prefix in L2) / full doc-recompute (prefix evicted). Baseline host_util=1.0 +
+  582M evict tok ⇒ evictions happen ⇒ the tail likely has BOTH cache-immune cold turn-0s AND
+  cache-relevant follow-up load-backs/recomputes. Decomposition decides positive-vs-impossibility.
+
+## Strategy under SEVERE compute scarcity
+1 cycling certified node for the whole v0.31 cell (v0.3 holds 3/4); round-robin base/valiant/me ⇒ ~1 eval
+per ~10h for me. So: (a) make each eval maximally informative (baseline; then a diagnostics-instrumented
+mechanism run that logs per-request tail composition); (b) LEAN toward the rigorous
+characterization/impossibility (needs few runs, noise-robust) while staying alert for a positive if the
+tail has a big, attributable cache-relevant component that a NOVEL (non-CachedAttention, non-exclusive-
+tiering) mechanism can move.
+
+## ⚠️ EVAL BEHAVIOR FINDING — per-rate flush (verify empirically)
+`bench_serving.py:447` posts `/flush_cache` UNCONDITIONALLY at the start of each `benchmark()` call
+(`if "sglang" in backend`), with NO flag to disable. `eval.sh` invokes bench_serving ONCE PER RATE. So
+despite eval.sh's "NO flush between rates / warm steady-state" comment, **each rate is COLD-started**
+(warmup + prior-rate cache wiped). Consequence chain (to verify from baseline):
+- Each rate = independent open-loop run at λ on the same 1553 convs, cache cold→warms over the run.
+- Docs are UNIQUE per conv; turn-0 (doc prefill) is therefore ALWAYS a cold MISS within a rate. Hit
+  ~0.62 = purely INTRA-conv reuse (turns 1..N reuse turn-0's doc). No cross-conv/cross-rate doc reuse.
+- **p99 TTFT (= goodput@SLO gate) is dominated by cold turn-0 long-doc prefills** (heavy-tailed, up to
+  191K tok). These are CACHE-IMMUNE (unique, flushed) → goodput@SLO is bounded by raw prefill THROUGHPUT
+  on cold heavy-tailed work, NOT by hit-rate or load-back.
+- **This predicts SLOP (load-back overlap) is NEUTRAL on goodput@SLO** — load-back only helps warm
+  follow-up turns (p50/mean), which don't gate the p99. Likely why siblings found cache mechanisms
+  neutral on this metric. Candidate CONTRIBUTION reframe: a rigorous *bounded impossibility* — "in a
+  flush-per-rate, unique-doc open-loop benchmark, the SLO tail is cache-immune; hit-rate/movement gains
+  are orthogonal to goodput@SLO" — UNLESS a scheduling lever reduces cold-prefill queueing delay at the
+  knee. MUST verify tail composition from baseline before committing.
+
 ## Hypothesis (leading, pending baseline data)
 Under open-loop load, goodput@SLO is a **tail** (p99 TTFT) metric. The tail is set by (a) HoL blocking
 from long cold prefills and (b) the **non-overlapped, on-demand L2→L1 load-back** for cache hits, which
@@ -95,6 +133,29 @@ them; SLO-feedback-tuned. NOT SRPF (bandwidth reservation, not global reorder).
 **Fallback B (tail is irreducible cold prefill):** rigorous bounded-impossibility — goodput@SLO is set by
 heavy-tailed cold-doc prefill service time; no lossless KV-movement mechanism shifts it (cache helps mean,
 not the tail). Establish with the curve + tail decomposition + ablations.
+
+## Related work / novelty positioning (governs which direction is publishable)
+- **AttentionStore / CachedAttention (OSDI'24)** — hierarchical KV caching for MULTI-TURN convs with
+  scheduler-aware prefetch of a conversation's KV ahead of its next turn (layer-wise pre-load, positional
+  overlap). ⚠️ **This is very close to "conversation co-residency + load-back prefetch".** So a plain
+  conversation-aware L2→L1 prefetch is likely NOT novel → SLOP/co-residency must differentiate SHARPLY
+  (open-loop Poisson, NO think-time gap, memory-pressure-aware REVOCABLE prefetch tied to queue depth) or
+  it's incremental.
+- **Strata (arXiv 2508.18572)** — multi-tier (GPU/CPU/SSD) KV with cross-tier prefetch+placement; slack
+  in the slow tiers. Distinct from my hard device-memory-contended L2↔L1 focus / open-loop tail.
+- **Mooncake (FAST'25)** — disaggregated P/D, KVCache-centric global cache, SLO-aware early rejection
+  under overload. Related to a tail-scheduling fallback; I'm single-node 2-tier, no disaggregation, and I
+  do not reject requests (lossless goodput).
+- **LMCache / CacheGen** — KV compression/streaming for cross-request reuse (lossy-ish). Different lever;
+  I stay lossless.
+- **Queueing theory (Kleinrock; Pollaczek–Khinchine; Harchol-Balter tail scheduling; SRPT)** — my
+  analytical frame: goodput@SLO is a P-K tail set by E[S²] of a heavy-tailed prefill service time.
+- **Conclusion:** the CLEAREST-novel contribution given prior art is a **rigorous bounded-impossibility /
+  characterization** — *"under a flush-per-rate, unique-document open-loop benchmark, the goodput@SLO tail
+  is dominated by cache-immune cold prefills; hit-rate & KV-movement gains are provably orthogonal to
+  goodput@SLO (cache helps mean, not the SLO tail)"* — which also EXPLAINS the field's repeated negatives.
+  A positive (SLOP/co-residency) is only publishable if baseline data shows load-back/recompute is a
+  MATERIAL tail contributor at the knee AND I differentiate from CachedAttention. Decide from data.
 
 ## Formal submissions
 _(none yet)_

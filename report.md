@@ -91,3 +91,11 @@ Reviewer verdict on v2: "borderline-reject; capacity law insightful+correct but 
 - goodput variance = SYSTEMATIC (warm-up + burst-phase alignment), not statistical noise; SLO in sensitivity band → attribute via stable counters.
 - Zamba2 low L*=167 STRENGTHENS conclusion (recurrent binds only for even shorter ctx); explicit only 122B measured, 5 config-derived w/ 1-4× dtype factor.
 Reviewer's one unaddressable ask = "add a positive mechanism" — impossible honestly (proven: capacity banned, eviction classical, compute lossy, contract not cache-bound). Charter accepts rigorous negatives. Re-review requested to confirm.
+
+## ★ MEASURED scheduling null (lpm probe @1553) — reviewer item 3 addressed → clear-accept path
+Ran prefix-aware longest-prefix-match (lpm) vs stock fcfs at intended scale (NUMP=1553, λ=5):
+| policy | hit | req/s | p50 | p99 | mamba host evict |
+|---|---|---|---|---|---|
+| fcfs | 0.6502 | 3.67 | 872ms | 25.9s | ~0 |
+| lpm  | 0.6458 | 3.79 | 769ms | 27.4s | ~0 |
+→ lpm is a MEASURED NULL (hit −0.4pp, req/s +3.3%, latency mixed within noise). Prefix-aware scheduling does NOT help under capacity pressure — reordering shifts which requests wait, not total work (hit is capacity-bound). Confirms the scheduling-axis impossibility (argued→demonstrated). mamba_host_evict~0 under lpm too → capacity law holds orthogonally to scheduler. Folded into paper §5.5. Now every axis of the claimed-empty region has a measured or resource-bound null.

@@ -316,7 +316,15 @@ flags it as untested-because-frozen).
   write_back + argued (no liveness oracle).
 
 ## Formal submissions
-_(none yet)_
+- **`submissions/prefill-slo-tail/paper.html`** (draft, registered in INDEX). "goodput@SLO is a Coin-Flip:
+  Cold-Start Metastability Undermines Tail-SLO Evaluation of KV Caches." Measurement/methodology result:
+  n=3 stock replicates show goodput@SLO flips {0,0,3} (λ=3 p99 14.1/8.0/6.8s straddling the 8s SLO);
+  write_back's apparent 0→3 gain is variance (stock-r3 6.8s beats write_back 7.5s at lower hit); cache's
+  stable gains (hit +6pp, throughput +18%) are real but goodput@SLO can't resolve them above the
+  metastability noise. Contribution = (1) measurement pitfall (single-run KV A/Bs void), (2) queueing
+  characterization of the metastability, (3) methodology (warm-steady-state + median-of-k + report stable
+  metrics). Backed by v0-stock{,-r2,-r3}, v1-writeback (all W&B-logged); warmdiag (no-flush) queued to
+  validate the fix. Evidence matches raw runs/*/summary.json. Revise as warmdiag + more replicates land.
 
 ## Ops notes
 - Path bug: `eval.sh` computes WORK under `workspace/sgl/v0.3_ablations/research/...` (stale v0.3

@@ -294,13 +294,15 @@ boundary quantitative.</p>
 
 <h2>4 Methodology</h2>
 <p>We evaluate on the frozen protocol (§5) with stock sglang at commit <code>a334877e5</code> (zero python
-churn, verified via git-diff line counts logged to the run). Experiments: <b>v0-stock</b> (baseline
-sweep); <b>v1-writeback</b> (<code>--hicache-write-policy write_back</code>, a hit-rate-raising config
-control); the queueing model and calibration are <code>tools/queue_model.py</code> +
-<code>tools/calibrate.py</code>; the trace characterization is <code>tools/tokenize_trace.py</code>. We
-additionally designed a speculative L2→L1 load-back-overlap mechanism ("SLOP",
-<code>tools/SLOP_design.md</code>) but the decomposition (§5.2) shows load-back is already negligible, so
-it cannot help — a designed-and-ruled-out negative rather than an untried one.</p>
+churn, verified via git-diff line counts logged to each run). Experiments (each a full λ∈{3,5,7,10} sweep):
+<b>three stock replicates</b> (v0-stock, v0-stock-r2, v0-stock-r3) establishing the coin-flip;
+<b>v1-writeback</b> (<code>--hicache-write-policy write_back</code>, a hit-rate-raising config control);
+and an off-contract <b>warm-steady-state diagnostic</b> (per-rate flush disabled) testing whether warm
+serving removes the metastability. The queueing model/calibration are <code>tools/queue_model.py</code> +
+<code>tools/calibrate.py</code>; trace characterization is <code>tools/tokenize_trace.py</code>; the
+per-batch queue timeline (§5.3) is parsed from the scheduler log. We also designed a speculative L2→L1
+load-back-overlap mechanism ("SLOP", <code>tools/SLOP_design.md</code>); the decomposition (§5.2) shows
+load-back is already ≤8.6 ms, so it has nothing to overlap — a designed-and-ruled-out negative.</p>
 
 <h2>5 Evaluation</h2>
 <p>Frozen protocol: λ∈{3,5,7,10} Poisson, 1553 conversations (7163 turns), warmup burst, max-concurrency

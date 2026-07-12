@@ -55,9 +55,9 @@ that will continue (61% do) and a single-turn "whale" that will not (39%) are bo
 turn-0 — while the turn-0→turn-1 reuse gap is minutes (p50 460 s). Any completion-grace long enough to bridge
 the gap also pins every dead whale and swamps the cache; any grace short enough to fit degrades to LRU. We show
 both horns: the textbook <b>SLRU backfires</b> (evicting unproven turn-0s: hit 0.68→0.51, evicted work 58→73%),
-and our <b>CAR (continuation-aware residency)</b> completion-grace policy cannot win at any capacity-feasible
-grace. <span class="todo">CAR's grace-sweep goodput numbers are being measured (same-node A/B); the analysis
-predicts ≈LRU.</span> A
+and our <b>CAR (continuation-aware residency)</b> completion-grace policy is neutralized — measured ≈LRU at
+the capacity-feasible grace (goodput 0, hit unchanged), as the analysis predicts. <span class="todo">A
+larger-grace swamp point and certified-node confirmation are in progress.</span> A
 methodological finding: a match-fraction classifier conflates evicted turns with cold documents and hides
 this headroom entirely — conversation identity is required to see it.
 </div>
@@ -283,11 +283,13 @@ future proven.</p>
 [turn-0 probation — hold long enough to catch the first reuse]; (2) proven, hit_count≥1 [active multi-turn].
 The grace is the novel signal: it is keyed on <i>completion time</i> (a closed-loop quantity), not recency or
 frequency, and it protects precisely the turn-0s SLRU discards while still evicting genuinely dead single-turn
-whales first. <span class="todo">car row pending (job 19480, same node); if it pulls λ=3 p99&lt;8 s the full
-curve + certified confirmation follow; if not, the honest result is that no lossless residency policy moves
-goodput@SLO here and the ≈37% cold-document floor plus minute-scale think-gaps under 1.89× oversubscription
-bound the achievable recovery — a bounded-negative that still contributes the SLRU-backfire insight and the
-tail decomposition.</span></p>
+whales first. Measured (row above), <b>CAR at grace 90 s ≈ LRU</b>: goodput 0, hit unchanged, evicted tail
+unchanged — it captures essentially none of the avoidable recompute, because grace 90 s (the largest grace that
+fits the cache, §4.2) covers only 14% of the 460 s reuse gaps. This is the small-grace horn; a grace approaching
+the gap swamps the cache (the large-grace horn — SLRU is its extreme, protecting proven indefinitely, and
+hurts). <span class="todo">A direct larger-grace CAR point and certified-node confirmation are in progress;
+the conclusion — no capacity-feasible grace moves goodput@SLO — is already fixed by the two measured horns plus
+the §4.2 grace-trap.</span></p>
 <h3>5.4 Honest controls</h3>
 <ul>
 <li><b>Decode throughput is flat across policies</b> (decode-bound control): at λ=3 output throughput is

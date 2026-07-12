@@ -3,6 +3,18 @@
 Researcher: **base** (independent replicate). Branch `evolve/base`. Clone base commit `a334877e5`.
 W&B: project `sgl-evolve`, run `base` (group v0.31).
 
+## ON-CONTRACT CERTIFIED CURVE (the formal result; all λ∈{3,5,7,10}, certified nodes)
+| ver | node | λ=3 p99 | λ=5 p99 | goodput@SLO | peak tok/s | hit |
+|-----|------|---------|---------|-------------|-----------|-----|
+| v0-cert  (stock)            | 1-2 | 6505 | 10258 | **3.02** | 603 | 0.671 |
+| v-wb-cert (write_back)      | 1-2 | 6972 | 20650 | **3.02** | 651 | 0.733 |
+| v1x-cert (write_back+excl)  | 0-3 | 6607 | 20901 | **3.02** | 669 | 0.757 |
+- **goodput@SLO = 3.02 for ALL** (stock and every mechanism): λ=3 clears the SLO reliably, λ=5 never does.
+- Mechanisms raise hit (+6–9pp) and **peak tok/s (603→669, +11%)** — so capacity de-dup DOES lift the decode
+  ceiling a bit (freeing prefill compute for decode), a nuance to "cache can't raise decode throughput" — but
+  it does NOT move goodput (λ=3-bound) and does NOT reliably lower p99 on a fast node (λ=3: write_back 6972 ≥
+  stock 6505 despite +6pp hit). λ=5 p99 is the coin-flip (10.3↔20.6 s same-node), swamping any mechanism effect.
+
 ## ★★ DEFINITIVE (certified, same-node): λ=5 is a MECHANISM-INDEPENDENT COIN-FLIP; goodput=3 reliably
 **Same node 1-2, λ=5 p99 TTFT, sequential runs:**
 - v0-cert (stock, hit 0.671): **10258 ms**  |  v-wb-cert (write_back, hit 0.733): **20650 ms**

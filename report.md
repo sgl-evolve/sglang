@@ -694,3 +694,15 @@ consistent ~10-11s (n=2), NOT the wild coin-flip a sibling cell reported on node
 don't rely on siblings). If whale reliably <8s → mechanism WIN (goodput 0→2.9); if whale ~9.3s consistently →
 best policy but doesn't cross → refined result (size helps, nearly bridges). Let whale full sweep finish, then
 λ=3 replicate batch. Reframe paper around the SIZE lever regardless.
+
+## 41. whale λ=3 TTFT distribution — thin top-1% cold-doc tail, near the irreducible floor
+whale λ=3: Mean 1441, Median 563, P90 4048, P99 9287ms. lru λ=3: Mean 1420, Median 678, P99 10360.
+KEY: P90=4.0s (WELL under 8s SLO) — the breach is a THIN top-1% tail (the ~15 biggest cold-doc prefills under
+queue). whale-first reduces this tail (p99 10.36→9.29s, ~−10%) by freeing capacity (evicting whales) → less
+queueing for the big prefills. BUT the top-1% is dominated by IRREDUCIBLE cold documents (max doc 192.7K tok /
+P≈35K = 5.5s compute alone, + queue → ~9s), which no lossless policy removes. So whale-first approaches but
+likely can't cross the ~9s cold-doc floor. PREDICTION: whale-r2 ≈ 9.3s (REFINE: whale=best policy, reduces the
+evicted-tail contribution, but the cold-doc-prefill floor keeps p99>8s → goodput 0). Genuinely borderline
+(thin tail) so replicate confirms. This also SHARPENS the impossibility: goodput@SLO's p99 is set by the top-1%
+IRREDUCIBLE cold-doc prefills; the cache reduces the evicted contribution (best = whale) but cannot touch the
+cold-doc floor → the SLO is cold-prefill-bound at the extreme tail, independent of residency policy.

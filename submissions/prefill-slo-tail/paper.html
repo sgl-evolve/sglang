@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>The Goodput@SLO Tail is Cold: Why KV-Cache Movement Cannot Move the Knee (kleinrock, DRAFT)</title>
+<style>
+  :root{--ink:#1a1a1a;--mut:#666;--acc:#7a2020;--bg:#fff;--box:#f6f4f0;--line:#ddd}
+  html{font-size:16px}
+  body{max-width:52rem;margin:2rem auto;padding:0 1.2rem;color:var(--ink);background:var(--bg);
+       font-family:Georgia,"Times New Roman",serif;line-height:1.55}
+  h1{font-size:1.6rem;line-height:1.25;margin:0 0 .3rem}
+  h2{font-size:1.2rem;border-bottom:2px solid var(--acc);padding-bottom:.15rem;margin-top:2rem}
+  h3{font-size:1.02rem;margin-top:1.3rem}
+  .sub{color:var(--mut);font-size:.95rem;margin:.2rem 0 1rem}
+  .abstract{background:var(--box);border-left:3px solid var(--acc);padding:.8rem 1rem;font-size:.97rem}
+  code,pre{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.86rem}
+  pre{background:var(--box);padding:.7rem .9rem;overflow-x:auto;border-radius:4px}
+  figure{margin:1.2rem 0;text-align:center}
+  figcaption{color:var(--mut);font-size:.86rem;margin-top:.4rem;text-align:left}
+  table{border-collapse:collapse;width:100%;font-size:.88rem;margin:.6rem 0}
+  th,td{border:1px solid var(--line);padding:.3rem .5rem;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  .todo{color:#a15c00;background:#fff7e6;border:1px dashed #d9a441;padding:.5rem .7rem;border-radius:4px;font-size:.9rem}
+  .key{background:#eef6ee;border-left:3px solid #3a7a3a;padding:.5rem .8rem;margin:.8rem 0}
+  .mut{color:var(--mut)}
+</style>
+</head>
+<body>
+
+<h1>The Goodput@SLO Tail is Cold: Why KV-Cache Movement Cannot Move the Knee in Tiered LLM Serving</h1>
+<div class="sub"><b>kleinrock</b> · sglang KV-cache architecture (v0.31) · <i>DRAFT — evaluation numbers pending baseline run</i></div>
+
+<div class="abstract">
+<b>Abstract.</b> Tiered KV caching (GPU HBM + host DRAM) is widely credited with improving LLM serving
+under load, and prior systems optimize hit rate, eviction, and cross-tier movement. We ask a sharper
+question for <i>open-loop, SLO-constrained</i> serving: does a better KV cache raise <b>goodput@SLO</b> —
+the maximum request rate sustainable under a p99 TTFT deadline? Using a real Mooncake-style 1:1:1 workload
+(ShareGPT+LEval+LooGLE, 1553 conversations, 7163 turns) on Qwen3.5-122B, we show the workload is an
+<b>extreme compute-to-context asymmetry</b>: a conversation's first turn prefills a heavy-tailed document
+(median 16.7K, p99 65.6K, max 192.5K tokens) while its follow-up turns prefill only ~16 new tokens atop a
+huge resident prefix. We give a trace-driven Pollaczek–Khinchine analysis showing that goodput@SLO is a
+<b>queueing-tail</b> quantity governed by the second moment of prefill service time, which is dominated by
+<b>cold, unique, first-turn document prefills</b>. These are cache-immune. The cache is <i>essential for
+stability</i> (it lowers utilization ρ from &gt;1 to &lt;1) but the SLO tail floor is set by cold prefill
+throughput, not hit rate or transfer latency. We [<i>state the empirical result — a bounded impossibility
+for lossless KV-movement, or a mechanism that closes the measured real-vs-ideal gap — once the baseline
+sweep lands</i>]. Our contribution is a methodology + result that explains why a family of KV-cache
+mechanisms is orthogonal to goodput@SLO on this benchmark class.
+</div>
+
+<h2>1 Introduction</h2>
+<p>
+HiCache-style tiering keeps KV across GPU HBM (L1) and host DRAM (L2). The standard serving-systems
+methodology (Strata, Mooncake) scores a system by its <b>throughput–latency curve</b> under an open-loop
+Poisson request-rate sweep, summarized as <b>goodput@SLO</b>: the maximum req/s with p99 TTFT under a
+deadline (here 8 s). A better cache is expected to lower prefill work and thus TTFT, raising goodput.
+</p>
+<p>This paper interrogates that expectation. Our contributions:</p>
+<ul>
+<li><b>A workload characterization</b> showing the Mooncake-style mix is an extreme compute-to-context
+asymmetry with a heavy-tailed cold-prefill distribution (§2.1).</li>
+<li><b>A trace-driven queueing model</b> (Pollaczek–Khinchine) that predicts goodput@SLO from the prefill
+rate and the prefill-token distribution, and separates the roles of the cache: it controls
+<i>stability</i> (mean, ρ) but not the <i>SLO tail</i> (§2.2).</li>
+<li><b>An eval-methodology observation</b>: the harness flushes the KV cache per rate, so each measured
+point is cold-started; combined with unique documents, the p99-gating work is cache-immune (§2.3).</li>
+<li><b>[Result — pending baseline]</b>: either a bounded impossibility (no lossless KV-movement mechanism
+shifts goodput@SLO on this benchmark class) or a mechanism that provably closes the measured real-vs-ideal
+gap, isolated by ablations with error bars (§3–§5).</li>
+</ul>
+
+<h2>2 Motivation</h2>
+
+<h3>2.1 The workload: extreme compute-to-context asymmetry</h3>
+<p>
+The evaluation serves a fixed real-text 1:1:1 mix (ShareGPT + LEval + LooGLE) rendered by the
+<code>loogle</code> multiturn loader: each record becomes a conversation whose <i>turn 0</i> is
+"Input: &lt;document&gt; Question: &lt;Q0&gt;" and whose follow-up turns are short questions atop the
+accumulated context. Tokenized with the model tokenizer, the 1553 conversations comprise 7163 turns
+(mean 4.6 turns/conv, p90 10, max 61) and 20.2 M tokens.
+</p>
+<figure>
+<svg width="620" height="240" viewBox="0 0 620 240" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="11">
+  <line x1="60" y1="200" x2="580" y2="200" stroke="#333"/>
+  <line x1="60" y1="200" x2="60" y2="20" stroke="#333"/>
+  <text x="320" y="232" text-anchor="middle">document (turn-0) length percentile</text>
+  <text x="18" y="115" text-anchor="middle" transform="rotate(-90 18 115)">tokens</text>
+  <!-- y ticks: log-ish scale to 200k -->
+  <text x="55" y="203" text-anchor="end">0</text>
+  <text x="55" y="150" text-anchor="end">50k</text>
+  <text x="55" y="95" text-anchor="end">120k</text>
+  <text x="55" y="40" text-anchor="end">193k</text>
+  <line x1="58" y1="150" x2="60" y2="150" stroke="#333"/><line x1="58" y1="95" x2="60" y2="95" stroke="#333"/><line x1="58" y1="40" x2="60" y2="40" stroke="#333"/>
+  <!-- CDF (x=percentile*520+60, y=200 - tok/193000*160) -->
+  <polyline fill="none" stroke="#7a2020" stroke-width="2"
+    points="60,200 112,196 190,194 320,186 450,180 528,165 554,146 570,146 580,40"/>
+  <!-- markers -->
+  <circle cx="320" cy="186" r="3" fill="#7a2020"/><text x="326" y="182">p50=16.7k</text>
+  <circle cx="528" cy="165" r="3" fill="#7a2020"/><text x="470" y="160">p90=34.7k</text>
+  <circle cx="570" cy="146" r="3" fill="#7a2020"/><text x="500" y="132">p99=65.6k</text>
+  <circle cx="580" cy="40" r="3" fill="#7a2020"/><text x="500" y="44">max=193k</text>
+</svg>
+<figcaption><b>Figure 1.</b> Cold turn-0 document lengths are heavy-tailed (non-empty conversations): the
+top 10% of documents hold 26% of all document tokens (coefficient of variation 0.77). Follow-up turns, by
+contrast, prefill a median of <b>16</b> new tokens. A follow-up therefore computes almost nothing but
+requires a 16K–193K-token prefix to be resident — the compute-to-context asymmetry.</figcaption>
+</figure>
+<p>
+Consequence: a follow-up turn's time-to-first-token is <b>tri-modal</b> — near-instant if its prefix is
+on the GPU, an L2→L1 <i>load-back</i> latency if the prefix sits in host DRAM, or a full document
+<i>recompute</i> if the prefix was evicted from both tiers. Turn-0, in contrast, is always a cold document
+prefill.
+</p>
+
+<h3>2.2 Goodput@SLO is a queueing tail, not a hit rate</h3>
+<p>
+Model the prefill engine as a single server of rate <i>P</i> tokens/s serving prefill-token demand
+<i>X</i> (Pollaczek–Khinchine, M/G/1). Mean waiting time is
+<code>W<sub>q</sub> = λ·E[X²] / (2 P²(1−ρ))</code> with utilization <code>ρ = λ·E[X]/P</code>, and for a
+heavy-tailed <i>X</i> the p99 TTFT is approximately <code>W<sub>q</sub> + x<sub>p99</sub>/P</code>. We
+evaluate two bounds on <i>X</i> from the real trace: a <b>perfect cache</b> (follow-ups cost only their
+~16 new tokens; only turn-0 pays the document) and <b>no cache</b> (every turn recomputes the full
+accumulated context).
+</p>
+<table>
+<tr><th>cache</th><th>E[X] (tok)</th><th>x<sub>p99</sub> (tok)</th><th>goodput@SLO (req/s)</th></tr>
+<tr><td>none</td><td>13,694</td><td>58,307</td><td>0 (ρ&gt;1 at all λ,P — unstable)</td></tr>
+<tr><td>perfect, P=15K</td><td>2,671</td><td>39,186</td><td>3</td></tr>
+<tr><td>perfect, P=25K</td><td>2,671</td><td>39,186</td><td>7</td></tr>
+<tr><td>perfect, P=40K</td><td>2,671</td><td>39,186</td><td>10</td></tr>
+</table>
+<figure>
+<svg width="560" height="230" viewBox="0 0 560 230" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="11">
+  <line x1="70" y1="190" x2="520" y2="190" stroke="#333"/>
+  <line x1="70" y1="190" x2="70" y2="20" stroke="#333"/>
+  <text x="295" y="220" text-anchor="middle">prefill rate P (tok/s)</text>
+  <text x="20" y="105" text-anchor="middle" transform="rotate(-90 20 105)">predicted goodput@SLO (req/s)</text>
+  <text x="65" y="193" text-anchor="end">0</text>
+  <text x="65" y="130" text-anchor="end">5</text>
+  <text x="65" y="70" text-anchor="end">10</text>
+  <line x1="68" y1="130" x2="70" y2="130" stroke="#333"/><line x1="68" y1="70" x2="70" y2="70" stroke="#333"/>
+  <!-- x: 15k->130, 25k->280, 40k->480 ; y: goodput*12 from 190 -->
+  <text x="130" y="205" text-anchor="middle">15k</text><text x="280" y="205" text-anchor="middle">25k</text><text x="480" y="205" text-anchor="middle">40k</text>
+  <!-- perfect cache line: (130,190-36=154)(280,190-84=106)(480,190-120=70) -->
+  <polyline fill="none" stroke="#3a7a3a" stroke-width="2" points="130,154 280,106 480,70"/>
+  <circle cx="130" cy="154" r="3" fill="#3a7a3a"/><circle cx="280" cy="106" r="3" fill="#3a7a3a"/><circle cx="480" cy="70" r="3" fill="#3a7a3a"/>
+  <text x="486" y="66" fill="#3a7a3a">perfect cache</text>
+  <!-- no cache line at 0 -->
+  <polyline fill="none" stroke="#7a2020" stroke-width="2" stroke-dasharray="5,3" points="130,190 480,190"/>
+  <text x="300" y="184" fill="#7a2020">no cache (unstable, goodput 0)</text>
+</svg>
+<figcaption><b>Figure 2.</b> Predicted goodput@SLO vs prefill rate <i>P</i>. Caching is <i>essential for
+stability</i>: without it ρ&gt;1 and goodput is 0. Given a stable (perfect) cache, goodput@SLO is set by
+<i>P</i> and the heavy-tailed prefill variance — not by further hit-rate gains. The real system lies
+between these bounds; the baseline sweep calibrates <i>P</i> and places the real operating point (§5).</figcaption>
+</figure>
+<div class="key"><b>Thesis.</b> The cache buys <i>stability</i> (it moves ρ below 1). Beyond that, the
+goodput@SLO knee is a queueing tail set by the second moment E[X²] of prefill work, whose mass is the
+cold, unique, heavy-tailed turn-0 documents. Reducing <i>mean</i> hit misses (raising hit rate) shrinks
+E[X] but leaves the cold-prefill tail — and thus the SLO knee — largely unmoved. Note also that
+shortest-remaining-first scheduling (SRPT/SRPF), the classic tail remedy, <i>hurts</i> here: it starves
+the long turn-0 documents that <i>are</i> the p99.</div>
+
+<h3>2.3 The harness cold-starts every rate</h3>
+<p>
+The benchmark driver posts <code>/flush_cache</code> at the start of every invocation, and the evaluator
+invokes it once per rate. Thus, despite a warm-steady-state intent, each measured rate begins with an
+empty cache that fills over the run. Because documents are unique per conversation, a conversation's turn-0
+is always a cold miss <i>within a rate</i>; the observed ~0.62 hit rate is entirely intra-conversation
+reuse (follow-ups reusing turn-0's document). The p99-gating work is therefore cold and cache-immune,
+independent of any residency or movement policy. <span class="mut">[We report the empirical cold-ramp
+signature from the baseline metrics in §5.]</span>
+</p>
+
+<h2>3 Design</h2>
+<p class="todo">TODO (pending baseline decomposition). If the measured real operating point leaves a
+material, attributable gap below the perfect-cache bound that is due to follow-up load-back/recompute at
+the knee, present the mechanism that closes it (differentiated from CachedAttention: open-loop, no
+think-time, memory-pressure-aware revocable prefetch tied to queue depth). Otherwise present the bounded
+impossibility argument and its formal statement.</p>
+
+<h2>4 Implementation</h2>
+<p class="todo">TODO. Files changed, LOC, live-path proof. Baseline is stock sglang @ <code>a334877e5</code>.</p>
+
+<h2>5 Evaluation</h2>
+<p class="todo">TODO (pending GPU rate-sweep). Frozen protocol: λ∈{3,5,7,10}, NUMP=1553, warmup burst,
+max-concurrency 256, 2-tier (L1 GPU + L2 768 GB host), SLO p99 TTFT ≤ 8 s. Report: measured curve vs
+perfect-cache prediction (calibrate P); per-λ tail decomposition (cold turn-0 / follow-up load-back /
+follow-up recompute) from /metrics; goodput@SLO; ablations; n≥2 error bars; lossless verification;
+honest attribution.</p>
+
+<h2>6 Related work</h2>
+<p>
+<b>Strata</b> (arXiv 2508.18572) manages KV across GPU/CPU/SSD with cross-tier prefetch and placement,
+exploiting slack in slower tiers; we focus on the hard-contended L1↔L2 boundary and the open-loop SLO
+tail. <b>Mooncake</b> (FAST'25) disaggregates prefill/decode with a KVCache-centric global pool and
+SLO-aware early rejection under overload; we study a single node, keep serving lossless (no rejection),
+and analyze the intra-node prefill tail. <b>HiCache</b> (sglang) is the tiered cache we build on.
+<b>CachedAttention/AttentionStore</b> (OSDI'24) prefetches a conversation's KV from slower tiers ahead of
+its next turn using scheduler hints during think-time gaps; our setting has no think-time (follow-ups
+re-enter an open-loop Poisson stream) and our analysis targets whether such prefetch can move goodput@SLO
+at all. <b>LMCache/CacheGen</b> compress and stream KV for cross-request reuse; we remain lossless.
+Our analytical frame is classical queueing theory (Kleinrock; Pollaczek–Khinchine; Harchol-Balter on
+tail-optimal scheduling), applied to the LLM prefill server.
+</p>
+
+<h2>7 Limitations &amp; when it fails</h2>
+<p class="todo">TODO. The queueing model is single-server M/G/1 (ignores decode contention, chunked-prefill
+interleaving, and the device-vs-host KV split); it is a motivation bound, validated against the measured
+curve in §5. Conclusions are specific to this benchmark class (flush-per-rate, unique-document, open-loop).</p>
+
+<h2>8 Reproducibility</h2>
+<p>Base commit <code>a334877e5</code> (stock sglang). Trace stats: <code>tools/tokenize_trace.py</code> →
+<code>tools/trace_stats.json</code>. Queueing model: <code>tools/queue_model.py</code>. Eval:
+<code>eval-on-pool.sh kleinrock &lt;version&gt;</code> (frozen protocol). <span class="mut">Version→number
+mapping and commit hashes to be filled per result in §5.</span></p>
+
+</body>
+</html>

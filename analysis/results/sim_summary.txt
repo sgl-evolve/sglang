@@ -1,0 +1,45 @@
+===================================================================================
+SCHEDULER-CACHE COUPLING: simulation results (single-tier abstraction; illustrative)
+convs=1553 turns=7163; PAGE=64; cap models total L1+L2 cache (device+host)
+===================================================================================
+=== pull order: fifo ===
+lam=3 cap=10M | lru=0.736 pin_all=0.808 belady=0.808  [belady gap=7.23pp; pin_all captures 100%]
+     bud=0.25: recent-first + 0.00pp (  0% of belady)   RISK-first + 4.43pp ( 61% of belady)
+     bud=0.50: recent-first + 0.00pp (  0% of belady)   RISK-first + 6.05pp ( 84% of belady)
+     bud=0.75: recent-first + 0.00pp (  0% of belady)   RISK-first + 7.23pp (100% of belady)
+lam=3 cap=8M | lru=0.569 pin_all=0.669 belady=0.797  [belady gap=22.81pp; pin_all captures 44%]
+     bud=0.25: recent-first + 0.00pp (  0% of belady)   RISK-first +15.62pp ( 68% of belady)
+     bud=0.50: recent-first + 0.00pp (  0% of belady)   RISK-first +19.04pp ( 83% of belady)
+     bud=0.75: recent-first + 0.00pp (  0% of belady)   RISK-first +21.00pp ( 92% of belady)
+lam=5 cap=10M | lru=0.737 pin_all=0.808 belady=0.808  [belady gap=7.12pp; pin_all captures 100%]
+     bud=0.25: recent-first + 0.00pp (  0% of belady)   RISK-first + 4.32pp ( 61% of belady)
+     bud=0.50: recent-first + 0.00pp (  0% of belady)   RISK-first + 5.94pp ( 83% of belady)
+     bud=0.75: recent-first + 0.44pp (  6% of belady)   RISK-first + 7.12pp (100% of belady)
+lam=5 cap=8M | lru=0.583 pin_all=0.696 belady=0.798  [belady gap=21.46pp; pin_all captures 52%]
+     bud=0.25: recent-first + 0.00pp (  0% of belady)   RISK-first +14.26pp ( 66% of belady)
+     bud=0.50: recent-first + 0.00pp (  0% of belady)   RISK-first +17.71pp ( 83% of belady)
+     bud=0.75: recent-first + 0.00pp (  0% of belady)   RISK-first +19.65pp ( 92% of belady)
+
+=== pull order: lpm ===
+lam=3 cap=10M | lru=0.808 pin_all=0.808 belady=0.808  [belady gap=0.00pp; pin_all captures 0%]
+     bud=0.25: recent-first + 0.00pp (  0% of belady)   RISK-first + 0.00pp (  0% of belady)
+     bud=0.50: recent-first + 0.00pp (  0% of belady)   RISK-first + 0.00pp (  0% of belady)
+     bud=0.75: recent-first + 0.00pp (  0% of belady)   RISK-first + 0.00pp (  0% of belady)
+lam=3 cap=8M | lru=0.808 pin_all=0.808 belady=0.808  [belady gap=0.00pp; pin_all captures 0%]
+     bud=0.25: recent-first + 0.00pp (  0% of belady)   RISK-first + 0.00pp (  0% of belady)
+     bud=0.50: recent-first + 0.00pp (  0% of belady)   RISK-first + 0.00pp (  0% of belady)
+     bud=0.75: recent-first + 0.00pp (  0% of belady)   RISK-first + 0.00pp (  0% of belady)
+lam=5 cap=10M | lru=0.808 pin_all=0.808 belady=0.808  [belady gap=0.00pp; pin_all captures 0%]
+     bud=0.25: recent-first + 0.00pp (  0% of belady)   RISK-first + 0.00pp (  0% of belady)
+     bud=0.50: recent-first + 0.00pp (  0% of belady)   RISK-first + 0.00pp (  0% of belady)
+     bud=0.75: recent-first + 0.00pp (  0% of belady)   RISK-first + 0.00pp (  0% of belady)
+lam=5 cap=8M | lru=0.808 pin_all=0.808 belady=0.808  [belady gap=0.00pp; pin_all captures 0%]
+     bud=0.25: recent-first + 0.00pp (  0% of belady)   RISK-first + 0.00pp (  0% of belady)
+     bud=0.50: recent-first + 0.00pp (  0% of belady)   RISK-first + 0.00pp (  0% of belady)
+     bud=0.75: recent-first + 0.00pp (  0% of belady)   RISK-first + 0.00pp (  0% of belady)
+
+--- MECHANISM: recency<->reuse-distance inversion among pinnable convs at eviction ---
+pull=fifo    : Spearman rho(la,next_use)= +0.807 (median +0.835, n=4928)
+pull=lpm_win : Spearman rho(la,next_use)= +0.736 (median +0.828, n=4939)
+rho>0 => least-recently-active pinnable conv is soonest-reused => pin-LRU-victim (risk-first) == Belady-aligned
+=> engine pins in ARRIVAL order (oldest-waiting first = lowest-la = highest-risk) => already risk-first

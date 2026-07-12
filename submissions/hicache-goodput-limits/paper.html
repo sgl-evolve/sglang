@@ -110,13 +110,15 @@ dataset with the model tokenizer:</p>
 </ul>
 </div>
 <p><img src="fig2_turns.svg" alt="turns-per-conversation histogram" style="max-width:100%"></p>
-<h3>2.2 The irreducible cold-context tail</h3>
+<h3>2.2 The cold-context floor (what perfect caching cannot remove)</h3>
 <p><img src="fig1_coldtail.svg" alt="CCDF of per-turn uncached prefill vs 8s-SLO budgets" style="max-width:100%"></p>
 <p>Under <i>perfect</i> within-conversation caching, turn-0 prefill is the whole (cold) document while later
 turns need only the new question. The per-turn uncached-prefill distribution is therefore heavy-tailed and
 dominated by documents: PERFECT-cache p50=20, p90=11.4K, <b>p99=39.2K, max=193K tokens</b>; and
 <b>99.0% of all irreducible prefill work is turn-0 documents</b> (1.0% is later turns). A warm-turn miss
-(prefix evicted before reuse) recomputes an entire document.</p>
+(prefix evicted before reuse) recomputes an entire document. This is only the <i>floor</i>: it bounds what even
+a perfect cache leaves in the tail (≈37%, §5.2); the actual tail also contains avoidable evicted-turn recompute
+(≈63%) that a perfect cache would remove — the subject of §4–§5.</p>
 
 <h2>3 Why the obvious cache mechanisms are already taken (engine analysis)</h2>
 <p>We read the live engine (UnifiedRadixCache + HybridCacheController + scheduler) for the frozen config

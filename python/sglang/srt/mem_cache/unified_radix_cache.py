@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import threading
 import time
@@ -316,6 +317,18 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self.kv_event_queue = []
         self.eviction_policy = params.eviction_policy.lower()
         self.eviction_strategy = get_eviction_strategy(self.eviction_policy)
+
+        # XTIER: exclusive (device-XOR-host) L1<->L2 KV tiering (research mechanism).
+        # Gated OFF by default so the frozen eval config (write_through, inclusive)
+        # is unchanged; when XTIER_EXCLUSIVE=1 the engine makes L1 and L2 hold
+        # DISJOINT KV (no eager backup-on-hit duplicate; backup on eviction; free the
+        # host copy once a load-back completes) -> the 768 GB host tier stops wasting
+        # ~L1-worth of capacity on copies of device-resident KV. resolved_args (the
+        # write-policy flag) stay frozen; the mechanism is pure engine code.
+        self.xtier_enabled = os.environ.get("XTIER_EXCLUSIVE", "0") == "1"
+        # ack_id (== best_match_node.id) -> nodes whose host copy to free once the
+        # async H->D load-back finishes (freeing at commit would race the live DMA).
+        self._xtier_load_nodes: dict[int, list] = {}
 
         if self.token_to_kv_pool_allocator:
             self.device = self.token_to_kv_pool_allocator.device
@@ -1492,10 +1505,13 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         """
         assert self._is_device_leaf(node), f"node {node.id} is not a D-leaf"
         if not node.backuped:
-            if (
-                self.cache_controller is not None
-                and self.cache_controller.write_policy == "write_back"
+            if self.cache_controller is not None and (
+                self.cache_controller.write_policy == "write_back"
+                or self.xtier_enabled
             ):
+                # write-back-on-evict: demote the (device-only) node to host instead
+                # of deleting it. Under XTIER this is the sole backup path, so nothing
+                # is ever lost — losslessness is preserved (a missed node recomputes).
                 written = self.write_backup(node, write_back=True)
                 if written == 0:
                     return
@@ -1751,6 +1767,12 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             self.inc_lock_ref(best_match_node).to_dec_params(),
             host_anchor_params,
         )
+        if self.xtier_enabled:
+            # Remember which nodes were just promoted H->D so we can free their
+            # redundant host copies once the async load completes (in loading_check).
+            self._xtier_load_nodes[best_match_node.id] = list(
+                kv_xfer.nodes_to_load or ()
+            )
 
         if self.metrics_collector is not None:
             self.metrics_collector.observe_load_back_duration(
@@ -1817,6 +1839,11 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         ):
             return
         node.hit_count += 1
+        if self.xtier_enabled:
+            # Exclusive tiering: no eager backup-on-hit. A hot device-resident node
+            # must NOT also occupy the host tier; its backup is deferred to eviction
+            # (write-back-on-evict), keeping L1 and L2 disjoint.
+            return
         if (
             self.cache_controller is not None
             and not node.backuped
@@ -2403,7 +2430,33 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                 node, lock_params, host_lock_params = self.ongoing_load_back.pop(ack_id)
                 self.dec_lock_ref(node, lock_params)
                 self.dec_host_lock_ref(node, host_lock_params)
+                if self.xtier_enabled:
+                    self._xtier_free_loaded_host(ack_id)
             finish_count -= 1
+
+    def _xtier_free_loaded_host(self, ack_id: int) -> None:
+        """Exclusive tiering: once an H->D load-back has completed (DMA done, host
+        lock released), free the redundant host copies of the promoted nodes so the
+        host tier holds only device-absent KV (disjoint L1/L2 residency). Freeing at
+        commit time would race the still-live DMA reading those host slots, so this
+        runs from loading_check after finish_event.synchronize()."""
+        nodes = self._xtier_load_nodes.pop(ack_id, None)
+        if not nodes:
+            return
+        full = self.components[BASE_COMPONENT_TYPE]
+        for n in nodes:
+            cd = n.component_data[BASE_COMPONENT_TYPE]
+            # Free only if the node is now device-resident, still has a host copy,
+            # and no other in-flight op is anchored on that host copy.
+            if (
+                cd.value is not None
+                and cd.host_value is not None
+                and cd.host_lock_ref == 0
+            ):
+                self._evict_component_and_detach_lru(
+                    n, full, target=EvictLayer.HOST, tracker=None
+                )
+                self._update_evictable_leaf_sets(n)
 
     # ---- HiCache: Scheduler Entry Points ----
 

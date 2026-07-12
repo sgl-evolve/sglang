@@ -141,10 +141,18 @@ measured per-turn distribution:</p>
 <p>This single-request criterion is a <i>lower bound</i> on when the tail is irreducible: it asks whether a
 document's prefill exceeds the SLO in isolation. Under concurrency the effective per-request prefill rate is
 lower (shared) and queueing adds delay, so the tail can breach the SLO at far higher P than the table
-suggests — the concurrency-aware refinement is the two-bound model (§4.1). The avoidable-recompute headroom a
-finite-cache policy could in principle remove is ⟨~18.5M⟩ tok (~49% of baseline prefill; baseline uncached
-⟨~37.8M⟩ vs. perfect ⟨~19.3M⟩) — but §5.2 shows this headroom is ≤~5% under the actual policy (stock already
-captures it) and, crucially, is <i>not in the p99 tail</i>.</p>
+suggests — the concurrency-aware refinement is the two-bound model (§4.1). <b>Liveness headroom (offline
+Belady bound).</b> Replaying the served access order through an offline evict-farthest-future oracle
+(sim/simulate.py) at the actual 2-tier capacity (10.7M tok) gives <b>zero recompute</b>: LRU recomputes 7.24M
+tokens where Belady recomputes 0 — i.e. <b>100% of LRU's recompute is avoidable</b>. The reason is structural:
+with 39% single-turn "whale" documents (read once, never reused) plus completed conversations, there is always
+dead KV to evict, and the <i>live</i> (will-be-reused) working set fits in cache even though the <i>total</i>
+working set is 1.89×. Headroom falls monotonically as capacity shrinks (95% @8M, 78% @6M, 59% @4M), confirming
+that at the real capacity this is a <i>liveness</i> problem (LRU cannot tell live from dead), not a capacity
+problem. Belady is offline; a causal policy cannot reach 0 (it must predict continuation without the future),
+so this is a ceiling — §5.2/§5.3 measure how much a causal residency policy captures, and §5.2 shows the
+avoidable recompute <i>is</i> concentrated in the p99 tail (63% of the ≥40K-tok tail), correcting an earlier
+draft that (pre-conversation-id) mislabeled it as small and out-of-tail.</p>
 <h3>4.1 Measured P and the two-bound model</h3>
 <p>A diagnostic boot (steady-state over 164 real prefill batches) measures <b>P ≈ 35,000 tok/s</b>. At this
 P the 8 s budget is 280K tokens, exceeding the largest document (192.7K) — so no <i>single</i> request's cold

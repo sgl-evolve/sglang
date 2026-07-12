@@ -485,3 +485,21 @@ PINNED to nodeset-0 for a clean same-node A/B vs my lru (screen-v0/v0b) & slru (
 Cancelled redundant certified-lru job 19437 (screen lru already IS a full eval.sh run w/ summary.json; it was
 competing for nodes). car90 waits behind sibling base-v1x holding nodeset-0 (~3h). grace=90 (covers think-gap p50 55s;
 protects turn-0->turn-1 first reuse that slru evicts). If car90 wins at λ=3, full curve + certified confirm follow.
+
+## 28. ★ OFFLINE BELADY HEADROOM = 100% at real cap (liveness, not capacity) + sim timing-blindness
+
+Extended sim/simulate.py trace_headroom (fixed served-access-order replay through different eviction victims;
+timing-INDEPENDENT, isolates victim choice). At real 2-tier cap 10.7M tok: LRU recompute 7.24M, **Belady
+(evict-farthest-future) recompute = 0 → 100% avoidable**. Reason: 39% single-turn whales (read once) + completed
+convs = always dead KV to evict; the LIVE (will-be-reused) working set FITS even though TOTAL is 1.89×. Headroom
+monotone in cap: 59%@4M, 78%@6M, 95%@8M, 100%@10.7M, 100%@15M → at real cap it's a LIVENESS problem (LRU can't
+tell live from dead), not capacity. Belady is offline (sees future); causal policy can't hit 0 → this is the
+CEILING; GPU eval measures what CAR captures. This CORRECTS the retracted §4 claim ("headroom ≤5%/not-in-tail"
+was pre-chash) — consistent now with §5.2 (avoidable recompute IS 63% of the tail).
+
+★ SIM LIMITATION (why I did NOT put slru/car replay numbers in the paper): the fixed-order replay gives
+lru==slru==car EXACTLY (same victims, same 7.24M) because the compressed access order has no wall-time think-gaps
+— the oldest-touched resident conv is already an unproven whale, so LRU and SLRU pick identical victims. The GPU
+SLRU-backfire is driven by wall-time gap AGING (proven convs' KV idle for MINUTES → become LRU victims), which a
+timing-independent replay cannot reproduce. So the replay corroborates the HEADROOM (opt=0) but is BLIND to the
+slru/car distinction; the GPU eval is the only valid test of slru vs car (as already measured: slru HURTS §26).

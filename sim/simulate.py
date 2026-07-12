@@ -126,12 +126,16 @@ def trace_headroom(access_order, convs, cap):
     nextpos=defaultdict(deque)
     for p,(ci,t) in enumerate(access_order):
         nextpos[ci].append(p)
+    # W = position-window proxy for CAR's wall-time completion grace (a turn-0 is "on probation" if it was
+    # last touched within W accesses = recently completed, so its first reuse is likely still near).
+    W=int(os.environ.get("SIM_CARW", 300))
     def run(policy):
-        depth=defaultdict(int); used=0; last=defaultdict(int); recompute=0
+        depth=defaultdict(int); used=0; last=defaultdict(int); recompute=0; proven=defaultdict(bool)
         # per-conv future accesses pointer
         fut={ci:deque(v) for ci,v in nextpos.items()}
         for p,(ci,t) in enumerate(access_order):
             if fut[ci] and fut[ci][0]==p: fut[ci].popleft()
+            if t>=1: proven[ci]=True   # served a later turn => proven multi-turn conv (hit_count>=1)
             d=depth[ci]
             if d<t:
                 recompute += sum(rs(ci,k) for k in range(d,t))
@@ -141,15 +145,20 @@ def trace_headroom(access_order, convs, cap):
                 victim=None; best=None
                 for cj,dd in depth.items():
                     if dd<=0 or cj==ci: continue
-                    if policy=="lru": sc=last[cj]
+                    if policy=="lru": sc=(last[cj],)
+                    elif policy=="slru":   # protect proven (hit_count>=1); unproven evicted first, then LRU
+                        sc=(1 if proven[cj] else 0, last[cj])
+                    elif policy=="car":    # 3-seg: 0=unproven&stale(dead whale) 1=unproven&recent(turn-0 probation) 2=proven
+                        seg = 2 if proven[cj] else (1 if (p-last[cj])<=W else 0)
+                        sc=(seg, last[cj])
                     else:  # opt: evict conv whose NEXT access is farthest (or none)
-                        sc = -(fut[cj][0] if fut[cj] else 10**12)
+                        sc = (-(fut[cj][0] if fut[cj] else 10**12),)
                     if best is None or sc<best: best=sc; victim=cj
                 if victim is None: break
                 dd=depth[victim]; used-=rs(victim,dd-1); depth[victim]=dd-1
             used+=add; depth[ci]=t+1; last[ci]=p
         return recompute
-    return {"lru":run("lru"),"opt":run("opt")}
+    return {k:run(k) for k in ("lru","slru","car","opt")}
 
 if __name__=="__main__":
     convs=load()
@@ -166,4 +175,7 @@ if __name__=="__main__":
                   f"{r['p50']:>8.2f} {r['p90']:>9.2f} {r['p99']:>10.2f}")
         hr=trace_headroom(base.access_order, convs, cap)
         red=100*(hr['lru']-hr['opt'])/max(1,hr['lru'])
-        print(f"     {'OPT':>6} {hr['opt']:>13,} (LRU-trace {hr['lru']:,}; OPT saves {red:.1f}% recompute = Belady headroom)")
+        # timing-independent victim-choice replay (same access order, different eviction policy):
+        d=lambda k: 100*(hr[k]-hr['lru'])/max(1,hr['lru'])  # % recompute vs LRU (+=worse, -=better)
+        print(f"     HEADROOM(replay, same order): lru {hr['lru']:,} | slru {hr['slru']:,} ({d('slru'):+.1f}%) "
+              f"| car {hr['car']:,} ({d('car'):+.1f}%) | opt {hr['opt']:,} ({-red:.1f}% = Belady headroom)")

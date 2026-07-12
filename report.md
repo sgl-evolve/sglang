@@ -99,6 +99,22 @@ multiturn regime*. At tight capacity the working set genuinely overflows and pro
   v1 protects only the server-queue window; the post-completion variant (v2) targets the client gap. The v1
   result will tell us what fraction of the offline Bélády gap the server-queue window alone captures.
 
+## ★ Real baseline calibration (job 19434, ondem-3)
+- **λ=3: hit=0.678, req/s=2.87, TTFT p50=1018ms, p99=11763ms** (e2e_p99 parse-empty).
+- hit 0.678 ⇒ real effective reuse-capacity ≈ 9M tok (running reqs consume L1) — squarely in the offline
+  **peak-gain regime** (+8–11pp / ~30% recompute reduction predicted). Mechanism should have headroom.
+- **p99 TTFT already 11.8s > 8s SLO at λ=3** (protocol expected ~7.6s; the warm/no-flush sweep is harsher).
+  Higher rates worsen p99 ⇒ **baseline goodput@SLO likely = 0**. So the win condition is: cut the p99 tail
+  below 8s at some rate (0 → positive goodput), OR at minimum shift the p99 curve down materially. The
+  recompute reduction lowers total prefill load ⇒ shorter queues ⇒ lower p99 for all requests.
+
+## Parallelization (robust, boundary-surviving)
+Discovered: plain `nohup &` processes survive session boundaries (only harness `run_in_background` tasks are
+torn down). So parallel evals via nohup'd `srun --overlap` into the manager's idle held nodes are robust.
+- ondem-3 (sbatch): baseline (stock ref).
+- **held 0-3 (nohup srun pipeline, flock): stock_b → v1_b → pc_b** — all same-node ⇒ clean A/B.
+- Registered 1-2, ondem-2 in `_pool/held` for siblings (good neighbor); cancelled my ondem-3 v1 to free it.
+
 ## Ablation / iteration plan (as GPU frees)
 1. **v1 vs baseline** (same certified node): does pinning raise hit-rate + goodput@SLO, lossless? Confirm
    `[valiant]` pins activate.

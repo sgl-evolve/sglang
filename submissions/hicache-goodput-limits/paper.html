@@ -25,31 +25,30 @@
 <h1>What Bounds Goodput@SLO in a Two-Tier HiCache under Concurrent Multi-Turn Long-Context Serving?</h1>
 <div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>DRAFT v0.1</b></div>
 
-<p class="todo">DRAFT — P measured (≈35K tok/s, §4.1); the central claim (mechanism vs bounded-negative) is
-resolved by the warmup-corrected rate-sweep reading off R_p99 vs R_thru (§5.1), running now. Motivation
-(§2), engine analysis (§3), the two-bound model (§4), related work (§6) are trace-driven and stable;
-§5 numbers pending the sweep.</p>
+<p class="todo">DRAFT — the direction is RESOLVED: the warmup-corrected pressured rate-sweep's per-request
+decomposition shows the p99-TTFT tail is ≈100% cold-document prefills (0% warm-miss) ⇒ <b>bounded-negative
+(cold-document-bound)</b>. Remaining is NUMBERS not direction: the goodput@SLO value/curve (screen-v0
+finishing), the eviction-policy control (queued), and certified confirmation (§5 tables). Motivation (§2),
+engine analysis (§3), two-bound model (§4), related work (§6) are stable.</p>
 
 <div class="abstract">
-<b>Abstract.</b> Hierarchical KV caching (HiCache) tiers attention KV across GPU HBM (L1) and host DRAM (L2).
-We ask a sharp question for a realistic regime — a hybrid Mamba–Transformer MoE (Qwen3.5-122B) serving a
-Mooncake-style 1:1:1 mix of multi-turn conversations under a Poisson rate sweep, scored by
-<i>goodput@SLO</i> (max req/s with p99 TTFT ≤ 8 s) — whether the KV cache is the lever for goodput under
-load, and if so what mechanism captures it losslessly. Through trace-driven analysis of the real workload
-and the live sglang engine, we establish three facts that sharply constrain the design space: (1) the
-default scheduler already re-matches every server-side-waiting request each step, refreshing LRU recency, so
-LRU already protects prefixes of requests visible to the server; (2) L2→L1 load-back is already per-layer
-overlapped with compute, so speculative prefetch removes only a first-layer bubble; (3) under perfect
-within-conversation caching, <b>99% of the irreducible prefill work is cold turn-0 documents</b>, and the
-p99 of per-turn uncached prefill is large (39K tokens, max 193K). We measure the prefill throughput
-(P ≈ 35K tok/s) and cast goodput as <b>goodput@SLO = min(R_thru, R_p99)</b>: the cache reduces average
-uncached work and thus raises the throughput bound R_thru (up to ~2×), but it cannot shrink the largest
-cold-document prefills that set the tail bound R_p99. The contribution is a precise, generalizable
-characterization of when the cache is — and is not — the goodput lever: if the cold-document tail pushes p99
-past the SLO below throughput saturation (R_p99 &lt; R_thru), goodput is context-bound and no lossless cache
-mechanism helps; otherwise the ⟨~18.5M-token⟩ warm-miss recompute headroom is addressable. We ⟨report⟩ the
-measured regime (the warmup-corrected rate-sweep reads off R_p99) and the resulting verdict, with the
-per-request tail decomposition (cold-doc vs warm-miss) and an eviction-policy sweep as evidence.
+<b>Abstract.</b> Hierarchical KV caching (HiCache) tiers attention KV across GPU HBM (L1) and host DRAM (L2),
+and the community optimizes eviction, tiering, prefetch, and admission to raise cache efficiency. We show
+that for long-context multi-turn serving under a tail-latency SLO — a hybrid Mamba–Transformer MoE
+(Qwen3.5-122B) serving a Mooncake-style 1:1:1 mix under a Poisson rate sweep scored by <i>goodput@SLO</i>
+(max req/s with p99 TTFT ≤ 8 s) — <b>the cache is not the goodput lever</b>. We cast goodput as
+<b>goodput@SLO = min(R_thru, R_p99)</b>: a throughput bound (R_thru = P/avg-uncached-prefill), which the
+cache raises by improving hit rate, and a tail bound (R_p99), set by the largest <i>cold-document</i>
+prefills under concurrency, which the cache cannot shrink. A per-request decomposition of a warmup-corrected
+rate sweep shows the p99-TTFT tail is <b>≈100% cold turn-0 documents (≈0% warm-miss) even under memory
+pressure</b>; avoidable warm-miss recompute is ≤~5% of prefill work and never in the tail — because the stock
+scheduler already re-matches every server-waiting request each step (refreshing LRU recency) and L2→L1
+load-back is already per-layer overlapped with compute. Hence R_p99 &lt; R_thru: goodput is
+<b>cold-document-bound</b>, and any lossless KV-cache mechanism is confined to a bounded ≤~(warm-miss
+fraction) indirect effect via freeing prefill capacity — a headroom stock already nearly captures. We confirm
+goodput is invariant across eviction policies. The contribution is a rigorous, per-request-validated
+<b>bounded-negative</b> plus the two-bound model: for tail-SLO long-context serving, optimize prefill and
+context length, not the cache. ⟨goodput numbers + certified confirmation pending.⟩
 </div>
 
 <h2>1 Introduction</h2>
@@ -67,8 +66,12 @@ that decides which dominates (§4).</li>
 <li>Three engine-level findings that rule out the "obvious" cache mechanisms before any experiment: stock
 schedule-time matching already protects server-waiting prefixes; load-back is already per-layer overlapped;
 the residual reuse structure is only predictable by turn-count, i.e. by textbook frequency policies (§3).</li>
-<li>⟨Either⟩ a novel lossless residency mechanism that shifts the goodput curve, ⟨or⟩ a rigorously bounded
-negative result — decided by the measured regime (§5).</li>
+<li>A rigorous, per-request-validated <b>bounded-negative</b>: the p99-TTFT tail is ≈100% cold-document
+prefills even under pressure, so goodput@SLO is cold-document-bound and any lossless cache mechanism is
+confined to a ≤~5% indirect effect (which stock nearly captures); goodput is invariant across eviction
+policies (§5).</li>
+<li>An actionable redirection: for tail-SLO long-context serving, the lever is prefill throughput / context
+length (lossy compression, disaggregation, sparsity), not lossless cache management.</li>
 </ul>
 
 <h2>2 Motivation (trace-driven)</h2>

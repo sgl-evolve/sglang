@@ -319,12 +319,11 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self.eviction_strategy = get_eviction_strategy(self.eviction_policy)
 
         # XTIER: exclusive (device-XOR-host) L1<->L2 KV tiering (research mechanism).
-        # Gated OFF by default so the frozen eval config (write_through, inclusive)
-        # is unchanged; when XTIER_EXCLUSIVE=1 the engine makes L1 and L2 hold
-        # DISJOINT KV (no eager backup-on-hit duplicate; backup on eviction; free the
-        # host copy once a load-back completes) -> the 768 GB host tier stops wasting
-        # ~L1-worth of capacity on copies of device-resident KV. resolved_args (the
-        # write-policy flag) stay frozen; the mechanism is pure engine code.
+        # Runs ON TOP of write_back (backup-on-evict; no eager duplicate). The pure-code
+        # addition: once an H->D load-back completes, free the promoted node's host copy
+        # (no config does this) -> L1 and L2 hold DISJOINT KV, so the 768 GB host tier
+        # stops wasting capacity on copies of device-resident KV. Gated OFF by default;
+        # ablate vs plain write_back to isolate the code effect from the config effect.
         self.xtier_enabled = os.environ.get("XTIER_EXCLUSIVE", "0") == "1"
         # ack_id (== best_match_node.id) -> nodes whose host copy to free once the
         # async H->D load-back finishes (freeing at commit would race the live DMA).
@@ -1505,13 +1504,10 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         """
         assert self._is_device_leaf(node), f"node {node.id} is not a D-leaf"
         if not node.backuped:
-            if self.cache_controller is not None and (
-                self.cache_controller.write_policy == "write_back"
-                or self.xtier_enabled
+            if (
+                self.cache_controller is not None
+                and self.cache_controller.write_policy == "write_back"
             ):
-                # write-back-on-evict: demote the (device-only) node to host instead
-                # of deleting it. Under XTIER this is the sole backup path, so nothing
-                # is ever lost — losslessness is preserved (a missed node recomputes).
                 written = self.write_backup(node, write_back=True)
                 if written == 0:
                     return
@@ -1839,11 +1835,6 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         ):
             return
         node.hit_count += 1
-        if self.xtier_enabled:
-            # Exclusive tiering: no eager backup-on-hit. A hot device-resident node
-            # must NOT also occupy the host tier; its backup is deferred to eviction
-            # (write-back-on-evict), keeping L1 and L2 disjoint.
-            return
         if (
             self.cache_controller is not None
             and not node.backuped
@@ -2439,24 +2430,31 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         lock released), free the redundant host copies of the promoted nodes so the
         host tier holds only device-absent KV (disjoint L1/L2 residency). Freeing at
         commit time would race the still-live DMA reading those host slots, so this
-        runs from loading_check after finish_event.synchronize()."""
+        runs from loading_check after finish_event.synchronize().
+
+        Runs under --hicache-write-policy write_back (which exempts the prefix-closed
+        host-backup invariant and re-backs-up on eviction, so nothing is ever lost).
+        ALL components' host copies (Full + Mamba aux) are freed together to keep the
+        'aux host present <=> Full host present' tree invariant."""
         nodes = self._xtier_load_nodes.pop(ack_id, None)
         if not nodes:
             return
-        full = self.components[BASE_COMPONENT_TYPE]
+        FCT = BASE_COMPONENT_TYPE
         for n in nodes:
-            cd = n.component_data[BASE_COMPONENT_TYPE]
-            # Free only if the node is now device-resident, still has a host copy,
-            # and no other in-flight op is anchored on that host copy.
-            if (
-                cd.value is not None
-                and cd.host_value is not None
-                and cd.host_lock_ref == 0
-            ):
-                self._evict_component_and_detach_lru(
-                    n, full, target=EvictLayer.HOST, tracker=None
-                )
-                self._update_evictable_leaf_sets(n)
+            cd = n.component_data[FCT]
+            # Free only if the node is now device-resident (exclusive: device XOR
+            # host), still has a Full host copy, and no in-flight op is anchored on
+            # any of its host copies.
+            if cd.value is None or cd.host_value is None:
+                continue
+            if any(c.host_lock_ref > 0 for c in n.component_data):
+                continue
+            for comp in self._components_tuple:
+                if comp.node_has_component_data(n, target=EvictLayer.HOST):
+                    self._evict_component_and_detach_lru(
+                        n, comp, target=EvictLayer.HOST, tracker=None
+                    )
+            self._update_evictable_leaf_sets(n)
 
     # ---- HiCache: Scheduler Entry Points ----
 

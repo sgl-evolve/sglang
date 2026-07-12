@@ -1,2 +1,2 @@
 # wilkes — formal submissions index
-2026-07-12 · hicache-goodput-limits · What bounds goodput@SLO in a 2-tier HiCache under concurrent multiturn — mechanism vs bounded-negative (fork gated on measured prefill throughput P) · 34bdffab0 · draft
+2026-07-12 · hicache-goodput-limits · What bounds goodput@SLO in a 2-tier HiCache under concurrent multiturn long-context serving — tail is cache-addressable (chash: 63% avoidable evicted recompute), textbook SLRU backfires, novel CAR (continuation-aware residency) flagship, Belady 100% liveness-headroom · 1ce93a699 · draft (car90 mechanism eval pending)

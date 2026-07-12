@@ -473,3 +473,15 @@ multi-turn reuse (61% continue), so sacrificing them creates MORE evicted turns.
 "SLRU/LFU neutral-or-harmful" AND directly motivates CAR: protect turn-0s with a grace PROBATION (capture the
 turn-0->turn-1 first reuse) while still protecting proven convs. Both lru & slru goodput@SLO=0 (p99>8s at λ=3);
 the open question is whether CAR (3-segment) can pull p99<8s. Screening car90 next.
+
+## 27. car90 first attempt FAILED on argparse (fixed) — resubmitted same-node
+
+car90 (job 19470) died instantly: `--radix-eviction-policy: invalid choice: 'car' (choose from lru,lfu,slru,priority)`.
+CARStrategy was registered in the FACTORY (utils.py) but server_args.py's argparse `RADIX_EVICTION_POLICY_CHOICES`
+(line 281) is a hardcoded curated subset that gates the CLI BEFORE the factory. Added "car" to that list (commit).
+PYTHONPATH=$WORK/python resolves via the v0.3_ablations->v0.31 symlink to the edited file. Resubmitted as job 19480,
+PINNED to nodeset-0 for a clean same-node A/B vs my lru (screen-v0/v0b) & slru (screen-slru) baselines there
+(node variance ±14% req/s / ±30% p99 is the #1 confound for a mechanism claim — same-node is mandatory).
+Cancelled redundant certified-lru job 19437 (screen lru already IS a full eval.sh run w/ summary.json; it was
+competing for nodes). car90 waits behind sibling base-v1x holding nodeset-0 (~3h). grace=90 (covers think-gap p50 55s;
+protects turn-0->turn-1 first reuse that slru evicts). If car90 wins at λ=3, full curve + certified confirm follow.

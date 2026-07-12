@@ -25,6 +25,14 @@ W&B: project `sgl-evolve`, run `base` (group v0.31).
 - OPS: v-wb-cert-r3 CRASHED (exit 3, boot) — flashinfer JIT race from launching 2 pool evals together; run
   pool replicates SERIALLY. Held-pool hold-jobs time out ~23h (killed v0-cert-r2/r3 mid-run); manager re-heals.
 
+### (D) OPEN LEAD (testing): does EXCLUSIVE CODE beat WRITE_BACK CONFIG on reliability?
+- λ=3 p99 by tier: **STOCK** n=5 std **10418** (1/5 pass) · **WRITE_BACK** n=3 std **1695** [6972,7032,10597]
+  (2/3 pass) · **EXCLUSIVE (my code)** n=4 std **312** [6461,6606,6658,7277] (4/4 pass) · cost-aware n=1 6850.
+- Exclusive is far tighter than stock and looks tighter than write_back — but **Levene(excl vs wb) p=0.368
+  (n=4/3, NOT significant)**: write_back's spread is a single 10597 outlier. A matched batch (2+2 more,
+  running) resolves whether exclusive-CODE is significantly more reliable than write_back-CONFIG (⇒ a code
+  contribution beyond the config) or they're equivalent (⇒ the config-level de-dup win (B) stands). Unresolved.
+
 ## ABSTRACT (final, for a skeptical maintainer)
 On sglang's 2-tier HiCache (L1 GPU + L2 768 GB host, hybrid-Mamba Qwen3.5-122B, active cache =
 `UnifiedRadixCache`), under the v0.31 full-decode Poisson rate-sweep with a goodput@SLO (p99 TTFT ≤ 8 s) headline:

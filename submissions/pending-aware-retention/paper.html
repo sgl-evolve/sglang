@@ -61,8 +61,9 @@ hit-rate, mean TTFT, and peak throughput — which all move robustly and lossles
 accumulated conversation, so the server can skip re-prefilling the shared prefix if its KV is still cached.
 On long-context workloads the prefix is enormous (a document of tens of thousands of tokens) and the new work
 per turn is tiny (one short question), so a single missed prefix — a recompute of the whole document — is by
-far the most expensive event on the prefill path and the dominant source of tail time-to-first-token (TTFT)
-under load.</p>
+far the most expensive event on that request's prefill path and a major, avoidable component of the prefill
+load (and mean time-to-first-token) under concurrency. (The p99 <i>tail</i>, we will see, is instead set by
+unavoidable first-turn document prefills — so a cache moves the mean/throughput, not the tail.)</p>
 
 <p>HiCache tiers KV across L1 (GPU HBM) and L2 (host DRAM). When the working set exceeds L1+L2, the cache is
 genuinely over-subscribed and must evict. The prevailing view — and the explicit starting assumption of this
@@ -105,7 +106,8 @@ only to the extent it actually retains the prefixes that will be reused.</p>
 <p>Because the new work per continuation turn is tiny, the turn's entire cost is decided by whether its
 prefix is a cache hit or a recompute. If the prefix (say a 12k-token document) has been evicted while the
 conversation was between turns, the server must re-prefill all 12k tokens — a spike two to three orders of
-magnitude larger than the turn's "real" work, which lands directly in the TTFT tail that defines goodput@SLO.</p>
+magnitude larger than the turn's "real" work, inflating that turn's TTFT and, in aggregate, the prefill load
+and mean TTFT across the server.</p>
 <p><b>Decomposition (measured).</b> On the frozen workload the stock cache (hit 0.678) prefills 32.2M of the
 99.9M prompt tokens. Of that prefill work, 18.7M is irreducible first-time compute, but <b>13.5M (42%) is
 evicted-continuation recompute</b> — prefixes that <i>were</i> cached and reused before the cache dropped them
@@ -113,14 +115,13 @@ under concurrency. Recovering the oracle (Bélády) hit rate (0.808) would cut p
 (32.2M→19.2M). Because TTFT under load is queue-bound (median 1.0s, p90 3.2s, but p99 11.8s &gt; the 8s SLO)
 and chunked prefill interleaves all in-flight work, cutting 22–40% of the prefill load shortens queues for
 <i>every</i> request — including the cold-document tail that sets p99. This is the lever the mechanism pulls.</p>
-<p><b>Why a modest load cut moves the tail a lot.</b> The baseline TTFT is deeply heavy-tailed at λ=3
-(p50 1.0s, p90 3.2s, p99 11.8s — a p99/p50 of ~12), the signature of a queue operating near saturation.
-For a saturating queue the waiting time scales like <i>ρ/(1−ρ)</i> in the prefill utilization ρ, so
-reducing prefill demand is <i>amplified</i> at the tail: e.g. cutting demand 30% from ρ≈0.85→0.60 shrinks
-the tail factor 5.7×→1.5× (≈3.8× lower), and from ρ≈0.70→0.49 gives ≈1.7× lower. Across this plausible
-range a 22–40% prefill-load cut brings p99 from 11.8s below the 8s SLO — i.e. the mechanism can convert
-goodput@SLO from 0 to positive, not merely trim the median. (This is a first-order argument; §5 measures the
-actual curve.)</p>
+<p><b>Where a load cut helps — and where it cannot.</b> The baseline TTFT is heavy-tailed at λ=3
+(p50 1.0s, p90 3.2s, p99 11.8s). One might expect that, near saturation, cutting prefill demand would shrink
+the whole distribution (waiting time ∼ ρ/(1−ρ)). It does shrink the <i>body</i> — median and mean TTFT fall
+and sustainable throughput rises (§5). But the extreme tail does <i>not</i> move: it is a floor of unavoidable
+first-turn document prefills (a 100k-token cold prefill alone costs several seconds of compute, independent of
+load), which no reuse-based mechanism can remove. So a prefill-load cut moves the mean and throughput, not the
+cold-start p99 — a distinction §5 confirms and §5.1 turns into a measurement caveat.</p>
 
 <h3>2.3&nbsp;&nbsp;The loss is not eviction order — it is scheduler-visible imminent reuse</h3>
 <p>We replay the workload's issue order (an open-loop Poisson rate-λ pull with multiturn re-enqueue, matching

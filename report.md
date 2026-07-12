@@ -100,7 +100,13 @@ bounded-impossibility for lossless KV-movement).
 ---
 
 ## Versions
-_(pending baseline sweep — job 19436 queued behind the active v0.3 campaign holding the certified pool)_
+
+### v0-stock (config) — baseline rate sweep — RUNNING (job 19436, ondem-3)
+FIRST DATA (λ=3): req/s 2.85, out_tok/s 365, TTFT **p50 1023ms, p99 14062ms**, hit 0.677.
+Warmup (cold, discarded): p99 48284ms. ⇒ **λ=3 already FAILS the 8s SLO → baseline goodput@SLO = 0**
+(higher rates worse). p50 1.0s vs p99 14s = the heavy-tailed cold-turn-0 + cold-start-per-rate tail.
+CONFIRMS: per-rate flush → cold-start; p99 dominated by cache-immune cold long-doc prefills. Awaiting
+λ=5/7/10 + calibration. This is strong empirical support for the bounded-impossibility direction.
 
 ### v0-stock (config) — baseline rate sweep — QUEUED
 Hypothesis/change: stock 2-tier config swept λ∈{3,5,7,10} to get the real throughput–latency curve +

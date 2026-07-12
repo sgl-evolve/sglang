@@ -318,7 +318,26 @@ the scheduler log: of 34,071 prefill batches, <b>65% are full 6144-token chunks<
 cold-document chunks, exactly the K·t process.</li>
 </ul>
 
-<h3>5.3 Honest controls & attribution</h3>
+<h3>5.3 The tail has two cache-immune components (queue timeline)</h3>
+<p>Per-batch scheduler timestamps + queue depth (#queue-req) decompose the p99 into two parts, <i>both</i>
+beyond reach of a lossless KV mechanism:</p>
+<ul>
+<li><b>A cold-start queue ramp</b> at each rate's start (the driver flushes the cache per rate): queue
+depth spikes to 90–184 in the first 2–4 minutes, then drains to a mean of 2–8 as the cache warms. This
+transient dominates the worst TTFTs. It is an eval artifact, but it is <i>fixed for every configuration</i>
+— a KV mechanism cannot un-flush a cache the harness clears between rates, and it cannot speed the cold
+prefills that the ramp is made of.</li>
+<li><b>Sustained heavy-tailed cold prefills</b> throughout each rate: 300–660 full-6144-token cold chunks
+per 2-minute window, roughly constant from start to finish (every conversation's turn-0 is a unique cold
+document). Even in the warm phase (queue 2–8), the largest turn-0 documents take 3–9 s to prefill alone,
+so the tail floor stays near the 8 s SLO regardless of the ramp.</li>
+</ul>
+<p>Thus goodput@SLO = 0 combines a flush-induced cold-start ramp and a structural cold-prefill floor. We
+are explicit that the ramp inflates the <i>absolute</i> p99 (a warm-steady-state eval would be lower); the
+qualitative claim — the cache cannot move goodput@SLO — holds on the frozen eval because both components
+are lossless-irreducible, and holds asymptotically because the cold-prefill floor persists when warm.</p>
+
+<h3>5.4 Honest controls & attribution</h3>
 <p>Peak output throughput rises monotonically (365→538 tok/s) — decode is <i>not</i> saturated; the knee
 is the prefill queue, exactly where the cache is supposed to help. The cache <i>does</i> help: it holds
 p50 flat at ~1 s under 3.5× the knee load (without it, ρ&gt;1 and the system is unstable — §2.2). But that

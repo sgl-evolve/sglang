@@ -129,6 +129,17 @@ can touch it. This is a genuinely-new bounded impossibility that EXPLAINS the fi
 **Controls to nail it (cheap, config-only):** v1-writeback (hit↑ +13pp per prior work → predict goodput@SLO
 still 0) [job 19490 QUEUED]. Consider a v0-stock replicate for error bars.
 
+### ★ Queue-timeline decomposition (server.log, existing data — resolves structural-vs-flush)
+Per-batch timestamps + #queue-req reveal EACH rate has: (a) a COLD-START RAMP at rate start (~2-4 min:
+queue spikes to **maxQ 90-184**) then drains to **meanQ 2-8** as cache warms; (b) **big-cold prefills
+sustained throughout** (~300-660/2min, ~constant — every turn-0 is a unique cold doc). So p99 = TWO
+cache-immune components: (a) cold-start queue ramp (flush artifact) + (b) heavy-tailed cold turn-0 prefill
+(structural). HONEST NUANCE: the flush's cold-start ramp is a MAJOR p99 contributor; in warm steady-state
+(meanQ 2-8) the p99 would be lower (~cold-doc prefill 3-9s, near the SLO). BUT within the FROZEN eval the
+flush is fixed for all configs AND cold turn-0 is cache-immune ⇒ no lossless KV mechanism raises
+goodput@SLO on the frozen eval regardless. The impossibility (on the frozen eval) holds; framing must
+credit the flush's role (paper §5/§7) — do NOT overclaim "pure structural."
+
 ### v0-stock (config) — baseline rate sweep — ✅ DONE (job 19436, ondem-3, ~2.5h)
 FIRST DATA (λ=3): req/s 2.85, out_tok/s 365, TTFT **p50 1023ms, p99 14062ms**, hit 0.677.
 Warmup (cold, discarded): p99 48284ms. ⇒ **λ=3 already FAILS the 8s SLO → baseline goodput@SLO = 0**

@@ -363,6 +363,16 @@ class Scheduler(
         self._valiant_pin_tokens = 0
         self._valiant_pinned_reqs = set()
         self._valiant_pin_budget = None  # lazily computed from L2 size
+        # Post-completion (pc) extension: keep a conversation's prefix pin alive for a horizon
+        # AFTER its turn is admitted, so it survives the client think/send gap until the next turn
+        # arrives (server-queue pinning alone only covers the server-queue window). Default OFF, so
+        # with it off the mechanism is exactly the queued-only v1. Gated to the 2-tier path.
+        self.valiant_pc_enable = (
+            self.enable_hierarchical_cache
+            and not self.enable_hicache_storage
+            and os.environ.get("VALIANT_PC_ENABLE", "0") == "1"
+        )
+        self.valiant_pc_horizon_s = float(os.environ.get("VALIANT_PC_HORIZON_S", "20"))
         self.enable_decode_hicache = (
             server_args.disaggregation_decode_enable_radix_cache
             and self.enable_hierarchical_cache
@@ -2339,6 +2349,7 @@ class Scheduler(
         except Exception:
             pass
         req._valiant_pin_params = None
+        req._valiant_pc_expiry = None
         self._valiant_pin_tokens -= getattr(req, "_valiant_pin_tok", 0)
         if self._valiant_pin_tokens < 0:
             self._valiant_pin_tokens = 0
@@ -2350,17 +2361,35 @@ class Scheduler(
 
         Single funnel that catches every removal path, so pins never leak."""
         waiting = set(self.waiting_queue)
+        now = time.monotonic() if self.valiant_pc_enable else 0.0
         for req in list(self._valiant_pinned_reqs):
-            if req not in waiting:
-                self._valiant_release_pin(req)
+            if req in waiting:
+                continue  # still waiting -> keep the pin
+            if self.valiant_pc_enable:
+                # Post-completion: keep the pin for a horizon after the req leaves the queue
+                # (admitted), so the prefix survives the client gap until the next turn arrives.
+                exp = getattr(req, "_valiant_pc_expiry", None)
+                if exp is None:
+                    req._valiant_pc_expiry = now + self.valiant_pc_horizon_s
+                    continue
+                if now < exp:
+                    continue
+            self._valiant_release_pin(req)
         self._valiant_tick = getattr(self, "_valiant_tick", 0) + 1
         if self._valiant_tick % 500 == 0:
+            n_pc = sum(
+                1
+                for r in self._valiant_pinned_reqs
+                if getattr(r, "_valiant_pc_expiry", None) is not None
+            )
             logger.info(
-                "[valiant] pinned_reqs=%d pinned_tok=%d budget=%d waiting=%d",
+                "[valiant] pinned_reqs=%d (pc=%d) pinned_tok=%d budget=%d waiting=%d pc_enable=%s",
                 len(self._valiant_pinned_reqs),
+                n_pc,
                 self._valiant_pin_tokens,
                 self._valiant_pin_budget_tokens(),
                 len(self.waiting_queue),
+                self.valiant_pc_enable,
             )
 
     def _prefetch_kvcache(self, req: Req):

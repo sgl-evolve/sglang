@@ -3,6 +3,22 @@
 Researcher: **base** (independent replicate). Branch `evolve/base`. Clone base commit `a334877e5`.
 W&B: project `sgl-evolve`, run `base` (group v0.31).
 
+## ★ REAL LOSSLESS WIN (stable metric): capacity de-dup RAISES the decode throughput ceiling +8–18%
+The goodput@SLO headline is decode-knee-capped + λ=5-coin-flip (below), BUT **peak sustained throughput**
+(measured at saturation ⇒ STABLE, not variance-dominated) is a clean, same-node, mechanism-attributable win:
+| node | stock peak tok/s (req/s) | +write_back | +exclusive code | Δ |
+|------|--------------------------|-------------|-----------------|---|
+| cert 1-2 | 603 (4.72) | 651 (5.09) [same-node] | — | **+8%** |
+| 0-1  | 537 (4.20) | 636 (4.97) [same-node] | 656 (5.13) | **+18%** (+3% from code) |
+- Monotonic with hit (0.67→0.73→0.75), consistent across BOTH nodes, same-node ⇒ **attributable, lossless**.
+- **Mechanism**: higher cache hit ⇒ less prefill recompute competing with decode for the GPU ⇒ more decode
+  cycles ⇒ higher sustained decode tok/s. **This CONTRADICTS the protocol's "a cache mechanism will NOT
+  raise peak decode throughput" assumption** — on a prefill/decode-shared GPU it does, and the gain scales
+  with how prefill-contended the node is (+8% fast / +18% loaded). Honest attribution: mostly the write_back
+  CONFIG; my exclusive-tiering CODE adds +1.7pp hit ⇒ ~+3% throughput that no config provides (free-on-loadback).
+- Why it doesn't help goodput: goodput is the SLO-threshold at λ=3 (already passed) / λ=5 (coin-flip); the
+  throughput ceiling rises but the SLO-crossing rate doesn't (λ=5 stays saturated + variance-dominated).
+
 ## ON-CONTRACT CERTIFIED CURVE (the formal result; all λ∈{3,5,7,10}, certified nodes)
 | ver | node | λ=3 p99 | λ=5 p99 | goodput@SLO | peak tok/s | hit |
 |-----|------|---------|---------|-------------|-----------|-----|

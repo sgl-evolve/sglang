@@ -172,7 +172,9 @@ goodput@SLO knee is a queueing tail set by the second moment E[X²] of prefill w
 cold, unique, heavy-tailed turn-0 documents. Reducing <i>mean</i> hit misses (raising hit rate) shrinks
 E[X] but leaves the cold-prefill tail — and thus the SLO knee — largely unmoved. Note also that
 shortest-remaining-first scheduling (SRPT/SRPF), the classic tail remedy, <i>hurts</i> here: it starves
-the long turn-0 documents that <i>are</i> the p99.</div>
+the long turn-0 documents that <i>are</i> the p99. Crucially, because this heavy tail places the p99
+<i>near the knee, right at the SLO</i>, the metric is <b>metastable</b>: small differences in arrival
+phasing (or the per-rate cache flush, §2.3) flip the p99 across the deadline — the coin-flip of §3.</div>
 
 <h3>2.3 The harness cold-starts every rate</h3>
 <p>

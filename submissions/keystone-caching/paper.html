@@ -198,6 +198,33 @@ precisely for long contexts (32k–256k ≫ L*), <b>the recurrent-state tier is 
 any current hybrid LLM</b> under host tiering — a family-wide, config-checkable prediction (see
 <code>tools/capacity_law.py</code>), not a single-model artifact. (We measure only Qwen3.5-122B directly; the
 other five are config-derived, and their byte-L* carries the 1–4× dtype factor.)</p>
+<figure><svg xmlns="http://www.w3.org/2000/svg" width="620" height="300" font-family="sans-serif" font-size="12">
+<rect width="620" height="300" fill="white"/>
+<rect x="438" y="46" width="151" height="198" fill="#cfe8cf" opacity="0.6"/>
+<text x="513" y="40" text-anchor="middle" fill="#2a6">deployed serving contexts (32k–256k)</text>
+<rect x="20" y="46" width="357" height="198" fill="#f3d6d6" opacity="0.35"/>
+<text x="199" y="292" text-anchor="middle" fill="#a44">recurrent-tier-binds region (L &lt; L*), incl. ×4 dtype worst-case</text>
+<line x1="20" y1="236" x2="600" y2="236" stroke="#333"/>
+<line x1="20" y1="236" x2="20" y2="240" stroke="#333"/>
+<text x="20" y="254" text-anchor="middle">100</text>
+<line x1="187" y1="236" x2="187" y2="240" stroke="#333"/>
+<text x="187" y="254" text-anchor="middle">1k</text>
+<line x1="354" y1="236" x2="354" y2="240" stroke="#333"/>
+<text x="354" y="254" text-anchor="middle">10k</text>
+<line x1="520" y1="236" x2="520" y2="240" stroke="#333"/>
+<text x="520" y="254" text-anchor="middle">100k</text>
+<text x="310" y="276" text-anchor="middle" font-style="italic">mean context length L (tokens, log scale)</text>
+<circle cx="57" cy="72" r="4" fill="#06c"/>
+<text x="65" y="76" fill="#06c">Zamba2  L*=167</text>
+<circle cx="129" cy="110" r="4" fill="#06c"/>
+<text x="137" y="114" fill="#06c">Jamba  L*=448</text>
+<circle cx="168" cy="148" r="4" fill="#06c"/>
+<text x="176" y="152" fill="#06c">Qwen3-Next/3.5  L*=768</text>
+<circle cx="268" cy="186" r="4" fill="#06c"/>
+<text x="276" y="190" fill="#06c">Nemotron-H  L*=3072</text>
+<circle cx="277" cy="224" r="4" fill="#06c"/>
+<text x="285" y="228" fill="#06c">Granite-4  L*=3456</text>
+</svg><figcaption><b>Fig. 2.</b> The capacity law visualized: every deployed hybrid's crossover L* (blue) sits far left of the deployed serving-context band (green, 32k–256k). Even the ×4 dtype worst case (pink region) stays well below deployed contexts, so the recurrent-state tier is in the "never binds" regime for all of them.</figcaption></figure>
 <p><b>Corollary (why our mechanism is a no-op).</b> Any policy that manages the recurrent-state <i>tier</i> —
 including our own <i>Value-Density Mamba Retention</i> (VMR: protect a checkpoint iff its unlocked KV
 <code>L·k</code> exceeds its footprint <code>s</code>, i.e. iff <code>L &gt; L*</code>) — can only act when that

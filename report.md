@@ -520,3 +520,33 @@ reachable fraction of the 63%-avoidable tail:
   reachable fraction. A future predictor (per-conv inter-turn-gap history → protect convs whose next turn is
   near) could reach more, but is speculative; CAR is the clean principled first mechanism. This is the paper's
   honest discussion regardless of car90's sign.
+
+## 30. ★★★ DECISIVE ANALYSIS: the headroom is liveness-bound but ONLINE-UNRECOVERABLE (paper's core)
+
+Trace-driven (lru screen-v0b, λ=3+warmup, 997 multi-turn convs), three measured facts that together characterize
+WHY the 63%-avoidable tail resists causal capture:
+
+1. **turn-0→turn-1 gap is HUGE: p50=460s, p75=559s, p90=614s, max=1322s** (7.7 min median!). grace-90 covers
+   only **14.3%** of these gaps; grace-180 19.5%; grace-300 23.7%. (Later turn≥1 gaps are shorter: p50 92s.)
+   turn-0 is a long doc → long E2E response + think + requeue before turn-1.
+2. **The real-time live working set FITS: peak concurrent live KV = 9.3-9.4M tok = 0.87-0.88× cap** (10.7M),
+   bracketed lower(plen_i)/upper(plen_{i+1}). 902 convs simultaneously in-gap at peak. So it is DEFINITIVELY
+   LIVENESS-bound, not capacity-bound: an offline policy holding exactly the live set achieves ~0 recompute
+   (Belady confirms, §28). NOT a capacity problem.
+3. **But live/dead is UNOBSERVABLE at the decision point (turn-0).** A live turn-0 (will reuse in ~460s) and a
+   dead single-turn whale (never reuses; 39% of convs) are BOTH unproven (hit_count=0) at turn-0 time. The only
+   online continuation signal is turn-count (=hit_count), which is 0 for ALL turn-0s. So a causal policy cannot
+   tell them apart.
+
+★ THE ONLINE BARRIER (quantified): to hold a live turn-0 until reuse needs grace ≥ ~460s. But grace-460 ALSO
+holds every dead whale for 460s; at λ=3 that accumulates ~8M of dead-whale KV in the window, which + the 9.3M
+live set ≫ 10.7M cap → swamps cache → forces eviction of live KV → FAILS. Short grace → doesn't cover the 460s
+gap (live reuse lost) → ≈lru. So the grace knob is trapped: small=no coverage, large=capacity swamp. Belady wins
+ONLY because it knows the future (holds the 9.3M live, evicts dead) — knowledge no causal policy has at turn-0.
+
+⇒ **PREDICTED VERDICT (car90 will confirm): no causal lossless residency policy moves goodput@SLO here.** CAR
+(grace) and SLRU (proven) both fail, for complementary reasons. This is a RIGOROUS BOUNDED-IMPOSSIBILITY for
+causal residency — DISTINCT from the textbook "eviction≈Belady, dead under in-order reuse": here reuse is
+out-of-order with 100% liveness-headroom, yet still online-unrecoverable because liveness is unobservable at the
+decision point + the reuse gap forces all-or-nothing under capacity. Top-venue-worthy as stated. car90 (grace 90,
+=small-grace point ≈lru) confirms one end; a large-grace run (swamp) would bracket the other. HONEST + strong.

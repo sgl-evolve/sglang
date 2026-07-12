@@ -1510,6 +1510,14 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                         node, comp, target=EvictLayer.ALL, tracker=tracker
                     )
                 self.evictable_device_leaves.discard(node)
+                # valiant: a Full-device-leaf may still have HOST-only children (e.g. a child
+                # pinned in L2 by pending-aware retention). Such a node is NOT a true tree leaf, so
+                # removing it from its parent would orphan the child and corrupt the radix tree
+                # (assert v == node in _remove_leaf_from_parent). Only unlink when truly childless;
+                # otherwise leave it as an evicted tombstone (device freed, stays in tree).
+                if node.children:
+                    self._update_evictable_leaf_sets(node)
+                    return
                 parent = node.parent
                 self._remove_leaf_from_parent(node)
                 self._update_evictable_leaf_sets(parent)

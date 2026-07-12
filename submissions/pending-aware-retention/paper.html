@@ -379,9 +379,11 @@ hit-rate/throughput. A different SLO or a less bursty workload could make goodpu
 leave the child's ancestor a device-eviction candidate while non-empty; the engine's write-through
 delete-entirely path then trips a tree-consistency assertion. The shipped queued-pin releases at admission
 (short-lived pins) and was stable across both full same-node sweeps; the rejected long-held post-completion
-variant triggered it at high load. A robust fix is to tighten the device-leaf predicate to require a truly
-childless node (or demote-instead-of-delete when children remain); we leave hardening the engine path to
-future work and ship the short-pin mechanism, which does not exercise the failure in practice.</li>
+variant triggered it at high load. We implemented a targeted
+guard (in the write-through delete-entirely path, leave a node that still has children as an evicted
+<i>tombstone</i> instead of unlinking it — a latent-invariant fix independent of our mechanism), CPU-verified;
+GPU-revalidation under the crash-inducing config is opportunistic given cluster contention. The shipped
+short-pin mechanism was already stable across all runs, so the results stand regardless of the guard.</li>
 </ul>
 
 <h2>8&nbsp;&nbsp;Reproducibility</h2>

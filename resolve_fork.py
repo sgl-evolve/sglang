@@ -37,21 +37,33 @@ def trace_stats(d):
         try: r = json.loads(l)
         except Exception: continue
         if r.get("rid") not in first: first[r["rid"]] = r
-    rows = list(first.values())
+    rows = list(first.values())  # dict preserves first-seen (prefill) order
     if not rows: return None
     plen = np.array([r["plen"] for r in rows], float)
     unc = np.array([r["uncached"] for r in rows], float)
-    dev = np.array([r["dev"] for r in rows], float); host = np.array([r["host"] for r in rows], float)
-    cold = (dev + host) < 0.05 * np.maximum(plen, 1)
-    warm_hit = unc < 0.1 * np.maximum(plen, 1)
-    warm_miss = (~cold) & (~warm_hit)
-    # p99-tail requests: top 1% by uncached -> what class?
-    thr = np.percentile(unc, 99)
-    tail = unc >= thr
+    has_chash = rows[0].get("chash") is not None
+    # CORRECTED classification (chash conv-id): first-per-chash = genuine COLD-TURN0 (irreducible);
+    # repeat chash = later turn -> WARM-HIT (mostly cached) or EVICTED (avoidable recompute).
+    seen = set(); cls = []
+    for r in rows:
+        ch = r.get("chash")
+        if ch is None or ch not in seen:
+            if ch is not None: seen.add(ch)
+            cls.append("COLD-TURN0")                       # first request of this conv = irreducible cold doc
+        elif r["uncached"] < 0.10 * max(1, r["plen"]):
+            cls.append("WARM-HIT")                         # later turn, mostly cached
+        else:
+            cls.append("EVICTED")                          # later turn, prefix largely evicted = AVOIDABLE
+    cls = np.array(cls)
+    is_cold = cls == "COLD-TURN0"; is_ev = cls == "EVICTED"
+    # SLO-breaching-size lens: class mix among big prefills (>=40K tok) — the tail-relevant ones.
+    big = unc >= 40000
+    tail_cold = float(is_cold[big].mean()) if big.any() else 0.0
+    tail_ev = float(is_ev[big].mean()) if big.any() else 0.0
     return dict(n=len(rows), avg_unc=float(unc.mean()), hit=1 - unc.sum()/max(1, plen.sum()),
-                cold_frac=float(cold.mean()), cold_work=float(unc[cold].sum()/max(1,unc.sum())),
-                wmiss_frac=float(warm_miss.mean()), wmiss_work=float(unc[warm_miss].sum()/max(1,unc.sum())),
-                tail_cold_frac=float(cold[tail].mean()), tail_wmiss_frac=float(warm_miss[tail].mean()))
+                has_chash=has_chash, cold_frac=float(is_cold.mean()),
+                ev_frac=float(is_ev.mean()), ev_work=float(unc[is_ev].sum()/max(1,unc.sum())),
+                big_n=int(big.sum()), big_cold=tail_cold, big_ev=tail_ev)
 
 def main(d):
     rows = read_curve(d)
@@ -73,14 +85,14 @@ def main(d):
     if P: print(f"P (prefill tok/s, steady-state median) = {P:.0f}")
     if ts:
         Rthru = P / ts["avg_unc"] if (P and ts["avg_unc"]) else None
-        print(f"trace: n={ts['n']} hit={ts['hit']:.3f} avg_uncached={ts['avg_unc']:.0f}")
-        print(f"  COLD {100*ts['cold_frac']:.0f}%reqs/{100*ts['cold_work']:.0f}%work | "
-              f"WARM-MISS {100*ts['wmiss_frac']:.0f}%reqs/{100*ts['wmiss_work']:.0f}%work")
-        print(f"  p99-tail requests: {100*ts['tail_cold_frac']:.0f}% COLD, {100*ts['tail_wmiss_frac']:.0f}% WARM-MISS")
+        print(f"trace: n={ts['n']} hit={ts['hit']:.3f} avg_uncached={ts['avg_unc']:.0f} chash={ts['has_chash']}")
+        print(f"  COLD-TURN0 {100*ts['cold_frac']:.0f}%reqs | EVICTED(avoidable) {100*ts['ev_frac']:.0f}%reqs / {100*ts['ev_work']:.0f}%work")
+        print(f"  big prefills (>=40K tok, the SLO-breaching/tail ones): n={ts['big_n']}, "
+              f"{100*ts['big_cold']:.0f}% COLD-TURN0, {100*ts['big_ev']:.0f}% EVICTED")
         if Rthru: print(f"  R_thru = P/avg_uncached = {Rthru:.2f} req/s")
-        print("\nVERDICT:")
-        print("  if p99-tail is mostly COLD & warm-miss%work small => cold-doc-bound (BOUNDED-NEGATIVE: cache can't move goodput)")
-        print("  if p99-tail is mostly WARM-MISS & warm-miss%work large => CACHE-AFFECTABLE (screen residency policies)")
+        print("\nVERDICT (needs chash=True + PRESSURED steady-state):")
+        print("  big/tail prefills mostly COLD-TURN0 => cold-document-bound (BOUNDED-NEGATIVE)")
+        print("  big/tail prefills substantially EVICTED => CACHE-AFFECTABLE (residency mechanism cuts them)")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2: print(__doc__); sys.exit(2)

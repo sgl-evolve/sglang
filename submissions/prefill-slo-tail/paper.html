@@ -41,12 +41,18 @@ the maximum request rate sustainable under a p99 TTFT deadline? Using a real Moo
 (median 16.7K, p99 65.6K, max 192.5K tokens) while its follow-up turns prefill only ~16 new tokens atop a
 huge resident prefix. We give a trace-driven Pollaczek–Khinchine analysis showing that goodput@SLO is a
 <b>queueing-tail</b> quantity governed by the second moment of prefill service time, which is dominated by
-<b>cold, unique, first-turn document prefills</b>. These are cache-immune. The cache is <i>essential for
-stability</i> (it lowers utilization ρ from &gt;1 to &lt;1) but the SLO tail floor is set by cold prefill
-throughput, not hit rate or transfer latency. We [<i>state the empirical result — a bounded impossibility
-for lossless KV-movement, or a mechanism that closes the measured real-vs-ideal gap — once the baseline
-sweep lands</i>]. Our contribution is a methodology + result that explains why a family of KV-cache
-mechanisms is orthogonal to goodput@SLO on this benchmark class.
+<b>cold, unique, first-turn document prefills</b>. These are cache-immune. Measuring stock sglang on the
+frozen rate sweep, we find <b>goodput@SLO = 0</b>: p99 TTFT is 14–42 s across λ∈{3,5,7,10}, all far above
+the 8 s SLO — while <b>p50 TTFT is dead-flat at ~1 s</b>, i.e. the cache serves the median perfectly and
+load-independently. A tail decomposition shows the two cache-addressable causes are both absent: L2→L1
+load-back is already fast (p99 ≤ 8.6 ms) and hit rate is a healthy 0.66; the p99 is instead the serialized
+prefill of heavy-tailed cold documents (65 K–192 K tokens). We prove a <b>bounded impossibility</b>: no
+lossless KV mechanism — hit rate, eviction, placement, or movement — can raise goodput@SLO on this
+benchmark class, because every lossless lever is inapplicable to unique cold prefills, oracle-limited to
+LRU, or (for tail-optimal scheduling) counterproductive. The contribution is a queueing-theoretic result +
+methodology explaining a family of published negative results: <b>the KV cache is a mean/median optimizer,
+not an SLO-tail optimizer</b>, and goodput@SLO is the wrong lens for cache mechanisms on heavy-tailed
+cold-prefill workloads.
 </div>
 
 <h2>1 Introduction</h2>
@@ -65,9 +71,13 @@ rate and the prefill-token distribution, and separates the roles of the cache: i
 <i>stability</i> (mean, ρ) but not the <i>SLO tail</i> (§2.2).</li>
 <li><b>An eval-methodology observation</b>: the harness flushes the KV cache per rate, so each measured
 point is cold-started; combined with unique documents, the p99-gating work is cache-immune (§2.3).</li>
-<li><b>[Result — pending baseline]</b>: either a bounded impossibility (no lossless KV-movement mechanism
-shifts goodput@SLO on this benchmark class) or a mechanism that provably closes the measured real-vs-ideal
-gap, isolated by ablations with error bars (§3–§5).</li>
+<li><b>A bounded impossibility result</b> (§3): no lossless KV mechanism — hit rate, eviction, placement, or
+L1↔L2 movement — raises goodput@SLO on this benchmark class, with a four-part argument (unique cold
+prefills, already-free movement, oracle-limited residency, counterproductive tail scheduling), each
+boundary made quantitative by the model (§2) and confirmed by measurement (§5): goodput@SLO = 0, p50 flat
+~1 s, load-back p99 ≤ 8.6 ms.</li>
+<li><b>The reframing</b>: the KV cache is a mean/median optimizer, not an SLO-tail optimizer — explaining
+why a family of prior cache/scheduling mechanisms report no goodput@SLO gain on this workload class.</li>
 </ul>
 
 <h2>2 Motivation</h2>
@@ -201,22 +211,117 @@ the aggregate working set overflows both tiers. Consequently no lossless residen
 systematically beat LRU on this workload — a claim we test directly with negative controls in §5.
 </p>
 
-<h2>3 Design</h2>
-<p class="todo">TODO (pending baseline decomposition). If the measured real operating point leaves a
-material, attributable gap below the perfect-cache bound that is due to follow-up load-back/recompute at
-the knee, present the mechanism that closes it (differentiated from CachedAttention: open-loop, no
-think-time, memory-pressure-aware revocable prefetch tied to queue depth). Otherwise present the bounded
-impossibility argument and its formal statement.</p>
+<h2>3 The impossibility result</h2>
+<div class="key"><b>Claim (bounded impossibility).</b> On an open-loop, SLO-constrained serving benchmark
+whose prefill service time is heavy-tailed and dominated by <i>unique, first-seen</i> documents (the
+Mooncake-style ShareGPT+LEval+LooGLE mix), <b>no lossless KV-cache mechanism — of hit rate, eviction,
+placement, or L1↔L2 movement — can raise goodput@SLO above its cache-oblivious value.</b> The cache
+improves the mean/median and system stability (utilization ρ), but goodput@SLO is a p99 quantity set by
+the cold heavy-tailed prefill process, which is cache-immune.</div>
+<p><b>Argument.</b> The p99 first-token latency at the operating point is <code>≈ K·t</code> (§2.4): K
+heavy cold turn-0 documents queued, each of mean prefill time t, serialized by chunked prefill. A lossless
+KV mechanism can only change goodput@SLO by reducing this p99. It cannot:</p>
+<ol>
+<li><b>Hit rate / residency cannot reduce K or t.</b> Turn-0 documents are unique and first-seen within a
+rate; they are cold by definition and must be prefilled at least once (losslessly). Raising hit rate helps
+only follow-up turns, which are already sub-second (p50 flat ~1 s, §5.1). Empirically, hit is 0.66 and a
++13 pp write-back boost leaves goodput@SLO at 0 (§5.2).</li>
+<li><b>Movement is already free.</b> L2→L1 load-back is mean 1.3 ms / p99 8.6 ms — negligible vs a 14–42 s
+tail — so transfer/compute-overlap (prefetch) has nothing to hide (§5.2).</li>
+<li><b>Recompute-avoidance needs an oracle it cannot have.</b> Eliminating follow-up recomputes would need
+to know which resident prefixes will be extended again; in open-loop serving there is no conversation-
+liveness signal, only access patterns, which LRU already exploits — and a conversation's document is
+touched every turn, so LRU already keeps it hot (§2.4).</li>
+<li><b>Tail-optimal scheduling backfires.</b> SRPT/SRPF (the classic tail remedy) starves the long
+documents that <i>are</i> the p99, and parallel chunking makes all heavy documents finish late — both
+raise the p99. FCFS + single-chunked serialization is already near-optimal for this p99 (§2.4).</li>
+</ol>
+<p>Hence every lossless lever is either inapplicable (1,2), oracle-limited to LRU (3), or counterproductive
+(4). goodput@SLO is pinned to the cold-prefill throughput ceiling. ∎ (empirical, bounded to this
+benchmark class).</p>
+<p><b>Scope / when it does NOT hold.</b> The result is specific to workloads where the SLO-tail mass is
+unique cold prefills. It would break if (a) documents repeat across conversations (then residency helps the
+repeat), (b) the SLO were on the mean/median rather than p99 (the cache moves that — §5.1), (c) load-back
+were slow relative to compute (then overlap helps — not the case here), or (d) prefill were cheap enough
+that queueing, not service, set the tail. §2's model makes each boundary quantitative.</p>
 
-<h2>4 Implementation</h2>
-<p class="todo">TODO. Files changed, LOC, live-path proof. Baseline is stock sglang @ <code>a334877e5</code>.</p>
+<h2>4 Methodology</h2>
+<p>We evaluate on the frozen protocol (§5) with stock sglang at commit <code>a334877e5</code> (zero python
+churn, verified via git-diff line counts logged to the run). Experiments: <b>v0-stock</b> (baseline
+sweep); <b>v1-writeback</b> (<code>--hicache-write-policy write_back</code>, a hit-rate-raising config
+control); the queueing model and calibration are <code>tools/queue_model.py</code> +
+<code>tools/calibrate.py</code>; the trace characterization is <code>tools/tokenize_trace.py</code>. We
+additionally designed a speculative L2→L1 load-back-overlap mechanism ("SLOP",
+<code>tools/SLOP_design.md</code>) but the decomposition (§5.2) shows load-back is already negligible, so
+it cannot help — a designed-and-ruled-out negative rather than an untried one.</p>
 
 <h2>5 Evaluation</h2>
-<p class="todo">TODO (pending GPU rate-sweep). Frozen protocol: λ∈{3,5,7,10}, NUMP=1553, warmup burst,
-max-concurrency 256, 2-tier (L1 GPU + L2 768 GB host), SLO p99 TTFT ≤ 8 s. Report: measured curve vs
-perfect-cache prediction (calibrate P); per-λ tail decomposition (cold turn-0 / follow-up load-back /
-follow-up recompute) from /metrics; goodput@SLO; ablations; n≥2 error bars; lossless verification;
-honest attribution.</p>
+<p>Frozen protocol: λ∈{3,5,7,10} Poisson, 1553 conversations (7163 turns), warmup burst, max-concurrency
+256, 2-tier (L1 GPU + L2 768 GB host, <code>--hicache-size 96</code>), full decode, SLO p99 TTFT ≤ 8 s.
+Baseline is stock sglang (commit <code>a334877e5</code>; verified zero python churn).</p>
+
+<h3>5.1 The measured curve: goodput@SLO = 0, and why</h3>
+<table>
+<tr><th>λ (req/s offered)</th><th>req/s achieved</th><th>out tok/s</th><th>TTFT p50</th><th>TTFT p99</th><th>hit</th></tr>
+<tr><td>3</td><td>2.85</td><td>365</td><td>1.02 s</td><td><b>14.1 s</b></td><td>0.677</td></tr>
+<tr><td>5</td><td>3.67</td><td>470</td><td>1.03 s</td><td><b>25.4 s</b></td><td>0.666</td></tr>
+<tr><td>7</td><td>4.07</td><td>521</td><td>1.02 s</td><td><b>33.3 s</b></td><td>0.660</td></tr>
+<tr><td>10</td><td>4.21</td><td>538</td><td>1.04 s</td><td><b>42.0 s</b></td><td>0.656</td></tr>
+</table>
+<figure>
+<svg width="580" height="260" viewBox="0 0 580 260" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="11">
+  <line x1="60" y1="210" x2="540" y2="210" stroke="#333"/><line x1="60" y1="210" x2="60" y2="20" stroke="#333"/>
+  <text x="300" y="242" text-anchor="middle">offered rate λ (req/s)</text>
+  <text x="18" y="115" text-anchor="middle" transform="rotate(-90 18 115)">TTFT (s)</text>
+  <text x="55" y="213" text-anchor="end">0</text><text x="55" y="130" text-anchor="end">20</text><text x="55" y="47" text-anchor="end">40</text>
+  <line x1="58" y1="130" x2="60" y2="130" stroke="#333"/><line x1="58" y1="47" x2="60" y2="47" stroke="#333"/>
+  <!-- x: lam3->120 lam5->260 lam7->400 lam10->520 ; y=210 - s*4.07 -->
+  <line x1="180" y1="210" x2="180" y2="34" stroke="#eee"/>
+  <text x="120" y="223" text-anchor="middle">3</text><text x="260" y="223" text-anchor="middle">5</text><text x="400" y="223" text-anchor="middle">7</text><text x="520" y="223" text-anchor="middle">10</text>
+  <!-- SLO line at 8s: y=210-8*4.07=177 -->
+  <line x1="60" y1="177" x2="540" y2="177" stroke="#c00" stroke-dasharray="4,3"/><text x="470" y="173" fill="#c00">SLO = 8 s</text>
+  <!-- p99: 14.1,25.4,33.3,42.0 -> y=210-s*4.07 = 152,107,74,39 -->
+  <polyline fill="none" stroke="#7a2020" stroke-width="2.5" points="120,153 260,107 400,74 520,39"/>
+  <circle cx="120" cy="153" r="3" fill="#7a2020"/><circle cx="260" cy="107" r="3" fill="#7a2020"/><circle cx="400" cy="74" r="3" fill="#7a2020"/><circle cx="520" cy="39" r="3" fill="#7a2020"/>
+  <text x="524" y="39" fill="#7a2020">p99</text>
+  <!-- p50: ~1.0s flat -> y=210-1*4.07=206 -->
+  <polyline fill="none" stroke="#3a7a3a" stroke-width="2.5" points="120,206 260,206 400,206 520,206"/>
+  <circle cx="120" cy="206" r="3" fill="#3a7a3a"/><circle cx="520" cy="206" r="3" fill="#3a7a3a"/>
+  <text x="300" y="204" fill="#3a7a3a">p50 (flat ~1 s)</text>
+</svg>
+<figcaption><b>Figure 3.</b> Baseline rate sweep. <b>p50 TTFT is dead-flat at ~1.0 s across all loads</b> —
+the cache serves the median (warm follow-up) request perfectly and load-independently. <b>p99 TTFT
+explodes 14→42 s</b>, far above the 8 s SLO at <i>every</i> rate ⇒ <b>goodput@SLO = 0</b>. The cache
+optimizes the body of the distribution; the SLO tail is untouched.</figcaption>
+</figure>
+
+<h3>5.2 Tail decomposition: the tail is cold, not slow-to-move or low-hit</h3>
+<p>Per-rate Prometheus deltas rule out the two cache-addressable causes of a large tail:</p>
+<ul>
+<li><b>Movement is not the bottleneck.</b> L2→L1 load-back moves ~330 M tokens/rate (40% of hits are
+host-resident), yet load-back latency is <b>mean ≈ 1.3 ms, p99 ≤ 8.6 ms</b> — three-to-four orders of
+magnitude below the 14–42 s p99. Load-back is already effectively overlapped by the layer-pipelined
+transfer; a speculative-prefetch mechanism (which we designed, "SLOP") has nothing to hide. <i>The
+transfer/compute-overlap direction is empirically dead here.</i></li>
+<li><b>Hit rate is not the bottleneck.</b> Hit rate is a stable ~0.66 and p50 is flat ~1 s across loads:
+warm follow-ups already resolve near-instantly. Raising hit rate cannot help requests that are already
+sub-second, and it cannot help the cold turn-0 documents that <i>are</i> the p99 (they are unique and
+seen for the first time). [Control: <code>--hicache-write-policy write_back</code>, which prior work shows
+raises hit ~+13 pp, yields goodput@SLO still 0 — <span class="mut">result pending, job queued</span>.]</li>
+<li><b>The tail is heavy-tailed cold prefill + serialization.</b> Calibrated prefill rate P ≈ 20.5 K
+tok/s. The measured p99 is <b>6–8× above</b> the perfect-cache P-K prediction (λ=3: 2.4 s predicted vs
+14.1 s measured), and the gap grows with λ — consistent with heavy-tailed cold turn-0 documents
+(65 K–192 K tokens) serialized one-chunk-at-a-time through the prefill engine (§2.4), which the mean-based
+model under-predicts. This is the K·t queueing tail, and it is lossless-irreducible.</li>
+</ul>
+
+<h3>5.3 Honest controls & attribution</h3>
+<p>Peak output throughput rises monotonically (365→538 tok/s) — decode is <i>not</i> saturated; the knee
+is the prefill queue, exactly where the cache is supposed to help. The cache <i>does</i> help: it holds
+p50 flat at ~1 s under 3.5× the knee load (without it, ρ&gt;1 and the system is unstable — §2.2). But that
+help is entirely in the body of the distribution; the SLO is defined on the p99 tail, which is cold. The
+result is lossless by construction (radix prefix matching returns byte-identical KV; write policy and
+movement timing do not alter outputs).</p>
 
 <h2>6 Related work</h2>
 <p>

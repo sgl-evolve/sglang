@@ -1,0 +1,1 @@
+2026-07-12 · prefill-slo-tail · Bounded impossibility: no lossless KV mechanism raises goodput@SLO on heavy-tailed cold-prefill workloads (cache is a mean-optimizer, not a tail-optimizer); goodput@SLO=0, p50 flat ~1s, p99 14-42s, load-back p99<9ms · 5f56b082c · draft

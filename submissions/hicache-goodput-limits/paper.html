@@ -61,20 +61,21 @@ the KV of earlier turns is reused by later turns. HiCache exploits this by keepi
 Belady under in-order reuse) and that capacity (exclusive tiering) is the lever. We test whether this holds
 in the <i>concurrent</i> regime, where reuse is out-of-order (a conversation's next turn is separated from
 its previous turn by a load-dependent think-gap) and where the headline metric is a tail latency SLO.</p>
-<p>Contributions (this draft; empirical core pending):</p>
+<p>Contributions (this draft; mechanism goodput gains pending screens):</p>
 <ul>
-<li>A trace-driven decomposition of the goodput@SLO limiter into (i) irreducible cold-context prefill and
-(ii) avoidable warm-turn recompute, with a single measurable criterion (prefill throughput P vs. SLO)
-that decides which dominates (§4).</li>
-<li>Three engine-level findings that rule out the "obvious" cache mechanisms before any experiment: stock
-schedule-time matching already protects server-waiting prefixes; load-back is already per-layer overlapped;
-the residual reuse structure is only predictable by turn-count, i.e. by textbook frequency policies (§3).</li>
-<li>A rigorous, per-request-validated <b>bounded-negative</b>: the p99-TTFT tail is ≈100% cold-document
-prefills even under pressure, so goodput@SLO is cold-document-bound and any lossless cache mechanism is
-confined to a ≤~5% indirect effect (which stock nearly captures); goodput is invariant across eviction
-policies (§5).</li>
-<li>An actionable redirection: for tail-SLO long-context serving, the lever is prefill throughput / context
-length (lossy compression, disaggregation, sparsity), not lossless cache management.</li>
+<li>The <b>two-bound model</b> goodput@SLO = min(R_thru, R_p99) that separates the cache-improvable
+throughput bound from the concurrency-set tail bound, with the prefill throughput P measured (§4).</li>
+<li>A <b>conversation-id-aware per-request decomposition</b> of the tail that distinguishes irreducible cold
+turn-0 documents from avoidable mid-conversation evictions — showing a substantial fraction of pressured
+prefill work (and the SLO-breaching tail) is avoidable recompute from evicted proven multi-turn convs (§5).
+A methodological caution: a match-fraction classifier conflates the two and hides this entirely.</li>
+<li>A <b>residency mechanism</b> that protects proven multi-turn conversations (evicting single-turn "whale"
+documents first) — including a novel continuation-aware policy that protects a conversation's prefix across
+its think-gap to capture the turn-0→turn-1 first-reuse race hit-count policies miss — with its goodput gain
+bounded and quantified against the irreducible cold-document floor (§5).</li>
+<li>Three engine findings that constrain the space: stock schedule-time matching already protects
+server-waiting prefixes; L2→L1 load-back is already per-layer overlapped; so the lever is residency of
+proven-conversation prefixes across think-gaps, not prefetch or waiting-set protection (§3).</li>
 </ul>
 
 <h2>2 Motivation (trace-driven)</h2>

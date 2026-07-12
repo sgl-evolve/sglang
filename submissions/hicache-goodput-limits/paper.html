@@ -125,12 +125,40 @@ measured per-turn distribution:</p>
 </table>
 <p>If mechanism-viable, the target is the avoidable-recompute headroom: baseline uncached ⟨~37.8M⟩ tok
 (hit 0.62) vs. perfect ⟨~19.3M⟩ → <b>⟨~18.5M⟩ tok (~49% of baseline prefill)</b> of warm-turn recompute
-that a better-than-LRU finite-cache policy could remove. We measure P from the baseline (server-log input
-throughput + curve.csv p99-vs-λ + hit-rate-vs-λ) and resolve the fork.</p>
+that a better-than-LRU finite-cache policy could remove.</p>
+<h3>4.1 Measured P and the two-bound model</h3>
+<p>A diagnostic boot (steady-state over 164 real prefill batches) measures <b>P ≈ 35,000 tok/s</b>. At this
+P the 8 s budget is 280K tokens, exceeding the largest document (192.7K) — so no <i>single</i> request's cold
+prefill breaches the SLO. The tail is therefore not single-request-irreducible; goodput is set by the
+minimum of two bounds:</p>
+<ul>
+<li><b>R_thru = P / avg_uncached_prefill_per_req</b> — the prefill-throughput bound. Cache <i>reduces</i>
+avg_uncached, <i>raising</i> R_thru (baseline hit≈0.62 → ~6.5 req/s; perfect cache → ~12.8 req/s: a ~2× ceiling).</li>
+<li><b>R_p99</b> — the max rate with p99 TTFT ≤ 8 s, set by the largest cold-document prefills under
+concurrency; the cache does not shrink these, so it does not raise R_p99 (except indirectly via the queue).</li>
+</ul>
+<p><b>goodput@SLO = min(R_thru, R_p99).</b> The fork is which binds: if the cold-document tail pushes p99
+past 8 s <i>below</i> throughput saturation (R_p99 &lt; R_thru), goodput is cold-context-bound and no lossless
+cache mechanism helps (bounded-negative); if p99 rises only at saturation (R_p99 ≈ R_thru), cache raises
+goodput (mechanism). Note the irreducible <b>cold-document floor</b>: ≈94% of prefill work at low pressure is
+turn-0 documents; the cache only addresses the warm-miss remainder, which grows with pressure. The rate-sweep
+(warmup-corrected) p99-vs-λ curve reads off R_p99 and resolves the fork.</p>
 
-<h2>5 Evaluation <span class="todo">PENDING BASELINE</span></h2>
-<p>⟨Frozen rate-sweep throughput–latency curve vs. baseline; goodput@SLO; ablations isolating the mechanism;
-n≥2 error bars; lossless verification; honest attribution (mechanism, not config flip / de-saturation).⟩</p>
+<h2>5 Evaluation <span class="todo">numbers PENDING (screen-v0 pressured sweep + certified 19437)</span></h2>
+<p>Frozen rate-sweep (λ∈{3,5,7,10}, warmup burst, NUMP=1553, conc 256) on a certified 8×H100 node; headline
+goodput@SLO (max req/s with p99 TTFT ≤ 8 s). Lossless verified vs the no-cache run.</p>
+<h3>5.1 The goodput@SLO curve &amp; the binding bound</h3>
+<p>⟨Table: per-λ req/s, p99 TTFT, hit-rate, host-util. Read off R_p99 (rate where p99 crosses 8 s) and
+compare to R_thru = P/avg_uncached (§4.1). Verdict: which bound binds ⇒ cache-affectable vs cold-doc-bound.⟩</p>
+<h3>5.2 Decomposing the p99 tail (per-request trace)</h3>
+<p>⟨From SGLANG_WILKES_TRACE (rid-dedup): fraction of p99-tail requests that are COLD turn-0 docs vs
+WARM-MISS; warm-miss% of prefill work vs λ = the avoidable, cache-addressable remainder.⟩</p>
+<h3>5.3 Does eviction/residency move goodput? (policy sweep)</h3>
+<p>⟨Sweep --radix-eviction-policy {lru, lfu, slru} (+ candidate) on the fixed protocol. The protocol claims
+eviction is a dead end (LRU≈Belady) — validated or overturned here for the goodput@SLO-under-load metric.
+Report Δgoodput and attribute to recompute reduction (total-uncached counts), not de-saturation.⟩</p>
+<h3>5.4 Honest controls</h3>
+<p>⟨peak tok/s, peak req/s (≈flat, decode-bound); n≥2 replicates / error bars; lossless output match.⟩</p>
 
 <h2>6 Related work</h2>
 <p><b>Tiered KV caching &amp; prefetch.</b> AttentionStore/CachedAttention (ATC'24) does hierarchical KV

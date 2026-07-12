@@ -284,6 +284,7 @@ cold-context-bound (bounded-negative), because 1253/1553 conversations' cold tur
 arrive during the measured sweep. DECISIVE test = screen-v0 (eval.sh WITH warmup + NUMP=1553): does warmup
 bring p99 under 8s (⇒ cache-affectable), or does the cold-doc tail persist (⇒ cold-bound negative)?
 LESSON: future diagnostics must include a warmup burst.
+- λ=7 diag (same confound): req/s 4.82, median 2063ms, **p99 45,686ms** — p99 is ~RATE-INDEPENDENT (48.5s@λ3, 45.7s@λ7) with low medians ⇒ tail = fixed set of extreme cold-doc prefills, NOT queue growth (which would grow p99 with λ). Signature of R_p99≪R_thru (cold-doc-bound) — but confounded by no-warmup; screen-v0 (warmup) disambiguates cold-start-spike vs warmup-resistant cold-doc-tail.
 
 ## 16. Analytical spine — the two-bound goodput model (validate w/ screen-v0)
 

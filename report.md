@@ -104,6 +104,8 @@ _(none yet)_
   copy-paste) but setup clones under `workspace/sgl/v0.31/research/...`. Fixed WITHOUT editing frozen
   eval.sh via symlink `v0.3_ablations/research -> ../v0.31/research` (matches the already-present
   `base ->` symlink the manager/base-cell used).
+- ⚠️ Eval runs the WORKING TREE via PYTHONPATH at run time → keep `python/` STOCK until the queued
+  baseline job (19436) actually runs, else the "baseline" isn't stock. Engine edits only after v0-stock lands.
 - Compute contention: v0.3 research manager holds 3/4 certified nodes (0-3,1-2,ondem-2) with 24h
   sleep-infinity + runs evals into them; ondem-3 cycles v0.3 evals. v0.31 `_pool/held` is EMPTY → my
   cell's evals fall back to exclusive sbatch and QUEUE. Not fighting for resources unfairly; study while

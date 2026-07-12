@@ -355,3 +355,33 @@ cache hot across rates vs flush cold-starts each).
   another campaign's holds (collision+fairness), do NOT monopolize ondem-3 with a session hold (unfair to 3
   siblings). Keep fair one-shot exclusive queue; slurm fair-share should raise my priority (I've used 0
   compute). Study while queued.
+
+## 2026-07-12 — strengthening the coin-flip (two same-node diagnostics in flight)
+Goal: close the paper's one honest gap (node confound on the central coin-flip claim) + quantify the
+per-rate flush's contribution. Two off-contract diagnostics, both node-controlled:
+
+- **warmdiag** (`runs/v0-warmdiag/`, worktree `evolve/kleinrock-warmdiag`, `KLEINROCK_NOFLUSH=1`, job 19512
+  on ondem-3 = SAME node as v0-stock): stock server, warmup, then the sweep with per-rate `/flush_cache`
+  DISABLED → true warm-steady-state. **λ=3 p99 = 9118 ms** (hit 0.697) vs v0-stock 14062 ms on the same node
+  → removing the flush lowers λ=3 p99 by **35%**, BUT 9.1s still **> 8s SLO** ⇒ warm steady-state NARROWS
+  the tail but does NOT remove the coin-flip (irreducible cold-turn-0 prefill floor remains). λ=5 running
+  (27% @13:52Z); awaiting λ=5/7/10 for the full node-controlled flush curve. This converts paper §7 bullet-2
+  from "could not test / open" → a landed result.
+- **medk** (`runs/v0-medk/`, `tools/medk_eval.sh`, job **19516**, `--dependency=afterany:19512` → auto-starts
+  when warmdiag frees a node; I never hold >1 node): the KEY experiment for the node confound. Launches the
+  STOCK frozen server ONCE and re-runs the eval's λ=3 measurement **K=5×** back-to-back on ONE node. Each
+  bench_serving invocation flushes at start (bench_serving.py:447) → each replicate = i.i.d. cold-cache λ=3
+  draw IDENTICAL to the eval's λ=3 point, but node held constant. Since λ≥5 reliably fails the SLO,
+  goodput@SLO∈{0,3} is decided entirely by λ=3, so the spread of the 5 same-node p99 values IS the goodput
+  coin-flip with node variance removed. Verified main tree is STOCK before submit (`git diff a334877e5 --
+  python/` empty, working tree clean, bench flush ungated). Upgrades paper §3.1/§3.2 (coin-flip:
+  node-confounded inference → directly demonstrated) + §7 bullet-1 (future work → result).
+
+INTEGRITY note (self-check this session): program.md line 118 specifies **"flush between rates"** as the
+CONTRACT, and bench_serving.py:447 flushes per invocation → the per-rate flush is INTENDED, not a bug. So
+do NOT frame it as "hidden flush defeats the eval." Honest framing: the v0.31 recalibration added a warmup
+to kill cold-start metastability, but since the contract also flushes each rate, the warmup warms the
+COMPUTE pipeline (CUDA graphs/JIT) not the CACHE — every measured rate still begins cold. warmdiag isolates
+this (off-contract). Abstract reword pending: "defeating the eval's intended warm-steady-state design" →
+purely-factual "the load generator issues /flush_cache per invocation, so each measured rate is
+cold-started" (fold into the one-shot warmdiag integration edit).

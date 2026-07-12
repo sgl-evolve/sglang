@@ -447,3 +447,17 @@ property, not config-specific. This VALIDATES the paper's thesis + methodology b
 stable metrics (+ tail variance), not the binary deadline. Integrated abstract/§3.1(A/B table)/§7/§8,
 committed 5ebf0b75e, validated (tags 7 tables/refs/numbers vs raw). PAPER now: negative + methodology
 RECOMMENDED + VALIDATED. Contribution elevated from "recommend fix" to "validate fix + show its limit".
+
+### warm-medk (job 19580) — validate warm-steady-state recommendation (2026-07-12 ~23:30Z)
+Completes the methodology-validation triad: (1) medk = coin-flip exists at fixed node; (2) medk_wb =
+median-of-k can't separate configs on goodput; (3) warm-medk = does the OTHER recommended fix
+(warm-steady-state, no per-rate flush) make goodput@SLO RELIABLE? warm_medk_eval.sh = worktree no-flush
+bench (KLEINROCK_NOFLUSH=1, stock engine verified), K=5 λ=3 draws no-flush (cache accumulates → warm
+steady-state), OUT runs/v0-warm-medk/. Outcomes, both honest:
+ (A) warm draws TIGHT (σ/m<1, reliable) → warm-steady-state DOES fix reliability (reveals goodput reliably
+     0 or 3) → validates recommendation #1.
+ (B) warm draws still WIDE (σ/m≳1, coin-flip) → coin-flip is STRUCTURAL (flush not the cause) → even the
+     full recommended fix (warm + median-of-k) can't rescue goodput@SLO for this workload → the metric is
+     fundamentally unsuited; MUST use stable metrics. (warmdiag n=1 warm λ3=9.1s hints warm still fails.)
+Submitted exclusive-durable (pool saturated, all held flocks busy); will route via nohup flock-overlap if a
+held flock frees (faster). Paper stands complete without it; this is the final triad-completing validation.

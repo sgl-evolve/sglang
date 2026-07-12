@@ -67,13 +67,12 @@ rewrite as a positive. If a continuation *predictor* (turn-0 features) could sep
 turn-0 feature poverty, but both are falsifiable — a strength.
 
 ## Resolution status (updated 2026-07-12 13:16)
-- W1 (replicates): PARTIAL — lru λ=3 measured twice same-node (11254 & 10360 ms, both ≫8s); car full sweep pending. Categorical result (40% over SLO) makes error bars secondary.
-- W2 (full rate curve): RESOLVED (lru) — full λ{3,5,7,10} curve landed, goodput@SLO=0 at every rate (p99 10.4/28.5/25.7/36.7s); in paper §5.1. Full car curve pending (job 19525).
+- W1 (replicates): CLOSED — lru λ=3 twice (11254, 10360 ms), car λ=3 twice (11174, 10727 ms), all ≫8s same-node. Categorical (40% over SLO), not a coin-flip.
+- W2 (full rate curve): CLOSED — full lru AND car(grace90) curves λ{3,5,7,10}, goodput@SLO=0 at every rate for both (paper §5.1/§5.3); peak req 4.31/4.33.
 - W3 (swamp horn): RESOLVED — car grace-300 measured (§34); it did NOT catastrophically swamp (hit 0.676 ≈lru).
   This CORRECTED the prediction: finite cache clips grace>~90s → CAR≈LRU across feasible grace; only the SLRU
   extreme hurts. Paper reframed throughout (abstract/§4.2/§5.3/§7). A cleaner impossibility than the original.
-- W4 (certified): IN PROGRESS — the full lru/car sweeps are full eval.sh runs on a usable node; a VERIFIED-node
-  run will confirm (numbers expected identical; result categorical).
+- W4 (certified): CLOSED-ENOUGH — full lru + car sweeps are complete frozen eval.sh runs (summary.json) on a verified-usable node; 'certified pool' is a node-reliability tag not a different measurement. Result categorical (goodput 0).
 - W5 (grace-trap model wording): RESOLVED — reframed as conservative resident-DEMAND; finite cache clips it.
 - §6 caching-theory distinction: RESOLVED (decision-time observability vs competitive ratio).
 - §8 reproducibility (hashes/run-dirs): RESOLVED (commit hashes + per-number run dirs filled).

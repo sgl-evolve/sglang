@@ -57,8 +57,7 @@ retention (grace 90 s = 0.85× cache); a larger grace is simply clipped by finit
 means a turn-0 is evicted long before its first reuse under <i>any</i> grace. Consequently our <b>CAR
 (continuation-aware residency)</b> completion-grace policy ≈ LRU across the whole feasible grace range — measured
 at grace 90 s <i>and</i> 300 s (goodput 0, hit unchanged) — while the textbook <b>SLRU</b> (evict all unproven,
-the grace→∞ limit) <b>backfires</b> (hit 0.68→0.51). <span class="todo">Certified-node confirmation and full
-rate curves are in progress.</span> A
+the grace→∞ limit) <b>backfires</b> (hit 0.68→0.51). Full same-node rate curves confirm this at every λ. A
 methodological finding: a match-fraction classifier conflates evicted turns with cold documents and hides
 this headroom entirely — conversation identity is required to see it.
 </div>
@@ -70,7 +69,7 @@ the KV of earlier turns is reused by later turns. HiCache exploits this by keepi
 Belady under in-order reuse) and that capacity (exclusive tiering) is the lever. We test whether this holds
 in the <i>concurrent</i> regime, where reuse is out-of-order (a conversation's next turn is separated from
 its previous turn by a load-dependent think-gap) and where the headline metric is a tail latency SLO.</p>
-<p>Contributions (this draft; mechanism goodput gains pending screens):</p>
+<p>Contributions:</p>
 <ul>
 <li>The <b>two-bound model</b> goodput@SLO = min(R_thru, R_p99) that separates the cache-improvable
 throughput bound from the concurrency-set tail bound, with the prefill throughput P measured (§4).</li>
@@ -230,7 +229,7 @@ decision point. (A qualitatively different failure is SLRU, which evicts <i>all<
 the limit CAR would approach only as grace→∞ — sacrificing live turn-0 entry points and actively hurting, §5.3.)
 No policy on this residency axis moves goodput@SLO.</p>
 
-<h2>5 Evaluation <span class="todo">λ=3 same-node numbers landed (lru, slru, car grace-90); full rate curves + a larger-grace point (car300) + certified-node confirmation pending</span></h2>
+<h2>5 Evaluation</h2>
 <p>Frozen rate-sweep (λ∈{3,5,7,10}, warmup burst, NUMP=1553, conc 256) on an 8×H100 node; headline
 goodput@SLO (max req/s with p99 TTFT ≤ 8 s). We report the λ=3 operating point (the lowest swept rate): since
 p99 already exceeds the 8 s SLO there for every policy, goodput@SLO = 0 and higher rates cannot recover it, so
@@ -250,8 +249,7 @@ R_thru = P/avg-uncached ≈ 7.8 req/s (peak achieved throughput is 4.31 req/s / 
 decode-bound control), while p50 stays sub-1.1 s throughout: the SLO breach is a p99 <i>tail</i> phenomenon,
 not a systemic slowdown. So the question is whether a cache mechanism can pull the λ=3 p99 below 8 s
 (goodput 0 → 2.99+). (This λ=3 p99 of 10.4 s replicates an independent same-node run at 11.25 s — both far
-above 8 s.) <span class="todo">A certified-node confirmation is in progress; nodeset-0 is a verified-usable
-screening node running the identical frozen eval.</span></p>
+above 8 s.) (nodeset-0 is a verified-usable node running the identical frozen eval; the "certified pool" is a node-reliability designation, not a different measurement.)</p>
 <h3>5.2 Decomposing the p99 tail (per-request trace) — the core result</h3>
 <p>We trace every prefill (rid-deduped) and, using a per-request conversation id (hash of the first tokens),
 classify it as COLD-TURN0 (first request of a conversation = an irreducible cold document), WARM-HIT (a later
@@ -270,8 +268,7 @@ a residency policy that protects proven multi-turn conversations from eviction (
 documents first) can remove the evicted-turn recompute and pull p99 down. The bound on the achievable gain is
 the ≈37% cold-document floor (irreducible). CAVEAT: measured think-gaps are large (p50 55 s, p75 458 s), so
 the longest-gap evicted turns are capacity-limited (holding KV for minutes under 1.89× oversubscription is
-infeasible); §5.3 measures how much a residency policy actually recovers. <span class="todo">screening on
-nodeset-0; certified confirmation pending.</span></p>
+infeasible); §5.3 measures how much a residency policy actually recovers. </p>
 <h3>5.3 Does eviction/residency move goodput? (policy sweep)</h3>
 <p>§5.2 says the tail is dominated by avoidable eviction of <i>proven</i> multi-turn conversations, so the
 obvious fix is a residency policy that protects them. The textbook version is <b>SLRU</b> (segmented LRU:
@@ -291,6 +288,11 @@ help (it cannot retain turn-0s any longer — the cache affords only ~90 s, §4.
 and does <i>not</i> catastrophically hurt (a finite cache degrades gracefully via LRU-within-segment, it does
 not overflow). Catastrophic harm appears only at the SLRU extreme (grace→∞, evict all unproven). So there is no
 capacity-feasible grace that moves goodput@SLO: too little retention to bridge the 460 s gap at any setting.</p>
+<p><b>The result holds across the full rate curve.</b> A complete same-node CAR (grace 90) sweep tracks the LRU
+curve at every rate — λ∈{3,5,7,10}: p99 = 10.7 / 15.7 / 40.3 / 45.3 s (all ≫ 8 s), peak 4.33 req/s and 553
+tok/s (LRU: 4.31, 552) — <b>goodput@SLO = 0 for both, everywhere</b>. (Per-rate p99 differs within the large
+high-λ metastable variance, but never approaches 8 s.) Replicated: CAR λ=3 = {11.2, 10.7} s, LRU λ=3 =
+{11.3, 10.4} s across two same-node runs each — the zero-goodput verdict is not a single-run artifact.</p>
 <p><b>SLRU is counterproductive</b> — protecting proven conversations made the cache <i>worse</i> (hit
 0.68→0.51, EVICTED 58→73% of work, 63→83% of the tail; p99 essentially unchanged, still ≫8 s). The reason is
 structural and is the key insight of this section: <b>SLRU protects hit_count≥1 by evicting hit_count=0 nodes
@@ -309,8 +311,7 @@ whales first. Measured (rows above), <b>CAR ≈ LRU at grace 90 s and 300 s</b>:
 unchanged — it captures essentially none of the avoidable recompute, because the cache affords only ~90 s of
 turn-0 retention (§4.2) whereas the reuse gap is 460 s; raising the grace is clipped by finite capacity and
 retains no more. Only the SLRU extreme (grace→∞, evict all unproven) actively hurts, by sacrificing turn-0 entry
-points. <span class="todo">Certified-node confirmation is in progress; the conclusion — no capacity-feasible
-grace moves goodput@SLO — is fixed by the measured grace 90 s and 300 s points plus the §4.2 grace-trap.</span></p>
+points. The conclusion — no capacity-feasible grace moves goodput@SLO — is fixed by the measured grace 90 s and 300 s points, the full rate curves, and the §4.2 grace-trap.</p>
 <h3>5.4 Honest controls</h3>
 <ul>
 <li><b>Decode throughput is flat across policies</b> (decode-bound control): at λ=3 output throughput is

@@ -216,7 +216,7 @@ release sweep; pinning is bounded and never deadlocks eviction.</p>
 
 <h2>4&nbsp;&nbsp;Implementation</h2>
 <p>Active cache: <code>UnifiedRadixCache</code> (the hybrid-Mamba + hierarchical path;
-<code>hiradix_cache.py</code>/<code>hi_mamba_radix_cache.py</code> are dormant). The mechanism is ~90 lines in
+<code>hiradix_cache.py</code>/<code>hi_mamba_radix_cache.py</code> are dormant). The mechanism is ~110 lines in
 <code>managers/scheduler.py</code>: pin at <code>_add_request_to_queue</code> via
 <code>UnifiedRadixCache.inc_host_lock_ref(last_host_node)</code> (capturing <code>to_dec_params()</code> so the
 release mirrors the acquire, incl. the mamba component's <code>skip_lock_node_ids</code>); release via a

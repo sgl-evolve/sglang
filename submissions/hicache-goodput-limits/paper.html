@@ -187,9 +187,35 @@ the longest-gap evicted turns are capacity-limited (holding KV for minutes under
 infeasible); §5.3 measures how much a residency policy actually recovers. <span class="todo">screening on
 nodeset-0; certified confirmation pending.</span></p>
 <h3>5.3 Does eviction/residency move goodput? (policy sweep)</h3>
-<p>⟨Sweep --radix-eviction-policy {lru, lfu, slru} (+ candidate) on the fixed protocol. The protocol claims
-eviction is a dead end (LRU≈Belady) — validated or overturned here for the goodput@SLO-under-load metric.
-Report Δgoodput and attribute to recompute reduction (total-uncached counts), not de-saturation.⟩</p>
+<p>§5.2 says the tail is dominated by avoidable eviction of <i>proven</i> multi-turn conversations, so the
+obvious fix is a residency policy that protects them. The textbook version is <b>SLRU</b> (segmented LRU:
+protect any node with hit_count≥1, evict unproven nodes first). We measure it on the frozen protocol, same
+node as the lru baseline (λ=3; node variance is the dominant confound so all rows are same-node):</p>
+<table>
+<tr><th>policy (λ=3, same node)</th><th>hit</th><th>p50 TTFT</th><th>p99 TTFT</th><th>EVICTED %work</th><th>EVICTED %of ≥40K tail</th><th>goodput@SLO</th></tr>
+<tr><td>lru (stock)</td><td>0.679</td><td>876 ms</td><td>11,254 ms</td><td>58%</td><td>63%</td><td>0</td></tr>
+<tr><td>slru (protect proven)</td><td><b>0.507</b></td><td>1,498 ms</td><td>10,091 ms</td><td><b>73%</b></td><td><b>83%</b></td><td>0</td></tr>
+<tr><td>car (this work, grace 90 s)</td><td class="todo">pending</td><td class="todo">—</td><td class="todo">—</td><td class="todo">—</td><td class="todo">—</td><td class="todo">—</td></tr>
+</table>
+<p><b>SLRU is counterproductive</b> — protecting proven conversations made the cache <i>worse</i> (hit
+0.68→0.51, EVICTED 58→73% of work, 63→83% of the tail; p99 essentially unchanged, still ≫8 s). The reason is
+structural and is the key insight of this section: <b>SLRU protects hit_count≥1 by evicting hit_count=0 nodes
+first — but a conversation's turn-0 has hit_count=0 until its first reuse</b>. Turn-0s are the <i>entry point</i>
+to multi-turn reuse (61% of conversations continue), so evicting them aggressively destroys the very reuse SLRU
+was meant to protect: the turn-0→turn-1 first hit is lost, that turn recomputes, and it never gets promoted.
+Protecting the proven at the expense of the not-yet-proven is exactly wrong when the not-yet-proven are the
+future proven.</p>
+<p>This motivates <b>CAR (Continuation-Aware Residency)</b>, a 3-segment priority that adds a
+<i>completion-grace probation</i> for turn-0s (evict-order low→high): (0) unproven and grace-expired
+[single-turn "whale" documents — evict first]; (1) unproven but within a completion grace of ~the think-gap
+[turn-0 probation — hold long enough to catch the first reuse]; (2) proven, hit_count≥1 [active multi-turn].
+The grace is the novel signal: it is keyed on <i>completion time</i> (a closed-loop quantity), not recency or
+frequency, and it protects precisely the turn-0s SLRU discards while still evicting genuinely dead single-turn
+whales first. <span class="todo">car row pending (job 19480, same node); if it pulls λ=3 p99&lt;8 s the full
+curve + certified confirmation follow; if not, the honest result is that no lossless residency policy moves
+goodput@SLO here and the ≈37% cold-document floor plus minute-scale think-gaps under 1.89× oversubscription
+bound the achievable recovery — a bounded-negative that still contributes the SLRU-backfire insight and the
+tail decomposition.</span></p>
 <h3>5.4 Honest controls</h3>
 <p>⟨peak tok/s, peak req/s (≈flat, decode-bound); n≥2 replicates / error bars; lossless output match.⟩</p>
 

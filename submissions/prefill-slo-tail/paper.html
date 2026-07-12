@@ -47,8 +47,9 @@ band (λ=3 p99 7.5 s), so its single-run "win" cannot be attributed to write-bac
 <i>stable</i> effects are real and do not flip (hit rate +6 pp, peak throughput +18%). The point is not
 that a better cache never helps, but that <b>a single run cannot tell</b>: goodput@SLO is dominated by
 variance (cold-start metastability plus node heterogeneity), both invisible to a single-run A/B. We give a trace-driven Pollaczek–Khinchine account of why
-the tail is metastable, and show the effect is compounded by the harness flushing the cache before each
-rate (defeating the eval's intended warm-steady-state design). Contributions: (1) <b>a measurement result</b>
+the tail is metastable, and show the effect is compounded by the harness cold-starting the cache before
+each rate — the load generator issues <code>/flush_cache</code> at the start of every invocation, so the
+warmup burst warms the compute pipeline (CUDA graphs, JIT) but not the cache. Contributions: (1) <b>a measurement result</b>
 — goodput@SLO is unreliable for single-run KV-cache A/B on heavy-tailed cold-prefill workloads, a pitfall
 that explains a family of null and contradictory results; (2) <b>a queueing characterization</b> of the
 metastability and the SLO-straddling tail; (3) <b>a methodology</b> — warm steady-state (no per-rate
@@ -305,8 +306,9 @@ boundary quantitative.</p>
 churn, verified via git-diff line counts logged to each run). Experiments (each a full λ∈{3,5,7,10} sweep):
 <b>three stock replicates</b> (v0-stock, v0-stock-r2, v0-stock-r3) establishing the coin-flip;
 <b>v1-writeback</b> (<code>--hicache-write-policy write_back</code>, a hit-rate-raising config control);
-and an off-contract <b>warm-steady-state diagnostic</b> (per-rate flush disabled) testing whether warm
-serving removes the metastability. The queueing model/calibration are <code>tools/queue_model.py</code> +
+and an off-contract <b>warm-steady-state diagnostic</b> (v0-warmdiag: per-rate flush disabled, run on the
+<i>same</i> node as v0-stock) testing whether warm serving removes the metastability — it does not
+(§5.3): it lowers p99 by 33–45% at every rate but leaves every rate above the SLO. The queueing model/calibration are <code>tools/queue_model.py</code> +
 <code>tools/calibrate.py</code>; trace characterization is <code>tools/tokenize_trace.py</code>; the
 per-batch queue timeline (§5.3) is parsed from the scheduler log. We also designed a speculative L2→L1
 load-back-overlap mechanism ("SLOP", <code>tools/SLOP_design.md</code>); the decomposition (§5.2) shows
@@ -408,8 +410,27 @@ so the tail floor stays near the 8 s SLO regardless of the ramp.</li>
 <p>These two components make the p99 both large and <i>metastable</i>: the flush ramp is a transient whose
 severity depends on arrival phasing, and the cold-prefill floor is heavy-tailed — together they place the
 p99 in a wide band around the SLO, so which side of the deadline a given run lands on is largely chance
-(§3.1). The ramp inflates the absolute p99 (a warm-steady-state eval would be lower and likely less
-variable); testing that directly is the strongest remaining experiment (§7).</p>
+(§3.1).</p>
+<p><b>Node-controlled flush quantification (v0-warmdiag).</b> We isolate the flush's contribution with an
+off-contract diagnostic: the identical stock server and sweep with the per-rate <code>/flush_cache</code>
+disabled (cache persists across rates → true warm steady-state), run on the <i>same node</i> (ondem-3) as
+v0-stock so the comparison is node-controlled. Removing the flush lowers p99 substantially at every rate —
+but never below the SLO:</p>
+<table>
+<tr><th>λ</th><th>stock p99 (per-rate flush)</th><th>warm p99 (no flush)</th><th>Δ</th><th>warm ≤ 8 s SLO?</th></tr>
+<tr><td>3</td><td>14.06 s</td><td><b>9.12 s</b></td><td>−35%</td><td>no</td></tr>
+<tr><td>5</td><td>25.45 s</td><td><b>13.91 s</b></td><td>−45%</td><td>no</td></tr>
+<tr><td>7</td><td>33.31 s</td><td><b>20.87 s</b></td><td>−37%</td><td>no</td></tr>
+<tr><td>10</td><td>42.01 s</td><td><b>28.06 s</b></td><td>−33%</td><td>no</td></tr>
+</table>
+<p>The per-rate flush inflates the absolute p99 by ~1.5× (33–45%), confirming the cold-start ramp is a
+large, real component of the tail — but the <b>warm-steady-state p99 still exceeds the SLO at every rate</b>,
+so <b>warm serving does not rescue goodput@SLO (still 0)</b>. The flush shifts the tail down; the
+irreducible cold turn-0 prefill floor keeps it above the deadline. So while a warm-steady-state eval is the
+right methodology (it removes the flush transient and its arrival-phase variance, §7), on this workload it
+narrows the coin-flip band rather than eliminating the failure — the structural floor, not the flush, is the
+binding ceiling. (The λ=3 warm point, 9.12 s, is a single draw; a warm median-of-k would pin the residual
+variance — see §7 and the same-node replicate study, §3.1.)</p>
 
 <h3>5.4 Honest controls & attribution</h3>
 <p>Peak output throughput rises monotonically (365→538 tok/s) — decode is <i>not</i> saturated; the knee
@@ -449,12 +470,15 @@ write-back's goodput effect is zero — only that a single run cannot resolve it
 (future work, compute-permitting) is <b>same-node, median-of-k</b> replicates of stock and of each config,
 which isolates run-variance and would give an attributable goodput estimate. Our claim is exactly that this
 is <i>required</i>: single-run, cross-node A/B on goodput@SLO — the common practice — is void.</li>
-<li><b>Per-rate cache flush.</b> The harness flushes the cache before each rate, compounding the
-metastability by cold-starting every measured point (queue ramps to 90–184 before draining, §5.3). This
-inflates the absolute p99; a true warm-steady-state eval would lower it and likely narrow the coin-flip.
-We could not test the no-flush condition directly (the eval is frozen), so whether warm steady-state fully
-removes the variance or merely narrows it is open — the strongest remaining experiment (our §7
-recommendation is to run it).</li>
+<li><b>Per-rate cache flush.</b> The harness cold-starts the cache before each rate (the load generator
+issues <code>/flush_cache</code> per invocation), compounding the metastability by ramping the queue to
+90–184 before it drains (§5.3). We tested the no-flush condition with an off-contract, node-controlled
+diagnostic (v0-warmdiag, §5.3): warm steady-state lowers p99 by 33–45% at every rate but leaves every rate
+above the SLO (λ=3 14.1→9.1 s), so it <i>narrows</i> the coin-flip band without <i>removing</i> the failure
+— the structural cold-prefill floor, not the flush, is the binding ceiling. This both validates
+warm-steady-state as the correct methodology (it removes a large, real variance source) and shows it is not
+sufficient here. The one residual gap is that our warm λ=3 point is a single draw; a warm median-of-k would
+pin how much of the coin-flip variance the flush contributes versus the arrival-phase transient.</li>
 <li><b>Model simplification.</b> The M/G/1 model is single-server and ignores decode contention, mixed
 prefill/decode batching, and the device/host KV split; it is an explanatory tool for the metastability,
 not a point predictor.</li>

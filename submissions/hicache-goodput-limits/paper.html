@@ -197,7 +197,7 @@ recompute or predict reuse; these overlap the turn-count-predictable residual we
 rate, transfer latency); we instead delimit, for a tail-SLO long-context regime, the point at which cache
 efficiency stops mattering for goodput because the tail is set by irreducible cold-context prefill. This
 bounded-negative + two-bound model is complementary to the above mechanisms and reframes where effort pays
-off (prefill/context, not cache). <span class="todo">expand w/ full citations</span></p>
+off (prefill/context, not cache). See References for full citations.</p>
 
 <h2>7 Limitations &amp; when the negative flips</h2>
 <p>The bounded-negative has a precise regime of validity — it is a statement about <b>when</b> the cache
@@ -227,6 +227,23 @@ decomposition is from a screening node; certified-node goodput numbers are pendi
 <code>sim/simulate.py</code>, <code>sim/prefill_tail.py</code>, <code>analyze.py</code>,
 <code>analyze_serverlog.py</code>. Eval via the frozen <code>eval-on-pool.sh &lt;name&gt; &lt;version&gt;</code>.
 ⟨commit hashes + run dirs per number pending.⟩</p>
+
+<h2>References</h2>
+<ol style="font-size:.85em">
+<li>Strata: Hierarchical Context Caching for LLM Serving. arXiv:2508.18572.</li>
+<li>Mooncake: A KVCache-centric Disaggregated Architecture for LLM Serving. FAST'25 / arXiv:2407.00079.</li>
+<li>CachedAttention / AttentionStore: Efficient Multi-turn Serving via Hierarchical KV Caching. USENIX ATC'24 / arXiv:2403.19708.</li>
+<li>Sarathi-Serve: Taming Throughput-Latency Tradeoff with Chunked Prefills. OSDI'24 / arXiv:2403.02310.</li>
+<li>SGLang / RadixAttention: Efficient Execution of Structured LM Programs. arXiv:2312.07104.</li>
+<li>Preble: Distributed Prompt Scheduling for LLM Serving. ICLR'25 / arXiv:2407.00023.</li>
+<li>Parrot: Efficient Serving of LLM-based Applications with Semantic Variables. OSDI'24.</li>
+<li>Not All Prefills Are Equal (PPD append-prefill disaggregation). arXiv:2603.13358.</li>
+<li>RedKnot: Head-aware KV Reuse with SegPagedAttention. arXiv:2606.06256.</li>
+<li>AsymCache: Computation-latency-aware KV Cache Management. arXiv:2606.02964.</li>
+<li>Continuum: TTL-aware Multi-turn Agent Scheduling. arXiv:2511.02230.</li>
+<li>Predictive Multi-Tier KV Memory Management. arXiv:2604.26968.</li>
+<li>LMCache / CacheBlend: Position-independent KV Reuse + Selective Recomputation. ACM 10.1145/3790254.</li>
+</ol>
 
 </body>
 </html>

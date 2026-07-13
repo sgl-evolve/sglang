@@ -377,7 +377,10 @@ variance-dominated and cleanly discriminate the two caches, exactly where goodpu
 <tr><td>hit rate</td><td>0.659 ± 0.009</td><td>0.730 ± 0.007</td><td><b>8.9σ</b></td></tr>
 </table>
 <p>The two configurations are statistically indistinguishable on goodput@SLO (0.4σ) yet separated by
-<b>7–9 standard deviations</b> on p50 TTFT and hit rate. <b>The information to rank the caches is present in
+<b>7–9 standard deviations</b> on p50 TTFT and hit rate — and, independent of any σ estimate from K=5, the
+per-configuration ranges are <b>fully disjoint</b> (p50: stock [531, 562] ms vs write-back [478, 492] ms;
+hit: [0.652, 0.674] vs [0.725, 0.742]), so the separation is unambiguous, not an artifact of the small
+sample. <b>The information to rank the caches is present in
 the measurement all along — the binary tail metric simply discards it.</b> This is the constructive core of
 the paper: evaluate KV caches on their stable, low-variance effects (§4's σ/m ≪ 1 metrics), which resolve
 precisely the comparison the coin-flipping tail cannot.</p>

@@ -1202,3 +1202,10 @@ extreme metastability (cross-node + within-node). The methodological conclusion 
 is small relative to node/run variance → single-node A/Bs (even replicated) are unreliable; multi-node median-of-k
 is required. Update §5.6 to the 3-node table + fig5 3rd panel; soften "node-specific" to "weak/node-dependent,
 metastability-swamped." Node 1-2 freed (n=2 plan; cb3 pair cancelled for stewardship).
+
+## 79. ★ SHARPENED central claim: metastability is INTRINSIC to the metric (fixed-policy variance, non-GPU)
+Pooled a FIXED policy's λ=3 p99 across all runs/3 nodes: LRU n=10 spans 5.9-31.2s (5.3× range; per-node medians
+6.1/14.0/15.0s); whale n=11 spans 6.2-26.6s (4.3×). ⇒ when ONE fixed policy's p99 varies 4-5× by node/run, no
+single policy-A/B can be trusted → the metastability is intrinsic to goodput@SLO on this workload, NOT a whale-vs-
+LRU artifact. Added to §5.6 — the cleanest statement of the central caution. Non-GPU (from existing data). This is
+the tightest form of the methodological result. Paper v0.3 central claim now maximally sharp.

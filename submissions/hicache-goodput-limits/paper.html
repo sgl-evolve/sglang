@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>The Turn-0 Size Signal: Observable Liveness for KV Eviction under a Metastable Tail-SLO — wilkes (DRAFT)</title>
+<title>The Turn-0 Size Signal: Observable Liveness for KV Eviction under a Metastable Tail-SLO — wilkes</title>
 <style>
   body{font:16px/1.55 Georgia,serif;max-width:52em;margin:2em auto;padding:0 1.2em;color:#161616}
   h1{font-size:1.6em;line-height:1.25;margin-bottom:.1em}
@@ -24,7 +24,7 @@
 <body>
 
 <h1>The Turn-0 Size Signal: Observable Liveness for KV Eviction under a Metastable Tail-SLO</h1>
-<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>DRAFT v0.3</b></div>
+<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>v0.5.1</b></div>
 
 <p class="abstract"><b>Summary.</b> The p99 tail is AVOIDABLE recompute (chash: <b>63% of the ≥40K-tok tail is evicted
 proven multi-turn convs</b>, 37% cold docs) and the real-time live set <b>fits</b> (peak 9.3M = 0.87× cache) →
@@ -48,9 +48,7 @@ crystallize into a <b>no-go criterion</b> (§9): no lossless residency/admission
 goodput@SLO gain when reuse is gap-dominated (G/R≈5), prefill has no co-execution contention, and the tail is
 execution-variance-dominated — the remaining lossless levers (capacity so R&gt;G; prefill bound P) are orthogonal
 to eviction/admission. = an observable offline liveness lever + a cross-node, execution-driven metastability
-caution + a bounded no-go result for lossless tail-SLO cache/admission optimization. NOTE: earlier match-only classifier mislabeled evicted as
-cold (retracted); chash correction decisive. Stable: §4.1 two-bound+P, §4.2
-size-observability + grace-trap, §5.2 decomposition, §5.3 SLRU-backfire, §5.5 size-aware eviction.</p>
+caution + a bounded no-go result for lossless tail-SLO cache/admission optimization.</p>
 
 <div class="abstract">
 <b>Abstract.</b> Hierarchical KV caching (HiCache) tiers attention KV across GPU HBM (L1) and host DRAM (L2).
@@ -628,10 +626,13 @@ gap/continuation structure the signal could be weaker.</li>
 short prompts), R_p99 rises above R_thru and the throughput bound (cache-improvable) binds — cache matters.
 Our negative is specific to <i>long-context</i> workloads whose cold prefill tail is concurrency-amplified
 past the SLO.</li>
-<li><b>Cross-request reuse.</b> Our mix has no cross-conversation document sharing (each turn-0 is unique),
-so cold docs are computed exactly once and are never cacheable. Workloads with shared documents / system
-prompts across requests (e.g. RAG over a shared corpus, few-shot prefixes) turn "cold" docs into cacheable
-prefixes — the cache would then shrink the tail. The negative is conditioned on low cross-request reuse.</li>
+<li><b>Cross-request reuse.</b> Cross-conversation document sharing in this mix is light and quantitatively
+negligible (§2.1): only 15.5% of document-bearing conversations reuse a document (a single document 100×, the rest
+≤3×), even <i>lossless perfect</i> sharing would save &lt;1% of prefill work, and RadixAttention already captures
+~78% of it — so cold documents are effectively computed once each and cross-request sharing is not a lever here.
+Workloads with heavy shared documents / system prompts (e.g. RAG over a shared corpus, few-shot prefixes) would
+turn "cold" docs into cacheable prefixes — the cache would then shrink the tail. The negative is conditioned on
+low cross-request reuse.</li>
 <li><b>Lossless scope.</b> We restrict to lossless KV management. Lossy methods (KV compression, sparsity,
 partial-context attention) <i>can</i> shrink the cold-document tail and are the natural lever this negative
 points to — but they change the outputs and are out of scope here.</li>

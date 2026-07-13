@@ -94,9 +94,10 @@ The goodput@SLO headline is decode-knee-capped + λ=5-coin-flip (below), BUT **p
   |------|--------------------------------|---|------|-------------|
   | stock         | 586, 603                | 2 | 594.9 | 0.671–0.675 |
   | write_back    | 651, 671, 671           | 3 | 664.1 | 0.733–0.774 |
-  | exclusive     | 659, 666, 669           | 3 | 664.7 | 0.745–0.756 |
-  **max stock (603) < min de-dup (651)** — zero overlap across 2 stock vs 6 de-dup runs; **+11.6% mean, +8%
-  min-to-max.** (vxc-cf3 exclusive full-sweep completed 2026-07-13, peak 666; vxc-cf4 in flight.) Formal MWU is underpowered at n=2 stock (best-case p≈0.095 — stated honestly, not claimed
+  | exclusive     | 659, 666, 669, 677      | 4 | 667.8 | 0.755–0.783 |
+  **max stock (603) < min de-dup (651)** — zero overlap across 2 stock vs **7** de-dup runs; **+12.1% mean, +8%
+  min-to-max.** (Firming replicates vxc-cf3 peak 666, vxc-cf4 peak 677 both landed 2026-07-13; de-dup arm n=7.
+  Stock arm still n=2 — v0-cert-r6 in flight to grow it to n=3 and formalize the MWU.) Formal MWU is underpowered at n=2 stock (best-case p≈0.095 — stated honestly, not claimed
   significant), so the evidence is the **clean non-overlap + the two same-node controls** (node 1-2 +8%, node
   0-1 +18%, which rule out the node confound for the primary comparison) + **hit-monotonicity** (the causal
   chain). This is a robust, replicated, lossless throughput result — my strongest positive.

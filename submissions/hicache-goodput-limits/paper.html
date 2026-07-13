@@ -522,7 +522,8 @@ a single fixed policy: LRU's own λ=3 p99, pooled over all 10 runs across the th
 (a 5.3× range)</b> with per-node medians of 6.1 / 14.0 / 15.0 s; whale's spans 6.2–26.6 s (4.3×). When one fixed
 policy's p99 varies 4–5× by node/run, no single A/B between two policies can be trusted. <b>This metastability is a
 genuine queue-<i>tail</i> phenomenon, not a node-health or harness artifact:</b> across the same runs whose p99
-swings 4–5×, the <i>median</i> TTFT (the distribution body) moves only 1.1–1.6× (LRU 534–876 ms, whale 528–568 ms).
+swings 4–5×, the <i>median</i> TTFT (the distribution body) moves far less — 1.1× among the full-throughput runs
+(next paragraph), and only 1.6× (534–876 ms) even including the two throughput-degraded SLRU/screen runs.
 A flaky node, thermal throttling, or I/O contention would inflate the median too; instead only the tail moves,
 which is the signature of a small set of large cold-prefills catching a good-vs-bad queue moment. The portable, robust
 contributions are the offline size-signal analysis (§4.2, deterministic) and this cross-node metastability

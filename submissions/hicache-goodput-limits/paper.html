@@ -24,42 +24,27 @@
 <body>
 
 <h1>The Metastable Tail-SLO: A No-Go Criterion for Lossless KV-Cache Optimization</h1>
-<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>v0.8</b></div>
+<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>v0.8.1</b></div>
 
-<p class="abstract"><b>Summary.</b> <b>Headline (a bounded negative + a methodology result).</b> For a two-tier HiCache
-serving concurrent multi-turn long-context conversations under a tail-latency SLO, <b>no lossless cache-residency or
-prefill-admission mechanism yields a certifiable goodput@SLO gain</b> — a no-go criterion (§9) with three measurable
-conditions (gap-dominated reuse, no prefill co-execution contention, an execution-variance-dominated tail). The
-metric itself is the deepest finding: <b>goodput@SLO is EXECUTION-VARIANCE-DOMINATED</b> — a byte-identical workload
-(fixed seed, no-shuffle, 22 runs) yields a <b>5.3× p99 spread</b> (5.9–31.2 s) while the median is pinned to 1.1×,
-so certifying even a 45% policy effect at 0.8 power needs <b>~24 same-node runs per policy</b>; single/small-n A/Bs
-on this metric are void.
-<br><b>Constructive but OFFLINE-only.</b> Why the cache <i>could</i> matter in principle: the p99 tail is AVOIDABLE
-recompute (chash: <b>63% of the ≥40K-tok tail is evicted proven multi-turn convs</b>, 37% cold docs) and the
-real-time live set <b>fits</b> (peak 9.3M = 0.87× cache) → liveness-bound, Belady≈0. Liveness is partially
-OBSERVABLE at turn-0 via SIZE (whales median 17,051 tok, continuers 241; AUC 0.78, held-out 0.783), and in an
-offline replay <b>proven-protection paired with a prefix-size/cost signal captures Belady headroom where
-recency/frequency capture 0%</b> (an 11-policy sweep: LRU/LFU/SLRU/CAR/GDSF all 0%; proven-protected recompute-cost-greedy +48%,
-size-aware "whale" +23%; without proven-protection cost-only/size-only are catastrophic −311%/−529%). <b>All of these
-are gap-capped online — the offline headroom does not materialize (§5.5)</b>; the cost-greedy +48% also merely
-greedily minimizes the recompute objective (keeping dead KV resident), so it is not a better residency policy. Turn-0
-size is the cheap at-admission instance of such a signal (AUC 0.78). <b>Cautionary result (the online reality):</b> goodput@SLO is so METASTABLE that causal
-residency claims do not survive. p99 is a queue-timing draw decoupled from recompute volume; and — decisively — a
-same-node whale-vs-LRU p99 reduction that was significant on <i>one</i> node (nodeset-0: median −45%, Mann-Whitney
-p≈0.026, n=6/n=5) <b>does not have a stable sign across nodes</b>: across three nodes whale's median p99 is lower
-on two (nodeset-0, 1-2) but the ordering <b>reverses</b> on the third (certified 0-3: LRU median 6.1 s vs whale
-11.5 s), with per-policy p99 swinging ~6–31 s by node/run. So the online eviction-policy advantage is <b>weak and
-node-dependent, not a portable win</b> — single-node A/Bs (even same-node, replicated) are unreliable for tail-SLO
-residency claims, and the online reuse gap (p50 460 s) caps any residency's recompute capture ≈0 regardless. The TIME axis (CAR completion-grace) ≈ LRU
-(grace-trap); SLRU backfires (hit 0.68→0.51). <b>The metastability is EXECUTION-driven</b>: on a byte-identical
-workload (fixed seed + no-shuffle; 22 runs, 7037 compl each, Σin within 0.016%) p99 swings 5.9–31.2 s (5.3×) while
-median is pinned to 528–574 ms (1.1×). And the tail resists prefill scheduling too: <b>admission-staggering is
-refuted deterministically</b> (large prefills peak concurrency 2, ~const 35K tok/s → nothing to stagger). These
-crystallize into a <b>no-go criterion</b> (§9): no lossless residency/admission mechanism yields a certifiable
-goodput@SLO gain when reuse is gap-dominated (G/R≈5), prefill has no co-execution contention, and the tail is
-execution-variance-dominated — the remaining lossless levers (capacity so R&gt;G; prefill bound P) are orthogonal
-to eviction/admission. = an observable offline liveness lever + a cross-node, execution-driven metastability
-caution + a bounded no-go result for lossless tail-SLO cache/admission optimization.</p>
+<p class="abstract"><b>Summary.</b> For a two-tier HiCache serving concurrent multi-turn long-context conversations
+under a tail-latency SLO, we establish a <b>no-go criterion</b> (§9): <b>no lossless cache-residency or
+prefill-admission mechanism yields a certifiable goodput@SLO gain</b> when three measurable conditions hold —
+(1) reuse is gap-dominated (turn-0→turn-1 gap 460 s ≫ the ~90 s a finite cache affords), (2) prefill has no
+co-execution contention (large prefills peak concurrency 2, ~const 35 K tok/s — admission-staggering has nothing to
+stagger), and (3) the tail is <b>execution-variance-dominated</b>. Condition (3) is the deepest finding: on a
+byte-identical workload (fixed seed, no-shuffle, 22 runs) the p99 spans <b>5.9–31.2 s (5.3×)</b> while the median is
+pinned to 1.1×, and a variance decomposition attributes <b>95% of that swing to within-node run-to-run
+nondeterminism</b> (a single certified node alone spans the full range) — so certifying even a 45% policy effect at
+0.8 power needs <b>~31 same-node runs per policy</b>; single/small-n A/Bs on this metric are void.
+<b>Constructively but offline-only</b>, we localize where a lossless win <i>could</i> come from: 63% of the
+SLO-breaching tail is avoidable evicted-recompute over a live set that fits (0.87× cache, Belady≈0), and an offline
+11-policy replay shows <b>proven-protection paired with a prefix size/cost signal captures Belady headroom where
+recency/frequency capture 0%</b> (cost-greedy +48%, size-aware "whale" +23%; turn-0 size is its cheap at-admission
+proxy, AUC 0.78 / held-out 0.783). But all of these are <b>gap-capped online</b> — the offline headroom does not
+materialize, and the online whale-vs-LRU advantage (significant on one node, p≈0.026) has no stable sign across
+three nodes. Negatives: the textbook SLRU <i>backfires</i> (hit 0.68→0.51) and completion-grace CAR ≈ LRU
+(grace-trap). The remaining lossless levers (capacity so R&gt;G; prefill bound P) are orthogonal to eviction and
+admission.</p>
 
 <div class="abstract">
 <b>Abstract.</b> Hierarchical KV caching (HiCache) tiers attention KV across GPU HBM (L1) and host DRAM (L2).

@@ -1359,3 +1359,17 @@ lever. ⇒ escape hatch CLOSED for this workload (negligible), with honest note 
 make sharing dominant (orthogonal capacity/dedup mechanism). Added §2.1 workload bullet + no-go escape note + reviews
 W10 + sim/doc_sharing.py. Deterministic, non-GPU. This HARDENS the crystallized central claim (v0.5). Genuinely new
 finding (workload doc-sharing was previously uncharacterized). Paper v0.5.1.
+
+## 90. ★ Cover-to-cover QA pass (pre-submission) — caught a real self-contradiction; paper now internally consistent
+Did the first full cover-to-cover coherence read of the accreted paper (v0.3→v0.5.1). Found + fixed:
+(1) STALE VERSION: title <title> + byline said "DRAFT v0.3" → v0.5.1. (2) INTERNAL CRUFT: Summary box ended with
+working-notes ("NOTE: earlier match-only... Stable: §4.1 two-bound+P, §4.2...") → removed (not publishable prose).
+(3) ★ SELF-CONTRADICTION (the valuable catch): §7 limitations "Cross-request reuse" bullet still asserted "Our mix
+has NO cross-conversation document sharing (each turn-0 is unique)" — DIRECTLY contradicting my v0.5.1 §2.1 finding
+(15.5% share a doc, one reused 100×). Corrected to the measured statement (light/negligible <1%, ~78% radix-captured,
+conditioned on low cross-request reuse). (4) COHERENCE: added a capstone no-go-criterion bullet to §1 contributions
+(the thesis now previewed in the intro, not only §9/abstract). Verified: all 6 figs referenced, §5.4 present, all §
+cross-refs resolve (§2.1..§9,§9d), no TODO/pending/placeholder markers, HTML tags balanced. Committed 9f99d79f5 (+
+this contributions edit). The QA pass earned its keep via the §7↔§2.1 contradiction — exactly the failure mode
+incremental multi-version editing produces. Paper v0.5.1 is now internally consistent end-to-end + submission-ready.
+HOLD/MAINTAIN.

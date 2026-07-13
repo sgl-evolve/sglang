@@ -143,6 +143,11 @@ makes the cache worse — hit 0.68→0.51), and the TIME-axis <b>CAR</b> (comple
 <li>Three engine findings that constrain the space: stock schedule-time matching already protects
 server-waiting prefixes; L2→L1 load-back is already per-layer overlapped; so the lever is residency
 victim-<i>choice</i>, not prefetch or waiting-set protection (§3).</li>
+<li>A <b>no-go criterion</b> (§9) synthesizing the above: no lossless residency- or admission-based mechanism
+yields a <i>certifiable</i> goodput@SLO gain when reuse is gap-dominated, prefill has no co-execution contention,
+and the tail is execution-variance-dominated — the three conditions we establish here — leaving only capacity and
+prefill-throughput levers, which are orthogonal to eviction/admission. We also quantify and dismiss the capacity
+escape for this workload (cross-request document sharing would save &lt;1% of prefill, §2.1).</li>
 </ul>
 
 <h2>2 Motivation (trace-driven)</h2>

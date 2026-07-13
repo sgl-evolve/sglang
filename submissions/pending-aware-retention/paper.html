@@ -575,6 +575,22 @@ an oracle (Bélády) retention policy, which by definition maximizes the hit-rat
 cold-first-compute tail — and therefore goodput@SLO — where it is. The corollary points elsewhere for goodput:
 the headroom on the SLO-defining tail lives on the <i>cold-miss path</i> (transfer/compute overlap, prefill
 admission and chunk scheduling, cross-request dedup of near-identical documents), not in what KV is retained.</p>
+<p><b>The immunity generalizes to a testable condition, not just this workload.</b> Retention (and eviction
+order) can only shrink <i>reuse-recompute</i> — the re-prefill of already-seen prefixes. So goodput@SLO is
+immune to the retention/eviction class <b>whenever the SLO-defining tail is dominated by cold first-compute
+rather than reuse-recompute</b> — equivalently, when the largest cold prefills (plus their unavoidable
+queueing) already exceed the SLO. This workload satisfies the condition decisively: documents run to 183k
+tokens, 19% of all prompt tokens are irreducibly cold (every conversation's first turn plus 38% single-turn
+conversations), and the observed p99 stays ≥&nbsp;8&nbsp;s across every hit-rate change we induced (Table&nbsp;3)
+while the p50 stays sub-second — i.e. the median request is a cheap cached continuation and the tail is a
+handful of expensive cold prefills that no lossless cache can avoid. The immunity would <i>relax</i> only under
+conditions we did not test but can name precisely: (a) a looser SLO (or a mean/p50-TTFT SLO) that absorbs the
+largest cold prefill, or (b) a reuse-recompute-dominated tail — a tighter cache or a lower cold-document
+fraction, so that evicted-then-reused continuations, not cold documents, become the slowest requests. Case (b)
+is the same undersized-cache axis on which §7 predicts the hit gain itself grows: retention regains traction on
+goodput exactly where the tail stops being cold-bound. This turns the negative into a positive design rule —
+<i>match the mechanism class to what sets the tail</i>: retention for reuse-recompute tails, the cold-miss path
+for cold-first-compute tails.</p>
 
 <h2>6&nbsp;&nbsp;Related work</h2>
 <p><b>Strata</b> (2025) attacks the data plane and scheduler: GPU-assisted I/O to defragment transfers and

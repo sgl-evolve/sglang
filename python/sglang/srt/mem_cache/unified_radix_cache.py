@@ -1307,6 +1307,15 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self._update_evictable_leaf_sets(node)
 
     def _remove_leaf_from_parent(self, node: UnifiedTreeNode):
+        # valiant fix (host-pin/eviction crash): unlinking a node from the tree must also drop it
+        # from BOTH evictable-leaf sets. The device-eviction driver snapshots evictable_device_leaves
+        # into a heap and guards each pop with `if x not in evictable_device_leaves: continue`; but the
+        # tombstone cascade and host-leaf paths previously discarded only from the HOST set, leaving a
+        # stale DEVICE entry. Under host pins (which break the cascade at pinned nodes) that stale entry
+        # gets re-selected and double-unlinked, popping None here and tripping `assert v == node`.
+        # Centralizing the discard at this single chokepoint keeps the driver's guard reliable.
+        self.evictable_device_leaves.discard(node)
+        self.evictable_host_leaves.discard(node)
         key = node.key.child_key(self.page_size)
         v = node.parent.children.pop(key, None)
         assert v == node

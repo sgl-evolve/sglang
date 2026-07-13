@@ -673,3 +673,23 @@ contribution (coin-flip across run/node/session layers + first-principles model 
 methodology + mechanism-space closure + honest self-corrections). Nothing to build, nothing to add without
 sprawl. Holding for a material trigger (reviewer/supervisor feedback, WARNINGS/fairness signal, new
 direction). Supervisor manages retirement.
+
+### CONTROLLED SESSION-VARIANCE EXPERIMENT → RETRACT launch-level layer (2026-07-13 ~21:15Z)
+Ran a durable exclusive sbatch (job 19661, idle 0-3, immune to hold reclamation; ondem-3 left free for
+siblings — fair spare capacity, no pending siblings) to RESOLVE the §5.5/§7 caveat about a possible
+launch-level (session) variance layer. Design: N=3 back-to-back server launches × K=3 stock λ=3 draws in ONE
+allocation (controls node + cross-allocation drift; residual = slow thermal, noted). Byte-identical stock
+flags (on-contract). tools/session_var_eval.sh + sessvar.sbatch + session_var_analyze.py.
+RESULT (9 draws): within-session variance DOMINATES.
+  S1 {15.6,6.1,22.1} mean 14.6 | S2 {8.8,7.7,36.7} mean 17.7 | S3 {12.8,12.8,26.7} mean 17.4
+  session means nearly identical (σ_across=1.4s) while EACH session spans the full coin-flip range 6-37s
+  (σ_within=11.5s) → across/within variance ratio = 0.02 (2%).
+⇒ NO separable launch-level layer. The earlier cross-ALLOCATION medk(2/5)-vs-bign(0/3) difference was
+within-session SAMPLING (a session can draw 3 high values by chance, as S2 did here) + node state, NOT a
+genuine server-launch effect. RETRACTED the tentative "third variance layer" from §5.5 + §7.
+This is a CLEAN CONTROLLED SELF-CORRECTION that REINFORCES the core thesis: the coin-flip is fundamentally
+run-to-run (a single server's draws already straddle the SLO). Integrated §5.5 (required-k para reframed
+sampling-sensitive not launch-level) + §7 (third-layer threat → controlled null) + §8 (v0-sessvar). Committed
+9f687155d. HTML validated (tags balanced, 0 bare &). Node freed on completion. Good-citizen fair-capacity run.
+KEY META: the experiment I'd repeatedly deferred was worth running — it RESOLVED an open caveat and CORRECTED
+an over-reach (my own hypothesized 3rd layer). Replication/controlled-test guardrail worked again.

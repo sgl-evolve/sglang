@@ -477,3 +477,16 @@ complete: (1) medk coin-flip exists; (2) medk_wb median-of-k can't A/B configs; 
 state still coin-flip. Integrated §5.3 (warm median-of-k para) + §4 (σ/m warm data point 1.4) + §7 (necessary
 -but-insufficient). Committed 335655ba7, validated (tags/refs/numbers). Every σ/m config we measured fails
 the <1 bar (stock-flush 5.7, write_back 0.9-edge, warm 1.4).
+
+### ★★ CONSTRUCTIVE CAPSTONE — stable metrics separate configs at 7-9σ (2026-07-13 ~04:20Z, no new compute)
+Re-analysis of existing same-node ondem-3 data (medk stock K=5 + medk_wb write_back K=5, BOTH ondem-3 → clean
+same-node A/B). Separation stock-vs-write_back (pooled-σ):
+  p99 TTFT (goodput metric): 12.3±8.0s vs 10.0±2.7s → 0.4σ INDISTINGUISHABLE
+  p50 TTFT: 546±11ms vs 482±6ms → 7.2σ CLEAN
+  hit rate: 0.659±0.009 vs 0.730±0.007 → 8.9σ CLEAN
+⇒ The SAME data that can't rank configs on goodput@SLO (0.4σ) ranks them at 7-9σ on stable metrics. The
+info to rank caches is present all along; the binary tail DISCARDS it. Turns "report stable metrics" from
+recommendation → DEMONSTRATED result (the constructive positive of the paper). Integrated §3.1 (capstone
+table) + abstract punchline. Committed 6cce0e606, validated. PAPER COMPLETE: negative + queueing model +
+node-confound-resolved + flush-quantified + methodology-validation TRIAD (both fixes insufficient) + σ/m
+diagnostic + CONSTRUCTIVE CAPSTONE (stable metrics work at 7-9σ). 6 figs... (5 fig/8 tables now).

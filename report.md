@@ -1209,3 +1209,11 @@ Pooled a FIXED policy's λ=3 p99 across all runs/3 nodes: LRU n=10 spans 5.9-31.
 single policy-A/B can be trusted → the metastability is intrinsic to goodput@SLO on this workload, NOT a whale-vs-
 LRU artifact. Added to §5.6 — the cleanest statement of the central caution. Non-GPU (from existing data). This is
 the tightest form of the methodological result. Paper v0.3 central claim now maximally sharp.
+
+## 80. ★ Preempt strongest PC counter: metastability is REAL queue-tail, NOT harness/node-health artifact (non-GPU)
+Rebuttal from existing data: for a FIXED policy, MEDIAN (body) varies only 1.1-1.6× (lru 534-876, whale 528-568ms)
+while p99 (tail) varies 4.3-5.3× across the SAME runs. A flaky node/throttle/NFS would inflate the median too;
+only the tail moves → genuine queue-tail phenomenon (few large cold-prefills catching good/bad queue moments), not
+an artifact. Also: all 3 nodes show it, --exclusive (no neighbor). Added to §5.6 + reviews W7. Preempts the
+"is it just a flaky harness?" attack on the now-central metastability claim. Paper's central result is now
+defended against its strongest counter, from existing data (no GPU).

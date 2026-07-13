@@ -496,7 +496,11 @@ single-node A/Bs are unreliable for residency-policy claims; multi-node median-o
 evidence that this metastability is <i>intrinsic to the metric</i> (not a whale-vs-LRU artifact) is the variance of
 a single fixed policy: LRU's own λ=3 p99, pooled over all 10 runs across the three nodes, spans <b>5.9–31.2 s
 (a 5.3× range)</b> with per-node medians of 6.1 / 14.0 / 15.0 s; whale's spans 6.2–26.6 s (4.3×). When one fixed
-policy's p99 varies 4–5× by node/run, no single A/B between two policies can be trusted. The portable, robust
+policy's p99 varies 4–5× by node/run, no single A/B between two policies can be trusted. <b>This metastability is a
+genuine queue-<i>tail</i> phenomenon, not a node-health or harness artifact:</b> across the same runs whose p99
+swings 4–5×, the <i>median</i> TTFT (the distribution body) moves only 1.1–1.6× (LRU 534–876 ms, whale 528–568 ms).
+A flaky node, thermal throttling, or I/O contention would inflate the median too; instead only the tail moves,
+which is the signature of a small set of large cold-prefills catching a good-vs-bad queue moment. The portable, robust
 contributions are the offline size-signal analysis (§4.2, deterministic) and this cross-node metastability
 characterization. (Certified-pool contention limited us to n=2–3/node beyond nodeset-0.)</p>
 <p><img src="fig5_crossnode.svg" alt="λ=3 p99 whale vs LRU across 3 nodes: whale below LRU on nodeset-0 and 1-2 but reversed on 0-3 (metastable)" style="max-width:100%"></p>

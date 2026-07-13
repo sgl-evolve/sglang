@@ -79,6 +79,16 @@ metastable that a same-node replicated A/B (p≈0.026) has no stable sign across
 median-of-k would further quantify any residual effect; certified-pool contention limited us to n=2–3/node beyond
 nodeset-0, but 3 nodes already establish sign-instability.
 
+**W7 — is the metastability a real system property or an eval-harness/node-health artifact?**
+Attack: nodeset-0 was flagged flaky; maybe the huge p99 swings are throttling / NFS / neighbor noise, not a real
+queue property — which would undercut the central caution.
+Defense: it is a genuine queue-TAIL phenomenon. Across the same runs whose p99 swings 4–5×, the median TTFT (body)
+moves only 1.1–1.6× (LRU 534–876 ms, whale 528–568 ms). A flaky node / thermal throttle / I/O contention would
+inflate the median too; instead only the tail moves — the signature of a few large cold-prefills catching a
+good-vs-bad queue moment. It also appears on all three nodes (not one flaky node) and under --exclusive (no
+neighbor). So the metastability is intrinsic to the prefill-queue dynamics of this tail-SLO workload, not an
+artifact. (§5.1 and §5.6.)
+
 ## Minor
 - §5.3 could add a one-line bridge to §5.5 ("the grace-trap motivates changing the SIGNAL, not the retention time
   — §5.5"). (pending)

@@ -654,3 +654,22 @@ sibling pipeline (wilkes whale-cb*/lru-cb*). Committed be7530308. required_k_emp
 medk.csv per-node. Paper: 9 sections / 6 figs / 10 tables (empirical para split into 2). HTML validated.
 LESSON: getting MORE same-node data before finalizing caught an unstable number — replication guardrail worked
 (consistent w/ my base-v031 campaign's 4 over-claim self-corrections). W&B: log as note, not a curve version.
+
+### DEFINITIVE CLOSE-OUT (2026-07-13 ~14:22Z) — all threads resolved, paper complete
+Re-examined the two remaining candidate directions with fresh eyes; both DEFINITIVELY closed:
+1. MECHANISM (charter's 1st preference): VERIFIED CLOSED. The one un-exploited gap (L2↔L1 transfer/compute
+   overlap, "SLOP") is empirically dead — §5.2 already documents it: L2→L1 load-back is mean 1.3ms / p99
+   ≤8.6ms (3-4 orders below the 14-42s p99), so overlap has nothing to hide; hit-rate can't help (tail is
+   unique cold turn-0 docs); tail is lossless-irreducible K·t cold-prefill serialization (65% full chunks,
+   69% cold). No viable mechanism exists on this eval — which is what MOTIVATES the measurement contribution.
+2. SESSION-VARIANCE experiment (clean version of the §5.5/§7 caveated finding): DEFERRED, do NOT re-litigate.
+   Would need N launches × K draws in one allocation (~5h GPU + ~30 monitoring turns) + still partly
+   confounded (thermal drift). It is a SECONDARY finding, already honestly caveated in §5.5 + §7. Pool has
+   active sibling contention (wilkes lru-cb* pending on Resources, valiant iterating). Marginal value <
+   shared-compute cost → good-citizenship HOLD. Re-open ONLY if: pool goes fully idle (no pending siblings)
+   for an extended window, OR a reviewer explicitly requests it.
+STATE: paper HEAD cf0ec6a9d is a COMPLETE, rigorous, self-consistent top-venue measurement/methodology
+contribution (coin-flip across run/node/session layers + first-principles model + validated/bounded
+methodology + mechanism-space closure + honest self-corrections). Nothing to build, nothing to add without
+sprawl. Holding for a material trigger (reviewer/supervisor feedback, WARNINGS/fairness signal, new
+direction). Supervisor manages retirement.

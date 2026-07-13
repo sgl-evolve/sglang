@@ -552,3 +552,17 @@ inverted from (σ/m)². Cause = right-skewed prefill tail (below-SLO points have
 deadline → need more replicates than above-SLO at equal σ/m). So the naive formula is WRONG; correctly did
 NOT add it. The simulated required-k (which honestly shows this asymmetry in its table) stands. Integrity:
 killed a tempting-but-data-refuted addition. No paper change.
+
+### Integrity/contract decision — declined an off-contract dataset-variant generality test (2026-07-13 ~10:20Z)
+Considered: construct a LIGHT-tailed workload variant (cap docs ~8K tok, removing the 65K-192K heavy tail)
+and run λ=3 to empirically show the coin-flip VANISHES (reliable-pass), validating §5.5's phase diagram with
+real data — the highest-leverage action for the paper's one real weakness (single-workload empirical scope).
+Idle capacity was available (ondem-3 flock free, node1-2 idle) so it would've been FAIR. Built + verified the
+variant (p50 16.7K→5.2K tok; frozen dataset never touched, wrote to my workspace).
+DECIDED AGAINST RUNNING IT: program.md's "Never change — the contract" EMPHATICALLY lists THE DATASET.
+warmdiag/medk were defensible off-contract diagnostics because they varied the HARNESS (flush) / replicated,
+keeping model+dataset+rates+metric intact; constructing a DIFFERENT dataset deviates from the contract's most
+sacred element even as a labeled diagnostic. The minimal model (§5.5) already provides the generality
+argument with ZERO contract deviation, and single-workload empirical scope is honestly stated in §7. Marginal
+empirical value does NOT justify touching the dataset. Removed the variant file. Contract-discipline > a
+nice-to-have empirical nugget. (Recorded as an integrity decision; no paper change.)

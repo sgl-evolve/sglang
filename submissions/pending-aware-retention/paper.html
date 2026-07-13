@@ -29,57 +29,29 @@
 <div class="auth">valiant · sglang KV-cache research (v0.31) · evaluated on the frozen 122B rate-sweep protocol (n=4 same-node A/B nodes)</div>
 
 <div class="abs">
-<b>Abstract.</b> Hierarchical KV caches (HiCache-style L1&nbsp;GPU + L2&nbsp;host) reuse the growing prefix of a
-multiturn conversation to avoid re-prefilling it each turn. Under <i>concurrent</i> multiturn load a
-conversation's cached prefix can be evicted between its turns, forcing a full recompute of a document that may
-be tens of thousands of tokens — the most expensive event on the prefill path. A trace-driven analysis shows
-42% of the stock cache's prefill work is exactly this evicted-continuation recompute, and an oracle (Bélády)
-policy would remove most of it. We ask how much of that gap is <i>realizable</i> by a server that cannot see
-the future. We propose <b>pending-aware KV retention</b>: the cache protects the L2 residency of a
-conversation's prefix precisely while that conversation has a request the scheduler is <i>already holding in
-its queue</i> — a guaranteed-imminent-reuse signal — and releases it at admission. This is a scheduler↔cache
-co-design, not a replacement policy or config flag. <b>But replication overturns both of its would-be positive
-claims, so we report a rigorously-bounded negative result.</b> (a) <b>The hit gain is small and node-dependent</b>,
-not a robust win: across four same-node A/B measurements it is +2.2/+2.8&nbsp;pp on two nodes but only
-+0.4/+0.10&nbsp;pp on a third (measured twice) <i>despite the pin engaging more there</i> — i.e. +0.1–2.8&nbsp;pp,
-node-systematic (mean ≈+1.4&nbsp;pp), lossless; the +2.5&nbsp;pp we first reported (n=2) was the high end.
-(b) <b>More seriously, the pin is not reliably safe</b>: by holding host locks across eviction it exposes a latent
-radix-tree invariant in the tiered eviction path (<code>assert v==node</code>) that intermittently crashes the
-scheduler at high pin counts (all 8 TP ranks at λ=7, ≥~20 concurrent pins); the clean runs at low pin counts
-(≤6, and one at 13) were luck. We tried <i>two</i> targeted fixes and a stress test shows neither suffices — the
-trace localizes the fault to a <code>parent</code>/<code>children</code> pointer inconsistency present <i>before</i>
-eviction, i.e. host-pinning corrupts the radix tree during insertion, not just eviction. The
-honest conclusion: on a well-provisioned 2-tier cache there is <b>no robust, safe, lossless KV-retention win</b> —
-the residual reuse signal is small and node-dependent, and exploiting it destabilizes the eviction machinery. The
-characterization below explains <i>why</i> the signal is so thin. Two findings anchor it.
-(1) <b>Targeting is everything, and the target is narrow</b>: the natural extension — retaining <i>every</i>
-recently-finished conversation for a horizon to also cover the client think-gap — does <i>not</i> help and
-mildly hurts. Not because continuation is unpredictable (it is 78% predictable from turn count), but because
-broad retention merely <i>displaces</i> a working set LRU already keeps well; the only exploitable failure of
-LRU is its eviction of the narrow, provably-at-risk set of continuations sitting in the scheduler's queue.
-(2) <b>Retention, not scheduling, is the hit lever — a claim we tested directly.</b> A single-tier simulation
-makes the eviction gap look scheduler-created (under FCFS, LRU trails Bélády by 7–23&nbsp;pp; prefix-aware LPM
-closes it). We put this to a same-node A/B on the real system (re-running the eval under
-<code>--schedule-policy lpm</code> vs the default <code>fcfs</code>): on the real 2-tier cache hit is nearly
-<b>scheduler-insensitive</b> — LPM does <i>not</i> raise hit at any rate (Δ&lt;0.5&nbsp;pp) and it worsens the
-p99 tail by 41–65% — because the L2 host layer absorbs eviction order. So the sim's gap is a single-tier
-artifact, and switching schedulers is not a way to buy cache efficiency; pending-aware <i>retention</i> is. What
-transfers is an arrival-<i>order</i> property that does not depend on the (refuted) cache-tier magnitude: a
-<b>recency-inversion</b> (Spearman ρ=+0.81, computed from the workload under the FIFO closed-loop pattern FCFS
-follows) — among queued continuations the least-recently-used prefix is the soonest-reused, so LRU is
-<i>anti</i>-Bélády on exactly this set — which is why the narrow pending signal is the right target. The realized gain is small
-(~1–2&nbsp;pp vs a ~+7&nbsp;pp single-tier ceiling) for the very same reason the host tier absorbs eviction
-order. Underlying all of it is a <b>structural result about the headline metric itself</b>: the p99 tail that
-defines goodput@SLO is set by cold <i>first-turn</i> long-document prefills that no lossless retention can
-touch, and across all five same-node A/Bs the hit gain (−1.0…+2.8&nbsp;pp) and the p99 change (−61…+127%) are
-<b>decoupled</b> (<i>r</i>²≈0.09; the tail dominated by node/run variance that flips goodput 0↔3.0 across
-identical stock runs). So goodput@SLO is <b>immune to the entire retention/eviction mechanism class</b> — even
-an oracle (Bélády) policy would leave it unchanged — not merely to our mechanism, and not merely because the
-metric is noisy. Hit-rate, mean TTFT, and moderate-load throughput are the right yardsticks for a cache
-mechanism (and even they move by variance-affected margins, so we report ranges, not point claims). Because a
-cold document has no KV to reload or dedup and its prefill is compute-bound, goodput@SLO here is in fact close
-to a <i>lossless-mechanism invariant</i> — movable only by scheduling under an explicit fairness trade, or by
-faster compute, not by any caching mechanism.
+<b>Abstract.</b> Hierarchical KV caches (HiCache-style L1&nbsp;GPU + L2&nbsp;host) let multiturn conversations
+skip re-prefilling their growing prefix — but under concurrent load a prefix can be evicted between turns,
+forcing a full recompute (a trace shows this is <b>42% of the stock cache's prefill work</b>). We propose
+<b>pending-aware KV retention</b>, a scheduler↔cache co-design that pins a conversation's L2 prefix exactly
+while it has a request in the scheduler's queue — a guaranteed-imminent-reuse signal, not a replacement policy
+or config flag. Replication overturns both of its would-be wins, so we report a <b>rigorously-bounded
+negative</b>: (a) the hit gain is small and node-dependent (+0.1–2.8&nbsp;pp, mean&nbsp;≈1.4; the +2.5&nbsp;pp we
+first saw at n=2 was the high end), at the ≈0.9&nbsp;pp measurement noise floor; and (b) the pin is unsafe —
+holding host locks across eviction corrupts a radix-tree invariant and crashes the scheduler at high pin counts,
+and two targeted fixes are insufficient. Two deeper, more general results follow. <b>(i) Retention, not
+scheduling, is the hit lever, and simulation misleads:</b> a single-tier sim predicts a large scheduler-created
+eviction gap, but on the real 2-tier system hit is scheduler-insensitive (LPM Δ&lt;0.5&nbsp;pp) because the host
+layer absorbs eviction order — we report this refutation of our own simulation. What transfers is an arrival-order
+<i>recency-inversion</i> (ρ=+0.81: among queued continuations the least-recently-used prefix is the soonest
+reused), which is why the narrow pending signal is the only exploitable one. <b>(ii) goodput@SLO — the
+protocol's headline — is close to a lossless-mechanism invariant:</b> its p99 tail is set by cold first-turn
+document prefills that are compute-bound and carry no reusable KV; it is empirically decoupled from the hit gain
+(<i>r</i>²≈0.09) and variance-dominated (identical stock flips pass/fail on one node). At the SLO-deciding rate
+the engine is 86% prefill-bound, so no lossless, fairness-preserving, in-budget mechanism — cache <i>or</i>
+scheduler — moves it (the textbook SJF/SRPF move it the wrong way). We give a testable condition for when this
+immunity holds and a design rule: match the mechanism class to what sets the tail — retention/eviction for
+reuse-recompute tails, the cold-miss path for cold-compute tails. Hit-rate, mean&nbsp;TTFT, and moderate-load
+throughput (not the boundary-variance-dominated goodput@SLO) are the right yardsticks, reported as ranges.
 </div>
 
 <h2>1&nbsp;&nbsp;Introduction</h2>

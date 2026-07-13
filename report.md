@@ -1225,3 +1225,13 @@ large cold prefills), NOT residency — and the size signal (cheap at-admission 
 well-suited to drive it. This connects the paper's two threads: the size signal, which failed as an online
 residency lever (gap-capped), points to a concrete online REMEDY for the metastability it can't fix via eviction.
 Turns the caution into an actionable future direction. Non-GPU (follows from established queue-tail finding).
+
+## 82. ★ VERIFIED + refined the queue-tail mechanism (integrity): big-prefill×congestion coincidence, NOT super-Poisson bursts
+Traced whale-full λ=3: wq at big(≥20K) prefill admissions = 6.8 vs 3.4 non-big (2×); at top-decile-wq moments the
+admitted prefills are 2.5× bigger (10832 vs 4381 tok). ⇒ p99 tail = large cold prefills landing at queue-congested
+moments (and congestion is itself big-prefill-driven → feedback). BUT big-prefill inter-arrival CV=1.04 (≈Poisson,
+NOT clustered) → my "bursts of large cold prefills" wording OVERSTATES it (they're frequent+Poisson, not bursty).
+Refine §9(d)/§5.6: "large cold prefills coinciding with & compounding queue congestion" (supported) instead of
+"bursts" (CV≈1 refutes clustering). 8th self-correction (verified my own asserted mechanism, corrected the framing).
+Admission-staggering future-work still valid (spreading frequent big prefills decongests), just not framed as
+de-bursting. Non-GPU, from existing trace.

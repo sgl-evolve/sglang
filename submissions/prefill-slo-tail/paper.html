@@ -789,5 +789,29 @@ taken directly from those files. Tooling: trace stats <code>tools/tokenize_trace
 calibration <code>tools/calibrate.py</code>; per-run analysis <code>tools/analyze_run.py</code>; the minimal
 coin-flip Monte-Carlo <code>tools/coinflip_sim.py</code> (deterministic; phase diagram + required-k analysis via <code>KLEINROCK_REQK=1</code>; output <code>runs/coinflip_sim.txt</code>, §5.5).</p>
 
+<h2>9 Conclusion</h2>
+<p>goodput@SLO &mdash; the emerging headline metric for KV-cache serving &mdash; is, on heavy-tailed
+cold-prefill workloads evaluated near the queueing knee, a <b>cold-start coin-flip</b>: its p99-gated verdict
+turns on run-to-run metastability, not on the cache. We showed this empirically (six nodes, three
+configurations, with the node-heterogeneity confound resolved by same-node median-of-k on two nodes),
+explained it mechanistically (a metastable transient prefill queue serializing a heavy-tailed cold-turn-0
+distribution), reproduced it from first principles (a minimal forward model, parameterized only by the
+measured token distribution and calibrated prefill rate, with a coin-flip band at &rho;&thinsp;&asymp;&thinsp;0.5&ndash;0.7),
+and bounded the standard remedies (warm-steady-state removes the cold-start trigger but changes the metric;
+median-of-k does not converge near the knee, where the required <i>k</i> diverges). Crucially, the cache is
+<i>not</i> useless: it stably improves hit rate, median TTFT, and throughput &mdash; effects that separate
+configurations at 7&ndash;9&sigma; where the binary tail metric gives 0.4&sigma;. The information needed to
+rank caches is present throughout; the tail-SLO gate simply discards it.</p>
+<p><b>For practitioners and benchmark designers, three concrete steps follow.</b> (1) <b>Screen before you
+trust:</b> apply the &sigma;/m test (&sect;4) &mdash; report goodput@SLO only when the gating-rate p99
+standard deviation is small relative to the SLO margin; near the knee it is not. (2) <b>Never</b> draw
+single-run, and especially cross-node, KV-cache A/B conclusions from a p99-gated metric &mdash; identical
+configurations flip 0&harr;3. (3) <b>Compare on stable effects:</b> rank caches by their low-variance
+signals (hit rate, median TTFT, throughput), and when the tail genuinely matters, report its full
+distribution rather than a single-threshold pass/fail. The broader lesson is that the tail-SLO lens is the
+wrong instrument for comparing KV caches precisely because the tail it gates on is a workload-and-queueing
+property, not a cache property &mdash; a distinction that a decade of systems-measurement rigor (&sect;6)
+teaches us to make before, not after, we publish a ranking.</p>
+
 </body>
 </html>

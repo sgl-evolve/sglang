@@ -710,6 +710,42 @@ is exactly why required-k, like goodput@SLO itself, is hard to pin down — a si
 straddle the SLO. The small per-node pools (n&nbsp;=&nbsp;5&ndash;9) make the exact k coarse; the robust,
 direction-of-effect result — nearer the SLO needs more replicates, and no practical k rescues the knee — is what
 carries.</p>
+<figure>
+<svg width="520" height="300" viewBox="0 0 520 300" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="11">
+  <line x1="80" y1="30" x2="80" y2="250" stroke="#333"/>
+  <line x1="80" y1="250" x2="470" y2="250" stroke="#333"/>
+  <text x="28" y="140" text-anchor="middle" transform="rotate(-90 28 140)">λ=3 p99 TTFT (s)</text>
+  <text x="74" y="253" text-anchor="end">0</text>
+  <text x="74" y="143" text-anchor="end">20</text>
+  <text x="74" y="88" text-anchor="end">30</text>
+  <line x1="76" y1="140" x2="80" y2="140" stroke="#333"/>
+  <line x1="76" y1="85" x2="80" y2="85" stroke="#333"/>
+  <!-- SLO 8s: y=250-8*5.5=206 -->
+  <line x1="80" y1="206" x2="470" y2="206" stroke="#c00" stroke-dasharray="5,3"/>
+  <text x="466" y="202" text-anchor="end" fill="#c00">SLO = 8 s</text>
+  <!-- mean-alignment guide (means 14.6,17.7,17.4 s) -->
+  <line x1="147" y1="170" x2="403" y2="154" stroke="#1f4e79" stroke-width="0.7" stroke-dasharray="2,2" opacity="0.55"/>
+  <!-- launch 1 (x=165): draws 6.09,15.56,22.07; mean 14.6 -->
+  <circle cx="159" cy="217" r="4" fill="#3a7a3a"/><circle cx="165" cy="164" r="4" fill="#7a2020"/><circle cx="171" cy="129" r="4" fill="#7a2020"/>
+  <line x1="147" y1="170" x2="183" y2="170" stroke="#1f4e79" stroke-width="2.5"/>
+  <text x="165" y="266" text-anchor="middle">launch 1</text><text x="165" y="279" text-anchor="middle" font-size="10" fill="#555">mean 14.6 s</text>
+  <!-- launch 2 (x=275): draws 7.70,8.76,36.69; mean 17.7 -->
+  <circle cx="269" cy="208" r="4" fill="#3a7a3a"/><circle cx="275" cy="202" r="4" fill="#7a2020"/><circle cx="281" cy="48" r="4" fill="#7a2020"/>
+  <line x1="257" y1="153" x2="293" y2="153" stroke="#1f4e79" stroke-width="2.5"/>
+  <text x="275" y="266" text-anchor="middle">launch 2</text><text x="275" y="279" text-anchor="middle" font-size="10" fill="#555">mean 17.7 s</text>
+  <!-- launch 3 (x=385): draws 12.75,12.85,26.71; mean 17.4 -->
+  <circle cx="379" cy="180" r="4" fill="#7a2020"/><circle cx="385" cy="179" r="4" fill="#7a2020"/><circle cx="391" cy="103" r="4" fill="#7a2020"/>
+  <line x1="367" y1="154" x2="403" y2="154" stroke="#1f4e79" stroke-width="2.5"/>
+  <text x="385" y="266" text-anchor="middle">launch 3</text><text x="385" y="279" text-anchor="middle" font-size="10" fill="#555">mean 17.4 s</text>
+</svg>
+<figcaption><b>Figure (session-variance: no launch-level layer).</b> Three back-to-back server launches in one
+exclusive allocation on node 0-3, each with K=3 stock λ=3 draws (<span style="color:#3a7a3a">green</span> = passes
+the SLO, <span style="color:#7a2020">red</span> = fails). Within each launch the draws span the full coin-flip
+range (6.1&ndash;36.7&nbsp;s overall), yet the three launch <span style="color:#1f4e79">means</span> are nearly
+identical (14.6, 17.7, 17.4&nbsp;s, dashed guide). The across-launch variance is only <b>2%</b> of the
+within-launch variance, so server-launch (session) state is <i>not</i> a separable variance layer — the coin-flip
+is fundamentally run-to-run (§5.5).</figcaption>
+</figure>
 
 <h2>6 Related work</h2>
 <p>

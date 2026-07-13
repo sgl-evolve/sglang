@@ -1280,3 +1280,25 @@ into a well-bounded negative: the metastable tail-SLO is not addressable by cach
 scheduling, shown deterministically WHY for each; the one constructive deterministic result stays the turn-0 size
 signal (offline unique Belady capture, online gap-capped). GPU stag n=3 vs plain n=3 on 1-2 still running as
 confirmation (expect within-band null, matching the deterministic no-op prediction).
+
+## 85. ★ PAPER FINALIZED at v0.4 — GPU corroboration collected, all numbers reconciled, committed (ed08a1c09)
+Completed the GPU corroboration chain and integrated everything honestly:
+- **lruB3 (plain-LRU λ=3 on node 1-2) = p99 30037ms** (median 544, thru 3.023, completed 7037) — a HIGH metastable
+  draw. Plain-LRU on 1-2 now n=3 = {8089, 21907, 30037}, median 21907. scancel-after-λ3 (force-cleared CG).
+- **stag1 (admission-staggering λ=3 on 1-2) = 6264ms** sits within the plain-LRU 1-2 band → consistent with the
+  DETERMINISTIC no-op prediction (§84). CANCELLED stag2/stag3 (stewardship: deterministic no-op already established;
+  metastability's 5.3× swamp means more underpowered points can't distinguish no-op from a small effect, and would
+  only tempt a 10th over-claim). stag1 in-band is sufficient corroboration.
+- Reconciled ALL numbers to N=22 full-throughput runs (lruB3 added): Σinput 0.0156%, p99 5.9–31.2s (5.3×), median
+  528–574ms (1.1×), thru 3.022–3.024 — invariants UNCHANGED. 1-2 LRU median 15.0→21.9s (n=3), per-node LRU medians
+  6.1/14.0/21.9. Updated: paper (abstract, intro, §5.6 table+text, §9d GPU corroboration line, §8 repro), reviews
+  (W6, W7, W8-NEW), INDEX, fig5 (regenerated with lruB3), W&B v0.4 milestone, memory.
+- **W8 added to reviews**: preempts "did you test prefill/admission scheduling?" — YES, built it, refuted its
+  premise deterministically before claiming; both scheduling axes dead-end.
+**VERDICT: paper.html v0.4 is COMPLETE + HONEST** — INSIGHT (turn-0 size signal, offline unique Belady capture,
+deterministic/node-independent) + CAUTION (execution-driven cross-node metastability, byte-identical workload →
+5.3× tail) + BOUNDED-NEGATIVE (both scheduling axes — residency gap-capped, admission no-pileup — shown dead-end
+deterministically). 9 self-corrections. Sole constructive positive = size signal (offline; online gap-capped,
+stated honestly). The metric is proven execution-variance-dominated → NO further single/few-node GPU p99 chase
+(would be futile + integrity risk). Deterministic offline analyses are where the real results live. HOLD/MAINTAIN
+unless genuinely new deterministic work appears.

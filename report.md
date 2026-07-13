@@ -197,6 +197,25 @@ Certified λ=5 p99 TTFT across nodes/runs (all warm-steady-state v0.31 protocol)
   **capacity-floored** (working set 19M ≫ L1+L2 10.7M → ~26% miss is near the floor; the long contexts that
   cause the tail are simply too large/numerous to fit regardless of retention policy). Honest negative.
 
+## v2x — reuse-aware exclusive tiering (mechanism) — MEASURED NO-OP via a FREE screen [commit 21635fff9]
+- Hypothesis: plain exclusive (v1x) frees EVERY promoted node's host copy on load-back, so a hot prefix that
+  churns evict↔reload pays a device→host RE-BACKUP on each eviction. Keep shallow/hot shared prefixes
+  (small cum_len: system prompts / doc headers touched by many requests) host-INCLUSIVE to avoid that churn;
+  stay exclusive on deep/cold tails (the capacity win). Gated `XTIER_REUSE_AWARE=1`, `XTIER_REUSE_DEPTH=4096`.
+- **FREE screen (no GPU — from v1x/write_back server.log prefill #cached-token distribution):** the shallow
+  match band [1, 4096) that the mechanism targets is only **8.3% of prefill steps and 1.21% of total reuse
+  (cached-token) volume**. Reuse is **99% DEEP matches** (16K–66K band alone = 73.5% of cached-token volume;
+  ≥4096 = ~99%). 57.7% of prefills are COLD (cached-token=0, no match — irreducible).
+- **Verdict: MEASURED NO-OP — not worth a certified run.** The re-backup churn v2x could recover is bounded to
+  ~1.2% of backup volume, and backup DMA is already cheap (load_back 1.65 ms) and NOT the bottleneck (the
+  regime is 94% prefill-COMPUTE-bound, Diagnosis #3). So keeping the shallow set inclusive changes hit/
+  throughput/goodput negligibly. Plain exclusive (free ALL host on load-back) is already near-optimal because
+  the reuse volume is ~99% deep tails — there is no shallow-churn inefficiency to recover.
+- Takeaway: the design space around exclusive tiering is closed for THIS workload; the reuse distribution
+  (bimodal: 58% cold + 99%-of-reuse deep) leaves no exploitable shallow-hot-churn structure. This is the
+  charter's screening loop working as intended — built the bolder mechanism, screened its premise for FREE,
+  found a no-op, and spared the shared certified pool a pointless run.
+
 ## MECHANISTIC DIAGNOSIS #2 — the p99 tail is DEVICE-KV-pressure during bursts (why host-tier mechs can't help)
 Device KV pool usage during serving (v0-cert, per decode step): p50 **0.01**, p90 0.26, p99 **0.92**, max 0.99.
 - The device is **bursty**: nearly empty most of the time, but **nearly FULL (p99 0.92) during concurrency

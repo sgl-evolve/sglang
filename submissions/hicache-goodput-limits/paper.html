@@ -40,7 +40,7 @@ on two (nodeset-0, 1-2) but the ordering <b>reverses</b> on the third (certified
 node-dependent, not a portable win</b> — single-node A/Bs (even same-node, replicated) are unreliable for tail-SLO
 residency claims, and the online reuse gap (p50 460 s) caps any residency's recompute capture ≈0 regardless. The TIME axis (CAR completion-grace) ≈ LRU
 (grace-trap); SLRU backfires (hit 0.68→0.51). <b>The metastability is EXECUTION-driven</b>: on a byte-identical
-workload (fixed seed + no-shuffle; 21 runs, 7037 compl each, Σin within 0.016%) p99 swings 5.9–31.2 s (5.3×) while
+workload (fixed seed + no-shuffle; 22 runs, 7037 compl each, Σin within 0.016%) p99 swings 5.9–31.2 s (5.3×) while
 median is pinned to 528–574 ms (1.1×). And the tail resists prefill scheduling too: <b>admission-staggering is
 refuted deterministically</b> (large prefills peak concurrency 2, ~const 35K tok/s → nothing to stagger). = an
 observable offline liveness lever + a cross-node, execution-driven metastability caution + both scheduling axes
@@ -80,7 +80,7 @@ three nodes but reverses on the third</b> (certified 0-3: LRU median 6.1 s vs wh
 swinging ~6–31 s by node/run. We therefore report the online advantage as <b>weak and node-dependent, not a
 portable win</b>, and draw the methodological conclusion that single-node A/Bs — even same-node and replicated —
 are unreliable for tail-SLO residency claims. The metastability is <b>execution-driven, not workload variance</b>:
-the benchmark fixes the seed and disables shuffle, so across all 21 full-throughput runs the workload is
+the benchmark fixes the seed and disables shuffle, so across all 22 full-throughput runs the workload is
 byte-identical (each completes exactly 7037 requests, total input tokens within 0.016%), yet p99 spans 5.9–31.2 s
 (<b>5.3×</b>) while the median TTFT is pinned to 528–574 ms (1.1×) and throughput to 3.022–3.024 req/s — identical
 input, constant body, 5.3× tail. Finally, we show the tail is not addressable by prefill scheduling either: a
@@ -126,7 +126,7 @@ node (nodeset-0: median −45%, p≈0.026, n=6/n=5) is lower on two of three nod
 (certified 0-3), with per-policy p99 swinging ~6–31 s by node/run. We report the online advantage as weak and
 node-dependent and conclude that tail-SLO residency claims require multi-node median-of-k, not single-node A/Bs —
 a cautionary methodological result. We further show the metastability is <b>execution-driven, not workload
-variance</b>: on a byte-identical workload (fixed seed + no-shuffle; 21 runs each completing exactly 7037 requests,
+variance</b>: on a byte-identical workload (fixed seed + no-shuffle; 22 runs each completing exactly 7037 requests,
 Σinput within 0.016%) the p99 swings 5.9–31.2 s (5.3×) while the median is pinned to 528–574 ms (1.1×) and
 throughput to 3.022–3.024 req/s.</li>
 <li><b>A deterministic refutation of prefill-admission staggering</b> (§9d): having localized the tail to large
@@ -505,7 +505,7 @@ config). The result does <b>not</b> reproduce:</p>
 <tr><th>node</th><th>whale p99 (λ=3), median (range)</th><th>LRU p99 (λ=3), median (range)</th><th>whale vs LRU</th></tr>
 <tr><td>nodeset-0 (n=6/5)</td><td>7.7 s (6.2–26.6)</td><td>14.0 s (10.4–28.3)</td><td>whale lower (p≈0.026)</td></tr>
 <tr><td>certified 0-3 (n=3/3)</td><td>11.5 s (6.8–20.4)</td><td><b>6.1 s</b> (5.9–31.2)</td><td><b>reversed</b> — LRU lower (U=3/9)</td></tr>
-<tr><td>certified 1-2 (n=2/2)</td><td>7.7 s (7.1–8.2)</td><td>15.0 s (8.1–21.9)</td><td>whale lower</td></tr>
+<tr><td>certified 1-2 (n=2/3)</td><td>7.7 s (7.1–8.2)</td><td>21.9 s (8.1–30.0)</td><td>whale lower</td></tr>
 </table>
 <p>Across three nodes the whale median p99 is lower than LRU's on <b>two of three</b> (nodeset-0 and 1-2) but the
 ordering <b>reverses</b> on the third (0-3), and the absolute p99 swings from ~6 s to ~31 s within a single policy
@@ -518,8 +518,8 @@ itself plausibly a metastable draw, LRU landing low twice). The object lesson is
 metastable tail-SLO metric, even a same-node replicated A/B (p≈0.026) does not have a stable sign across nodes —
 single-node A/Bs are unreliable for residency-policy claims; multi-node median-of-k is required.</b> The clearest
 evidence that this metastability is <i>intrinsic to the metric</i> (not a whale-vs-LRU artifact) is the variance of
-a single fixed policy: LRU's own λ=3 p99, pooled over all 10 runs across the three nodes, spans <b>5.9–31.2 s
-(a 5.3× range)</b> with per-node medians of 6.1 / 14.0 / 15.0 s; whale's spans 6.2–26.6 s (4.3×). When one fixed
+a single fixed policy: LRU's own λ=3 p99, pooled over all 11 runs across the three nodes, spans <b>5.9–31.2 s
+(a 5.3× range)</b> with per-node medians of 6.1 / 14.0 / 21.9 s; whale's spans 6.2–26.6 s (4.3×). When one fixed
 policy's p99 varies 4–5× by node/run, no single A/B between two policies can be trusted. <b>This metastability is a
 genuine queue-<i>tail</i> phenomenon, not a node-health or harness artifact:</b> across the same runs whose p99
 swings 4–5×, the <i>median</i> TTFT (the distribution body) moves far less — 1.1× among the full-throughput runs
@@ -531,7 +531,7 @@ characterization. (Certified-pool contention limited us to n=2–3/node beyond n
 
 <p><b>The metastability is execution-driven on a byte-identical workload — the sharpest form of the caution.</b>
 The benchmark fixes the RNG seed (<code>seed=1</code>) and disables shuffling, so the request content, order, and
-nominal Poisson arrival schedule are identical across every run. This is not an assumption: pooling <b>all 21
+nominal Poisson arrival schedule are identical across every run. This is not an assumption: pooling <b>all 22
 full-throughput λ=3 runs</b> (every policy, all three nodes), each completes exactly <b>7037 requests</b> with total
 input tokens agreeing to <b>within 0.016%</b> (99.870M–99.886M). On this fixed workload the p99 TTFT spans
 <b>5.9–31.2 s (5.3×)</b>, while the median TTFT is pinned to <b>528–574 ms (1.1×)</b> and throughput to
@@ -644,7 +644,7 @@ whale nodeset-0 (n=6) = <code>runs/whale-full</code>, <code>whale-r2</code>, <co
 LRU nodeset-0 (n=5) = <code>runs/screen-v0b</code>, <code>cert-lru-full</code> (full curve), <code>lru-r3</code>,
 <code>lru-r4</code>, <code>lru-r5</code>; <b>certified node 0-3 (§5.6):</b> whale (n=3) = <code>runs/whale-cert</code>,
 <code>whale-cert2</code>, <code>whale-cert3</code>; LRU (n=3) = <code>runs/lru-cert1</code>, <code>lru-cert2</code>,
-<code>lru-cert3</code>; <b>certified node 1-2 (n=2):</b> whale = <code>runs/whale-cb1</code>, <code>whale-cb2</code>; LRU = <code>runs/lru-cb1</code>, <code>lru-cb2</code>; slru = <code>runs/screen-slru</code>; car grace 90 = <code>runs/screen-car90</code>,
+<code>lru-cert3</code>; <b>certified node 1-2 (whale n=2, LRU n=3):</b> whale = <code>runs/whale-cb1</code>, <code>whale-cb2</code>; LRU = <code>runs/lru-cb1</code>, <code>lru-cb2</code>, <code>lruB3</code>; slru = <code>runs/screen-slru</code>; car grace 90 = <code>runs/screen-car90</code>,
 <code>cert-car90-full</code>; car grace 300 = <code>runs/screen-car300</code>.
 <b>Offline analysis</b> (from the trace + tokenized dataset): conversation-id tail decomposition + λ=3-window
 whale-vs-lru comparison via <code>trace_analyze.py</code>; peak-live-KV, turn-0→turn-1 gap, grace-demand; the
@@ -653,7 +653,7 @@ size-only catastrophic, whale −23% capture)
 via <code>sim/simulate.py</code>; Belady headroom + Fig 3 via <code>sim/gen_figures.py</code>; the λ=3 per-run
 whale-vs-lru-vs-car TTFT figure (Fig 4) via <code>sim/fig_whale.py</code>; the cross-node p99 figure (Fig 5) via <code>sim/fig_crossnode.py</code>;
 the deterministic prefill-contention analysis (§9d: measured in-flight intervals → concurrency vs effective rate)
-via <code>sim/prefill_contention.py</code>; the fixed-workload metastability audit (§5.6: 21 runs, completed/Σinput
+via <code>sim/prefill_contention.py</code>; the fixed-workload metastability audit (§5.6: 22 runs, completed/Σinput
 invariance vs 5.3× p99) from the per-run <code>bench_r3.json</code>; workload facts via
 <code>sim/build_trace.py</code> / <code>sim/prefill_tail.py</code>.
 W&B evolution curve: project <code>sgl-evolve</code>, run <code>wilkes</code>.</p>

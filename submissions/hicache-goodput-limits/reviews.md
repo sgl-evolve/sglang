@@ -70,8 +70,8 @@ the imperfection and that a different gap/continuation structure could weaken th
 
 **W6 — does it hold on the certified eval pool? (resolved — and it changed the verdict.)**
 Attack: numbers are off a screening node; confirm on the certified pool.
-Defense/outcome: we ran median-of-k on TWO certified nodes (0-3: n=3 each; 1-2: n=2 each), identical frozen config.
-The nodeset-0 whale advantage does not hold with a stable sign: whale median p99 is lower on 1-2 (7.7 vs 15 s) —
+Defense/outcome: we ran median-of-k on TWO certified nodes (0-3: n=3 each; 1-2: whale n=2, LRU n=3), identical frozen config.
+The nodeset-0 whale advantage does not hold with a stable sign: whale median p99 is lower on 1-2 (7.7 vs 21.9 s, LRU n=3) —
 like nodeset-0 — but REVERSES on 0-3 (whale 11.5 vs LRU 6.1 s, U=3/9), with per-policy p99 swinging 6–31 s across
 nodes. This drove the retraction (W1): the online advantage is weak/node-dependent, not portable. Rather than a
 weakness we hid, the cross-node test is now load-bearing for the paper's central result — goodput@SLO is so
@@ -84,7 +84,7 @@ Attack: nodeset-0 was flagged flaky; maybe the huge p99 swings are throttling / 
 queue property — which would undercut the central caution.
 Defense: it is a genuine queue-TAIL phenomenon on a BYTE-IDENTICAL workload. The benchmark fixes the RNG seed
 (seed=1) and disables shuffle, so content, order, and nominal arrival schedule are identical every run — verified:
-all 21 full-throughput λ=3 runs (every policy, 3 nodes) complete exactly 7037 requests with total input tokens
+all 22 full-throughput λ=3 runs (every policy, 3 nodes) complete exactly 7037 requests with total input tokens
 agreeing to within 0.016%. On this fixed workload p99 spans 5.9–31.2 s (5.3×) while the MEDIAN TTFT is pinned to
 528–574 ms (1.1×) and throughput to 3.022–3.024 req/s. Identical input, constant body, constant throughput, 5.3×
 tail. A flaky node / thermal throttle / I/O contention would inflate the median and throughput too; instead ONLY

@@ -1050,3 +1050,12 @@ runs below lru's best — but both policies have rare high-metastable p99 spikes
 typical reduction, NOT a per-run guarantee or full separation. MUST update paper (was "fully separated p≈0.029" →
 "stochastically lower, Mann-Whitney p≈0.033, overlapping high tails"). This is why the extra replicates mattered
 (revealed fragility). lru-r5 running (chain) for lru n=5.
+
+## 65. FINAL SAMPLE: whale n=6 / lru n=5. Typical p99 reduction ~45%, Mann-Whitney p≈0.026. Replicate phase DONE.
+lru-r5 λ=3 = 17133ms (median 537). lru n=5 p99 {10360,11254,13991,17133,28325}. whale n=6 {6189,6574,6698,8715,
+9287,26589}. Mann-Whitney U=26/30, exact one-sided **p=0.026**; whale median p99 7706 vs lru median 13991 →
+**~45% typical reduction**; 5/6 whale below lru-min (10360). Overlapping high tails (whale 26589, lru 28325/17133)
+→ distributional, NOT full separation. Paper updated throughout (n=5 lru, p≈0.026, ~45%, 0/7 never-cross). fig4
+regenerated. Replicate phase COMPLETE (freed node). Final honest result stands. Remaining: certified W6 (job 19585,
+still PD on contended pool, fire-and-forget). Campaign deliverable done + rigorously honest (4 self-corrections
+total: goodput-floor, median-win, full-separation, queueing-mechanism all retracted under scrutiny).

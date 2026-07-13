@@ -6,3 +6,13 @@
 09:07:05 DONE pc_e :: good@SLO=3.02 peak_tok=598 best_hit=0.671 | req_s@3=3.0 ttft_p99@3=6556.2 req_s@5=4.0 ttft_p99@5=23370.2 req_s@7=4.5 ttft_p99@7=34388.0 req_s@10=4.7 ttft_p99@10=26777.6
 09:43:06 DONE pc_c :: good@SLO=3.02 peak_tok=527 best_hit=0.673 | req_s@3=3.0 ttft_p99@3=6982.8 req_s@5=4.1 ttft_p99@5=12811.1 req_s@7=0.2 ttft_p99@7=26012.0
 10:19:06 DONE pc_b :: good@SLO=3.02 peak_tok=603 best_hit=0.674 | req_s@3=3.0 ttft_p99@3=6293.8 req_s@5=4.0 ttft_p99@5=24001.7 req_s@7=4.5 ttft_p99@7=33966.2 req_s@10=4.7 ttft_p99@10=40494.2
+13:11:08 DONE stock_fcfs :: good@SLO=0.00 peak_tok=597 best_hit=0.673 | req_s@3=3.0 ttft_p99@3=8051.7 req_s@5=4.1 ttft_p99@5=16286.1 req_s@7=4.5 ttft_p99@7=35029.0 req_s@10=4.7 ttft_p99@10=40770.3
+15:29:09 DONE stock_lpm :: good@SLO=0.00 peak_tok=585 best_hit=0.671 | req_s@3=3.0 ttft_p99@3=11323.1 req_s@5=4.0 ttft_p99@5=26938.3 req_s@7=4.5 ttft_p99@7=36843.8 req_s@10=4.6 ttft_p99@10=43047.2
+17:47:11 DONE v1_lpm :: good@SLO=0.00 peak_tok=585 best_hit=0.679 | req_s@3=3.0 ttft_p99@3=22217.0 req_s@5=4.1 ttft_p99@5=26839.9 req_s@7=4.5 ttft_p99@7=35711.8 req_s@10=4.6 ttft_p99@10=42560.1
+19:43:12 DONE v1_fcfs :: good@SLO=0.00 peak_tok=0 best_hit=0.677 | req_s@3=3.0 ttft_p99@3=18265.6 hit@3=0.7
+00:35:16 DONE stock_v5 :: good@SLO=0.00 peak_tok=602 best_hit=0.673 | req_s@3=3.0 ttft_p99@3=11812.2 req_s@5=4.1 ttft_p99@5=22468.9 req_s@7=4.6 ttft_p99@7=35213.4 req_s@10=4.7 ttft_p99@10=32632.4
+06:29:21 DONE stock_v6 :: good@SLO=0.00 peak_tok=604 best_hit=0.672 | req_s@3=3.0 ttft_p99@3=26975.7 req_s@5=3.9 ttft_p99@5=26718.8 req_s@7=4.5 ttft_p99@7=35015.1 req_s@10=4.7 ttft_p99@10=31207.9
+08:03:23 DONE v1_v6 :: good@SLO=0.00 peak_tok=527 best_hit=0.673 | req_s@3=3.0 ttft_p99@3=10613.2 req_s@5=4.1 ttft_p99@5=23222.0 req_s@7=0.2 ttft_p99@7=25674.8
+11:13:26 DONE v1_fixstress :: good@SLO=0.00 peak_tok=604 best_hit=0.679 | req_s@3=3.0 ttft_p99@3=23763.6 req_s@5=4.2 ttft_p99@5=13939.7 req_s@7=4.5 ttft_p99@7=33771.7 req_s@10=4.7 ttft_p99@10=40844.6
+13:29:28 DONE stock_v8 :: good@SLO=0.00 peak_tok=609 best_hit=0.681 | req_s@3=3.0 ttft_p99@3=18559.3 req_s@5=4.1 ttft_p99@5=23545.0 req_s@7=4.6 ttft_p99@7=33800.8 req_s@10=4.8 ttft_p99@10=39737.9
+14:59:30 DONE v1f1_v8 :: good@SLO=0.00 peak_tok=0 best_hit=0.671 | hit@3=0.7 ttft_p99@3=8349.7 hit@5=0.7 ttft_p99@5=24299.2

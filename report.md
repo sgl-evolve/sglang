@@ -14,6 +14,14 @@ are DORMANT.
 conversation's prefix while it has a request in the scheduler's queue; release at admission. ~110 LOC in
 `managers/scheduler.py`, env-gated, lossless-by-construction. **Registered formal submission:**
 `submissions/pending-aware-retention/paper.html`.
+- **★★★★ ELEVATED HEADLINE (2026-07-13, no-GPU, from existing runs) — goodput@SLO is STRUCTURALLY IMMUNE to the ENTIRE retention/eviction class:**
+  new **Table 3** pairs all 5 same-node stock↔v1 A/Bs @λ3: **Δhit −1.0..+2.8pp vs Δp99 −61..+127%, DECOUPLED (Pearson r=+0.30, r²≈0.09, n.s. @n=5).**
+  The pair with the BEST hit gain (+2.77pp, node 1-2) had p99 **+28% (WORSE)**; the pair with a hit LOSS (−1.0pp) had p99 −55%. Hit-Δ explains <10%
+  of tail movement; ±127% p99 swing = node/run variance. STRUCTURAL cause: p99 tail = cold-doc first-compute (19% of prompt tok irreducibly cold: every
+  1st turn + 593/1553 single-turn), which NO lossless retention touches — p50 stays sub-second (542ms) while p99=18.6-39.7s (a few cold big-doc prefills).
+  ⇒ **even oracle Bélády leaves goodput@SLO unchanged; the headline metric is immune to the class, not just noisy.** Corollary (prescriptive, generalizes):
+  goodput headroom is on the **cold-miss path** (transfer/compute overlap, prefill admission/scheduling, cross-req dedup), NOT retention. Elevated to
+  abstract + contribution bullet + §7 metric bullet (commit e3afe3636). This is the boldest defensible general claim and it is fully evidence-backed.
 - **v1 (queued-pin) — RELIABLY POSITIVE + LOSSLESS but MODEST & VARIANCE-AFFECTED (⚠️ n=3 revised the headline):**
   hit gain@λ3 = +2.2/+2.8pp (shipped nodes 0-3/1-2) BUT **+0.4pp on ondem-2** (pin ENGAGED, max 19 pins > shipped's 6,
   yet small gain) ⇒ magnitude VARIABLE +0.4…+2.8pp (mean ~+1.8pp), NOT a robust +2.5pp. Under LPM (ondem-2, full sweep):

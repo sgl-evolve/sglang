@@ -413,7 +413,11 @@ tail warmed, (c) the eval ran true warm steady-state — which §5.3 shows shrin
 this workload not below the SLO) and removes the flush transient's arrival-phase variance — or (d) the
 load were far below the knee so the tail were service- not queueing-dominated. Orthogonally, reporting
 median-of-k rather than a single draw (§7) does not shrink the variance but makes the metric <i>reliable</i>
-by exposing it. §2's model makes each boundary quantitative.</p>
+by exposing it. §2's model makes each boundary quantitative. Finally, the coin-flip is <i>not</i> an artifact
+of the specific 8 s SLO: by the σ/m criterion (§4) it arises for <b>any</b> deadline set within ∼σ of the
+operating median, and one places the SLO at the operating knee — where the median sits — precisely to measure
+capacity. A deadline far from the knee is reliable but uninformative (it always passes or always fails); the
+regime where goodput@SLO is <i>used</i> is exactly the regime where it is a coin-flip.</p>
 
 <h2>4 Methodology</h2>
 <p>We evaluate on the frozen protocol (§5) with stock sglang at commit <code>a334877e5</code> (zero python

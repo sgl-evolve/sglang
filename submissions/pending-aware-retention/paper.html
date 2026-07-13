@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Pending-Aware KV Retention: Scheduler–Cache Co-Design for Multiturn LLM Serving</title>
+<title>Pending-Aware KV Retention and Its Limits: A Bounded-Negative Study of Cache Retention on 2-Tier Multiturn LLM Serving</title>
 <style>
   body{font:16px/1.55 Georgia,serif;max-width:860px;margin:40px auto;padding:0 20px;color:#1a1a1a}
   h1{font-size:26px;line-height:1.25;margin-bottom:4px}
@@ -25,8 +25,8 @@
 </head>
 <body>
 
-<h1>Pending-Aware KV Retention: Scheduler–Cache Co-Design for Multiturn LLM Serving</h1>
-<div class="auth">valiant · sglang KV-cache research (v0.31) · evaluated on the frozen 122B rate-sweep protocol (n=2 same-node)</div>
+<h1>Pending-Aware KV Retention and Its Limits: A Bounded-Negative Study of Cache Retention on 2-Tier Multiturn LLM Serving</h1>
+<div class="auth">valiant · sglang KV-cache research (v0.31) · evaluated on the frozen 122B rate-sweep protocol (n=4 same-node A/B nodes)</div>
 
 <div class="abs">
 <b>Abstract.</b> Hierarchical KV caches (HiCache-style L1&nbsp;GPU + L2&nbsp;host) reuse the growing prefix of a
@@ -38,15 +38,18 @@ policy would remove most of it. We ask how much of that gap is <i>realizable</i>
 the future. We propose <b>pending-aware KV retention</b>: the cache protects the L2 residency of a
 conversation's prefix precisely while that conversation has a request the scheduler is <i>already holding in
 its queue</i> — a guaranteed-imminent-reuse signal — and releases it at admission. This is a scheduler↔cache
-co-design, not a replacement policy or config flag. On the frozen 122B rate-sweep protocol it delivers a
-<b>lossless, reliably-positive but modest and variance-affected</b> win: the pin always engages and never hurts
-hit, but its magnitude ranges <b>+0.4 to +2.8&nbsp;pp</b> at the operating rate across three same-node A/B nodes
-(mean ≈+1.8&nbsp;pp; the +2.5&nbsp;pp we first measured on two nodes was the high end — a third node gave
-+0.4&nbsp;pp despite the pin engaging <i>more</i>), plus <b>+2–6% sustained throughput at moderate load</b> on the
-two nodes where we measured it (λ=5,7; converging to ~0 at saturation where GPU compute binds). The gain diminishes
-with load and is scheduler-independent (it appears under both FCFS and LPM). That the gain's <i>size</i> is itself
-variance-affected is consistent with this workload's central methodological finding (below). Two findings sharpen
-the picture.
+co-design, not a replacement policy or config flag. <b>But replication overturns both of its would-be positive
+claims, so we report a rigorously-bounded negative result.</b> (a) <b>The hit gain is small and node-dependent</b>,
+not a robust win: across four same-node A/B measurements it is +2.2/+2.8&nbsp;pp on two nodes but only
++0.4/+0.10&nbsp;pp on a third (measured twice) <i>despite the pin engaging more there</i> — i.e. +0.1–2.8&nbsp;pp,
+node-systematic (mean ≈+1.4&nbsp;pp), lossless; the +2.5&nbsp;pp we first reported (n=2) was the high end.
+(b) <b>More seriously, the pin is not reliably safe</b>: by holding host locks across eviction it exposes a latent
+radix-tree invariant in the tiered eviction path (<code>assert v==node</code>) that intermittently crashes the
+scheduler at high pin counts (all 8 TP ranks at λ=7 on the third node, 26 concurrent pins); a targeted guard we
+wrote fixes one trigger but not this one, and the clean runs on the first two nodes (≤6 pins) were luck. The
+honest conclusion: on a well-provisioned 2-tier cache there is <b>no robust, safe, lossless KV-retention win</b> —
+the residual reuse signal is small and node-dependent, and exploiting it destabilizes the eviction machinery. The
+characterization below explains <i>why</i> the signal is so thin. Two findings anchor it.
 (1) <b>Targeting is everything, and the target is narrow</b>: the natural extension — retaining <i>every</i>
 recently-finished conversation for a horizon to also cover the client think-gap — does <i>not</i> help and
 mildly hurts. Not because continuation is unpredictable (it is 78% predictable from turn count), but because
@@ -93,10 +96,12 @@ the effect that actually matters under concurrency.</p>
 <li>A trace-driven diagnosis: under concurrent multiturn load, <b>42% of the stock cache's prefill work is
 evicted-continuation recompute</b> (prefixes that were cached and reused, then dropped under contention), and
 an oracle policy would remove most of it — a large gap the LRU≈Bélády intuition misses in this regime.</li>
-<li><b>Pending-aware KV retention</b>: couple L2 retention to the scheduler's pending-request set (a
-guaranteed-imminent-reuse signal). Realizable, non-oracle, capacity-bounded, lossless. It gives a
-<b>modest, lossless, reliably-positive</b> win: hit +0.4–2.8&nbsp;pp (n=3 same-node, mean ≈+1.8; magnitude
-variance-affected, sign always non-negative) and +2–6% sustained throughput at moderate load (n=2 nodes).</li>
+<li><b>Pending-aware KV retention</b> (the mechanism, and its bounded failure): couple L2 retention to the
+scheduler's pending set (a guaranteed-imminent-reuse signal); realizable, non-oracle, capacity-bounded. Under
+replication (n=4 same-node A/B nodes) it is <b>neither a robust win nor reliably safe</b>: the hit gain is
+node-dependent (+2.2/+2.8&nbsp;pp on two nodes vs +0.4/+0.10&nbsp;pp on a third; +0.1–2.8&nbsp;pp, mean
+≈+1.4&nbsp;pp), and at high pin counts the pin exposes a latent radix-tree eviction-invariant bug that
+<b>intermittently crashes the scheduler</b> (λ=7, all 8 TP ranks, 26 pins). This is the core negative result.</li>
 <li>A <b>scheduler/tier analysis, tested on the real system</b> (the deeper insight): a single-tier sim makes
 the eviction gap look scheduler-created (FCFS 7–23&nbsp;pp, ≈0 under prefix-aware pull), but a same-node
 FCFS-vs-LPM A/B on the 122B system shows real hit is <b>scheduler-insensitive</b> (Δ&lt;0.5&nbsp;pp) while LPM
@@ -409,18 +414,23 @@ saturating workload needs same-node, replicated measurement to be meaningful.</p
 bit-identical to recomputing it, so outputs are unchanged vs the stock run by construction (verified: no
 change to the decode path or the KV values).</p>
 <h3>5.2&nbsp;&nbsp;Results</h3>
-<p><b>Pending-aware retention (v1) is a lossless, reliably-positive, but modest and variance-affected win.</b>
-Table&nbsp;1 shows stock vs v1 on the first two same-node A/B pairs (nodes 0-3 and 1-2): hit rises at every rate,
-largest at the operating rate and tapering under saturation; sustained throughput rises 2–6% at moderate load
-(&lambda;=5,7); p50 TTFT falls ~25% at λ=3. All lossless (v1 only changes which KV is retained).</p>
-<p><b>A third same-node A/B (ondem-2) revises the magnitude down and reveals variance.</b> Re-running the same
-A/B on a third node gave hit λ3 0.673→0.677 = <b>+0.4&nbsp;pp</b> — far below the +2.2/+2.8&nbsp;pp of the first
-two — <i>despite the pin engaging more strongly there</i> (up to 19 concurrent pins vs ≤6 on the earlier nodes).
-So the +2.5&nbsp;pp we first reported (n=2) was the high end: across three nodes the operating-rate gain is
-<b>+0.4 to +2.8&nbsp;pp (mean ≈+1.8&nbsp;pp)</b>. The mechanism is <i>reliably positive</i> — every measured
-A/B, under both schedulers, showed a non-negative hit change (it is lossless and only ever protects) — but its
-<i>magnitude</i> is variance-affected, exactly as this workload's other metrics are (§5.1). We therefore state
-the result as a modest, lossless, always-non-negative gain of order ~1–2&nbsp;pp, not a precise +2.5&nbsp;pp.</p>
+<p><b>On the first two nodes, v1 looked like a clean lossless win — replication (next two paragraphs) shows that
+picture was incomplete.</b> Table&nbsp;1 shows stock vs v1 on the first two same-node A/B pairs (nodes 0-3, 1-2):
+hit rises at every rate, largest at the operating rate; sustained throughput rises 2–6% at moderate load
+(λ=5,7); p50 TTFT falls ~25% at λ=3; when KV is reused it is bit-identical to recompute. These two nodes are
+where the +2.5&nbsp;pp headline came from — but they had low pin counts (≤6) and did not crash, and the two
+paragraphs below show a third node breaks both properties (small gain; a scheduler crash at high pin count).</p>
+<p><b>A third node (measured twice) shows the gain is node-dependent, not a robust +2.5&nbsp;pp.</b> Re-running the
+same A/B on a third node (ondem-2) gave hit λ3 Δ = <b>+0.4&nbsp;pp</b> and, on an independent repeat there,
+<b>+0.10&nbsp;pp</b> (0.6721→0.6731) — both far below the +2.2/+2.8&nbsp;pp of nodes 0-3/1-2, <i>despite the pin
+engaging more strongly on ondem-2</i> (19–26 concurrent pins vs ≤6 on the earlier nodes). Both ondem-2 runs are
+small and both earlier-node runs are large, so the split is <b>node-systematic, not random</b>: n=4 gives
+operating-rate gain <b>+0.1–2.8&nbsp;pp (mean ≈+1.4&nbsp;pp)</b>, with ondem-2 ≈+0.25&nbsp;pp and 0-3/1-2
+≈+2.5&nbsp;pp (the stock baseline is node-stable at 0.672–0.673, so the difference is in the <i>gain</i>, not the
+baseline). A plausible cause, consistent with the pending-window mechanism, is that ondem-2 processes faster →
+shorter queues → a smaller at-risk pending set to protect. The gain is non-negative where it did not crash, but
+it is neither robust nor node-independent — and, per §5.2's crash paragraph, the higher-pin regime on ondem-2 is
+exactly where v1 becomes unsafe.</p>
 <table>
 <tr><th>λ</th><th>hit stock→v1</th><th>Δhit</th><th>req/s stock→v1</th><th>Δreq</th><th>p50 stock→v1 (λ=3)</th></tr>
 <tr><td>3</td><td>0.676→0.701</td><td><b>+2.5 pp</b></td><td>3.02→3.02</td><td>+0%</td><td>721→534 ms (<b>−26%</b>)</td></tr>
@@ -429,8 +439,8 @@ the result as a modest, lossless, always-non-negative gain of order ~1–2&nbsp;
 <tr><td>10</td><td>0.658→0.665</td><td>+0.65 pp</td><td>4.59→4.61</td><td>+0.4%</td><td>—</td></tr>
 </table>
 <p class="note">Table 1. Stock vs v1 (pending-aware retention) on the first two same-node A/B pairs (nodes 0-3,
-1-2; per-node λ=3 +2.2/+2.8 pp). A third node (ondem-2, above) gave only +0.4 pp — so the hit <i>magnitude</i>
-is variance-affected, not node-independent; the <i>sign</i> is reliably non-negative. Throughput gain peaks at
+1-2; per-node λ=3 +2.2/+2.8 pp) — the favorable subset. A third node (ondem-2, ×2) gave only +0.4/+0.10 pp, so
+the hit <i>magnitude</i> is node-dependent, not portable. Throughput gain peaks at
 the mid-load knee (λ=5,7) and vanishes at full saturation (λ=10, GPU-compute-bound); peak decode throughput is
 flat (589→592 tok/s) — the mechanism moves prefill, not the decode ceiling, as expected.</p>
 <figure>
@@ -472,16 +482,19 @@ under the pin budget, can evict other useful KV — netting ≤0. Only the narro
 — continuations already waiting in the scheduler's queue — is worth protecting. The signal that matters is the
 <i>pending set</i>, not broad recency. Two clean post-completion full sweeps confirm the pattern at every rate
 (hit ≈ stock and below v1 at λ=3/5/7/10).</p>
-<p><b>Broad pinning also destabilizes eviction (a third strike).</b> Beyond gaining nothing, the
-post-completion config <i>intermittently</i> crashed the scheduler at high load (one of three post-completion
-runs, at λ=7) with a tree-consistency assertion in device eviction; the shipped queued-pin never crashed
-(0 of 4 stock/v1 runs, 0 of 2 v1 runs across all rates). Root cause: a host-pinned node keeps a host-only child alive, so the child's <i>ancestor</i> can
-remain a device-eviction candidate while non-empty; the write-through delete-entirely path then removes a node
-that still has a child, corrupting the radix tree. The long-lived pins of post-completion make this state
-common; the shipped mechanism (queued pinning) releases at admission, so its pins are short-lived and it ran
-clean across all rates in both same-node sweeps. This is a concrete instance of the general lesson: broad,
-long-held reuse-aware pinning interacts badly with the tiered eviction machinery, while the narrow pending-set
-pin does not.</p>
+<p><b>The pin destabilizes the tiered eviction machinery — and this is not confined to the rejected extension.</b>
+The pin (holding host locks across device eviction) intermittently crashes the scheduler with a radix-tree
+consistency assertion (<code>assert v==node</code> in the write-through eviction path). We first saw this only in
+the broad post-completion variant and believed the narrow queued pin was safe — it ran clean on the first two
+nodes (0-3, 1-2, ≤6 concurrent pins). <b>Replication refutes that belief:</b> the narrow queued pin (v1) itself
+crashed the scheduler at λ=7 on a third node (ondem-2), all 8 TP ranks, at 26 concurrent pins. So the crash is a
+function of <i>pin count</i> (which is node-dependent, like the hit gain), not of the pc-vs-queued distinction —
+the shipped v1's clean first two nodes were luck. Root cause is a genuine latent sglang invariant: holding a host
+lock across eviction leaves the radix tree in a state the write-through delete-entirely path mishandles. We
+implemented a targeted guard (below) that fixes one trigger (a node with surviving host-only children) but
+<i>not</i> the one that fired here (the assertion fails on a childless node whose parent child-slot no longer maps
+to it), so v1 remains unsafe at high load. This is the study's core negative: the one exploitable reuse signal is
+not only thin (§2.5) but cannot be exploited by host-pinning without destabilizing eviction.</p>
 <p><b>The win is small because the exploitable set is small — not because of tuning.</b> Two controls rule out
 cheaper explanations. (i) v1 never uses more than <b>9% of its pin budget</b> at any rate (peak ≈6 concurrent
 pins at λ=3), so raising the budget/fraction cannot help — the gain is bounded by the <i>size</i> of the
@@ -519,10 +532,11 @@ frequency features; we instead use an exact, workload-structural signal (in-flig
 
 <h2>7&nbsp;&nbsp;Limitations &amp; when it fails</h2>
 <ul>
-<li><b>Modest, variance-affected magnitude.</b> The realizable win is modest (hit +0.4–2.8&nbsp;pp across three
-same-node nodes, mean ≈+1.8; +2–6% throughput) — far below the oracle gap — because only the server-queue signal
-is safe to act on (see below). It is a real, lossless, reliably-non-negative improvement, but a small one whose
-exact size varies run-to-run/node-to-node like this workload's other metrics; we do not claim a precise number.</li>
+<li><b>Modest, node-dependent magnitude.</b> The hit gain is small and <i>node-systematic</i> (n=4:
++0.1–2.8&nbsp;pp, mean ≈+1.4; ≈+0.25&nbsp;pp on ondem-2, ≈+2.5&nbsp;pp on nodes 0-3/1-2) — far below the oracle
+gap — because the exploitable server-queue signal is thin and its size tracks queue depth, which differs by node.
+Where it did not crash it was non-negative, but it is neither robust nor node-independent, so we do not claim a
+precise or portable number.</li>
 <li><b>The client think-gap is not server-realizable.</b> A prefix evicted during the client's think/send gap
 (before its next turn reaches the server) cannot be protected by a server-queue signal. The obvious fix —
 retain every recently-finished conversation for a horizon — <i>hurts</i> (§5): it spends scarce L2 on
@@ -555,15 +569,17 @@ does transfer. We confirmed the pin's gain is scheduler-independent: a same-node
 +0.15–0.77&nbsp;pp across rates (smaller than under FCFS, consistent with LPM's shorter pending window). One
 caveat: ρ=+0.81 is computed under the FIFO closed-loop arrival model (matching FCFS + the harness), not
 extracted from real server logs; measuring it on production request timelines is future work.</li>
-<li><b>Eviction-interaction edge case.</b> Host-pinning a deep node keeps a host-only child alive, which can
-leave the child's ancestor a device-eviction candidate while non-empty; the engine's write-through
-delete-entirely path then trips a tree-consistency assertion. The shipped queued-pin releases at admission
-(short-lived pins) and was stable across both full same-node sweeps; the rejected long-held post-completion
-variant triggered it at high load. We implemented a targeted
-guard (in the write-through delete-entirely path, leave a node that still has children as an evicted
-<i>tombstone</i> instead of unlinking it — a latent-invariant fix independent of our mechanism), CPU-verified;
-GPU-revalidation under the crash-inducing config is opportunistic given cluster contention. The shipped
-short-pin mechanism was already stable across all runs, so the results stand regardless of the guard.</li>
+<li><b>Eviction-interaction crash — unresolved, and it sinks the mechanism.</b> Holding a host lock across
+device eviction leaves the radix tree in a state the write-through delete-entirely path mishandles, tripping
+<code>assert v==node</code>. This is not confined to the rejected post-completion variant: the shipped queued
+pin (v1) itself crashed the scheduler (all 8 TP ranks) at λ=7 on a third node at 26 concurrent pins; the clean
+runs on the first two nodes (≤6 pins) were luck, so v1 is unsafe once pin counts climb (which is node-dependent,
+§5.2). We implemented a targeted guard (leave a node with surviving host-only children as a tombstone rather
+than unlinking it) — it fixes one trigger but demonstrably <b>not</b> the one that fired (the assertion also
+fails on a <i>childless</i> node whose parent child-slot no longer maps to it). A complete fix would require
+reworking the host-lock/eviction interaction in the engine, which we have not done. We therefore do not claim a
+safe, deployable mechanism: <b>v1 is unsafe at high load, and this is the study's core negative result</b>, not a
+minor edge case.</li>
 </ul>
 
 <h2>8&nbsp;&nbsp;Reproducibility</h2>

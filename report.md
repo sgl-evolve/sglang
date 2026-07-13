@@ -693,3 +693,10 @@ sampling-sensitive not launch-level) + §7 (third-layer threat → controlled nu
 9f687155d. HTML validated (tags balanced, 0 bare &). Node freed on completion. Good-citizen fair-capacity run.
 KEY META: the experiment I'd repeatedly deferred was worth running — it RESOLVED an open caveat and CORRECTED
 an over-reach (my own hypothesized 3rd layer). Replication/controlled-test guardrail worked again.
+
+### 3-NODE generality from sessvar data (2026-07-13, zero new compute, commit eefa82e6e)
+Leveraged the session-variance experiment's 9 stock λ=3 draws on node 0-3 for a SECOND purpose: node-
+generality. 0-3 exhibits the coin-flip (6.1-36.7s, 2/9 pass, straddles SLO) → upgraded the "reproduces
+across nodes / not one machine" claim from 2 nodes to THREE (ondem-3, node1-2, 0-3) in §7 + abstract.
+Median-of-k/required-k/confound-resolution claims correctly stay "2 nodes" (those used ondem-3+node1-2).
+Honest, accurate, non-sprawl strengthening from data already in hand.

@@ -601,3 +601,14 @@ Found real related-work gap: measurement paper lacked the systems-measurement-ri
 METASTABLE not just noisy → variance doesn't shrink w/ replication near knee (required-k diverges §5.5),
 median-of-k insufficient. Committed 6949cfc46. Recent productive run: required-k + dual-nature + SLO-rebuttal
 + metric-localization + measurement-rigor — all genuine gaps, contract-clean, mostly GPU-free.
+
+### §9 Conclusion added (2026-07-13 ~11:1xZ, contract-clean, GPU-free)
+Found a real STRUCTURAL gap: paper ended abruptly on §8 Reproducibility (a tooling list) — no conclusion,
+and the actionable guidance was scattered across §3.1 (stable metrics separate at 7-9σ), §4 (σ/m test),
+§7 (median-of-k / warm caveats). Added §9 Conclusion that (a) crystallizes the finding + its resolution
+(cache ranking signal lives in stable metrics; tail gate discards it), and (b) consolidates the THREE
+practitioner/benchmark-designer recommendations in one place: (1) σ/m screen before trusting goodput@SLO,
+(2) never single-run/cross-node p99 A/B, (3) compare on stable low-variance effects + full tail distribution
+when the tail matters. No new claims; every number already in the paper. Committed 1061662cb.
+Paper now: 9 sections (proper close), 6 figures, 10 tables. HTML validated (tags balanced, 0 bare &,
+0 dangling refs). Git clean, no jobs, 0 fairness incidents.

@@ -45,8 +45,10 @@ not a robust win: across four same-node A/B measurements it is +2.2/+2.8&nbsp;pp
 node-systematic (mean ≈+1.4&nbsp;pp), lossless; the +2.5&nbsp;pp we first reported (n=2) was the high end.
 (b) <b>More seriously, the pin is not reliably safe</b>: by holding host locks across eviction it exposes a latent
 radix-tree invariant in the tiered eviction path (<code>assert v==node</code>) that intermittently crashes the
-scheduler at high pin counts (all 8 TP ranks at λ=7 on the third node, 26 concurrent pins); a targeted guard we
-wrote fixes one trigger but not this one, and the clean runs on the first two nodes (≤6 pins) were luck. The
+scheduler at high pin counts (all 8 TP ranks at λ=7, ≥~20 concurrent pins); the clean runs at low pin counts
+(≤6, and one at 13) were luck. We tried <i>two</i> targeted fixes and a stress test shows neither suffices — the
+trace localizes the fault to a <code>parent</code>/<code>children</code> pointer inconsistency present <i>before</i>
+eviction, i.e. host-pinning corrupts the radix tree during insertion, not just eviction. The
 honest conclusion: on a well-provisioned 2-tier cache there is <b>no robust, safe, lossless KV-retention win</b> —
 the residual reuse signal is small and node-dependent, and exploiting it destabilizes the eviction machinery. The
 characterization below explains <i>why</i> the signal is so thin. Two findings anchor it.
@@ -582,20 +584,21 @@ device eviction leaves the radix tree in a state the write-through delete-entire
 <code>assert v==node</code>. This is not confined to the rejected post-completion variant: the shipped queued
 pin (v1) itself crashed the scheduler (all 8 TP ranks) at λ=7 on a third node at 26 concurrent pins; the clean
 runs on the first two nodes (≤6 pins) were luck, so v1 is unsafe once pin counts climb (which is node-dependent,
-§5.2). We implemented a targeted guard (leave a node with surviving host-only children as a tombstone rather
-than unlinking it) — it fixes one trigger but demonstrably <b>not</b> the one that fired (the assertion also
-fails on a <i>childless</i> node whose parent child-slot no longer maps to it). Static analysis narrows the
-remaining trigger to eviction-set maintenance under host pins: the tombstone cascade
-(<code>_iteratively_delete_tombstone_leaf</code>) skips any node with <code>host_lock_ref&gt;0</code> (so a pin
-reshapes which ancestors are cascade-deleted) and, when it does delete a node, discards it only from the
-<i>host</i>-leaf set, not the <i>device</i>-leaf set — a candidate for a stale device-leaf entry that the driver
-later re-evicts, whose second <code>_remove_leaf_from_parent</code> pops <code>None</code> and asserts. We could
-not <i>confirm</i> this is the sole trigger without reproducing the intermittent, high-pin-count, node-specific
-crash, and we deliberately did not ship a speculative unvalidated patch (nor weaken the assertion, which guards
-real tree corruption). A complete, validated fix requires reworking the host-lock/eviction-set interaction in the
-engine. We therefore do not claim a safe, deployable mechanism: <b>v1 is unsafe at high load, and this is the
-study's core negative result</b>, not a minor edge case. Making the pin safe (then re-testing whether the thin,
-node-dependent gain survives) is the concrete future-work path this result defines.</li>
+§5.2). We attempted <b>two</b> targeted fixes; a stress test (v1 at max pin budget, forcing ~20 concurrent
+pins) shows <b>neither is sufficient</b>. (1) A tombstone guard (leave a node with surviving host-only children
+in the tree rather than unlinking it) — the assertion still fires on a <i>childless</i> node. (2) A
+consistency fix that drops a node from <i>both</i> evictable-leaf sets at every unlink (so the driver, which
+snapshots the device-leaf set and re-checks membership, cannot re-select a removed node) — v1 crashed anyway,
+and the trace localizes it to the node's <i>first</i> eviction (<code>_evict_device_leaf →
+_remove_leaf_from_parent</code>, after both discards run), where <code>parent.children[key]</code> is already
+<i>not</i> this node. So the corruption is deeper than eviction-set bookkeeping: the node's
+<code>parent</code> pointer and its parent's <code>children</code> map are inconsistent <i>before</i> eviction —
+i.e. host-pinning corrupts the radix tree during insertion/split/match, not just during eviction. Fixing that
+requires reworking the host-lock × tree-mutation interaction, which we have not cracked. We deliberately did not
+ship a speculative patch nor weaken the assertion (it guards real corruption). <b>v1 is therefore unsafe at high
+load (≥~20 concurrent pins), and two fixes did not resolve it — this is the study's core negative result</b>,
+not a minor edge case. Making the pin safe (then re-testing whether any gain survives above the ~0.9&nbsp;pp
+noise floor) is the concrete future-work path this result defines.</li>
 </ul>
 
 <h2>8&nbsp;&nbsp;Reproducibility</h2>

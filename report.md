@@ -1181,3 +1181,24 @@ showed a same-node p99 reduction on ONE node that did not reproduce on a second 
 metastability." PAPER MUST REFRAME: lead with the size-signal insight + the (now cross-node-demonstrated)
 metastability/methodology; downgrade the GPU whale result to node-specific/non-reproducing. This VINDICATES running
 the certified median-of-k (§71 reversal was right — it overturned my own mechanism honestly). The data led.
+
+## 77. 3RD-NODE median-of-k on idle certified 1-2 (strengthen the CENTRAL cross-node metastability claim 2→3 nodes)
+The cross-node metastability is now the paper's central NEW contribution; it rested on 2 nodes (nodeset-0: whale<lru
+p=0.026; certified 0-3: no separation). Both certified 0-3 AND 1-2 are idle now → launched a 3rd-node median-of-k
+on 1-2 (a node not yet used): whale n=3 + lru n=3 λ=3 (jobs 19652-57, scancel-after-λ3). Adds a 3rd independent
+node's whale-vs-lru p99 distribution → tests generalizability of "single-node A/Bs unreliable for tail-SLO
+residency". Whatever pattern 1-2 shows (separation, reversal, or overlap), it strengthens the cross-node story.
+Using genuinely-idle certified capacity for the non-retracted headline result. whale-cb1 λ=3 ~50min. Managing via
+scancel-after-λ3; will add a 3rd column to §5.6 table + fig5 when complete.
+
+## 78. ★★★ 3-NODE PICTURE (node 1-2 done, n=2): whale<lru on 2/3 nodes, REVERSES on 1 → weak, metastability-swamped.
+node 1-2 (n=2): whale {8235,7088} median 7.7s; lru {21907,8089} median 15s → whale < lru (like nodeset-0).
+FULL 3-node median p99 (whale vs lru): nodeset-0 7.7<14.0 (whale) | certified 0-3 11.5>6.1 (LRU, reversed) |
+certified 1-2 7.7<15.0 (whale). ⇒ whale < lru on 2 OF 3 NODES, reverses on 1; absolute p99 swings 6-31s within
+a policy across nodes/runs. HONEST READ (refines §76): NOT purely one-node (2/3 show the advantage) but NOT
+robustly portable either (reverses on 0-3; the 0-3 reversal is itself likely metastable — lru drew low 5.9/6.1
+twice there). So there is a WEAK, node-dependent tendency (whale median p99 ≤ lru on most nodes) SWAMPED by
+extreme metastability (cross-node + within-node). The methodological conclusion stands & strengthens: the effect
+is small relative to node/run variance → single-node A/Bs (even replicated) are unreliable; multi-node median-of-k
+is required. Update §5.6 to the 3-node table + fig5 3rd panel; soften "node-specific" to "weak/node-dependent,
+metastability-swamped." Node 1-2 freed (n=2 plan; cb3 pair cancelled for stewardship).

@@ -17,14 +17,18 @@ DATA = {
         "whale": [6189, 6574, 6698, 8715, 9287, 26589],
         "LRU":   [10360, 11254, 13991, 17133, 28325],
     },
-    "certified 0-3 (does NOT reproduce)": {
+    "certified 0-3 (whale > LRU: reversed)": {
         "whale": [6794, 11461, 20406],
         "LRU":   [5893, 6129, 31203],
+    },
+    "certified 1-2 (whale < LRU again)": {
+        "whale": [8235, 7088],
+        "LRU":   [21907, 8089],
     },
 }
 COL = {"whale": "#d62728", "LRU": "#8c8c8c"}
 
-fig, axes = plt.subplots(1, 2, figsize=(7.8, 3.6), sharey=True)
+fig, axes = plt.subplots(1, 3, figsize=(10.5, 3.6), sharey=True)
 for ax, (title, d) in zip(axes, DATA.items()):
     for i, pol in enumerate(["LRU", "whale"]):
         ys = [v/1000.0 for v in d[pol]]              # -> seconds

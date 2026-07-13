@@ -612,3 +612,24 @@ practitioner/benchmark-designer recommendations in one place: (1) σ/m screen be
 when the tail matters. No new claims; every number already in the paper. Committed 1061662cb.
 Paper now: 9 sections (proper close), 6 figures, 10 tables. HTML validated (tags balanced, 0 bare &,
 0 dangling refs). Git clean, no jobs, 0 fairness incidents.
+
+### §5.5 EMPIRICAL per-node required-k added (2026-07-13 ~11:45Z) + K=10 overlap FAILURE (honest)
+ATTEMPT: launched K=10 same-node stock λ=3 on the idle ondem-3 manager hold (job 19548, all 8 GPUs 0% =
+fair overlap, not a sibling eval; engine verified stock, byte-identical eval flags, node-guarded ondem-3),
+to pool with existing K=5 → n=16 for a robust empirical required-k. Server came up, warmup done, rep1 ran to
+85% — then at 11:38 the manager's hold ENDED and reclaimed ondem-3, killing the --overlap step (SIGNAL
+Terminated, 0 completed reps). RECONFIRMS medk-n2 lesson: --overlap into a hold is fragile for multi-hr runs;
+only a durable exclusive sbatch is immune. Pool then saturated (wilkes whale-cb*/lru-cb* pipeline + valiant-v8
++ v1vid). DECISION: NOT relaunch a 6-7h exclusive job amid a saturated sibling pipeline for a MARGINAL
+firming (paper core already complete; §5.5 has the principled model + §3.1/§7 already show K=5 insufficient
+via 2-node median-of-5 disagreement) — poor citizenship for low value.
+PIVOT (zero new compute, contract-clean): compute empirical required-k PER NODE from EXISTING on-contract
+draws (tools/required_k_empirical.py, deterministic bootstrap):
+  • ondem-3 n=6 (median 11.4s, 3.4s ABOVE SLO, σ/m=1.9, 2/6 pass): required-k ≈ 23 (goodput=0)
+  • node1-2 n=5 (median 7.2s, 0.8s BELOW SLO, σ/m=7.0, 3/5 pass): UNRESOLVED even at k=25
+This is a real-data match to the model's DIVERGENCE: node nearer the SLO (node1-2) needs MORE replicates than
+the one further (ondem-3) — exactly required-k↑ as median→SLO. Explains directly why §3.1 K=5 failed (5 ≪
+20+). Integrated §5.5 (after model required-k table) + §8 tooling, committed 984252d15. HONEST: pools small
+(n=5-6) → exact k coarse; qualitative result robust. Reflexive point added: precisely measuring required-k is
+expensive BECAUSE required-k is large — the difficulty IS the finding. HTML re-validated (43/43 p, 0 bare &,
+0 dangling refs). Paper: 9 sections / 6 figs / 10 tables. W&B: log as note (variance study), not new curve.

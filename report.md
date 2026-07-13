@@ -490,3 +490,9 @@ recommendation → DEMONSTRATED result (the constructive positive of the paper).
 table) + abstract punchline. Committed 6cce0e606, validated. PAPER COMPLETE: negative + queueing model +
 node-confound-resolved + flush-quantified + methodology-validation TRIAD (both fixes insufficient) + σ/m
 diagnostic + CONSTRUCTIVE CAPSTONE (stable metrics work at 7-9σ). 6 figs... (5 fig/8 tables now).
+
+### 2nd-node medk-n2 (node0-3) — close §7 residual limit, node×run grid (2026-07-13 ~04:26Z)
+Pool had idle capacity (all 3 held flocks FREE) → fair to run via overlap. Flush stock K=5 on node0-3 (the
+node where v0-stock-r3 PASSED at 6.79s in my cross-node n=3). Tests: is node0-3 reliably fast, or ALSO a
+coin-flip? Builds node×run grid row 2 (row 1 = ondem-3 medk 2/5 pass). Converts §7 limit ("K=5 for one node")
+→ two-node result. nohup flock-overlap into hold 19542, OUT runs/v0-medk-n2/, stock write_through.

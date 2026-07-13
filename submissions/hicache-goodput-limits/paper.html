@@ -39,8 +39,12 @@ on two (nodeset-0, 1-2) but the ordering <b>reverses</b> on the third (certified
 11.5 s), with per-policy p99 swinging ~6–31 s by node/run. So the online eviction-policy advantage is <b>weak and
 node-dependent, not a portable win</b> — single-node A/Bs (even same-node, replicated) are unreliable for tail-SLO
 residency claims, and the online reuse gap (p50 460 s) caps any residency's recompute capture ≈0 regardless. The TIME axis (CAR completion-grace) ≈ LRU
-(grace-trap); SLRU backfires (hit 0.68→0.51). = an observable offline liveness lever + a cross-node-demonstrated
-metastability caution for tail-SLO cache evaluation. NOTE: earlier match-only classifier mislabeled evicted as
+(grace-trap); SLRU backfires (hit 0.68→0.51). <b>The metastability is EXECUTION-driven</b>: on a byte-identical
+workload (fixed seed + no-shuffle; 21 runs, 7037 compl each, Σin within 0.016%) p99 swings 5.9–31.2 s (5.3×) while
+median is pinned to 528–574 ms (1.1×). And the tail resists prefill scheduling too: <b>admission-staggering is
+refuted deterministically</b> (large prefills peak concurrency 2, ~const 35K tok/s → nothing to stagger). = an
+observable offline liveness lever + a cross-node, execution-driven metastability caution + both scheduling axes
+(residency gap-capped, admission no-pileup) shown dead-end deterministically, for tail-SLO cache evaluation. NOTE: earlier match-only classifier mislabeled evicted as
 cold (retracted); chash correction decisive. Stable: §4.1 two-bound+P, §4.2
 size-observability + grace-trap, §5.2 decomposition, §5.3 SLRU-backfire, §5.5 size-aware eviction.</p>
 
@@ -75,7 +79,16 @@ reduction significant on one node (nodeset-0: median −45%, Mann-Whitney p≈0.
 three nodes but reverses on the third</b> (certified 0-3: LRU median 6.1 s vs whale 11.5 s), with per-policy p99
 swinging ~6–31 s by node/run. We therefore report the online advantage as <b>weak and node-dependent, not a
 portable win</b>, and draw the methodological conclusion that single-node A/Bs — even same-node and replicated —
-are unreliable for tail-SLO residency claims.
+are unreliable for tail-SLO residency claims. The metastability is <b>execution-driven, not workload variance</b>:
+the benchmark fixes the seed and disables shuffle, so across all 21 full-throughput runs the workload is
+byte-identical (each completes exactly 7037 requests, total input tokens within 0.016%), yet p99 spans 5.9–31.2 s
+(<b>5.3×</b>) while the median TTFT is pinned to 528–574 ms (1.1×) and throughput to 3.022–3.024 req/s — identical
+input, constant body, 5.3× tail. Finally, we show the tail is not addressable by prefill scheduling either: a
+lossless admission-staggering mechanism (cap concurrent large cold prefills) is refuted <i>deterministically</i> —
+in the trace, large prefills almost never co-execute (peak concurrency 2, ≤1.04× rate penalty) and prefill runs at
+a near-constant ~35K tok/s, so a concurrent-count cap has nothing to bite on; the tail is an admission-<i>wait</i>
+phenomenon decoupled from both cache hit rate and prefill-execution contention. Both scheduling axes — residency
+(gap-capped) and admission (no pileup) — are thus dead ends for this metastable tail, each shown so deterministically.
 The naive TIME axis of continuation-residency is trapped — CAR completion-grace ≈ LRU at grace 90 s <i>and</i>
 300 s — and the textbook SLRU backfires (hit 0.68→0.51) by evicting turn-0 entry points. A methodological caution: a match-fraction
 classifier conflates evicted turns with cold documents and hides the headroom entirely — conversation identity is
@@ -112,7 +125,16 @@ policy comparison has no stable sign across nodes</b>: a same-node whale-vs-LRU 
 node (nodeset-0: median −45%, p≈0.026, n=6/n=5) is lower on two of three nodes but <b>reverses on the third</b>
 (certified 0-3), with per-policy p99 swinging ~6–31 s by node/run. We report the online advantage as weak and
 node-dependent and conclude that tail-SLO residency claims require multi-node median-of-k, not single-node A/Bs —
-a cautionary methodological result.</li>
+a cautionary methodological result. We further show the metastability is <b>execution-driven, not workload
+variance</b>: on a byte-identical workload (fixed seed + no-shuffle; 21 runs each completing exactly 7037 requests,
+Σinput within 0.016%) the p99 swings 5.9–31.2 s (5.3×) while the median is pinned to 528–574 ms (1.1×) and
+throughput to 3.022–3.024 req/s.</li>
+<li><b>A deterministic refutation of prefill-admission staggering</b> (§9d): having localized the tail to large
+cold prefills, we implemented a lossless admission-staggering mechanism (cap concurrent large prefills) and refuted
+its premise from the trace — large prefills almost never co-execute (peak concurrency 2, ≤1.04× rate penalty) and
+prefill runs at a near-constant ~35K tok/s, so a concurrent-count cap has nothing to bite on. The tail is an
+admission-<i>wait</i> phenomenon decoupled from both cache hit rate and prefill-execution contention. With residency
+gap-capped, <b>both scheduling axes are dead ends for this metastable tail, each shown so deterministically.</b></li>
 <li>Empirical <b>negatives</b> (§5.3): the textbook <b>SLRU backfires</b> (evicting unproven turn-0 entry points
 makes the cache worse — hit 0.68→0.51), and the TIME-axis <b>CAR</b> (completion-grace probation on turn-0s)
 ≈ LRU at any capacity-feasible grace (grace 90 s and 300 s measured) — the grace-trap that the SIZE axis escapes.</li>

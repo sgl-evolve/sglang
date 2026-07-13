@@ -32,11 +32,13 @@ W&B: project `sgl-evolve`, run `base` (group v0.31).
 ### (D) OPEN LEAD (testing): does EXCLUSIVE CODE beat WRITE_BACK CONFIG on reliability?
 - λ=3 p99 by tier: **STOCK** n=5 std **10418** (1/5 pass) · **WRITE_BACK** n=3 std **1695** [6972,7032,10597]
   (2/3 pass) · **EXCLUSIVE (my code)** n=4 std **312** [6461,6606,6658,7277] (4/4 pass) · cost-aware n=1 6850.
-- **RESOLVED → REFUTED (honest negative).** The n=4 lead (Levene p=0.002) was under-sampled: the 5th exclusive
-  run failed at **12760 ms**. Final: **EXCLUSIVE n=5 = [6461,6606,6658,7277,12760], 4/5 pass, std 2420** vs
-  **WRITE_BACK n=5 = [6972,7032,8682,9769,10597], 2/5 pass, std 1447** ⇒ **Levene p=0.92, MWU p=0.15 — NOT
-  significant.** ⇒ **exclusive-CODE is NOT more reliable than write_back-CONFIG**; both de-dup, both coin-flip
-  with similar variance. My exclusive code's +1.7pp hit does NOT improve goodput reliability beyond the config.
+- **RESOLVED → REFUTED (honest negative), now FIRMED to n=6.** The n=4 lead (Levene p=0.002) was under-sampled;
+  the firming replicates I launched (vxc-cf3, vxc-cf4) both FAILED (**12760, 12237 ms**). Final:
+  **EXCLUSIVE n=6 = [6461,6606,6658,7277,12237,12760], 4/6 pass, std 2726** vs **WRITE_BACK n=5 =
+  [6972,7032,8682,9769,10597], 2/5 pass, std 1447** ⇒ **Levene/Brown-Forsythe W=0.43 (≪F_crit 4.8 → variances
+  INDISTINGUISHABLE), MWU U=12 — NOT significant.** With n=6 the exclusive std (2726) is if anything ≥ write_back
+  (1447) ⇒ **exclusive-CODE is NOT more reliable than write_back-CONFIG** (the 4/4-tight at n=4 was luck — two
+  clear fails now). My exclusive code's +1.7pp hit does NOT improve goodput reliability beyond the config.
   This is the **4th over-claim caught by replication** (goodput-0→3, reliably-3, 6/6-reliable, now excl>wb) —
   each a variance artifact; the firming guardrail (which I'd pre-warned) worked. ⇒ the reliability win (B) is a
   de-dup-CLASS effect (config-reachable via write_back), **NOT a novel-code contribution**. Honest.
@@ -92,9 +94,9 @@ The goodput@SLO headline is decode-knee-capped + λ=5-coin-flip (below), BUT **p
   |------|--------------------------------|---|------|-------------|
   | stock         | 586, 603                | 2 | 594.9 | 0.671–0.675 |
   | write_back    | 651, 671, 671           | 3 | 664.1 | 0.733–0.774 |
-  | exclusive     | 659, 669                | 2 | 663.7 | 0.755–0.756 |
-  **max stock (603) < min de-dup (651)** — zero overlap across 2 stock vs 5 de-dup runs; **+11.6% mean, +8%
-  min-to-max.** Formal MWU is underpowered at n=2 stock (best-case p≈0.095 — stated honestly, not claimed
+  | exclusive     | 659, 666, 669           | 3 | 664.7 | 0.745–0.756 |
+  **max stock (603) < min de-dup (651)** — zero overlap across 2 stock vs 6 de-dup runs; **+11.6% mean, +8%
+  min-to-max.** (vxc-cf3 exclusive full-sweep completed 2026-07-13, peak 666; vxc-cf4 in flight.) Formal MWU is underpowered at n=2 stock (best-case p≈0.095 — stated honestly, not claimed
   significant), so the evidence is the **clean non-overlap + the two same-node controls** (node 1-2 +8%, node
   0-1 +18%, which rule out the node confound for the primary comparison) + **hit-monotonicity** (the causal
   chain). This is a robust, replicated, lossless throughput result — my strongest positive.

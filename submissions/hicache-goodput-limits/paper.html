@@ -24,7 +24,7 @@
 <body>
 
 <h1>The Metastable Tail-SLO: A No-Go Criterion for Lossless KV-Cache Optimization</h1>
-<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>v0.8.1</b></div>
+<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>v0.8.2</b></div>
 
 <p class="abstract"><b>Summary.</b> For a two-tier HiCache serving concurrent multi-turn long-context conversations
 under a tail-latency SLO, we establish a <b>no-go criterion</b> (§9): <b>no lossless cache-residency or
@@ -53,8 +53,8 @@ serving a Mooncake-style 1:1:1 mix under a Poisson rate sweep scored by <i>goodp
 p99 TTFT ≤ 8 s) — we ask whether the eviction policy is a lever, and if so, what observable signal drives it.
 Our answer is a bounded negative and a methodology result: <b>no lossless residency- or admission-based mechanism
 yields a certifiable goodput@SLO gain</b> (a no-go criterion with three measurable conditions), and the metric is
-<b>execution-variance-dominated</b> — a byte-identical workload produces a 5.3× p99 spread, so certifying even a 45%
-policy effect needs ~24 same-node runs per policy. Constructively but <i>offline-only</i>, we identify the correct
+<b>execution-variance-dominated</b> — a byte-identical workload produces a 5.3× p99 spread (95% of it within-node),
+so certifying even a 45% policy effect needs ~31 same-node runs per policy. Constructively but <i>offline-only</i>, we identify the correct
 residency signal-class (proven-protection + a prefix size/cost magnitude, of which turn-0 size is the cheap
 at-admission instance); it does not convert online. In detail:
 We cast goodput as <b>goodput@SLO = min(R_thru, R_p99)</b>: a throughput bound R_thru = P/avg-uncached-prefill
@@ -616,7 +616,7 @@ at α=0.05 and 0.80 power, detecting the nodeset-0-claimed 45% p99 shift require
 policy</b> (a 60% shift still needs ≈ 17). Conversely, at the n = 5–6 the contended pool affords, the minimum
 detectable shift is <b>≈ 90–97%</b> — so the single "significant" online result (p ≈ 0.026, §5.5) was powered only
 to catch an ~90% effect, not the 45% it reported, which is exactly why it did not reproduce. On this metric a
-same-node residency A/B needs <b>~30 runs per arm</b> to be trustworthy — orders of magnitude beyond the single-run
+same-node residency A/B needs <b>~31 runs per arm</b> to be trustworthy — orders of magnitude beyond the single-run
 or small-n evaluations that are the norm in this literature. (Computed in <code>sim/power_auc.py</code>; we cannot
 further separate whether the within-node residual is intrinsic queue dynamics or transient per-run environment
 jitter — §5.6 — but it is run-to-run and same-node either way, so the evaluation consequence is unchanged.)</p>

@@ -1,7 +1,7 @@
 # wilkes — formal submissions index
 
 **CANONICAL REGISTRATION (spec format `date · slug · claim · commit · status`):**
-2026-07-13 · hicache-goodput-limits · A no-go criterion for lossless goodput@SLO improvement (no lossless residency/admission mechanism gives a certifiable gain under gap-dominated reuse + no prefill co-execution contention + an execution-variance-dominated tail), with the turn-0 SIZE signal as the offline-unique correct residency signal (captures Belady headroom −23% where recency/frequency capture 0%) and execution-driven tail metastability (5.3× p99 on a byte-identical workload) as a cross-node evaluation caution · d441087bb · revised (v0.5.1; complete, QA'd §90, adversarially stress-tested §91, reproducibility-certified §92; W1–W10, 6 figs, ~10 self-corrections)
+2026-07-13 · hicache-goodput-limits · "The Metastable Tail-SLO: A No-Go Criterion for Lossless KV-Cache Optimization" — no lossless cache-residency or prefill-admission mechanism gives a certifiable goodput@SLO gain under gap-dominated reuse + no prefill co-execution contention + an execution-variance-dominated tail (byte-identical workload → 5.3× p99, ~24 runs/policy needed to certify a 45% effect); constructive-but-OFFLINE, the correct residency signal-class is proven-protection + a prefix size/cost magnitude (cost-greedy +48% > size/whale +23%; recency/frequency 0%), gap-capped online · 2c8c18d43 · revised (v0.7; repositioned per independent adversarial review; W1–W11, 6 figs, 11 self-corrections; power-law + held-out-AUC added; reproducibility-certified §92)
 
 ---
 _Detailed revision history below._

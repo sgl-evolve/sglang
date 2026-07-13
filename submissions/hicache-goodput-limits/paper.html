@@ -543,7 +543,10 @@ queue moments. It also swamps the policy signal: the whale (6.2–26.6 s) and LR
 almost entirely, so the between-policy difference is a small fraction of the within-policy execution variance —
 precisely why a single A/B, even same-node and even replicated, cannot be trusted for this metric. This is a
 first-class systems finding: <b>goodput@SLO under a metastable tail is an execution-variance–dominated metric, and
-must be evaluated with multi-node median-of-k, never a single run.</b></p>
+must be evaluated with multi-node median-of-k, never a single run.</b> Fig 6 makes this visual: across the 22
+byte-identical runs the p99 (colored by policy) fans from 5.9 to 31.2 s with whale and LRU fully interleaved, while
+the median sits pinned at ~0.54 s.</p>
+<p><img src="fig6_fixed_workload.svg" alt="22 byte-identical runs: p99 TTFT swings 5.9-31.2s (5.3x, whale/LRU interleaved) while median pinned ~0.54s" style="max-width:100%"></p>
 <p><img src="fig5_crossnode.svg" alt="λ=3 p99 whale vs LRU across 3 nodes: whale below LRU on nodeset-0 and 1-2 but reversed on 0-3 (metastable)" style="max-width:100%"></p>
 
 <h2>6 Related work</h2>
@@ -653,8 +656,8 @@ size-only catastrophic, whale −23% capture)
 via <code>sim/simulate.py</code>; Belady headroom + Fig 3 via <code>sim/gen_figures.py</code>; the λ=3 per-run
 whale-vs-lru-vs-car TTFT figure (Fig 4) via <code>sim/fig_whale.py</code>; the cross-node p99 figure (Fig 5) via <code>sim/fig_crossnode.py</code>;
 the deterministic prefill-contention analysis (§9d: measured in-flight intervals → concurrency vs effective rate)
-via <code>sim/prefill_contention.py</code>; the fixed-workload metastability audit (§5.6: 22 runs, completed/Σinput
-invariance vs 5.3× p99) from the per-run <code>bench_r3.json</code>; workload facts via
+via <code>sim/prefill_contention.py</code>; the fixed-workload metastability audit + Fig 6 (§5.6: 22 runs, completed/Σinput
+invariance vs 5.3× p99) from the per-run <code>bench_r3.json</code> via <code>sim/fig_fixed_workload.py</code>; workload facts via
 <code>sim/build_trace.py</code> / <code>sim/prefill_tail.py</code>.
 W&B evolution curve: project <code>sgl-evolve</code>, run <code>wilkes</code>.</p>
 

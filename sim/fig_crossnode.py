@@ -23,7 +23,7 @@ DATA = {
     },
     "certified 1-2 (whale < LRU again)": {
         "whale": [8235, 7088],
-        "LRU":   [21907, 8089],
+        "LRU":   [21907, 8089, 30037],
     },
 }
 COL = {"whale": "#d62728", "LRU": "#8c8c8c"}

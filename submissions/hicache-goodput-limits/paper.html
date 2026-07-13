@@ -690,7 +690,10 @@ the solo rate (≤1.04× slower); prefill throughput is near-constant at ~35K to
 appears only at the rare 3-way overlap). A concurrent-count cap therefore has almost nothing to bite on: the
 large-prefill effect on the tail is not big-vs-big execution contention but the admission-<i>wait</i> it imposes on
 other requests (queue depth at large-prefill admissions is 2× the mean while the prefills themselves run at full
-speed). The tail is thus an admission-queue timing phenomenon, decoupled from <i>both</i> cache hit rate (§5.5) and
+speed). Empirically, a single staggered-LRU GPU run (λ=3 p99 6.3 s) lands within the same-node plain-LRU band
+(8.1 / 21.9 / 30.0 s), consistent with a no-op; we do not attempt a powered A/B because the metric's 5.3× execution
+variance (§5.6) precludes one at feasible n — the same lesson the whale comparison taught.
+The tail is thus an admission-queue timing phenomenon, decoupled from <i>both</i> cache hit rate (§5.5) and
 prefill-execution contention (this analysis) — which is why neither residency nor admission-count staggering is a
 robust lever, and why on a byte-identical workload the tail still swings 5.3× (§5.6). A remaining candidate lever is
 memory-pressure-gated admission or added effective capacity, but the execution-variance dominance bounds what any

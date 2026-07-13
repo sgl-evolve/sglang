@@ -700,3 +700,20 @@ generality. 0-3 exhibits the coin-flip (6.1-36.7s, 2/9 pass, straddles SLO) → 
 across nodes / not one machine" claim from 2 nodes to THREE (ondem-3, node1-2, 0-3) in §7 + abstract.
 Median-of-k/required-k/confound-resolution claims correctly stay "2 nodes" (those used ondem-3+node1-2).
 Honest, accurate, non-sprawl strengthening from data already in hand.
+
+### Charter re-read → mechanism-space RE-EXAMINATION + §3.3 strengthening (2026-07-13, commit f525c307c)
+Re-read program.md ("when a line is exhausted, pick a BOLDER one"). Did a fresh, deep mechanism-space
+re-examination to test whether a bolder MECHANISM line remains open, considering scheduling ideas beyond the
+paper: prefill-priority-over-decode (NO headroom — decode already light/not-saturated §5.1, prefill already
+gets the engine), fair chunk interleaving (HURTS — delays the heavy docs that ARE the p99), and length/
+deadline-aware reordering (the interesting one). CONCLUSION: mechanism space genuinely CLOSED, but for a
+deeper reason than "no mechanism exists" — the coin-flip makes tail-targeting mechanisms UNMEASURABLE on
+goodput@SLO. Even length-aware scheduling, which COULD in principle raise goodput@SLO (deprioritize docs whose
+prefill alone >SLO — 192K-tok needs ~9.4s, structurally hopeless), (a) is a textbook deadline transplant not a
+novel primitive, and (b) acts on the coin-flip tail the metric cannot resolve. So the boldest HONEST line IS
+the measurement paper — it SUBSUMES the mechanism dead-ends by proving why they can't be validated. Integrated
+into §3.3: comprehensively closes the prefill-scheduling space + sharpens the thesis ("the metric's
+unreliability blocks validating ANY tail-targeting mechanism → why the contribution is measurement not
+mechanism"). Honest (unmeasurable+not-novel, NOT "tested/closed"). Also confirms mechanism unmeasurability
+applies under BOTH goodput@SLO (coin-flip) AND stable metrics (only config-equivalent wins exist per landscape).
+No bolder line exists that isn't already closed. Paper: 9 sections / 7 figs / 10 tables, HEAD f525c307c.

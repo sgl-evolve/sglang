@@ -211,6 +211,34 @@ Device KV pool usage during serving (v0-cert, per decode step): p50 **0.01**, p9
   bounded out. Two independent diagnoses (decode-slot saturation + device-KV-pressure bursts) both conclude the
   goodput tail is NOT lossless-KV-addressable.
 
+## MECHANISTIC DIAGNOSIS #3 — the λ=5 regime is 94% PREFILL-bound, and it's COLD prefill (bounds the cache headroom)
+Same-node (1-2) forward-pass census of the full λ=5 window, stock vs write_back (GPU-free, from server.log
+batch lines; the definitive quantification of why (C) is real-but-modest and why goodput can't beat the cap):
+| metric (λ=5 window) | STOCK (hit 0.671) | WRITE_BACK (hit 0.733) |
+|---|---|---|
+| forward passes: **PREFILL share** | **94.9%** (8413) | **94.2%** (7772) |
+| forward passes: DECODE steps | 454 (5.1%) | 476 (5.8%) |
+| prefill **new-token** sum (COLD work) | 3.32e7 | **2.85e7 (−14%)** |
+| prefill cached-token attn sum | 7.05e7 | 7.40e7 |
+| decode #running-req (p50 / mean) | 11 / 49 | 12 / 47 |
+- **The GPU spends ~95% of its λ=5 forward passes on PREFILL, regardless of cache hit.** The regime is
+  overwhelmingly prefill-bound: long unique first-turn documents (LEval/LooGLE, prefill chunked at #new-token
+  p50 **6144**) dominate the compute.
+- **Quantified (C) mechanism (measured, not asserted):** higher hit cuts **COLD new-token prefill −14%**
+  (3.32e7→2.85e7 — fewer tokens need from-scratch K/V+attention), which frees the GPU for **+5% more decode
+  steps** (454→476) ⇒ the **+6–8% decode throughput** of finding (C) at this node/rate. (The cached-token
+  attention volume actually *rises* slightly — higher hit means more continuations replay over cached prefixes
+  — so the net decode gain is the difference: cold-prefill saved minus warm continuation-attention added.)
+- **This BOUNDS lossless caching's throughput headroom.** Caching can only remove *continuation* (turn ≥2)
+  prefill; the *cold* first-turn prefill of each unique document is irreducible (nothing to cache on first
+  sight). Cold prefill is the majority of prefill FLOPs here ⇒ the cache's reachable throughput headroom is the
+  minority continuation fraction ⇒ the observed **+6–18%** (scaling with the continuation/contention fraction,
+  i.e. with load) is near the lossless ceiling for THIS workload. No lossless KV mechanism can do materially more.
+- **Re-confirms the goodput cap with hard numbers:** in the 3516 λ=5 steps with a waiting queue (#queue-req>0),
+  **running-req p50 = 251 / mean 231 (of the frozen 256 cap)** and device full-tok-use p50 0.85 — admission is
+  jointly gated by the **contract-frozen 256-concurrency cap** and device-KV, both non-KV-addressable. 52% of
+  backlog steps have device ≥0.85. ⇒ goodput@SLO cannot exceed ~3 via any lossless KV mechanism (re-confirmed).
+
 ## MECHANISTIC DIAGNOSIS of the goodput cap (from v-wb server.log, λ=5 window, GPU-free)
 Why does λ=5 achieve only 4.4 req/s (p99 21 s) when the server hits 5.1 at λ=10? Analyzed 590 decode
 batches + prefill batches in the λ=5 window:

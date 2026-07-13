@@ -416,7 +416,7 @@ tiebreak — a one-line victim rule, lossless). All rows same-node (nodeset-0), 
 <tr><td>car (grace 90 s)</td><td>n=2</td><td>574, 722 ms</td><td>1571, —</td><td>10.7 / 11.2 s</td><td>0.68–0.70</td><td>0 (0/2 cross)</td></tr>
 <tr><td><b>whale (this work)</b></td><td>n=6</td><td>545–568 ms</td><td>1204–1441 (+1 outlier)</td><td><b>6.2 / 6.6 / 6.7 / 8.7 / 9.3 / 26.6 s</b></td><td>0.67–0.71</td><td><b>3.02 (3/6)</b></td></tr>
 </table>
-<p><small>The SLO-relevant result is a <b>reduction of the typical (median) p99</b>: whale's median p99 is ≈7.7 s
+<p><small><b>On nodeset-0</b>, the SLO-relevant result is a <b>reduction of the typical (median) p99</b> (but see §5.6 — it is node-specific): whale's median p99 is ≈7.7 s
 vs LRU's ≈14 s (~45% lower), and 5 of 6 whale runs fall below LRU's <i>best</i> run (10.4 s). A Mann-Whitney
 test (whale n=6 vs LRU n=5) gives whale stochastically lower, one-sided <b>p≈0.026</b>. Importantly the reduction
 is <i>distributional, not per-run</i>: p99 at λ=3 is metastable for <b>both</b> policies (rare high-tail draws —
@@ -430,7 +430,7 @@ p99 ~45% and crosses the SLO on half its runs, but this is a distributional shif
 deterministic win. <b>Crucially, this is a same-node A/B on a single node; §5.6 tests whether it reproduces on a
 second node — it does NOT</b>, so we treat this nodeset-0 reduction as node-specific rather than a portable win.</small></p>
 <p><img src="fig4_whale.svg" alt="λ=3 per-run p99 and median TTFT, whale vs LRU vs CAR, with 8s SLO line" style="max-width:100%"></p>
-<p><b>Two findings.</b> (1) <b>The effect is a ~45% cut in the typical (median) p99:</b> whale's median p99 ≈7.7 s
+<p><b>Two findings (on nodeset-0; §5.6 shows they are node-specific).</b> (1) <b>The effect is a ~45% cut in the typical (median) p99:</b> whale's median p99 ≈7.7 s
 vs LRU's ≈14 s, with 5 of 6 whale runs below LRU's <i>best</i> run (10.4 s); a Mann-Whitney test (whale n=6 vs
 LRU n=5) puts whale stochastically lower, one-sided p≈0.026. It is a distributional, not per-run, effect — p99 at
 λ=3 is metastable for <i>both</i> policies (whale once hit 26.6 s, LRU once 28.3 s), so the top tails overlap and

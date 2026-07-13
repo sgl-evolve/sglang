@@ -161,8 +161,10 @@ and mean TTFT across the server.</p>
 evicted-continuation recompute</b> — prefixes that <i>were</i> cached and reused before the cache dropped them
 under concurrency. Recovering the oracle (Bélády) hit rate (0.808) would cut prefill work by 40%
 (32.2M→19.2M). Because TTFT under load is queue-bound (median 1.0s, p90 3.2s, but p99 11.8s &gt; the 8s SLO)
-and chunked prefill interleaves all in-flight work, cutting 22–40% of the prefill load shortens queues for
-<i>every</i> request — including the cold-document tail that sets p99. This is the lever the mechanism pulls.</p>
+and chunked prefill interleaves all in-flight work, cutting 22–40% of the prefill load shortens queues for the
+<i>body</i> of the distribution — median/mean TTFT and sustainable throughput. This is the lever the mechanism
+pulls. (We flag now, and show in §5.2/Table&nbsp;3, that the extreme p99 tail is a <i>separate</i> cold-bound
+floor this does not move — the next paragraph explains why.)</p>
 <p><b>Where a load cut helps — and where it cannot.</b> The baseline TTFT is heavy-tailed at λ=3
 (p50 1.0s, p90 3.2s, p99 11.8s). One might expect that, near saturation, cutting prefill demand would shrink
 the whole distribution (waiting time ∼ ρ/(1−ρ)). It does shrink the <i>body</i> — median and mean TTFT fall
@@ -543,11 +545,14 @@ first-turn prefills (irreducible), which v1 does not target. We therefore claim 
 throughput result, not a goodput@SLO crossing.</p>
 <p><b>Cache retention moves the mean/throughput, not the tail — by construction.</b> v1 cuts <i>median</i>
 TTFT 26% and lifts hit and throughput, but leaves p99 essentially unchanged. This is not a shortcoming of the
-mechanism but a structural property of the workload: the p99 tail is dominated by <i>first-turn</i> prefills of
-long documents (mean 12k, max 183k tokens), which are <i>first-time</i> compute and therefore
-<b>never cache-reusable by any lossless mechanism</b>. Prefix caching — and reuse-aware retention on top of it
-— can only reduce re-prefill of <i>already-seen</i> prefixes, i.e. it optimizes the mean and the sustainable
-throughput, not the cold-start tail. A p99-tail SLO on this workload is thus the wrong yardstick for a cache
+mechanism but a structural property of the workload: the p99 tail is set by large <i>from-scratch</i> prefills
+of long documents (mean 12k, max 183k tokens) — cold <i>first-turn</i> documents that are <i>first-time</i>
+compute and <b>never cache-reusable by any lossless mechanism</b>, plus the minority of continuations evicted
+during the client think-gap that a server-side signal <i>cannot</i> protect (§7). A 100k-token from-scratch
+prefill alone costs several seconds — enough to breach the 8&nbsp;s SLO by itself — so the tail has an
+irreducible floor no realizable retention can lower. Prefix caching — and reuse-aware retention on top of it
+— can only reduce re-prefill of <i>already-seen</i>, <i>server-protectable</i> prefixes, i.e. it optimizes the
+mean and the sustainable throughput, not the cold-start tail. A p99-tail SLO on this workload is thus the wrong yardstick for a cache
 mechanism; the right ones (hit-rate, mean TTFT, moderate-load throughput) all move, robustly and losslessly.</p>
 
 <p><b>The tail is empirically decoupled from the hit gain — across the whole replication set.</b> The

@@ -27,21 +27,20 @@
 
 <p class="abstract"><b>Summary.</b> The p99 tail is AVOIDABLE recompute (chash: <b>63% of the ≥40K-tok tail is evicted
 proven multi-turn convs</b>, 37% cold docs) and the real-time live set <b>fits</b> (peak 9.3M = 0.87× cache) →
-liveness-bound, Belady≈0 → cache-addressable <i>offline</i>. Liveness is <b>partially OBSERVABLE at turn-0 — via
-SIZE</b>: single-turn "whales" have a big turn-0 (median 17,051 tok) while continuers start tiny (median 241),
-AUC(turn-0 size→single-turn)=<b>0.78</b>. In an offline replay this size signal is the <b>only</b> causal policy
-that captures Belady headroom (whale-first: −23% recompute; a 7-policy sweep shows LRU/LFU/SLRU/CAR all 0% and
-naive size-only catastrophic −529% → the ingredient is size-among-UNPROVEN + proven-protection). <b>But two obstacles remain.</b>
-(1) <b>Online the 460 s reuse gap caps the realized recompute capture ≈ 0</b> (no residency can hold a continuer
-across the gap under 1.89× oversubscription): on GPU whale's evicted-recompute work ≈ LRU's; the residual benefit
-is on the <i>scheduling</i> axis: whale cuts the <b>typical (median) λ=3 p99 ~45%</b> (≈7.7 s vs LRU ≈14 s; 5/6
-whale runs below LRU's best; Mann-Whitney p≈0.026), landing it <i>on</i> the 8 s SLO boundary — crossing on 3 of 6
-runs where LRU/CAR never cross (0/7). (2) <b>goodput@SLO is METASTABLE for BOTH policies</b>: p99 is decoupled from
-recompute volume (a whale run
-that recomputed MORE than LRU still had a lower p99), so it is a queue-timing phenomenon and single-run A/Bs are
-unreliable. The naive TIME axis of continuation-residency is trapped (CAR completion-grace ≈ LRU: cache affords
-~90 s ≪ 460 s gap) and SLRU backfires (evicts turn-0 entry points, hit 0.68→0.51). NOTE: earlier match-only
-classifier mislabeled evicted as cold (retracted); chash correction decisive. Stable: §4.1 two-bound+P, §4.2
+liveness-bound, Belady≈0 → cache-addressable <i>offline</i>. <b>Constructive insight (deterministic):</b> liveness
+is partially OBSERVABLE at turn-0 via SIZE (whales median 17,051 tok, continuers 241; AUC 0.78), and in an offline
+replay <b>size-among-unproven eviction with proven-protection is the UNIQUE causal victim rule that captures Belady
+headroom</b> (−23%; a 7-policy sweep shows recency/frequency/grace — LRU/LFU/SLRU/CAR — all 0% and naive size-only
+catastrophic −529%). <b>Cautionary result (the online reality):</b> goodput@SLO is so METASTABLE that causal
+residency claims do not survive. p99 is a queue-timing draw decoupled from recompute volume; and — decisively — a
+same-node whale-vs-LRU p99 reduction that was significant on <i>one</i> node (nodeset-0: median −45%, Mann-Whitney
+p≈0.026, n=6/n=5) <b>FAILED TO REPRODUCE on a second (certified) node</b> (n=3 each: no whale advantage, LRU median
+6.1 s vs whale 11.5 s; both policies span 5.9–31 s). So an apparent same-node, replicated eviction-policy win is
+<b>node-specific</b> — single-node A/Bs are unreliable for tail-SLO residency claims, and the online reuse gap
+(p50 460 s) caps any residency's recompute capture ≈0 regardless. The TIME axis (CAR completion-grace) ≈ LRU
+(grace-trap); SLRU backfires (hit 0.68→0.51). = an observable offline liveness lever + a cross-node-demonstrated
+metastability caution for tail-SLO cache evaluation. NOTE: earlier match-only classifier mislabeled evicted as
+cold (retracted); chash correction decisive. Stable: §4.1 two-bound+P, §4.2
 size-observability + grace-trap, §5.2 decomposition, §5.3 SLRU-backfire, §5.5 size-aware eviction.</p>
 
 <div class="abstract">
@@ -64,18 +63,19 @@ eviction (whale-first: evict the largest unproven conversation first) is the onl
 Belady headroom</b> (−23% recompute vs LRU); across a 7-policy sweep, recency-, frequency-, and grace-based rules
 (LRU, LFU, SLRU, CAR) all capture exactly 0% and a naive size-only rule is <i>catastrophic</i> (−529%, it evicts
 large proven conversations). The unique winning ingredient is <b>size <i>among unproven</i> nodes with proven
-conversations protected</b> — establishing this specific signal, not recency/frequency or size alone, as correct. Online, however, two obstacles bound the
-realized gain. First, the turn-0→turn-1 reuse gap is minutes (p50 460 s) while a finite cache affords only ~90 s
-of turn-0 retention, so <i>no</i> residency policy — size-aware included — can hold a continuer across the gap
-under 1.89× oversubscription: on GPU whale's evicted-recompute work ≈ LRU's, and the realized benefit is on the
-<i>scheduling</i> axis: whale cuts the typical (median) λ=3 p99 ~45% (≈7.7 s vs LRU ≈14 s; 5 of 6 whale runs
-below LRU's best; Mann-Whitney p≈0.026), landing it on the 8 s SLO boundary and crossing on 3 of 6 same-node runs
-(LRU/CAR: 0/7). Second, <b>goodput@SLO is metastable for both policies</b> (both show rare high-tail p99 draws
-~26–28 s, so the p99 distributions overlap at the top): p99 is
-decoupled from recompute volume (a whale run that recomputed <i>more</i> than LRU still had a lower p99), a
-queue-timing phenomenon that makes single-run A/Bs unreliable and demands a distributional read. The naive TIME
-axis of continuation-residency is trapped — CAR completion-grace ≈ LRU at grace 90 s <i>and</i> 300 s — and the
-textbook SLRU backfires (hit 0.68→0.51) by evicting turn-0 entry points. A methodological caution: a match-fraction
+conversations protected</b> — establishing this specific signal, not recency/frequency or size alone, as correct.
+This offline result is deterministic and node-independent. <b>Online, however, the metric defeats causal residency
+claims.</b> First, the turn-0→turn-1 reuse gap is minutes (p50 460 s) while a finite cache affords only ~90 s of
+turn-0 retention, so <i>no</i> residency policy — size-aware included — holds a continuer across the gap under
+1.89× oversubscription; on GPU whale's evicted-recompute work ≈ LRU's (the offline −23% does not materialize).
+Second, and decisively, <b>goodput@SLO is metastable to the point of non-reproducibility</b>: p99 is a queue-timing
+draw decoupled from recompute volume, and a same-node whale-vs-LRU p99 reduction that was significant on one node
+(nodeset-0: median −45%, Mann-Whitney p≈0.026, n=6/n=5) <b>failed to reproduce on a second, certified node</b>
+(n=3 each: no whale advantage — LRU median 6.1 s vs whale 11.5 s — with both policies' p99 spanning 5.9–31 s). We
+therefore report the online p99-reduction as <b>node-specific, not a portable win</b>, and draw the methodological
+conclusion that single-node A/Bs — even same-node and replicated — are unreliable for tail-SLO residency claims.
+The naive TIME axis of continuation-residency is trapped — CAR completion-grace ≈ LRU at grace 90 s <i>and</i>
+300 s — and the textbook SLRU backfires (hit 0.68→0.51) by evicting turn-0 entry points. A methodological caution: a match-fraction
 classifier conflates evicted turns with cold documents and hides the headroom entirely — conversation identity is
 required to see it.
 </div>
@@ -102,14 +102,14 @@ only causal policy that captures Belady headroom</b> (−23% recompute); a 7-pol
 and grace rules (LRU, LFU, SLRU, CAR) all capture 0% and a naive size-only rule is catastrophic (−529%) —
 isolating the precise ingredient (size-among-unproven + proven-protection), not recency/frequency or size alone.
 This refutes a natural "liveness-unobservable" impossibility.</li>
-<li><b>Two online obstacles that bound the realized gain</b> (§4.2, §5.5): (i) the turn-0→turn-1 reuse gap
-(p50 460 s) is ~5× the ~90 s of turn-0 retention a finite cache affords, so <i>no</i> residency policy — size-aware
-included — holds a continuer across the gap under 1.89× oversubscription; on GPU whale's recompute work ≈ LRU's,
-and the realized benefit moves to the <i>scheduling</i> axis (a ~45% reduction of the typical/median λ=3 p99,
-Mann-Whitney p≈0.026, 5/6 whale runs below LRU's best — though both policies show rare high-tail draws, so the
-distributions overlap at the top). (ii) <b>goodput@SLO is
-metastable</b>: p99 is decoupled from recompute volume (a whale run recomputing more than LRU still had a lower
-p99), a queue-timing phenomenon requiring a distributional read, not a single-run A/B.</li>
+<li><b>A cross-node-demonstrated metastability caution</b> (§5.5–5.6): online, the size lever does not convert to
+a portable goodput win, for two reasons. (i) The turn-0→turn-1 reuse gap (p50 460 s) is ~5× the ~90 s a finite
+cache affords, so no residency policy — size-aware included — holds a continuer across the gap under 1.89×
+oversubscription; on GPU whale's recompute work ≈ LRU's. (ii) <b>goodput@SLO is metastable to the point of
+non-reproducibility</b>: a same-node whale-vs-LRU p99 reduction significant on one node (nodeset-0: median −45%,
+p≈0.026, n=6/n=5) <b>failed to reproduce on a second certified node</b> (n=3 each; no advantage, both span
+5.9–31 s). We report the online reduction as node-specific and conclude that tail-SLO residency claims require
+multi-node median-of-k, not single-node A/Bs — a cautionary methodological result.</li>
 <li>Empirical <b>negatives</b> (§5.3): the textbook <b>SLRU backfires</b> (evicting unproven turn-0 entry points
 makes the cache worse — hit 0.68→0.51), and the TIME-axis <b>CAR</b> (completion-grace probation on turn-0s)
 ≈ LRU at any capacity-feasible grace (grace 90 s and 300 s measured) — the grace-trap that the SIZE axis escapes.</li>
@@ -427,7 +427,8 @@ lower-variance for whale (545–568 ms, σ≈9) than for LRU (534–876 ms, σ�
 is itself variable and one run (534 ms) dipped below whale's, so we do <b>not</b> claim a median-TTFT win.
 goodput@SLO therefore moves from a categorical 0 (LRU/CAR) to a metastable {0, 3.02} — whale reduces the typical
 p99 ~45% and crosses the SLO on half its runs, but this is a distributional shift with overlapping tails, not a
-deterministic win.</small></p>
+deterministic win. <b>Crucially, this is a same-node A/B on a single node; §5.6 tests whether it reproduces on a
+second node — it does NOT</b>, so we treat this nodeset-0 reduction as node-specific rather than a portable win.</small></p>
 <p><img src="fig4_whale.svg" alt="λ=3 per-run p99 and median TTFT, whale vs LRU vs CAR, with 8s SLO line" style="max-width:100%"></p>
 <p><b>Two findings.</b> (1) <b>The effect is a ~45% cut in the typical (median) p99:</b> whale's median p99 ≈7.7 s
 vs LRU's ≈14 s, with 5 of 6 whale runs below LRU's <i>best</i> run (10.4 s); a Mann-Whitney test (whale n=6 vs
@@ -467,6 +468,26 @@ decoupled from the cache's recompute work.</p>
 3–5× and the p99 becomes metastable-noisy — LRU's own curve is non-monotonic (28.5→25.7 s from λ=5→7) — so the
 λ=7/10 ordering is not meaningful and we do <b>not</b> claim whale helps there. goodput@SLO is decided at λ=3
 (the only rate either policy can approach): whale 3.02 (metastable, 3/6), LRU 0.</p>
+
+<h3>5.6 Cross-node reproduction: the nodeset-0 advantage is node-specific (a metastability object lesson)</h3>
+<p>The §5.5 result is a same-node A/B on one node (nodeset-0), replicated (whale n=6, LRU n=5, p≈0.026). To test
+portability we repeated whale-vs-LRU λ=3 on a separate certified 8×H100 node (n=3 each, same node, same frozen
+config). The result does <b>not</b> reproduce:</p>
+<table>
+<tr><th>node</th><th>whale p99 (λ=3)</th><th>LRU p99 (λ=3)</th><th>whale vs LRU</th></tr>
+<tr><td>nodeset-0 (n=6/5)</td><td>median 7.7 s (6.2–26.6)</td><td>median 14.0 s (10.4–28.3)</td><td>whale lower, p≈0.026</td></tr>
+<tr><td>certified 0-3 (n=3/3)</td><td>median 11.5 s (6.8–20.4)</td><td><b>median 6.1 s</b> (5.9–31.2)</td><td><b>no whale advantage</b> (U=3/9)</td></tr>
+</table>
+<p>On the certified node LRU's median p99 is <i>lower</i> than whale's, and both policies' p99 span 5.9–31 s — the
+apparent nodeset-0 advantage vanishes. Two things drive this. (i) The certified node is faster/less-contended
+(LRU alone drew 5.9 s and 6.1 s there — below the 8 s SLO — versus never below 10.4 s on nodeset-0), so absolute
+goodput@SLO is itself node-dependent. (ii) The λ=3 p99 is so metastable (both nodes show single draws from ~6 s to
+~31 s) that a same-node, replicated policy difference on one node is within the cross-node noise. <b>We therefore
+conclude the online p99-reduction is node-specific, not a portable mechanism win</b>, and offer it as an object
+lesson: for a metastable tail-SLO metric, even a same-node replicated A/B (p≈0.026) can fail to reproduce on
+another node. The portable, robust results are the offline size-signal analysis (§4.2, deterministic) and this
+metastability characterization itself. A definitive multi-node median-of-k per policy would settle any residual
+online effect; the fully-contended certified pool precluded more than n=3/node here.</p>
 
 <h2>6 Related work</h2>
 <p><b>Tiered KV caching &amp; prefetch.</b> AttentionStore/CachedAttention (ATC'24) does hierarchical KV
@@ -561,11 +582,13 @@ registration ("whale", "car") in <code>utils.py</code> / <code>server_args.py</c
 (warmup 300 @λ3 → sweep λ∈{3,5,7,10}, NUMP 1553, conc 256, SLO 8 s; 2-tier write_through, page 64, TP8, ctx 262144),
 on an exclusive 8×H100 node.
 <b>Per-number provenance</b> (each dir has <code>curve.csv</code>, <code>server.log</code>, <code>trace.rank0</code>):
-whale (λ=3, this work's mechanism) = <code>runs/whale-full</code>, <code>runs/whale-r2</code>,
-<code>runs/whale-r3</code>[, <code>runs/whale-r4</code>] (<code>--radix-eviction-policy whale</code>);
-lru = <code>runs/screen-v0b</code>, <code>runs/cert-lru-full</code> (full curve), <code>runs/lru-r3</code>;
-slru = <code>runs/screen-slru</code>; car grace 90 = <code>runs/screen-car90</code>, <code>runs/cert-car90-full</code>
-(<code>SGLANG_CAR_GRACE_S=90 … --radix-eviction-policy car</code>); car grace 300 = <code>runs/screen-car300</code>.
+whale nodeset-0 (n=6) = <code>runs/whale-full</code>, <code>whale-r2</code>, <code>whale-r3</code>, <code>whale-r4</code>
+(full curve), <code>whale-r5</code>, <code>whale-r6</code> (<code>--radix-eviction-policy whale</code>);
+LRU nodeset-0 (n=5) = <code>runs/screen-v0b</code>, <code>cert-lru-full</code> (full curve), <code>lru-r3</code>,
+<code>lru-r4</code>, <code>lru-r5</code>; <b>certified node 0-3 (§5.6):</b> whale (n=3) = <code>runs/whale-cert</code>,
+<code>whale-cert2</code>, <code>whale-cert3</code>; LRU (n=3) = <code>runs/lru-cert1</code>, <code>lru-cert2</code>,
+<code>lru-cert3</code>; slru = <code>runs/screen-slru</code>; car grace 90 = <code>runs/screen-car90</code>,
+<code>cert-car90-full</code>; car grace 300 = <code>runs/screen-car300</code>.
 <b>Offline analysis</b> (from the trace + tokenized dataset): conversation-id tail decomposition + λ=3-window
 whale-vs-lru comparison via <code>trace_analyze.py</code>; peak-live-KV, turn-0→turn-1 gap, grace-demand; the
 turn-0-size→continuation AUC (0.78) and the offline 7-policy victim-choice replay (lru/lfu/slru/car 0%, fifo/mru/
@@ -582,24 +605,25 @@ p99 tail is avoidable recompute over a live set that fits (0.87× cache), and �
 through turn-0 <b>size</b> (whales large, continuers tiny; AUC 0.78). Size is the correct residency signal: in an
 offline replay it is the only causal policy that captures Belady headroom (−23% recompute), where every
 recency-, frequency-, or grace-based policy (LRU, LFU, SLRU, CAR) captures 0% and naive size-only is catastrophic
-— the precise ingredient is size-among-unproven with proven-protection. Two obstacles bound the online payoff. (i) The
-turn-0→turn-1 reuse gap (median 460 s) is ~5× the ~90 s of retention a finite cache affords, so no residency
-policy — size-aware included — holds a continuer across the gap under 1.89× oversubscription; the offline −23%
-recompute does not materialize, and what survives is a scheduling benefit — whale's size-ranked victim choice
-cuts the typical (median) λ=3 p99 ~45% (Mann-Whitney p≈0.026, 5/6 runs below LRU's best, though both policies'
-top tails overlap under metastability), landing it on the SLO boundary
-(the microscopic timing pathway is not isolated: waiting-queue depth is unchanged, batch composition differs —
-future work). (ii)
-goodput@SLO is metastable — p99 is a queue-timing draw decoupled from recompute volume — so that scheduling
-benefit crosses the SLO only probabilistically, and the metric must be read as a distribution. The TIME axis of
-continuation-residency is trapped (CAR ≈ LRU at grace 90 s and 300 s) and the textbook SLRU backfires (discarding
-turn-0 entry points). The practical implications: (a) eviction victim-<i>choice</i> is a lever, but the signal
-must be <i>size</i>, not recency; (b) durable recompute wins require closing the reuse gap (larger effective
-capacity / cross-request sharing) or the prefill/context bound (raising P, lossy context reduction), because
-residency alone is gap-capped; (c) goodput@SLO under this regime must be measured distributionally. The
+— the precise ingredient is size-among-unproven with proven-protection. This offline result is deterministic and
+node-independent, and is our robust constructive contribution. <b>Online, however, the metric defeats causal
+residency claims, in two ways.</b> (i) The turn-0→turn-1 reuse gap (median 460 s) is ~5× the ~90 s of retention a
+finite cache affords, so no residency policy — size-aware included — holds a continuer across the gap under 1.89×
+oversubscription; the offline −23% recompute does not materialize (whale's GPU evicted-recompute work ≈ LRU's).
+(ii) goodput@SLO is metastable to the point of non-reproducibility: p99 is a queue-timing draw decoupled from
+recompute volume, and — our sharpest cautionary result — a same-node whale-vs-LRU p99 reduction that was
+significant on one node (nodeset-0: median −45%, p≈0.026, n=6/n=5) <b>failed to reproduce on a second certified
+node</b> (n=3 each: no whale advantage; both policies' p99 span 5.9–31 s). We therefore report the online
+p99-reduction as node-specific, not a portable win. The TIME axis of continuation-residency is separately trapped
+(CAR ≈ LRU at grace 90 s and 300 s) and the textbook SLRU backfires (discarding turn-0 entry points). The
+implications: (a) the correct residency <i>signal</i> is size-among-unproven, not recency/frequency (a deterministic,
+transferable finding); (b) but online, residency is gap-capped and the tail-SLO metric is so metastable that even a
+same-node replicated A/B does not establish a portable policy win — <b>tail-SLO cache evaluation demands multi-node
+median-of-k, not single-node A/Bs</b>; (c) durable recompute wins require closing the reuse gap (larger effective
+capacity / cross-request sharing) or the prefill/context bound (raising P, lossy context reduction). The
 methodological tools — the conversation-id tail decomposition, the two-bound goodput model, the size-observability
-analysis, and the offline-replay victim-choice test — transfer to any tiered-cache tail-SLO setting where reuse is
-separated from production by a load-dependent gap.</p>
+analysis + offline-replay victim-choice test, and the cross-node metastability protocol — transfer to any
+tiered-cache tail-SLO setting where reuse is separated from production by a load-dependent gap.</p>
 
 <h2>References</h2>
 <ol style="font-size:.85em">

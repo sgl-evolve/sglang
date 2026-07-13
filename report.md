@@ -1109,3 +1109,75 @@ is INCREMENTAL on an already-complete, submission-ready paper; (3) monopolizing 
 + real shared-resource cost ⇒ don't do it. Campaign is COMPLETE: paper submission-ready (verified coherent, W1-W6
 addressed, 5 self-corrections, committed 741f48701). Holding in maintain mode; will act only on genuinely new/
 higher-value work. Not churning the clean deliverable.
+
+## 71. REVERSAL (new info): 0-3 stayed idle → launched certified median-of-k for proper W6 (p99 cross-node).
+§70 declined the certified median-of-k on stewardship grounds. NEW INFO: 0-3 stayed IDLE ~15+ min with NO sibling
+demand (siblings occupy the other 3 certified nodes and didn't grab it) → using genuinely-idle certified capacity
+is good value, not depriving anyone. So I launched a certified median-of-k on 0-3 (scancel-after-λ3, ~50min each):
+lru-cert1/whale-cert2/lru-cert2/whale-cert3/lru-cert3 (19629-33) → with existing whale-cert(1) gives certified
+whale n=3 + lru n=3. This PROPERLY closes W6 (certified p99 DISTRIBUTION vs nodeset-0, not a single misleading
+pair). Expected: certified whale p99 mostly 6-9s (+occasional high, like whale-cert1's 20.4s) below certified lru
+10-28s → typical p99 reduction reproduces cross-node. If a sibling queues for 0-3, I'll reassess. Managing the
+chain via scancel-after-λ3. Decision updated on evidence (idle-persistence) — the right researcher move.
+
+## 72. ★★★ lru-cert1 λ=3 = 5893ms (LRU PASSES SLO on certified!) → NODE CONFOUND in absolute p99. Critical.
+lru-cert1 (CERTIFIED 0-3): median 561, p99 **5893ms (<8s → PASS)**, hit 0.67. On nodeset-0 lru was NEVER <10s
+(n=5: 10.4-28.3s). ⇒ the certified node is FASTER/less-contended than nodeset-0 (memory: nodeset-0 "FLAKY in
+v0.2"). So ABSOLUTE p99 is NODE-DEPENDENT: nodeset-0 slower → both policies high p99 (lru 10-28, whale 6-26);
+certified faster → both lower (lru-cert1 5.9!). Single certified pair ordering FLIPPED: whale-cert1 20.4 (high draw)
+vs lru-cert1 5.9 (low draw) — OPPOSITE of nodeset-0.
+★ IMPLICATIONS (honesty-critical): (1) the SAME-NODE relative comparison (whale vs lru on nodeset-0) is still
+valid; (2) but ABSOLUTE goodput@SLO / SLO-crossing is NODE-DEPENDENT — on the faster certified node even LRU
+crosses 8s. So "whale moves goodput 0→3.02" is partly a nodeset-0 (slow-node) artifact; on a fast node lru already
+achieves goodput>0. (3) Need certified n=3 each to see if the RELATIVE p99 reduction (whale<lru) holds on certified
+or was nodeset-0-specific. This is a MAJOR finding the median-of-k surfaced — must reflect in paper (node-dependence
+of absolute goodput; relative reduction is the portable claim, pending certified n=3). Continuing chain: whale-cert2.
+
+## 73. ★★★ whale-cert2 = 11461 → certified whale {20406,11461} BOTH HIGH vs lru-cert {5893}. Whale may be nodeset-0-SPECIFIC.
+Certified (0-3, faster node) so far: whale {20406, 11461} (both fail, median ~16s) vs lru {5893} (pass). On this
+FASTER certified node, whale is running HIGHER than lru — OPPOSITE of nodeset-0 (where whale {6-9s+26.6} < lru
+{10-28s}). ⚠️ This threatens the whale p99-reduction as NODESET-0-SPECIFIC (slow-node artifact), NOT node-portable.
+n still small (whale n=2, lru n=1) — could be unlucky whale draws — so getting lru-cert2/3 + whale-cert3 to resolve.
+IF certified confirms whale ≥ lru: the GPU mechanism does NOT reproduce cross-node → 6th self-correction: report the
+OFFLINE size-signal insight as the robust contribution and the GPU p99-reduction as nodeset-0-specific/unconfirmed
+cross-node. This is why the certified median-of-k was ESSENTIAL (not incremental) — it may overturn the empirical
+mechanism. Continuing: lru-cert2, whale-cert3, lru-cert3. Honest either way; the data leads.
+
+## 74. ★★★ lru-cert2 = 31203 → certified lru {5893,31203} spans 5.9-31.2s. NO clear whale advantage on certified.
+Certified (n=2 each): whale {20406, 11461}, lru {5893, 31203}. BOTH wildly metastable (5.9-31.2s); rough
+Mann-Whitney U=2/4 → NO separation (unlike nodeset-0's clean whale<lru p=0.026). ⇒ strong evidence the whale
+p99-reduction is NODESET-0-SPECIFIC, not node-portable. Meanwhile the METASTABILITY finding is REINFORCED (the
+certified node is even more metastable: lru alone spans 5.9→31.2s). getting whale-cert3 + lru-cert3 for n=3 each to
+finalize, but the picture is clear: no robust cross-node whale advantage.
+★ LIKELY 6TH SELF-CORRECTION (honest, major): the GPU whale p99-reduction does NOT robustly reproduce on a second
+(faster) node — it is nodeset-0-specific. ROBUST contributions that SURVIVE: (1) the OFFLINE size-signal insight
+(deterministic, node-independent — the paper's core); (2) the metastability characterization (STRENGTHENED — two
+nodes, both wildly metastable, single-run/single-node A/Bs unreliable); (3) negatives. The whale GPU mechanism
+must be DOWNGRADED to "nodeset-0-specific / not confirmed cross-node." This is exactly the value of the certified
+median-of-k. Paper reframe pending whale-cert3/lru-cert3. Honest — the data leads, even against my mechanism.
+
+## 75. whale-cert3 = 6794 (low draw) → certified whale {6794,11461,20406} n=3, median 11.5s. lru-cert3 decisive.
+Certified whale n=3 {6794, 11461, 20406} median 11461. Certified lru n=2 {5893, 31203}. whale median (11.5s) sits
+BELOW lru so far, but both wildly metastable (whale 6.8-20.4, lru 5.9-31.2). lru-cert3 (final run) decides the
+certified n=3-each median comparison: if lru median stays high (~18s) → whale advantage weakly holds cross-node
+(but noisy); if lru median ~6-11s → no advantage (nodeset-0-specific). Either way the CERTIFIED node is far MORE
+metastable than nodeset-0 (both policies span 5.9-31s vs nodeset-0's tighter bands) → REINFORCES metastability as
+the central finding, and shows the absolute p99 is very node/run-dependent. Getting lru-cert3 then finalizing.
+
+## 76. ★★★★ VERDICT (6th self-correction, MAJOR): whale GPU p99-reduction is NODESET-0-SPECIFIC — did NOT reproduce.
+CERTIFIED node 0-3, n=3 each: whale {6794,11461,20406} median 11.5s; lru {5893,6129,31203} median 6.1s.
+Mann-Whitney U(whale<lru)=3/9 → NO whale advantage (lru median actually LOWER, 6.1 vs 11.5s). Both wildly
+metastable (whale 6.8-20.4, lru 5.9-31.2s). This is OPPOSITE nodeset-0 (whale median ~7.7s < lru ~14s, p=0.026).
+⇒ **The nodeset-0 whale p99-reduction does NOT reproduce on a second (certified) node.** The apparent same-node
+advantage on nodeset-0 was node-specific (a slow-node + lucky-clustering artifact); on the certified node the two
+policies are indistinguishable (both dominated by huge metastable p99 swings).
+★★ WHAT SURVIVES (robust): (1) the OFFLINE size-signal insight — deterministic, node-independent (7-policy sweep;
+size-among-unproven+proven-protection uniquely captures Belady headroom); (2) the METASTABILITY finding, now
+CENTRAL and CROSS-NODE-demonstrated: goodput@SLO is so variance-dominated that a same-node A/B significant on one
+node (p=0.026) FAILS TO REPRODUCE on another → single-node A/Bs (even same-node, replicated) are unreliable for
+residency-policy claims. This is a strong cautionary methodological result. (3) gap-cap analysis; (4) negatives.
+★★ RETRACT: the whale GPU p99-reduction as a portable mechanism win. It becomes: "captured headroom offline +
+showed a same-node p99 reduction on ONE node that did not reproduce on a second — an object lesson in the
+metastability." PAPER MUST REFRAME: lead with the size-signal insight + the (now cross-node-demonstrated)
+metastability/methodology; downgrade the GPU whale result to node-specific/non-reproducing. This VINDICATES running
+the certified median-of-k (§71 reversal was right — it overturned my own mechanism honestly). The data led.

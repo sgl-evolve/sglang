@@ -375,6 +375,29 @@ This is the evidence behind "goodput is decode-knee-capped": it's decode-slot sa
   (4) a verified-lossless novel mechanism (exclusive device-XOR-host tiering, +1.7pp effective capacity, no
   config provides it); (5) four self-corrected over-claims — an honest record throughout.
 
+## LIMITATIONS & WHAT WOULD MOVE THE NEEDLE (the boundary of the closed design space)
+- **Metric limitation (methodology):** goodput@SLO is a metastable coin-flip — single runs are uninformative;
+  all claims here use median-of-k on certified nodes. A maintainer adopting this metric MUST report median-of-k,
+  not single runs. (Throughput, by contrast, is stable — arm stds ~8 tok/s — and is the better differentiator.)
+- **Sample sizes:** the headline throughput result (C) is formally significant (MWU p=0.008, stock n=3 vs
+  de-dup n=7, complete non-overlap + two same-node controls); the coin-flip arms (A)/(B) are n=6/12 — enough
+  for the variance/median claims (Levene p≈0.004) but the pass/fail MWU is borderline (p≈0.049), stated honestly.
+- **Why goodput is closed to lossless KV (would require relaxing a *contract* constraint):** the λ=5 cap is set
+  by the frozen 256-concurrency admission limit + decode-compute-bound service rate + device-KV-pinned running
+  contexts (12 full-attn layers, unoffloadable losslessly). Moving goodput past ~3 would require raising the
+  concurrency cap (contract-frozen) or a **lossy** technique (KV quantization/eviction of running context) —
+  both outside this charter. No lossless KV mechanism can do it (three independent diagnoses).
+- **Why throughput is bounded (would require a *workload* change or lossy prefill):** the λ=5 regime is 94%
+  cold-prefill-bound; 57.7% of prefills are first-sight documents (irreducible) and eviction is LRU≈Belady
+  (policy tuning is a dead end, confirmed by cost-aware NEG + reuse-aware no-op). The +11.4% de-dup gain is
+  near the lossless ceiling for THIS workload; larger gains would need cross-request document sharing (a
+  workload property, absent here) or lossy prefill approximation (off-charter).
+- **Generalizable boundary:** on decode-bound hybrid-Mamba serving with working-set ≫ (L1+L2), lossless KV
+  mechanisms are bounded to **capacity-de-duplication-class** gains (throughput ↑ scaling with load, goodput
+  variance ↓); the remaining levers are all either config-reachable, off-contract, or lossy. This *is* the
+  contribution's generalizable insight — a maintainer would not expect a novel lossless KV mechanism to shift
+  the goodput headline in this regime, and should invest in de-dup (config) + concurrency/decode-side changes instead.
+
 ## Protocol (v0.31, recalibrated vs v0.3)
 - 2-tier HiCache: L1 GPU HBM + L2 host DRAM (768 GB, `--hicache-size 96`), **no L3/disk**.
 - Model Qwen3.5-122B-A10B-FP8 (hybrid-Mamba MoE), tp8, ctx 262144, full real decode.

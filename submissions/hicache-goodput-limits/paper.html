@@ -488,6 +488,7 @@ lesson: for a metastable tail-SLO metric, even a same-node replicated A/B (p≈0
 another node. The portable, robust results are the offline size-signal analysis (§4.2, deterministic) and this
 metastability characterization itself. A definitive multi-node median-of-k per policy would settle any residual
 online effect; the fully-contended certified pool precluded more than n=3/node here.</p>
+<p><img src="fig5_crossnode.svg" alt="λ=3 p99 whale vs LRU on nodeset-0 (whale below LRU) vs certified node (no separation)" style="max-width:100%"></p>
 
 <h2>6 Related work</h2>
 <p><b>Tiered KV caching &amp; prefetch.</b> AttentionStore/CachedAttention (ATC'24) does hierarchical KV
@@ -594,7 +595,7 @@ whale-vs-lru comparison via <code>trace_analyze.py</code>; peak-live-KV, turn-0�
 turn-0-size→continuation AUC (0.78) and the offline 7-policy victim-choice replay (lru/lfu/slru/car 0%, fifo/mru/
 size-only catastrophic, whale −23% capture)
 via <code>sim/simulate.py</code>; Belady headroom + Fig 3 via <code>sim/gen_figures.py</code>; the λ=3 per-run
-whale-vs-lru-vs-car TTFT figure (Fig 4) via <code>sim/fig_whale.py</code>; workload facts via
+whale-vs-lru-vs-car TTFT figure (Fig 4) via <code>sim/fig_whale.py</code>; the cross-node p99 figure (Fig 5) via <code>sim/fig_crossnode.py</code>; workload facts via
 <code>sim/build_trace.py</code> / <code>sim/prefill_tail.py</code>.
 W&B evolution curve: project <code>sgl-evolve</code>, run <code>wilkes</code>.</p>
 

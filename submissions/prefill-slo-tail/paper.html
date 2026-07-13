@@ -45,7 +45,7 @@ stock's own goodput@SLO is <b>{0, 0, 3}</b> — the binary metric flips on run-t
 A <b>same-node control</b> — K=5 replicates of the identical stock configuration on one fixed node — is
 even starker: λ=3 p99 spans <b>6.5–25.8 s (a 4.0× spread, two pass / three fail)</b>, so the flip
 <i>persists and widens with the node held constant</i>, isolating run-to-run cold-start metastability
-(not node heterogeneity) as the cause. A write-back configuration that appears to lift goodput@SLO from 0 to 3 falls squarely inside this stock
+(not node heterogeneity) as the cause; it <b>reproduces on a second node</b> (5/10 pass across two nodes). A write-back configuration that appears to lift goodput@SLO from 0 to 3 falls squarely inside this stock
 band (λ=3 p99 7.5 s), so its single-run "win" cannot be attributed to write-back — even though write-back's
 <i>stable</i> effects are real and do not flip (hit rate +6 pp, peak throughput +18%). Running the same-node
 K=5 protocol for write-back too, <b>even median-of-k cannot separate stock from write-back on goodput@SLO
@@ -338,7 +338,9 @@ confound from the central claim</b>. Two details confirm the mechanism: (i) the 
 cache serves the body identically every run), the signature of a metastable queue transient rather than a
 steady-state difference; and (ii) the run-to-run standard deviation (8.0 s) <i>exceeds</i> the distance from
 the median to the SLO (1.4 s), the formal condition for a variance-dominated metric that a single run cannot
-resolve. Cross-node heterogeneity (§7) is an <i>additional</i> variance source on top of this.</p>
+resolve. This same-node coin-flip <b>reproduces on a second node</b> (node1-2: K=5 λ=3 p99 6.5–21.9 s,
+median 7.2 s, 3/5 pass, σ/m = 7.8), so it is a general property, not an artifact of ondem-3 (§7).
+Cross-node heterogeneity (§7) is an <i>additional</i> variance source on top of this.</p>
 
 <p><b>Validating the fix: same-node median-of-k of a "better" config.</b> Our proposed methodology is
 warm-steady-state + <b>same-node median-of-k</b> + reporting stable metrics. Does median-of-k let us A/B a
@@ -611,10 +613,15 @@ heterogeneity (which is an additional layer). We also ran the same-node K=5 prot
 (§3.1): both stock and write-back pass 2 of 5, so even median-of-k cannot separate them on goodput@SLO,
 though write-back clearly wins on stable metrics (hit +7 pp, p50 −64 ms) and tail variance — this
 <i>validates</i> the methodology (median-of-k A/B) and its limit (goodput@SLO is too noisy to resolve KV
-configs even at K=5; report stable metrics). One residual limit remains, honestly: K=5 characterizes
-run-variance for one node (ondem-3); a full node×run grid would map both axes jointly. The methodological
-claim is now demonstrated, not conjectured: single-run — and especially cross-node — A/B on goodput@SLO is
-void, and even same-node median-of-k does not rescue it for KV-cache comparison.</li>
+configs even at K=5; report stable metrics). We then <b>closed the single-node limit with a second-node
+grid</b>: an independent same-node K=5 on <b>node1-2</b> gives λ=3 p99 6.5–21.9 s (median 7.2 s; three pass,
+two fail; σ/m = 7.8) — the same coin-flip (wide spread, a ~22 s near-catastrophe) as ondem-3 (median 9.4 s;
+σ/m = 5.7). So the fixed-node coin-flip <b>reproduces across nodes</b> (combined 5 / 10 pass over two nodes);
+it is a general property, not an artifact of one machine. The grid also makes an honest nuance concrete:
+node1-2's <i>median</i> goodput is 3 while ondem-3's is 0, so node heterogeneity <i>additionally</i> shifts
+the metric on top of the within-node coin-flip — both axes matter, exactly as the confound warned. The
+methodological claim is thus demonstrated on two nodes: single-run — and especially cross-node — A/B on
+goodput@SLO is void, and even same-node median-of-k does not rescue it for KV-cache comparison.</li>
 <li><b>Per-rate cache flush.</b> The harness cold-starts the cache before each rate (the load generator
 issues <code>/flush_cache</code> per invocation), compounding the metastability by ramping the queue to
 90–184 before it drains (§5.3). We tested the no-flush condition with an off-contract, node-controlled
@@ -647,7 +654,8 @@ warmup burst, max-concurrency 256, 2-tier <code>--hicache-size 96</code>, p99-TT
 <b>v0-medk</b> and <b>v0-medk-wb</b> (same-node median-of-k for stock and write-back respectively,
 <code>tools/medk_eval.sh</code> / <code>medk_wb_eval.sh</code>: one server on ondem-3, K=5 back-to-back λ=3
 draws each flushed at the load generator's start; <code>medk.csv</code> + <code>summary.json</code> in
-<code>runs/v0-medk{,-wb}/</code>, §3.1); and the off-contract
+<code>runs/v0-medk{,-wb}/</code>, §3.1); <b>v0-medk-n2</b> (the same-node median-of-k on a second node,
+node1-2, <code>tools/medk_n2_eval.sh</code>, §7 — the node×run grid); and the off-contract
 diagnostic <b>v0-warmdiag</b> (identical stock server/sweep with the per-rate <code>/flush_cache</code>
 disabled, run on the same node as v0-stock, §5.3). Each run's <code>curve.csv</code> and
 <code>summary.json</code> hold the per-rate points and the goodput headline; every number in this paper is

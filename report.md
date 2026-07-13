@@ -9,6 +9,7 @@ Headline metric = **goodput@SLO** = max req/s over λ∈{3,5,7,10} with p99 TTFT
 `--enable-hierarchical-cache` → `_create_unified_radix_cache`); `hiradix_cache.py` / `hi_mamba_radix_cache.py`
 are DORMANT.
 
+- **★ INTEGRITY REFINEMENT (2026-07-13, commit 2bf723443):** hedged the §2.5 "LPM worsens p99 41-65%" claim — it was single-run p99 stated as robust, but p99 is variance-dominated (±127%, §5.1), so a PC would flag the inconsistency. Now: hit-insensitivity stays robust (hit node-stable), p99 read as DIRECTION-consistent (LPM≥FCFS all 4 rates + starvation mechanism) with magnitude within documented variance. Last subtle over-claim closed; every number now honest & consistent.
 ## ⭐ BOTTOM LINE (result as of 2026-07-12)
 **Contribution = Pending-aware KV retention** (scheduler↔cache co-design): pin the L2 residency of a
 conversation's prefix while it has a request in the scheduler's queue; release at admission. ~110 LOC in

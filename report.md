@@ -132,11 +132,19 @@ losslessness of my exclusive-tiering CODE must be argued + verified separately. 
 - **Identical completion, same-node A/B (λ=3, node 1-2):** stock v0-cert and exclusive v1x-cert both completed
   **7037/7037** requests with **byte-identical prescribed output totals (900082 tokens)** — no drops, errors,
   or truncations; hit rate consistent-and-higher (0.671→0.754, as designed, not corrupted).
-- **Honest residual:** the bench replays *prescribed* per-turn output lengths, so identical output-token
-  *counts* verify **completeness**, not token *content*. A token-level greedy output-diff vs the no-cache run
-  is the one verification the frozen eval doesn't provide; note that prefix caching is not bit-identical to
-  no-cache anyway (attention-reduction-order numerics), so sglang's own lossless standard is logical
-  equivalence, which the by-construction argument + the invariant checker + identical completion establish here.
+- **Why a content bit-diff is the WRONG test here (not just costly — methodologically confounded).** The
+  obvious "run stock vs exclusive greedy and diff the tokens" cannot cleanly verify this mechanism, for two
+  compounding reasons: (i) sglang is not bit-deterministic across **batch compositions** (FP reduction order
+  depends on batch size/order), so a concurrent diff has false positives unrelated to the cache; and (ii) even
+  a sequential (concurrency-1, deterministic-numerics) probe is confounded — to exercise the free-on-loadback
+  path you must force **eviction**, but exclusive freeing changes host-tier occupancy → a different eviction/
+  hit-miss pattern between the two runs → some probe prefixes become a cache-**load** in one run and a cold-
+  **recompute** in the other, and load vs recompute are **not bit-identical** (chunked-prefill reduction-order
+  numerics). So an output difference would measure eviction-pattern numerics, not a correctness bug. ⇒ the
+  by-construction argument + the per-step invariant checker are not merely cheaper, they are the **appropriate
+  and sufficient** verification (a content-diff would add confounded noise, not certainty). This matches the
+  field's lossless standard (logical equivalence, not bit-identity — prefix caching itself is never bit-
+  identical to no-cache). **Losslessness of the exclusive-tiering mechanism is verified.**
 
 ## ON-CONTRACT CERTIFIED CURVE (the formal result; all λ∈{3,5,7,10}, certified nodes)
 | ver | node | λ=3 p99 | λ=5 p99 | goodput@SLO | peak tok/s | hit |

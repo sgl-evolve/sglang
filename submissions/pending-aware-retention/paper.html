@@ -426,16 +426,16 @@ higher hit rate (a cache property), and that pins activate (<code>[valiant] pinn
 <p><b>Metric-variance caveat (measured) — and why it bounds our confidence in the gain.</b> Two variances
 matter. (i) goodput@SLO is <i>variance-dominated at the SLO boundary</i>: three <i>identical</i> stock runs gave
 λ=3 p99 TTFT = 6.3s / 8.1s / 11.8s → goodput 3.02 / 0 / 0 — the stock config alone flips the headline, so we
-never use single-run goodput. And this is <i>not</i> merely cross-node: on <b>a single node (ondem-2), five
-identical stock runs</b> gave λ=3 p99 = 7.8 / 8.1 / 11.8 / 18.6 / 27.0s (sd 7.3s, a 3.5× spread) while hit
-stayed within 0.9&nbsp;pp — so the p99 tail swings by ~19s from <i>pure within-node run-to-run variance</i>, at
-fixed config, on one machine. One of these identical runs even lands <i>below</i> the 8s SLO (7.8s → goodput
-3.02) while others miss it by 3×, so <b>goodput@SLO itself flips pass/fail on one node at fixed config</b> — a
-within-node coin-flip, not just a cross-node one. This is decisive for interpreting Table&nbsp;3: the ±127% p99 deltas there cannot be
+never use single-run goodput. And this is <i>not</i> merely cross-node: on <b>a single node (ondem-2), six
+identical stock runs</b> gave λ=3 p99 = 7.8 / 8.1 / 11.8 / 12.8 / 18.6 / 27.0s (sd 6.7s, a 3.5× spread) while
+hit stayed within 0.9&nbsp;pp — so the p99 tail swings by ~19s from <i>pure within-node run-to-run variance</i>,
+at fixed config, on one machine. One of these identical runs even lands <i>below</i> the 8s SLO (7.8s → goodput
+3.02) while the other five miss it (up to 3.4×), so <b>goodput@SLO itself flips pass/fail on one node at fixed
+config</b> — a within-node coin-flip, not just a cross-node one. This is decisive for interpreting Table&nbsp;3: the ±127% p99 deltas there cannot be
 attributed to the mechanism, because identical stock reproduces the same swing with no mechanism at all. (ii)
 <b>The stock hit rate itself varies run-to-run</b> more than we first
-reported: five stock λ=3 measurements span 0.673–0.681 (≈0.9&nbsp;pp on ondem-2 alone: 0.6721 / 0.6728 /
-0.6813). This is <i>comparable to the pin gain</i> (+0.1–2.8&nbsp;pp), so the gain sits partly at the
+reported: across <b>six</b> identical ondem-2 stock runs λ=3 hit spans 0.6721–0.6813 (sd 0.0032, ≈0.9&nbsp;pp:
+0.6721 / 0.6726 / 0.6728 / 0.6735 / 0.6756 / 0.6813). This is <i>comparable to the pin gain</i> (+0.1–2.8&nbsp;pp), so the gain sits partly at the
 measurement noise floor: it is clearly resolved where it is large (≈+2.5&nbsp;pp on nodes 0-3/1-2, well above
 0.9&nbsp;pp) but not where it is small (≈+0.1&nbsp;pp on ondem-2, below the noise). Our A/B design (a full stock
 sweep then a full v1 sweep, ~2.5&nbsp;h apart on one node) controls node-to-node but not within-session drift,

@@ -268,8 +268,8 @@ offline replay proves size-aware eviction is the unique causal policy that captu
 displaced — and the same 460 s gap that traps the TIME axis also defeats the SIZE axis online: under 1.89×
 oversubscription no policy holds a continuer's prefix for 8 minutes, size-aware or not. On GPU (§5.5) whale's
 evicted-recompute work is therefore ≈ LRU's — the offline −23% does <i>not</i> materialize. What survives online
-is a <i>scheduling</i> benefit: whale's size-ranked victim choice lowers median TTFT and shifts the p99
-distribution down even when it cannot convert to a durable hit. We do <i>not</i> fully isolate the microscopic
+is a <i>scheduling</i> benefit: whale's size-ranked victim choice shifts the p99 distribution down (typical/median
+p99 ~45% lower, §5.5) even when it cannot convert to a durable hit. We do <i>not</i> fully isolate the microscopic
 cause — a trace of the worst whale run shows the waiting-queue depth is <i>unchanged</i> vs LRU (so it is not
 simply "shorter queues"), while the running-batch composition at prefill admission differs; pinning the exact
 timing pathway is future work. So the residency axis splits: the RECENCY signal is blind (LRU/SLRU/CAR ≈ 0%
@@ -412,7 +412,7 @@ deterministic win.</small></p>
 <p><img src="fig4_whale.svg" alt="λ=3 per-run p99 and median TTFT, whale vs LRU vs CAR, with 8s SLO line" style="max-width:100%"></p>
 <p><b>Two findings.</b> (1) <b>The effect is a ~45% cut in the typical (median) p99:</b> whale's median p99 ≈7.7 s
 vs LRU's ≈14 s, with 5 of 6 whale runs below LRU's <i>best</i> run (10.4 s); a Mann-Whitney test (whale n=6 vs
-LRU n=4) puts whale stochastically lower, one-sided p≈0.026. It is a distributional, not per-run, effect — p99 at
+LRU n=5) puts whale stochastically lower, one-sided p≈0.026. It is a distributional, not per-run, effect — p99 at
 λ=3 is metastable for <i>both</i> policies (whale once hit 26.6 s, LRU once 28.3 s), so the top tails overlap and
 whale is not fully separated from LRU. (The median TTFT — the distribution body — is lower-variance for whale but
 not reliably lower, since LRU's median is itself variable, 534–876 ms — so we do not rest the claim on it.)

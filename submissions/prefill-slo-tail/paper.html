@@ -738,6 +738,16 @@ workload family. The coin-flip is bounded to heavy-tailed cold-prefill workloads
 with a binary p99-SLO (§3 scope). We do <i>not</i> claim the cache is useless — it stably improves hit,
 median, and throughput — only that goodput@SLO cannot reliably resolve KV-cache differences on this
 benchmark.</li>
+<li><b>A measurement pitfall — but also a real operational signal.</b> One might object that unpredictable
+tail latency near the knee is a genuine serving problem, not merely an evaluation artifact. That is correct,
+and we do not dismiss it: the coin-flip has two faces. (i) As an <b>A/B metric</b> for KV caches it is
+invalid — it flips on run-to-run noise, not on the cache (our thesis). (ii) As an <b>operational property</b>
+it is real — a system driven near the knee genuinely exhibits metastable, unpredictable tail latency. The two
+are complementary, and our results bound the operational side: the tail is heavy-tailed cold turn-0 prefill
+(§5.2) that no lossless KV mechanism shortens (§3.3, §2.4), so the remedy is not a better cache but
+provisioning below the knee, admission control, or accepting the tail — all orthogonal to KV-cache
+comparison. goodput@SLO is the wrong lens for <i>comparing caches</i> precisely because the tail it gates on
+is a workload-and-queueing property, not a cache property.</li>
 </ul>
 
 <h2>8 Reproducibility</h2>

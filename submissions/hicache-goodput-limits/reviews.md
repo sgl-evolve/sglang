@@ -4,33 +4,31 @@ Adversarial read as a skeptical top-venue PC, for DRAFT v0.2 (reframed from the 
 the size signal was found). Each point: the attack, then the paper's defense / action.
 
 ## Summary judgment
-The paper's spine is: (a) the p99 tail is avoidable recompute over a live set that fits (chash decomposition +
-peak-live-KV); (b) liveness IS partially observable at the eviction decision point via turn-0 SIZE (AUC 0.78),
-and in an offline replay size-aware eviction is the UNIQUE causal policy that captures Belady headroom (−23%;
-recency/grace capture 0%) — refuting a natural "unobservable" impossibility; (c) online, the 460 s reuse gap caps
-the realized recompute capture ≈0 (grace-trap generalizes to all residency), leaving a SCHEDULING benefit (median
-TTFT −25%, p99 distribution shifted below LRU/CAR); (d) goodput@SLO is METASTABLE (p99 decoupled from recompute
-volume), so the SLO crossing is probabilistic and must be read distributionally. Contributions that are robust
-regardless of the whale replicate outcome: the size-observability analysis + offline victim-choice test, the
-chash tail decomposition, the two-bound model, and the metastability characterization. The whale GPU result is
-n=6 (same-node λ=3): a ~40% reduction of the typical (median) p99 (Mann-Whitney p≈0.033) whose absolute SLO
-crossing is metastable (3/6), with overlapping high tails (not full separation).
+The paper is now an INSIGHT + CAUTION paper (the mechanism claim was retracted under cross-node testing). Spine:
+(a) the p99 tail is avoidable recompute over a live set that fits (chash + peak-live-KV); (b) CONSTRUCTIVE,
+DETERMINISTIC: liveness is partially observable at the eviction decision point via turn-0 SIZE (AUC 0.78), and in
+an offline replay size-among-unproven eviction with proven-protection is the UNIQUE causal victim rule capturing
+Belady headroom (−23%; a 7-policy sweep: recency/frequency/grace all 0%, naive size-only −529%); (c) CAUTIONARY,
+CROSS-NODE: online, the metric defeats causal residency claims — a same-node whale-vs-LRU p99 reduction significant
+on ONE node (nodeset-0: median −45%, p≈0.026, n=6/n=5) FAILED TO REPRODUCE on a second certified node (n=3 each,
+no advantage; both span 5.9–31 s), and the 460 s reuse gap caps online recompute capture ≈0 regardless. Robust
+contributions: the size-observability + offline victim-choice test (deterministic), the chash decomposition, the
+two-bound model, and the cross-node metastability result (single-node A/Bs unreliable for tail-SLO residency). The
+GPU whale p99-reduction is RETRACTED as a portable win → reported as node-specific.
 
 ## Major weaknesses (ranked by how much a PC would push)
 
-**W1 — the effect is distributional/metastable; is it a real policy effect?**
-Attack: whale crosses the SLO on only half its runs and its p99 distribution overlaps LRU's at the top — luck?
-Defense: the claim is a shift of the TYPICAL p99, not full separation. (i) whale's median p99 ≈7.7 s vs LRU ≈12.6 s
-(~40% lower), 5 of 6 whale runs below LRU's best (10.4 s); Mann-Whitney (n=6 vs n=4) one-sided p≈0.033. (ii) p99
-at λ=3 is metastable for BOTH policies (whale once 26.6 s, LRU once 28.3 s) so the top tails overlap — we state
-this explicitly and retracted an earlier "fully separated (p≈0.029)" impression that a larger n exposed as an
-artifact of not-yet-sampling a whale high draw (a self-correction the added replicates forced). (iii) The reduced
-typical p99 sits ON the 8 s boundary → absolute crossing metastable (3/6), LRU/CAR never (0/6): goodput@SLO is a
-distributional shift, not a deterministic 0→3.02 win. (iv) We do NOT claim a median-TTFT win: whale's median is
-lower-variance (σ≈9 vs LRU σ≈140) but LRU's median is itself highly variable (534–876 ms,
-one run below whale), so the median is not a reliable discriminator — a self-correction after lru-r3 (the earlier
-"median win" rested on LRU's two high runs). A certified-node confirmation would further tighten the crossing
-probability; the p99 reduction and the offline size result are the robust claims and do not depend on it.
+**W1 — is the online whale p99-reduction a real, portable policy effect?**
+Attack: whale's p99 overlaps LRU's, the crossing is metastable, and it's one node — is this a real win?
+Defense (fully honest, retraction included): NO, we do not claim a portable win. On nodeset-0 the same-node
+whale-vs-LRU comparison was significant (median p99 −45%, Mann-Whitney n=6/n=5, p≈0.026), but a certified-node
+median-of-k (n=3 each) FAILED TO REPRODUCE it (whale median 11.5 s vs LRU 6.1 s; U=3/9 — no advantage; both span
+5.9–31 s). We therefore RETRACT the online p99-reduction as a portable mechanism and report it as node-specific.
+The metric is metastable to the point that a same-node replicated A/B on one node does not survive on another —
+which is itself the paper's central cautionary result (single-node A/Bs unreliable for tail-SLO residency). The
+robust claims that remain are the DETERMINISTIC offline size-signal (unique causal capture) and this metastability
+finding. (Chain of self-corrections the replication forced: median-win → full-separation → node-portability, all
+retracted as more data arrived.)
 
 **W2 — the p99 improvement is metastable queue-timing, not a real mechanism.**
 Attack: if p99 is decoupled from recompute (you say so yourself), how is whale's lower p99 a mechanism and not a
@@ -68,17 +66,15 @@ reaches a big continuer only under extreme pressure; and a true continuer's turn
 closed-loop, so it is promoted to the protected segment before a size-ranked eviction reaches it. §4.2/§7 state
 the imperfection and that a different gap/continuation structure could weaken the signal.
 
-**W6 — screening node, not the certified eval pool.**
-Attack: numbers are off the blessed pool.
-Defense: identical frozen eval.sh + config on a verified-usable 8×H100 node; "certified" is a node-reliability tag,
-not a different measurement; all comparisons are same-node (the dominant confound). Partial confirmation: one whale
-run on a certified node (nodeset0-3) gave median TTFT 528 ms — matching the screening-node whale median (~555 ms),
-so the whale behavior is node-independent. Its p99 was a high metastable draw (20.4 s), which is exactly why a
-single certified pair cannot confirm the p99 reduction — a definitive certified confirmation would need median-of-k
-per policy, which the fully-contended certified pool (4 cells / 4 nodes) precludes. We state this as a limitation:
-the median result is cross-node confirmed; the certified p99 median-of-k is future work. (We deliberately did not
-report a single certified whale-vs-LRU pair, since under the metastability we document it would be a misleading
-single-run A/B.)
+**W6 — does it hold on the certified eval pool? (resolved — and it changed the verdict.)**
+Attack: numbers are off a screening node; confirm on the certified pool.
+Defense/outcome: we ran a certified-node median-of-k (0-3, n=3 whale + n=3 LRU, identical frozen config). It did
+NOT reproduce the nodeset-0 whale advantage: whale median p99 11.5 s vs LRU 6.1 s (U=3/9, no advantage), both
+spanning 5.9–31 s. This drove the retraction (W1): the online p99-reduction is node-specific. Rather than a
+weakness we hid, the certified test is now a load-bearing part of the paper's central result — that goodput@SLO is
+so metastable that a same-node replicated A/B (p≈0.026) fails to reproduce cross-node. A larger multi-node
+median-of-k would further quantify any residual online effect; the fully-contended certified pool limited us to
+n=3/node, but that already suffices to establish non-reproduction (LRU median below whale's).
 
 ## Minor
 - §5.3 could add a one-line bridge to §5.5 ("the grace-trap motivates changing the SIGNAL, not the retention time

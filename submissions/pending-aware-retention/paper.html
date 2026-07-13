@@ -436,11 +436,15 @@ same A/B on a third node (ondem-2) gave hit λ3 Δ = <b>+0.4&nbsp;pp</b> and, on
 engaging more strongly on ondem-2</i> (19–26 concurrent pins vs ≤6 on the earlier nodes). Both ondem-2 runs are
 small and both earlier-node runs are large, so the split is <b>node-systematic, not random</b>: n=4 gives
 operating-rate gain <b>+0.1–2.8&nbsp;pp (mean ≈+1.4&nbsp;pp)</b>, with ondem-2 ≈+0.25&nbsp;pp and 0-3/1-2
-≈+2.5&nbsp;pp (the stock baseline is node-stable at 0.672–0.673, so the difference is in the <i>gain</i>, not the
-baseline). A plausible cause, consistent with the pending-window mechanism, is that ondem-2 processes faster →
-shorter queues → a smaller at-risk pending set to protect. The gain is non-negative where it did not crash, but
-it is neither robust nor node-independent — and, per §5.2's crash paragraph, the higher-pin regime on ondem-2 is
-exactly where v1 becomes unsafe.</p>
+≈+2.5&nbsp;pp. <b>We tested and rejected the obvious "it's just budget-starvation" explanation.</b> One might
+think ondem-2's small gain is because its deeper pending set exceeds the default 0.5×L2 pin budget; a preliminary
+cross-run comparison even suggested +1.8&nbsp;pp at a 1.0 budget. But a <i>clean same-job</i> A/B at the 1.0
+budget refutes it: stock 0.6813 → v1 0.6712 = <b>−1.0&nbsp;pp</b> — raising the budget did <i>not</i> recover a
+gain (the +1.8&nbsp;pp was an artifact of comparing across sessions with different stock baselines). Combined
+with the ≈0.9&nbsp;pp run-to-run baseline swing (§5.1), the honest reading is that on high-pending-set nodes the
+gain sits <i>at or below the measurement noise floor</i> and is not budget-recoverable. It is non-negative where
+it did not crash, but neither robust, portable, nor budget-tunable — and, per the crash paragraph below, the
+higher-pin regime is exactly where v1 becomes unsafe.</p>
 <table>
 <tr><th>λ</th><th>hit stock→v1</th><th>Δhit</th><th>req/s stock→v1</th><th>Δreq</th><th>p50 stock→v1 (λ=3)</th></tr>
 <tr><td>3</td><td>0.676→0.701</td><td><b>+2.5 pp</b></td><td>3.02→3.02</td><td>+0%</td><td>721→534 ms (<b>−26%</b>)</td></tr>

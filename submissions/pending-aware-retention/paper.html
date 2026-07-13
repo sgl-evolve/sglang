@@ -579,10 +579,18 @@ pin (v1) itself crashed the scheduler (all 8 TP ranks) at λ=7 on a third node a
 runs on the first two nodes (≤6 pins) were luck, so v1 is unsafe once pin counts climb (which is node-dependent,
 §5.2). We implemented a targeted guard (leave a node with surviving host-only children as a tombstone rather
 than unlinking it) — it fixes one trigger but demonstrably <b>not</b> the one that fired (the assertion also
-fails on a <i>childless</i> node whose parent child-slot no longer maps to it). A complete fix would require
-reworking the host-lock/eviction interaction in the engine, which we have not done. We therefore do not claim a
-safe, deployable mechanism: <b>v1 is unsafe at high load, and this is the study's core negative result</b>, not a
-minor edge case.</li>
+fails on a <i>childless</i> node whose parent child-slot no longer maps to it). Static analysis narrows the
+remaining trigger to eviction-set maintenance under host pins: the tombstone cascade
+(<code>_iteratively_delete_tombstone_leaf</code>) skips any node with <code>host_lock_ref&gt;0</code> (so a pin
+reshapes which ancestors are cascade-deleted) and, when it does delete a node, discards it only from the
+<i>host</i>-leaf set, not the <i>device</i>-leaf set — a candidate for a stale device-leaf entry that the driver
+later re-evicts, whose second <code>_remove_leaf_from_parent</code> pops <code>None</code> and asserts. We could
+not <i>confirm</i> this is the sole trigger without reproducing the intermittent, high-pin-count, node-specific
+crash, and we deliberately did not ship a speculative unvalidated patch (nor weaken the assertion, which guards
+real tree corruption). A complete, validated fix requires reworking the host-lock/eviction-set interaction in the
+engine. We therefore do not claim a safe, deployable mechanism: <b>v1 is unsafe at high load, and this is the
+study's core negative result</b>, not a minor edge case. Making the pin safe (then re-testing whether the thin,
+node-dependent gain survives) is the concrete future-work path this result defines.</li>
 </ul>
 
 <h2>8&nbsp;&nbsp;Reproducibility</h2>

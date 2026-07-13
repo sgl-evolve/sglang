@@ -672,20 +672,37 @@ noise floor) is the concrete future-work path this result defines.</li>
 </ul>
 
 <h2>8&nbsp;&nbsp;Reproducibility</h2>
-<p>Branch <code>evolve/valiant</code>, base <code>a334877e5</code>, mechanism <code>28a775ae9</code>.
-Offline analysis: <code>analysis/cache_sim.py</code>, <code>analysis/cache_sim_capsweep.py</code>,
+<p>Branch <code>evolve/valiant</code>, base <code>a334877e5</code>. Mechanism: <code>28a775ae9</code> (v1,
+queued pin) and <code>d10eabb5e</code> (v2, post-completion extension); the two eviction crash-fix attempts,
+both shown insufficient (§5.2), are <code>1e50159a8</code> (tombstone guard) and <code>03b3cb0d7</code>
+(both-set discard). Offline analysis: <code>analysis/cache_sim.py</code>, <code>analysis/cache_sim_capsweep.py</code>,
 <code>analysis/wl_struct.py</code> (CPU-only, tokenizer-exact); the scheduler-coupling result (§2.4) is
 <code>analysis/{build_convs,risk_sim,gap_decomp}.py</code> with saved output in
 <code>analysis/results/sim_summary.txt</code> (FCFS-vs-LPM table, budget/priority sweep, and the ρ=+0.81
 recency-inversion). Evals: <code>runs/&lt;version&gt;/</code> via the
 frozen <code>eval.sh</code>; configs toggled by env (<code>VALIANT_PIN_ENABLE</code>, <code>VALIANT_PC_ENABLE</code>,
-<code>VALIANT_PIN_FRACTION</code>, <code>VALIANT_PC_HORIZON_S</code>). Version→number map (all in W&B run
-<code>valiant</code>, project <code>sgl-evolve</code>): stock = <code>stock_b</code> (node 0-3),
-<code>stock_c</code> (node 1-2), both <code>VALIANT_PIN_ENABLE=0</code> (same binary, mechanism off);
-v1 (pending-aware retention) = <code>v1_b</code>/<code>v1_c</code> (<code>PC_ENABLE=0</code>); post-completion
-ablation = <code>pc_e</code>/<code>pc_b</code>/<code>pc_c</code> (<code>PC_ENABLE=1</code>). Each pair is a
-same-node A/B (stock then treatment, back-to-back on one node, to control ±30% cross-node p99 variance).
-Offline motivation: <code>analysis/{wl_struct,cache_sim,cache_sim_capsweep,cache_sim_sensitivity}.py</code>.</p>
+<code>VALIANT_PIN_FRACTION</code>, <code>VALIANT_PC_HORIZON_S</code>). <b>Version→number map</b> (every run on the
+frozen <code>eval.sh</code>, all in W&B run <code>valiant</code>, project <code>sgl-evolve</code>; all
+<i>ondem-2</i> runs are the same physical node, verified from job logs):</p>
+<ul>
+<li><b>Main results (Table&nbsp;1, §5.2):</b> <code>stock_b</code>→<code>v1_b</code> (node 0-3) and
+<code>stock_c</code>→<code>v1_c</code> (node 1-2) — the shipped n=2, <code>PIN_ENABLE</code> 0→1,
+<code>PC_ENABLE=0</code> (stock is the <i>same binary</i> with the mechanism off).</li>
+<li><b>Scheduler A/B (Table&nbsp;2, §2.5, ondem-2):</b> <code>stock_fcfs</code>/<code>stock_lpm</code> and
+<code>v1_fcfs</code>/<code>v1_lpm</code> (<code>--schedule-policy fcfs</code> vs <code>lpm</code>, on-contract).</li>
+<li><b>Decoupling (Table&nbsp;3, λ=3):</b> the five same-node pairs <code>stock_b</code>/<code>v1_b</code> (0-3),
+<code>stock_c</code>/<code>v1_c</code> (1-2), <code>stock_fcfs</code>/<code>v1_fcfs</code>,
+<code>stock_v6</code>/<code>v1_v6</code>, and <code>stock_v8</code>/<code>v1f1_v8</code> (last three ondem-2;
+the last at <code>PIN_FRACTION=1.0</code>).</li>
+<li><b>Same-node noise floor (§5.1, ondem-2 FCFS stock):</b> <code>stock_fcfs</code>, <code>stock_v5</code>,
+<code>stock_v6</code>, <code>stock_v8</code> (n=4; <code>stock_v9a</code>/<code>stock_v9b</code> extend to n=6).</li>
+<li><b>Crash evidence (§5.2):</b> <code>v1_v6</code> (λ=7, 26 pins) and <code>v1f1_v8</code> (λ=7, 20 pins —
+crashed <i>despite</i> both fixes above).</li>
+<li><b>Post-completion ablation:</b> <code>pc_e</code>/<code>pc_b</code>/<code>pc_c</code> (<code>PC_ENABLE=1</code>).</li>
+</ul>
+<p>Every A/B pair is stock then treatment back-to-back on one node (controls ±30% cross-node p99 variance).
+Offline motivation: <code>analysis/{wl_struct,cache_sim,cache_sim_capsweep,cache_sim_sensitivity}.py</code>;
+the same-node fold-in helper is <code>analysis/fold_v9.py</code>.</p>
 
 </body>
 </html>

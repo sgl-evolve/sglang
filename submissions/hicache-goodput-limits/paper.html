@@ -161,10 +161,12 @@ prefix at the top of LRU — the "protect the waiting reuser" idea is a no-op vs
 CUDA stream with a per-layer <code>producer_event.complete(i)</code>; the forward waits per-layer via
 <code>layer_transfer_counter.wait_until(layer_id)</code> (memory_pool.py:1526/1537). Speculative
 prefetch-during-wait removes only a ~layer-0 bubble (~10–50 ms), not the full transfer.</li>
-<li><b>The residual reuse structure is turn-count-predictable only.</b> The vulnerable window for a warm-turn
+<li><b>The residual reuse structure needs a decision-time signal.</b> The vulnerable window for a warm-turn
 miss is when a conversation's next turn is <i>client-side</i> (concurrency-semaphore-blocked), invisible to
-the server; the only server-side predictor of continuation is turn-count (=hit_count), i.e. LFU/SLRU/GDSF —
-textbook policies that prior work reports as neutral/harmful here.</li>
+the server; the server-side predictor textbook policies use is turn-count (=hit_count), i.e. LFU/SLRU/GDSF —
+which prior work reports as neutral/harmful here. This paper's contribution is that a <i>different</i> server-side
+signal — turn-0 <b>size</b> — separates continuers from single-turn whales at admission (§4.2), which turn-count
+cannot (every turn-0 has hit_count 0).</li>
 </ul>
 
 <h2>4 The fork criterion (what the baseline decides)</h2>

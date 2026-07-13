@@ -259,6 +259,29 @@ Certified λ=5 p99 TTFT across nodes/runs (all warm-steady-state v0.31 protocol)
   charter's screening loop working as intended — built the bolder mechanism, screened its premise for FREE,
   found a no-op, and spared the shared certified pool a pointless run.
 
+## v3x — speculative async eviction-backup (mechanism candidate) — BOUNDED NEGATIVE via a profiling screen [instrument 534d1d3c6]
+- **Code-inspection find (real asymmetry):** write-through backs up KV **async** (on hit, event-polled,
+  non-blocking), but write_back defers backup to eviction and **BLOCKS** — `_evict_device_leaf` on a
+  not-backed-up device leaf calls `write_backup(node, write_back=True)` then `writing_check(write_back=True)`,
+  which `finish_event.synchronize()`s until the D→H DMA completes before freeing the device slot (a hard data
+  dependency, since eviction is DEMAND-driven: common.py evicts exactly the deficit when `available<needed`).
+  My exclusive tiering runs on write_back, so it inherits this. Candidate mechanism: **speculative async
+  backup of unlocked LRU-tail leaves** — back up eviction candidates ahead of demand (overlapped with decode)
+  so eviction becomes an instant free. Feasible (the prefix-closed invariant that crashed write_through+
+  exclusive applies only to write-through, line 1609; async plumbing exists).
+- **Premise screen (gated timer `XTIER_PROFILE_BACKUP`, write_back, node 0-0, warmup + λ=5 burst):** the
+  blocking is **FRONT-LOADED during cache-fill and negligible in steady state.** Cumulative 1100 blocking
+  calls / **3.13 s total** over ~490 s serving = 0.64% — but ~2.6 s of that is the first ~150 s (cache fill);
+  **steady-state (post-fill, incl. the λ=5 burst window) is ~0.5 s over ~340 s = ~0.15% of wall-time.**
+- **Verdict: BOUNDED NEGATIVE — not worth building.** Mechanistically: once the cache is warm, most evicted
+  device leaves are **already backed up** (write_back keeps the host copy after the first backup), so eviction
+  is a free demote and the blocking `write_backup` path rarely fires; the stall is a one-time fill transient,
+  not a sustained throughput drain. Speculative-async-backup would recover ~0.15% steady-state → below the
+  noise floor, and it would re-introduce temporary inclusive duplication for the candidate set. (Also: it
+  cannot move goodput, which is cap-bound.) The real, stable throughput lever remains capacity de-dup (C).
+  Screening the premise (instrument → short run → measure) again converted a plausible mechanism into a
+  data-grounded negative before spending the certified pool — the disciplined loop.
+
 ## MECHANISTIC DIAGNOSIS #2 — the p99 tail is DEVICE-KV-pressure during bursts (why host-tier mechs can't help)
 Device KV pool usage during serving (v0-cert, per decode step): p50 **0.01**, p90 0.26, p99 **0.92**, max 0.99.
 - The device is **bursty**: nearly empty most of the time, but **nearly FULL (p99 0.92) during concurrency

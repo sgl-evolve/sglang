@@ -88,8 +88,9 @@ unavoidable first-turn document prefills — so a cache moves the mean/throughpu
 <p>HiCache tiers KV across L1 (GPU HBM) and L2 (host DRAM). When the working set exceeds L1+L2, the cache is
 genuinely over-subscribed and must evict. The prevailing view — and the explicit starting assumption of this
 protocol — is that eviction <i>order</i> is a solved problem: under in-order reuse LRU is within &lt;0.1&nbsp;pp
-of Bélády, so there is no headroom in "which victim to pick." We argue and demonstrate that this view misses
-the effect that actually matters under concurrency.</p>
+of Bélády, so there is no headroom in "which victim to pick." We investigate whether concurrency opens headroom
+the LRU≈Bélády intuition misses — and find that on this well-provisioned 2-tier system it largely does not:
+the exploitable signal is thin, node-dependent, and unsafe to act on (this paper's bounded-negative result).</p>
 
 <p><b>Contributions.</b></p>
 <ul>
@@ -338,8 +339,10 @@ not claim its single-tier magnitudes transfer.)</p>
 <p><b>Mechanism.</b> While a request waits in the scheduler's queue, pin the host (L2) residency of its matched
 prefix so a running batch cannot evict it; release the pin the instant the request is admitted (its prefix is
 then protected by the normal running-request lock) or aborted. Pinning is bounded by a token budget (a fraction
-of L2); when the pending set exceeds the budget the policy falls back to LRU for the overflow — it never
-deadlocks eviction and never uses more than the fixed memory budget.</p>
+of L2); when the pending set exceeds the budget the policy falls back to LRU for the overflow, and never uses
+more than the fixed memory budget. <b>We describe the mechanism as designed here; §5.2/§7 report that in
+practice it is <i>not</i> safe — holding a host lock across eviction intermittently corrupts the radix tree and
+crashes the scheduler at high pin count.</b></p>
 <p><b>Why it is novel.</b> It is <i>not</i> a replacement policy (LRU/LFU/GDSF/2Q): those pick a victim from the
 resident set by a recency/frequency <i>feature</i>, and §2.4 shows those features are <i>inverted</i> from
 reuse here (the LRU victim among pending continuations is the soonest-reused, ρ=+0.81) — so no fixed-candidate

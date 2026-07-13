@@ -4,7 +4,9 @@ Adversarial read as a skeptical top-venue PC, for DRAFT v0.3 (reframed twice fro
 the size signal was found). Each point: the attack, then the paper's defense / action.
 
 ## Summary judgment
-The paper is now an INSIGHT + CAUTION paper (the mechanism claim was retracted under cross-node testing). Spine:
+The paper is now an INSIGHT + CAUTION + BOUNDED-NEGATIVE paper (the online mechanism claim was retracted under
+cross-node testing; v0.4 adds execution-driven metastability + a deterministic refutation of the admission axis, so
+BOTH scheduling axes are shown dead-end). Spine:
 (a) the p99 tail is avoidable recompute over a live set that fits (chash + peak-live-KV); (b) CONSTRUCTIVE,
 DETERMINISTIC: liveness is partially observable at the eviction decision point via turn-0 SIZE (AUC 0.78), and in
 an offline replay size-among-unproven eviction with proven-protection is the UNIQUE causal victim rule capturing
@@ -94,6 +96,24 @@ nondeterminism amplified by closed-loop multiturn arrival feedback). It appears 
 harness artifact — it is execution-variance, not workload variance. (§5.6.) This is also why the whale (6.2–26.6 s)
 and LRU (5.9–31.2 s) p99 ranges overlap: the policy signal is a small fraction of the execution variance.
 
+**W8 — you localize the tail to large prefills; did you test the obvious fix (prefill/admission scheduling)?**
+Attack: if large cold prefills drive the tail, stagger/rate-limit them — a natural mechanism you should evaluate,
+not just conjecture (as the earlier draft did).
+Defense (tested, refuted deterministically — 9th self-correction): we implemented a lossless admission-staggering
+mechanism (cap concurrent large cold prefills per prefill batch, deferring extras; SGLANG_WILKES_MAXBIG, off by
+default) and tested its PREMISE from the trace, deterministically (sim/prefill_contention.py, measured in-flight
+intervals). It does not work, and we can say exactly why: at λ=3 large (≥20K) prefills almost never co-execute
+(peak concurrency 2, only ~15% overlap another, overlapped ones prefill at the solo rate — ≤1.04×), and prefill
+throughput is near-constant ~35K tok/s (a mild ≤17% chunk-budget penalty appears only at the rare 3-way overlap).
+So a concurrent-count cap has nothing to bite on — the large-prefill effect on the tail is the admission-WAIT it
+imposes on OTHER requests (wq 2× at large admissions), not big-vs-big execution contention. A single staggered GPU
+run (p99 6.3 s) lands within the same-node plain-LRU band (8.1/21.9/30.0 s), consistent with the no-op; we do not
+run a powered A/B because the 5.3× execution variance (§5.6/W7) precludes it. This RETRACTS the earlier draft's
+"admission-staggering is the promising lever" conjecture: with residency gap-capped (W3) and admission with no
+pileup to remove, BOTH scheduling axes are deterministically-shown dead ends for this metastable tail. (§9d.) Far
+from a hole, testing-and-refuting the obvious fix — from our own analysis, before claiming it — is exactly the
+rigor the metric demands.
+
 ## Minor
 - §5.3 could add a one-line bridge to §5.5 ("the grace-trap motivates changing the SIGNAL, not the retention time
   — §5.5"). (pending)
@@ -107,14 +127,23 @@ and LRU (5.9–31.2 s) p99 ranges overlap: the policy signal is a small fraction
   three-node cross-node test showed it has NO STABLE SIGN (lower on 2/3 nodes, reversed on 1) → weak/node-dependent,
   not portable. The robust, SLO-relevant contributions are the deterministic offline size-signal and the cross-node
   metastability caution.
-- Self-corrections the replication forced, in order: cold-doc-floor prediction → median-TTFT win (lru-r3) →
-  full-separation p≈0.029 (whale-r6 high draw) → node-portability (certified 0-3) → refined to node-dependent
-  sign-instability (3-node) — plus the earlier "reduces-queueing" mechanism (wq trace) and the whole
-  bounded-impossibility framing. Each retracted as more data arrived.
+- Self-corrections the replication/analysis forced, in order (9 total): bounded-impossibility framing →
+  cold-doc-floor prediction → median-TTFT win (lru-r3) → full-separation p≈0.029 (whale-r6 high draw) →
+  node-portability (certified 0-3) → node-dependent sign-instability refinement (3-node) → "reduces-queueing"
+  mechanism (wq trace) → "bursts of large prefills" (CV≈1 Poisson) → "admission-staggering is the lever" (refuted
+  deterministically, W8). Each retracted/refined as more data arrived.
 
-## Resolution status (v0.3, updated 2026-07-13)
-- Reframed twice: bounded-impossibility → size-signal (AUC 0.78 + offline unique-capture) → insight+caution after
-  the 3-node cross-node test retracted the portable online win.
-- W1: 3 nodes done; headline is the deterministic offline size-signal + the cross-node metastability (no stable
-  sign across nodes) — the online whale advantage is weak/node-dependent, not claimed as portable.
-- OPEN: certified confirmation (W6, job queued on contended pool), direct scheduling-mechanism trace (W4).
+## Resolution status (v0.4, updated 2026-07-13)
+- Now an INSIGHT + CAUTION + BOUNDED-NEGATIVE paper. Reframed: bounded-impossibility → size-signal (AUC 0.78 +
+  offline unique-capture) → insight+caution (3-node cross-node retracted the portable online win) → v0.4 adds two
+  deterministic results that tighten it: (i) the metastability is EXECUTION-driven (byte-identical workload, 22
+  runs, 5.3× p99 / 1.1× median); (ii) admission-staggering refuted deterministically (W8) → BOTH scheduling axes
+  (residency gap-capped, admission no-pileup) are dead ends, each shown so deterministically.
+- Robust contributions (all deterministic / node-independent): the offline size-signal unique-capture (§4.2), the
+  chash tail decomposition (§5.2), the two-bound model (§4.1), the execution-driven cross-node metastability
+  (§5.6), and the dual-axis deterministic bounded-negative (§9d). The sole constructive positive is the turn-0 size
+  signal (offline); online it is gap-capped — stated honestly.
+- W1/W6 resolved (online whale advantage weak/node-dependent, not portable; 3-node + N=22 fixed-workload done).
+  W8 resolved (admission axis refuted deterministically). Remaining OPEN only as future work: a larger multi-node
+  median-of-k (contended pool precludes) and a memory-pressure-gated admission variant — both bounded by the
+  execution-variance dominance.

@@ -1404,3 +1404,28 @@ Re-ran every offline reproducibility script and verified all headline numbers ma
 clean — git status clean.) ⇒ paper v0.5.1 is CERTIFIED ACCURATE against raw data; no inflation. This satisfies the
 charter integrity requirement. Combined with §90 (internal consistency QA) + §91 (adversarial stress-test), the
 manuscript is complete, consistent, accurate, and submission-ready. HOLD/MAINTAIN.
+
+## 93. ★★ 11th SELF-CORRECTION (from independent adversarial review): "size is the UNIQUE causal victim rule" is FALSE — proven-protected COST-AWARE eviction captures ~2× more offline headroom
+Commissioned an independent adversarial PC review (general-purpose subagent, given paper.html + reviews.md, tasked to
+find the fatal flaw). It caught what my self-generated W1-W10 missed: my "unique" claim rested on a 7-policy sweep
+that OMITTED the obvious competitor — recompute-cost-aware eviction (which sibling v0.25 cells found WINS). Added
+cost_aware / cost_aware_pp / hit_density / gdsf to sim/simulate.py and re-ran:
+  @10.7M (real cap): LRU/SLRU/CAR/LFU/GDSF 0% | whale(size,biggest-unproven) +23% | **cost_aware_pp(proven-protected,
+  CHEAPEST-unproven-first) +48%** | cost_aware(no-protect) -311% | hit_density -55% | Belady +100%.
+  @8M: whale +29% | cost_aware_pp +61%. ROBUST across capacities.
+⇒ **whale/size is NOT unique and NOT best.** The KEY ingredient is PROVEN-PROTECTION + a prefix-size/cost-aware
+unproven-victim rule (recency/frequency = 0% even WITH proven-protection, cf. SLRU=0%); among those, recompute-cost-
+greedy (evict cheapest-to-rebuild unproven) captures MOST (+48%), size-aware (whale) less (+23%). BOTH still
+gap-capped online (offline recompute doesn't materialize, §5.5) — no online win either way; and cost_aware_pp keeps
+dead whales resident (worse cache utilization), so it's a recompute-metric-greedy artifact, not a liveness win.
+IMPLICATIONS (v0.6 revision needed, honest): (1) RETRACT "unique" everywhere (abstract/§4.2/§6/§9/contributions);
+(2) add cost_aware_pp to the sweep table; (3) reframe constructive claim = "proven-protection + size/cost-aware
+unproven eviction captures offline headroom (recency/freq blind); cost-greedy best; ALL gap-capped online"; (4) this
+further weakens the size-signal-as-headline → strengthens the reviewer's #6 (reposition around metastability).
+Review verdict: weak-reject as-framed (leads with a constructive win it internally withdraws); path to borderline/
+weak-accept = reposition around metastability + fix numeric inconsistencies + this cost-aware baseline. Review also
+flagged: §3.1 decomposition baseline inconsistency (58/63 vs 61/65 across §5.2/§5.3 — MUST reconcile), §3.6 the
+"only-tail-moves⇒not-artifact" argument is INVALID (a transient stall hitting few large prefills also moves only the
+tail) → soften to "not workload variance; execution-vs-environment unseparated", §4.1 no-go "criterion" over-claims
+generality (single workload), §5.3 held-out AUC validation missing, §5.4 quantify "unidentifiable" via power law.
+This session: logged + verified. NEXT: execute the v0.6 correction (start with the falsified "unique" claim).

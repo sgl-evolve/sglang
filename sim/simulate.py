@@ -165,6 +165,15 @@ def trace_headroom(access_order, convs, cap):
                         sc=(-last[cj],)
                     elif policy=="size_only":  # evict BIGGEST regardless of proven (no proven protection)
                         sc=(-sum(rs(cj,k) for k in range(depth[cj])), last[cj])
+                    elif policy=="cost_aware":  # recompute-cost-aware: evict CHEAPEST-to-rebuild (smallest) first
+                        sc=(sum(rs(cj,k) for k in range(depth[cj])), last[cj])
+                    elif policy=="cost_aware_pp":  # cost-aware WITH proven-protection (protect proven, then cheapest unproven)
+                        sc=(1 if proven[cj] else 0, sum(rs(cj,k) for k in range(depth[cj])), last[cj])
+                    elif policy=="hit_density":  # evict lowest hits-per-byte (served/size) first — GDSF-family value density
+                        size=max(1,sum(rs(cj,k) for k in range(depth[cj])))
+                        sc=(served[cj]/size, last[cj])
+                    elif policy=="gdsf":  # greedy-dual-size-frequency; cost=size => priority = served + recency-aging
+                        sc=(served[cj], last[cj])  # (cost/size=1 so reduces to freq+recency; == LFU here, recorded for completeness)
                     else:  # opt: evict conv whose NEXT access is farthest (or none)
                         sc = (-(fut[cj][0] if fut[cj] else 10**12),)
                     if best is None or sc<best: best=sc; victim=cj
@@ -172,7 +181,7 @@ def trace_headroom(access_order, convs, cap):
                 dd=depth[victim]; used-=rs(victim,dd-1); depth[victim]=dd-1
             used+=add; depth[ci]=t+1; last[ci]=p
         return recompute
-    return {k:run(k) for k in ("lru","slru","car","whale","opt")}
+    return {k:run(k) for k in ("lru","slru","car","whale","lfu","fifo","mru","size_only","cost_aware","cost_aware_pp","hit_density","gdsf","opt")}
 
 if __name__=="__main__":
     convs=load()

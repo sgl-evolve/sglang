@@ -576,3 +576,12 @@ the operational side (structural cold-turn-0 tail, no lossless KV fix → remedy
 admission control / accept tail, orthogonal to cache A/B). Complementary: goodput@SLO wrong for COMPARING
 caches precisely because the tail is a workload/queueing property not a cache property. Committed 58481fb12,
 validated (tags/refs/&). Quality-strengthening (defends real objection), not sprawl.
+
+### Reviewer-objection hardening pass complete (2026-07-13 ~10:35Z)
+Devil's-advocate found+fixed 2 genuine first-order gaps: (1) dual measurement/operational nature (§7,
+58481fb12); (2) "is 8s SLO arbitrary?" rebuttal (§3.3, b24631a4c: coin-flip for ANY SLO within ~σ of
+operating median; you set SLO at knee=median to measure capacity → the regime where goodput@SLO is USED is
+where it coin-flips). Major objections now all covered (node confound, single-workload, median-of-k
+sufficiency, stable-gains-from-noise, why-not-mechanism, model-overclaim, dual-nature, SLO-arbitrariness).
+Remaining conceivable objections = contract-fixed params (chunk-size/concurrency/num-prompts, forbidden to
+change) — marginal. Paper argumentatively well-defended. Contract-clean, no new experiments.

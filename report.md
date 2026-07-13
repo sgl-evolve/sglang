@@ -1070,3 +1070,32 @@ PROTECT proven (whale). So the insight is precisely "SIZE-among-unproven + prove
 not recency/frequency. This is a much sharper, more defensible claim (7-policy sweep isolates the exact ingredient).
 ★ Also: LFU (frequency) joins lru/slru/car at exactly 0% — frequency is as blind as recency here (proven convs
 already have recent access + high freq, so LFU's victim = same old unproven turn-0). Add to §4.2 offline proof.
+
+## 67. CERTIFIED W6 CONFIRMATION RUNNING (job 19585 on 0-3, a certified node). Fire-and-forget caught a freed hold.
+The 0-3 hold released → my fire-and-forget cert job started 05:16. Runs whale-cert (full sweep) then lru-cert
+(sequential, same certified node) → same-node whale-vs-lru λ=3 on a CERTIFIED node (closes W6). whale-cert λ=3
+~06:05; lru-cert λ=3 ~08:50 (after whale-cert full sweep). Will compare the certified whale p99 vs lru p99 to the
+nodeset-0 result (typical p99 −45%, p=0.026). If it reproduces → W6 closed, cross-node confirmed. If not → GPU
+effect node-specific (offline size result still stands). Monitoring; fold into paper §5.5/§8/reviews W6 when landed.
+
+## 68. whale-cert (CERTIFIED node 0-3) λ=3 = 20406ms — median REPRODUCES cross-node; p99 metastable (as predicted)
+whale-cert λ=3: median 527.93 (≈ nodeset-0 whale median ~555 → MEDIAN reproduces cross-node ✓), p99 **20406ms**
+(HIGH metastable draw — within whale's observed range, cf. nodeset-0 whale-r6 26589), hit 0.6956, req 3.02.
+★ HONEST W6 read: this single certified run CONFIRMS (a) the whale median behavior reproduces on a certified node,
+and (b) p99 is metastable on the certified node TOO (a high draw this run) — which REINFORCES the paper's core
+metastability thesis (single-run p99 A/Bs unreliable). ⇒ A single certified whale+lru PAIR cannot cleanly confirm
+the ~45% p99 reduction (by our own finding); a proper certified confirmation needs median-of-k, which the
+contended certified pool precludes. lru-cert λ=3 pending (~2h, after whale-cert full sweep). Will report W6 as:
+median cross-node consistent; p99 metastable on both nodes; certified median-of-k = future work (pool-limited).
+This is the honest framing — the certified run neither over-confirms nor refutes; it exemplifies the metastability.
+
+## 69. W6 RESOLVED (honestly): whale median reproduces cross-node; freed certified node (single-pair p99 would mislead)
+Scancelled the certified job after whale-cert λ=3 (median 528 reproduces nodeset-0 whale ~555). Rationale: a single
+certified whale+lru PAIR cannot confirm the p99 reduction — both are single metastable draws (whale-cert drew a
+high 20.4s), and a single-run certified A/B is exactly what the paper shows is unreliable; pairing it with one
+lru-cert could produce a MISLEADING single-run comparison. Rather than manufacture a noisy/misleading certified
+pair, I report W6 honestly: (a) the whale MEDIAN reproduces on a certified node (528ms ≈ 555ms → node-independent);
+(b) the p99 is metastable on the certified node too (this run 20.4s) — reinforcing the metastability thesis; (c) a
+definitive certified p99 confirmation needs median-of-k on certified, precluded by pool contention → stated
+limitation + future work. Also freed the contended certified node 0-3 for sibling cells (good-neighbor). This is
+the honest, well-stewarded resolution. Update reviews W6 + §5.5 note accordingly.

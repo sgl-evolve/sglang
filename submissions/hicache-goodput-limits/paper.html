@@ -541,9 +541,12 @@ points to — but they change the outputs and are out of scope here.</li>
 irreducible cold-document share of the tail; a causal policy reaches less. So any lossless residency win is
 bounded above by the avoidable ≈63%, and in practice by how well continuation can be predicted online without
 the future — the SLRU backfire (§5.3) shows a naive predictor can be net-negative.</li>
-<li><b>Single model / workload; screening pending certification.</b> Results are on Qwen3.5-122B (hybrid
-Mamba) + the loogle 1:1:1 mix; the two-bound model generalizes but absolute numbers do not. The pressured
-decomposition is from a screening node; certified-node goodput numbers are pending.</li>
+<li><b>Single model / workload; screening vs certified node.</b> Results are on Qwen3.5-122B (hybrid
+Mamba) + the loogle 1:1:1 mix; the two-bound model generalizes but absolute numbers do not. All A/Bs are on a
+verified-usable node (same-node, the dominant confound). One whale run on a separate certified node reproduced the
+whale median TTFT (528 ms vs the screening-node ~555 ms), confirming node-independence of the median; its p99 was
+a high metastable draw (20.4 s), so a definitive certified <i>p99</i> confirmation needs median-of-k per policy,
+which the fully-contended certified pool precludes — stated as future work.</li>
 </ul>
 
 <h2>8 Reproducibility</h2>

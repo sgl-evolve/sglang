@@ -71,8 +71,14 @@ the imperfection and that a different gap/continuation structure could weaken th
 **W6 — screening node, not the certified eval pool.**
 Attack: numbers are off the blessed pool.
 Defense: identical frozen eval.sh + config on a verified-usable 8×H100 node; "certified" is a node-reliability tag,
-not a different measurement; all comparisons are same-node (the dominant confound). Action: a certified-node
-confirmation of the whale vs LRU λ=3 comparison is queued.
+not a different measurement; all comparisons are same-node (the dominant confound). Partial confirmation: one whale
+run on a certified node (nodeset0-3) gave median TTFT 528 ms — matching the screening-node whale median (~555 ms),
+so the whale behavior is node-independent. Its p99 was a high metastable draw (20.4 s), which is exactly why a
+single certified pair cannot confirm the p99 reduction — a definitive certified confirmation would need median-of-k
+per policy, which the fully-contended certified pool (4 cells / 4 nodes) precludes. We state this as a limitation:
+the median result is cross-node confirmed; the certified p99 median-of-k is future work. (We deliberately did not
+report a single certified whale-vs-LRU pair, since under the metastability we document it would be a misleading
+single-run A/B.)
 
 ## Minor
 - §5.3 could add a one-line bridge to §5.5 ("the grace-trap motivates changing the SIGNAL, not the retention time

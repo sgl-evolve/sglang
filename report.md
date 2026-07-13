@@ -505,3 +505,16 @@ evals), NOT a design flaw. LESSON: overlap into held nodes is fragile for multi-
 sbatch survives hold timeouts. Re-submitting medk-n2 as durable sbatch (fair-share queue). Paper stands
 complete WITHOUT it (§7 honestly states single-node limit); this is incremental (2nd-node grid row). Do NOT
 claim any 2-node result unless medk-n2 completes cleanly.
+
+### ★★ medk-n2 COMPLETE — node×run grid closes §7 limit (2026-07-13 ~09:32Z)
+Durable sbatch (job 19620) landed on node1-2 (robust, survived where overlap failed). Flush stock K=5:
+{7.16, 11.15, 21.89, 6.52, 6.59}s → median 7.16, sample-std 6.56, 3 PASS / 2 FAIL, COIN_FLIP=True, σ/m=7.8.
+★ NODE×RUN GRID (both flush stock K=5):
+   ondem-3 (medk):   median 9.41s, std 8.02, 2/5 pass, spread 3.98×, σ/m 5.7
+   node1-2 (medk-n2): median 7.16s, std 6.56, 3/5 pass, spread 3.36×, σ/m 7.8
+   → combined 5/10 pass across 2 nodes; BOTH deeply variance-dominated coin-flips (wide spreads, ~22-26s
+   near-catastrophes each). Fixed-node coin-flip REPRODUCES on 2 nodes = general, not ondem-3 artifact.
+   HONEST NUANCE: node1-2 median goodput=3 vs ondem-3=0 → node heterogeneity ALSO shifts the metric on top
+   of within-node coin-flip (both axes matter, as confound warned). §7 residual limit CLOSED. Integrated
+   §3.1/§7/§8/abstract, committed 823ee469b, validated. Durable-sbatch beat the fragile overlap (which died
+   to hold timeout) — lesson confirmed.

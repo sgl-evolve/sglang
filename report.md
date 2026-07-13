@@ -145,6 +145,12 @@ Certified λ=5 p99 TTFT across nodes/runs (all warm-steady-state v0.31 protocol)
 - Honest bottom line so far: **goodput@SLO = 3 (reliable, λ=3); λ=5 crossing is variance-dominated.**
 
 ## ⚠️ CRITICAL CORRECTION (2026-07-12, certified run) — the "goodput 0→3" was NODE VARIANCE
+> **⛔ THIS SECTION'S "goodput 3→4.16" PROJECTION WAS ITSELF REFUTED (see (A)/(B)/(D) at top).** The
+> "−40% p99 on λ=5 ⇒ crosses SLO ⇒ goodput 4.16" reasoning below assumed the −40% same-node p99 gain was
+> real and reproducible. Replication showed λ=5 p99 is a COIN-FLIP (10.3↔20.6 s SAME node, mechanism-
+> independent) and even λ=3 p99 is metastable (6.5↔23.7 s same node). **No mechanism reliably crosses λ=5;
+> on-contract goodput@SLO = 3.02 for stock AND every mechanism.** Kept below only as a record of the
+> (wrong) mid-campaign hypothesis and its correction — do NOT cite the 4.16 projection.
 - **v0-cert (stock write_through) on CERTIFIED node 1-2: λ=3 p99 TTFT = 6504 ms ≤ 8 s → goodput ~3**, hit 0.671.
 - My uncertified **v0 on node 0-1: λ=3 p99 = 11663 ms → goodput 0**. SAME stock config; **1.8× p99 by node.**
 - ⇒ **The "goodput 0→3 via capacity de-dup" headline is RETRACTED as an on-contract claim** — node 0-1 is
@@ -176,7 +182,7 @@ Certified λ=5 p99 TTFT across nodes/runs (all warm-steady-state v0.31 protocol)
   1. *Exclusive device-XOR-host tiering* (free-host-on-loadback; no config provides it): +1.7pp hit over
      write_back but **goodput/tail-NEUTRAL same-node** — uniform capacity doesn't target the tail. (honest)
   2. *Cost-aware host retention* (keep long/high-recompute-cost contexts, drop short first): targets the tail
-     directly. [vca RUNNING/queued]
+     directly. **[RESOLVED = HONEST NEGATIVE: −3.3pp hit, tail-neutral — the λ=3 tail is capacity-floored. See vca below.]**
 - **Contribution note**: the goodput 0→3 win is reachable via the write_back CONFIG (not novel); the engine
   code (exclusive tiering, cost-aware retention) is where the novel mechanism lies. All same-node A/B on 0-1.
 - Ops: local commits (4079f06c1 XTIER, e7d1eec41 fix, a90cb79ce cost-aware); remote evolve/base has a PRIOR
@@ -303,7 +309,7 @@ efficiently ⇒ eliminate inclusive duplication ⇒ **exclusive (device-XOR-host
   next run's DRAM gate (`DRAM_TOO_LOW 329G`). Run each version as a SEPARATE job (fresh alloc) on the
   same node to keep the A/B same-node.
 
-### v-wb — write_back config (capacity diagnostic, control)  [node 0-1, job 19473; λ=3 done, rest running]
+### v-wb — write_back config (capacity diagnostic, control)  [node 0-1, job 19473; full sweep DONE]
 - **λ=3: req/s 3.02, out 387 tok/s, p50 515 ms, p99 TTFT 7032 ms (≤ 8 s SLO!), hit 0.7371.**
 - vs v0 (same node): p99 **11663→7032 ms (−40%)**, hit **0.678→0.737 (+5.9pp)**, p50 1003→515 ms.
 - ⇒ **goodput@SLO 0 → ~3**: de-duplicating the host tier (no eager device-copy backups) raises effective

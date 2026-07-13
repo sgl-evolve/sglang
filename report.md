@@ -317,18 +317,33 @@ batches + prefill batches in the λ=5 window:
   (crosses the healthy-rate SLO) but cannot shorten decode or lift the concurrency cap ⇒ goodput cap ≈ 3.
 This is the evidence behind "goodput is decode-knee-capped": it's decode-slot saturation, not a cache miss.
 
-## OVERALL CONCLUSION (honest)
-- The v0.31 recalibration works (cache binds). **goodput@SLO 0→~3** is reachable and is a
-  **capacity-de-duplication** effect: inclusive write_through wastes ~L1-worth of host on duplicates →
-  goodput 0; de-duplicating (write_back family) → hit 0.68→0.74 → the λ=3 p99 tail drops 11.7s→7.0s → goodput 3.
-- **Fundamental limits found**: (a) goodput caps at ~3 — the DECODE knee (~5 req/s) bounds it; λ≥5 saturates;
-  caching cannot raise the decode ceiling. (b) The λ=3 p99 tail (~7s) is **capacity-floored** — engine
-  mechanisms beyond de-duplication (exclusive free-on-loadback: +1.7pp hit but tail-neutral; cost-aware
-  retention: −3.3pp hit, tail-neutral) do **not** further improve goodput or the tail.
-- **Contribution**: a rigorous characterization of goodput@SLO on decode-bound 2-tier HiCache (near-binary
-  metric, decode-knee cap, capacity-floored tail) + a lossless exclusive-tiering engine mechanism
-  (free-on-loadback, +1.7pp effective capacity, no config provides it) + two honest negatives that bound the
-  design space. The big goodput win is a config-reachable capacity effect; no engine mechanism beats it here.
+## OVERALL CONCLUSION (honest, final — consistent with (A)/(B)/(C)/(D) at the top)
+> NOTE: an earlier draft of this section framed the result as "goodput 0→3 via de-dup." That is RETRACTED
+> (the "0" was a slow-node artifact; on certified nodes stock ALSO passes λ=3). The correct final conclusion:
+- **goodput@SLO is a metastable COIN-FLIP capped at ~3** — stock same-node λ=3 p99 swings 6.5↔36.7 s (3.6×
+  run-variance, 1/5 pass), and the cap is set by the DECODE knee + the contract-frozen 256-concurrency
+  admission limit + device-KV-pinned running contexts (λ≥5 unreachable). Both stock AND every mechanism sit at
+  goodput 3.02 on certified nodes; caching cannot raise it (three independent diagnoses). Single-run/single-node
+  goodput A/Bs are VOID — the eval headline is noise-dominated (a maintainer-relevant methodology result).
+- **What capacity de-dup DOES buy (two real, lossless effects):** (B) it SIGNIFICANTLY reduces the goodput
+  coin-flip variance (stock median p99 20.2 s/1-of-5 vs all-de-dup 7.0 s/7-of-11; Levene p=0.0055, MWU
+  p=0.034) — but this is a de-dup-CLASS effect **config-reachable via `write_back`, NOT specific to my code**
+  (exclusive ≈ write_back on reliability, Levene p=0.92; (D) refuted). (C) it raises **peak decode throughput
+  +8–18%, scaling with load** (error-barred: full-sweep certified peak tok/s form non-overlapping tiers, stock
+  ≤603 < de-dup ≥651; two same-node controls; hit-monotone) — because higher hit cuts cold-prefill volume
+  competing with decode (Diagnosis #3: the regime is 94% prefill-bound). **This contradicts the protocol's own
+  "a cache cannot raise peak decode throughput" assumption** and is my strongest positive.
+- **Why no engine mechanism beats the config here (design space closed, by data):** the λ=3 tail is
+  capacity-floored (19M working set ≫ 10.7M cache); reuse is bimodal (58% cold-irreducible + 99%-of-reuse
+  deep — v2x free-screen); the device tail is unoffloadable running-KV. Exclusive tiering (+1.7pp hit, VERIFIED
+  lossless) is real novel code but goodput/tail-neutral; cost-aware (−3.3pp) and reuse-aware (no-op) are
+  bounded negatives.
+- **Contribution**: (1) a methodology result — goodput@SLO is a metastable coin-flip on decode-bound 2-tier
+  serving, requiring median-of-k on certified nodes; (2) a replicated, error-barred throughput result that
+  overturns a stated assumption, with a quantified prefill/decode-contention mechanism; (3) an exhaustive,
+  data-grounded characterization of why the lossless-KV design space is closed for this workload+contract;
+  (4) a verified-lossless novel mechanism (exclusive device-XOR-host tiering, +1.7pp effective capacity, no
+  config provides it); (5) four self-corrected over-claims — an honest record throughout.
 
 ## Protocol (v0.31, recalibrated vs v0.3)
 - 2-tier HiCache: L1 GPU HBM + L2 host DRAM (768 GB, `--hicache-size 96`), **no L3/disk**.

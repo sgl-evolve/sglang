@@ -81,6 +81,32 @@ def heldout_auc():
     print("  AUC full=%.3f | fit(first half)=%.3f | HELD-OUT(second half)=%.3f" % (a_all, a_fit, a_ho))
     print("  => held-out AUC within %.3f of in-sample: signal is not overfit to the evaluated trace" % abs(a_ho - a_fit))
 
+def variance_decomposition():
+    """Between-node vs within-node p99 variance (one-way). Answers: is the metastability node-choice
+    (between) or run-to-run same-node (within)? Uses LRU λ=3 p99 grouped by node."""
+    import math
+    nodes = {  # LRU λ=3 p99 (ms) by node
+        "nodeset-0": [11254, 10360, 13991, 28325, 17133],
+        "cert-0-3":  [5893, 31203, 6130],
+        "cert-1-2":  [21907, 8089, 30037],
+    }
+    allv = [v for g in nodes.values() for v in g]
+    N = len(allv); gm = st.mean(allv); k = len(nodes)
+    ss_b = sum(len(g) * (st.mean(g) - gm) ** 2 for g in nodes.values())
+    ss_w = sum((v - st.mean(g)) ** 2 for g in nodes.values() for v in g)
+    ss_t = ss_b + ss_w
+    ms_w = ss_w / (N - k)
+    within_cv = math.sqrt(ms_w) / gm
+    za, zb = 1.959964, 0.841621
+    n45 = 2 * (za + zb) ** 2 * within_cv ** 2 / 0.45 ** 2
+    print("\n=== VARIANCE DECOMPOSITION (LRU p99, n=%d over %d nodes) ===" % (N, k))
+    for g, v in nodes.items():
+        print("  %-10s n=%d range %.1f-%.1f s (%.1fx)" % (g, len(v), min(v) / 1000, max(v) / 1000, max(v) / min(v)))
+    print("  WITHIN-node share of variance = %.0f%% (between-node eta^2 = %.2f)" % (100 * ss_w / ss_t, ss_b / ss_t))
+    print("  => variance is run-to-run on the SAME node, not node-choice; a certified node (0-3) alone spans 5.3x")
+    print("  WITHIN-node CV = %.2f ; n/policy to certify a 45%% shift @0.8 power = %.0f" % (within_cv, math.ceil(n45)))
+
 if __name__ == "__main__":
     power_analysis()
+    variance_decomposition()
     heldout_auc()

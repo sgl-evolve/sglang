@@ -24,7 +24,7 @@
 <body>
 
 <h1>The Metastable Tail-SLO: A No-Go Criterion for Lossless KV-Cache Optimization</h1>
-<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>v0.7</b></div>
+<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>v0.8</b></div>
 
 <p class="abstract"><b>Summary.</b> <b>Headline (a bounded negative + a methodology result).</b> For a two-tier HiCache
 serving concurrent multi-turn long-context conversations under a tail-latency SLO, <b>no lossless cache-residency or
@@ -40,8 +40,10 @@ real-time live set <b>fits</b> (peak 9.3M = 0.87× cache) → liveness-bound, Be
 OBSERVABLE at turn-0 via SIZE (whales median 17,051 tok, continuers 241; AUC 0.78, held-out 0.783), and in an
 offline replay <b>proven-protection paired with a prefix-size/cost signal captures Belady headroom where
 recency/frequency capture 0%</b> (an 11-policy sweep: LRU/LFU/SLRU/CAR/GDSF all 0%; proven-protected recompute-cost-greedy +48%,
-size-aware "whale" +23%; without proven-protection cost-only/size-only are catastrophic −311%/−529%). Turn-0 size
-is the cheap at-admission instance of such a signal (AUC 0.78). <b>Cautionary result (the online reality):</b> goodput@SLO is so METASTABLE that causal
+size-aware "whale" +23%; without proven-protection cost-only/size-only are catastrophic −311%/−529%). <b>All of these
+are gap-capped online — the offline headroom does not materialize (§5.5)</b>; the cost-greedy +48% also merely
+greedily minimizes the recompute objective (keeping dead KV resident), so it is not a better residency policy. Turn-0
+size is the cheap at-admission instance of such a signal (AUC 0.78). <b>Cautionary result (the online reality):</b> goodput@SLO is so METASTABLE that causal
 residency claims do not survive. p99 is a queue-timing draw decoupled from recompute volume; and — decisively — a
 same-node whale-vs-LRU p99 reduction that was significant on <i>one</i> node (nodeset-0: median −45%, Mann-Whitney
 p≈0.026, n=6/n=5) <b>does not have a stable sign across nodes</b>: across three nodes whale's median p99 is lower
@@ -150,7 +152,7 @@ a cautionary methodological result. We further show the metastability is <b>exec
 variance</b>: on a byte-identical workload (fixed seed + no-shuffle; 22 runs each completing exactly 7037 requests,
 Σinput within 0.016%) the p99 swings 5.9–31.2 s (5.3×) while the median is pinned to 528–574 ms (1.1×) and
 throughput to 3.022–3.024 req/s.</li>
-<li><b>A deterministic refutation of prefill-admission staggering</b> (§9d): having localized the tail to large
+<li><b>A deterministic refutation of prefill-admission staggering</b> (§9): having localized the tail to large
 cold prefills, we implemented a lossless admission-staggering mechanism (cap concurrent large prefills) and refuted
 its premise from the trace — large prefills almost never co-execute (peak concurrency 2, ≤1.04× rate penalty) and
 prefill runs at a near-constant ~35K tok/s, so a concurrent-count cap has nothing to bite on. The tail is an
@@ -256,7 +258,9 @@ prefill breaches the SLO. The tail is therefore not single-request-irreducible; 
 minimum of two bounds:</p>
 <ul>
 <li><b>R_thru = P / avg_uncached_prefill_per_req</b> — the prefill-throughput bound. Cache <i>reduces</i>
-avg_uncached, <i>raising</i> R_thru (baseline hit≈0.62 → ~6.5 req/s; perfect cache → ~12.8 req/s: a ~2× ceiling).</li>
+avg_uncached, <i>raising</i> R_thru (at the measured baseline hit 0.68, avg-uncached ≈ 4.5K tok/req →
+R_thru ≈ 7.8 req/s, consistent with §5.1; a perfect cache that removed the avoidable recompute would roughly double
+it). Either way R_thru far exceeds the binding tail bound R_p99, so goodput@SLO is tail-bound.</li>
 <li><b>R_p99</b> — the max rate with p99 TTFT ≤ 8 s, set by the largest prefills in the tail under
 concurrency. Naively these look like irreducible cold documents; but the conversation-id decomposition (§5.2)
 shows the ≥40K-tok tail is <b>63% avoidable evicted-turn recompute</b> (a residency policy that keeps those
@@ -416,7 +420,13 @@ a residency policy that protects proven multi-turn conversations from eviction (
 documents first) can remove the evicted-turn recompute and pull p99 down. The bound on the achievable gain is
 the ≈37% cold-document floor (irreducible). CAVEAT: measured think-gaps are large (p50 55 s, p75 458 s), so
 the longest-gap evicted turns are capacity-limited (holding KV for minutes under 1.89× oversubscription is
-infeasible); §5.3 measures how much a residency policy actually recovers. </p>
+infeasible); §5.3 measures how much a residency policy actually recovers. <b>A note on stability, since we later
+argue single runs are untrustworthy (§5.6):</b> this decomposition is a <i>compositional</i> property (what fraction
+of prefill work is cold-turn0 vs evicted-recompute), which is a workload-structural quantity and is stable across
+runs to a few points (two same-node LRU runs give 58%/63% and 61%/65%, §5.3) — unlike the p99 <i>tail latency</i>,
+a queue-timing quantity that swings 5.3×. The metastability is in the tail timing, not in the work composition; we
+therefore quote the decomposition as a single-run structural estimate without median-of-k, whereas p99-based
+policy claims require it.</p>
 <h3>5.3 Does eviction/residency move goodput? (policy sweep)</h3>
 <p>§5.2 says the tail is dominated by avoidable eviction of <i>proven</i> multi-turn conversations, so the
 obvious fix is a residency policy that protects them. The textbook version is <b>SLRU</b> (segmented LRU:
@@ -609,16 +619,21 @@ first-class systems finding: <b>goodput@SLO under a metastable tail is an execut
 must be evaluated with multi-node median-of-k, never a single run.</b> Fig 6 makes this visual: across the 22
 byte-identical runs the p99 (colored by policy) fans from 5.9 to 31.2 s with whale and LRU fully interleaved, while
 the median sits pinned at ~0.54 s.</p>
-<p><b>How much replication would a certifiable A/B need? A power law.</b> The pooled LRU λ=3 p99 has coefficient of
-variation CV = 0.55 (mean 16.8 s, sd 9.2 s, n=11). For a two-sample test at α=0.05 and 0.80 power, detecting the
-nodeset-0-claimed <b>45% p99 shift requires n ≈ 24 runs per policy</b> (a 25% shift needs n ≈ 76; even a 60% shift
-needs n ≈ 14). Conversely, at the n = 5–6 per policy the contended certified pool actually affords, the <i>minimum</i>
-detectable shift at 0.80 power is <b>≈ 90–97%</b> — so our nodeset-0 comparison was powered only to catch an
-~90% effect, not the 45% it reported. The single "significant" online result (p ≈ 0.026, §5.5) was therefore
-underpowered, which is exactly consistent with its failure to reproduce across nodes (§5.6). This turns
-"unidentifiable at feasible replication" into a number: on this metric a residency-policy A/B needs
-<b>~24 same-node runs per arm</b> to be trustworthy — orders of magnitude beyond what single-run or small-n
-evaluations (the norm in this literature) provide. (Computed in <code>sim/power_auc.py</code>.)</p>
+<p><b>Within-node, not node-choice — and how much replication a certifiable A/B would need.</b> A natural worry is
+that the swing is <i>between</i>-node (a slow/flaky node), which a same-node A/B would avoid. A one-way variance
+decomposition of the 11-run LRU p99 says otherwise: <b>95% of the variance is WITHIN-node</b> (between-node η² = 0.05).
+Indeed a single <i>certified</i> node, 0-3, alone spans the full <b>5.9–31.2 s (5.3×)</b> range across just three
+identical runs, while the screening node nodeset-0 has the <i>smallest</i> within-node spread (2.7×) — so the
+metastability is run-to-run on a fixed node, not an artifact of node choice or of nodeset-0's health. This turns
+"unidentifiable at feasible replication" into a number. The within-node p99 CV is <b>0.63</b>; for a two-sample test
+at α=0.05 and 0.80 power, detecting the nodeset-0-claimed 45% p99 shift requires <b>n ≈ 31 same-node runs per
+policy</b> (a 60% shift still needs ≈ 17). Conversely, at the n = 5–6 the contended pool affords, the minimum
+detectable shift is <b>≈ 90–97%</b> — so the single "significant" online result (p ≈ 0.026, §5.5) was powered only
+to catch an ~90% effect, not the 45% it reported, which is exactly why it did not reproduce. On this metric a
+same-node residency A/B needs <b>~30 runs per arm</b> to be trustworthy — orders of magnitude beyond the single-run
+or small-n evaluations that are the norm in this literature. (Computed in <code>sim/power_auc.py</code>; we cannot
+further separate whether the within-node residual is intrinsic queue dynamics or transient per-run environment
+jitter — §5.6 — but it is run-to-run and same-node either way, so the evaluation consequence is unchanged.)</p>
 <p><img src="fig6_fixed_workload.svg" alt="22 byte-identical runs: p99 TTFT swings 5.9-31.2s (5.3x, whale/LRU interleaved) while median pinned ~0.54s" style="max-width:100%"></p>
 <p><img src="fig5_crossnode.svg" alt="λ=3 p99 whale vs LRU across 3 nodes: whale below LRU on nodeset-0 and 1-2 but reversed on 0-3 (metastable)" style="max-width:100%"></p>
 
@@ -728,11 +743,11 @@ LRU nodeset-0 (n=5) = <code>runs/screen-v0b</code>, <code>cert-lru-full</code> (
 <code>cert-car90-full</code>; car grace 300 = <code>runs/screen-car300</code>.
 <b>Offline analysis</b> (from the trace + tokenized dataset): conversation-id tail decomposition + λ=3-window
 whale-vs-lru comparison via <code>trace_analyze.py</code>; peak-live-KV, turn-0→turn-1 gap, grace-demand; the
-turn-0-size→continuation AUC (0.78) and the offline 7-policy victim-choice replay (lru/lfu/slru/car 0%, fifo/mru/
-size-only catastrophic, whale −23% capture)
+turn-0-size→continuation AUC (0.78, held-out 0.783) and the offline 11-policy victim-choice replay (lru/slru/car/lfu/gdsf 0%, fifo/mru/
+size-only/cost-only/hit-density catastrophic, whale +23%, proven-protected cost-greedy +48% capture)
 via <code>sim/simulate.py</code>; Belady headroom + Fig 3 via <code>sim/gen_figures.py</code>; the λ=3 per-run
 whale-vs-lru-vs-car TTFT figure (Fig 4) via <code>sim/fig_whale.py</code>; the cross-node p99 figure (Fig 5) via <code>sim/fig_crossnode.py</code>;
-the deterministic prefill-contention analysis (§9d: measured in-flight intervals → concurrency vs effective rate)
+the deterministic prefill-contention analysis (§9: measured in-flight intervals → concurrency vs effective rate)
 via <code>sim/prefill_contention.py</code>; the power-law replication-requirement (§5.6) and held-out AUC (§4.2) via <code>sim/power_auc.py</code>; the fixed-workload metastability audit + Fig 6 (§5.6: 22 runs, completed/Σinput
 invariance vs 5.3× p99) from the per-run <code>bench_r3.json</code> via <code>sim/fig_fixed_workload.py</code>; the cross-request document-sharing quantification (§2.1, §9: dataset doc-reuse + trace shared-prefix capture) via <code>sim/doc_sharing.py</code>; workload facts via
 <code>sim/build_trace.py</code> / <code>sim/prefill_tail.py</code>.
@@ -750,7 +765,7 @@ finite cache provides (here G/R ≈ 460 s / 90 s ≈ 5). Then <i>no</i> residenc
 (size) signal — holds a continuer across the gap; the offline recompute headroom does not materialize online (§4.2, §5.5).</li>
 <li><b>No prefill-execution contention to remove</b> — prefill runs at a near-constant rate with negligible
 large-prefill co-execution (peak concurrency 2, ≤1.04× penalty), so admission staggering / rate-limiting has
-nothing to bite on; the tail is admission-<i>wait</i>, not execution contention (§9d).</li>
+nothing to bite on; the tail is admission-<i>wait</i>, not execution contention (§9).</li>
 <li><b>Execution-variance-dominated tail</b> — on a byte-identical workload the p99 spans 5.3× while the median is
 pinned to 1.1×, so any residual policy effect is a small fraction of the run-to-run execution variance and is
 <i>unidentifiable</i> at feasible replication (§5.6).</li>

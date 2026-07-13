@@ -26,6 +26,20 @@ def from_medk(path):
     except Exception:
         return []
 
+def from_medk_csv(path):
+    """Read completed rep p99s directly from medk.csv (works before the job writes summary.json)."""
+    out = []
+    try:
+        import csv
+        for r in csv.DictReader(open(path)):
+            v = r.get("ttft_p99_ms")
+            if v:
+                try: out.append(float(v))
+                except ValueError: pass
+    except Exception:
+        pass
+    return out
+
 def from_stock_curve(path, node_sub="ondem-3", rate=3):
     """Pull the lambda=rate p99 from a curve-format summary.json IF it was measured on the target node."""
     try:
@@ -85,9 +99,11 @@ def report_pool(label, pool):
     print(f"#  REQUIRED-K (95%): {kk if kk else '>%d (UNRESOLVED)'%rows[-1][0]}   verdict={verdict}\n")
 
 if __name__ == "__main__":
-    # ondem-3 same-node stock pool (medk K=5 + any bign draws + the original v0-stock lambda=3 point)
+    # ondem-3 same-node stock pool (medk K=5 + bign draws [summary.json OR live medk.csv] + v0-stock lambda=3)
+    bign = from_medk(os.path.join(ROOT, "runs", "v0-medk-bign", "summary.json")) \
+           or from_medk_csv(os.path.join(ROOT, "runs", "v0-medk-bign", "medk.csv"))
     ondem3 = (from_medk(os.path.join(ROOT, "runs", "v0-medk", "summary.json"))
-              + from_medk(os.path.join(ROOT, "runs", "v0-medk-bign", "summary.json"))
+              + bign
               + from_stock_curve(os.path.join(ROOT, "runs", "v0-stock", "summary.json")))
     # node1-2 same-node stock pool (medk-n2 K=5)
     node12 = from_medk(os.path.join(ROOT, "runs", "v0-medk-n2", "summary.json"))

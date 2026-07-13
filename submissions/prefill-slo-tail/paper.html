@@ -684,17 +684,24 @@ below the band; the real prefill load, including follow-up tokens, pushes it in)
 and mechanistic: the coin-flip band exists and is generic.</p>
 <p><b>The measurement corroborates the divergence.</b> We check the model's central claim against real data by
 bootstrapping the required median-of-k directly from the same-node stock draws (deterministic,
-<code>tools/required_k_empirical.py</code>). On the two nodes we replicated: <b>ondem-3</b> (n=6, median
-11.4&nbsp;s, 3.4&nbsp;s above the SLO, 2/6 draws passing) resolves to goodput=0 only at <b>k&nbsp;&asymp;&nbsp;23</b>,
-while <b>node1-2</b> (n=5, median 7.2&nbsp;s — just 0.8&nbsp;s <i>below</i> the SLO, 3/5 passing) is
-<b>unresolved even at k&nbsp;=&nbsp;25</b>. This mirrors the model's prediction precisely: the node whose operating
-median sits <i>nearer</i> the SLO (node1-2, σ/m&nbsp;=&nbsp;7.0) needs <i>more</i> replicates than the one further
-from it (ondem-3, σ/m&nbsp;=&nbsp;1.9), and at the knee no practical k suffices — on measured data, not a model. It
-also pinpoints why the same-node K=5 experiments (§3.1) could not separate the configurations: five replicates
-is far below the 20-plus these operating points demand. These per-node pools are small (n&nbsp;=&nbsp;5&ndash;6), so the
-exact k is coarse; but the qualitative result is robust, and it carries a reflexive point — <i>precisely</i>
-measuring required-k is itself expensive <i>because</i> required-k is large, so the difficulty of pinning it
-down is itself the finding.</p>
+<code>tools/required_k_empirical.py</code>). On the two nodes we replicated, the node whose operating median sits
+<i>nearer</i> the SLO needs <i>more</i> replicates — exactly the model's prediction. <b>node1-2</b> (n=5, median
+7.2&nbsp;s — just 0.8&nbsp;s below the SLO, σ/m&nbsp;=&nbsp;7.0, 3/5 passing) is <b>unresolved even at k&nbsp;=&nbsp;25</b>:
+sitting at the knee, no practical number of replicates yields a reproducible verdict. <b>ondem-3</b> sits further
+out (n=9, median 14.1&nbsp;s, 2/9 passing, σ/m&nbsp;&asymp;&nbsp;1.5) and does resolve — to goodput=0 — but only at
+<b>k&nbsp;&asymp;&nbsp;9</b>. Either way, this pinpoints why the same-node K=5 experiments (§3.1) could not separate the
+configurations: five replicates is below what either operating point needs.</p>
+<p><b>Strikingly, the empirical required-k is itself unstable — which reinforces the thesis rather than
+undercutting it.</b> An earlier ondem-3 server session (n=6, 2/6 passing) placed the node nearer the knee with a
+bootstrap k&nbsp;&asymp;&nbsp;23; a second session on the same node added three draws all in the 24&ndash;30&nbsp;s fail
+regime (0/3 passing), moving the <i>pooled</i> operating point deeper into failure and dropping the estimate to
+k&nbsp;&asymp;&nbsp;9. That the same node's goodput distribution shifts this much across server launches — whether from
+session-level metastability or uncontrolled node state between launches, a confound we cannot fully separate — is
+a further variance layer on top of run-to-run. The consequence is unavoidable: required-k, like goodput@SLO
+itself, is hard to pin down precisely <i>because</i> the underlying metric is so unstable. The small per-node
+pools (n&nbsp;=&nbsp;5&ndash;9) make the exact k coarse; the robust, direction-of-effect result — nearer the SLO needs
+more replicates, and no practical k rescues the knee — is what carries, and the difficulty of measuring it is
+itself part of the finding.</p>
 
 <h2>6 Related work</h2>
 <p>
@@ -800,7 +807,7 @@ disabled, run on the same node as v0-stock, §5.3). Each run's <code>curve.csv</
 taken directly from those files. Tooling: trace stats <code>tools/tokenize_trace.py</code> →
 <code>tools/trace_stats.json</code>; queueing model <code>tools/queue_model.py</code>; prefill-rate
 calibration <code>tools/calibrate.py</code>; per-run analysis <code>tools/analyze_run.py</code>; the minimal
-coin-flip Monte-Carlo <code>tools/coinflip_sim.py</code> (deterministic; phase diagram + required-k analysis via <code>KLEINROCK_REQK=1</code>; output <code>runs/coinflip_sim.txt</code>, §5.5); and the <b>empirical</b> per-node required-k bootstrap <code>tools/required_k_empirical.py</code> (deterministic; reads the same-node <code>v0-medk</code> and <code>v0-medk-n2</code> draws; output <code>runs/reqk_empirical.txt</code>, §5.5).</p>
+coin-flip Monte-Carlo <code>tools/coinflip_sim.py</code> (deterministic; phase diagram + required-k analysis via <code>KLEINROCK_REQK=1</code>; output <code>runs/coinflip_sim.txt</code>, §5.5); and the <b>empirical</b> per-node required-k bootstrap <code>tools/required_k_empirical.py</code> (deterministic; reads the same-node <code>v0-medk</code>, <code>v0-medk-bign</code> (the second ondem-3 session), and <code>v0-medk-n2</code> draws; output <code>runs/reqk_empirical.txt</code>, §5.5).</p>
 
 <h2>9 Conclusion</h2>
 <p>goodput@SLO &mdash; the emerging headline metric for KV-cache serving &mdash; is, on heavy-tailed

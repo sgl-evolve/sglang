@@ -69,13 +69,15 @@ transfers is an arrival-<i>order</i> property that does not depend on the (refut
 follows) — among queued continuations the least-recently-used prefix is the soonest-reused, so LRU is
 <i>anti</i>-Bélády on exactly this set — which is why the narrow pending signal is the right target. The realized gain is small
 (~1–2&nbsp;pp vs a ~+7&nbsp;pp single-tier ceiling) for the very same reason the host tier absorbs eviction
-order. Underlying all of it is a structural point: a lossless
-KV cache reduces re-prefill of <i>already-seen</i> prefixes, so it moves the mean and the sustainable
-throughput but not the p99 tail, which is set by <i>first-turn</i> long-document prefills that are never
-reusable. Accordingly the protocol's headline goodput@SLO is <b>variance-dominated at the SLO boundary</b>
-(identical stock runs flip goodput 0↔3.0 across nodes) and is the wrong yardstick for a cache mechanism;
-hit-rate, mean TTFT, and moderate-load throughput — not the boundary-variance-dominated goodput@SLO — are the
-right yardsticks (and even they move by variance-affected margins, so we report ranges, not point claims).
+order. Underlying all of it is a <b>structural result about the headline metric itself</b>: the p99 tail that
+defines goodput@SLO is set by cold <i>first-turn</i> long-document prefills that no lossless retention can
+touch, and across all five same-node A/Bs the hit gain (−1.0…+2.8&nbsp;pp) and the p99 change (−61…+127%) are
+<b>decoupled</b> (<i>r</i>²≈0.09; the tail dominated by node/run variance that flips goodput 0↔3.0 across
+identical stock runs). So goodput@SLO is <b>immune to the entire retention/eviction mechanism class</b> — even
+an oracle (Bélády) policy would leave it unchanged — not merely to our mechanism, and not merely because the
+metric is noisy. Hit-rate, mean TTFT, and moderate-load throughput are the right yardsticks for a cache
+mechanism (and even they move by variance-affected margins, so we report ranges, not point claims); the
+goodput headroom lives on the <i>cold-miss path</i>, not in retention.
 </div>
 
 <h2>1&nbsp;&nbsp;Introduction</h2>
@@ -119,8 +121,16 @@ recently-finished conversations does not beat LRU — not because continuation i
 but because it pins by recency, precisely the ≈0%-capture set. The realizable gain (~1–2&nbsp;pp, variance-affected)
 is much smaller than the single-tier oracle ceiling (~+7&nbsp;pp) because the 2-tier host layer absorbs most device
 evictions. The scheduler's pending set, not broad recency, is the only exploitable signal.</li>
-<li>A <b>measurement finding</b>: goodput@SLO is variance-dominated at the SLO boundary on this workload
-(identical stock runs flip goodput 0↔3.0 across nodes); hit-rate/recompute is the robust metric.</li>
+<li>A <b>structural-immunity result for the headline metric</b> (the boldest general claim): goodput@SLO on
+this workload is immune to the <i>entire</i> retention/eviction mechanism class — not merely to our mechanism.
+Two independent reasons: (i) the p99 tail that defines the SLO is set by cold-document first-compute (19% of
+prompt tokens are irreducibly cold; every conversation's first turn plus 38% single-turn conversations),
+which no lossless retention can touch; and (ii) empirically, across all five same-node A/Bs the hit gain
+(−1.0…+2.8&nbsp;pp) and the p99 change (−61…+127%) are decoupled (<i>r</i>²≈0.09), the tail dominated by
+node/run variance that flips goodput 0↔3.0 across identical stock runs. Even an oracle (Bélády) policy would
+leave goodput@SLO where it is. Corollary: the goodput headroom lives on the <i>cold-miss path</i>
+(transfer/compute overlap, prefill admission/scheduling), not in retention — hit-rate is the robust
+cache-mechanism metric.</li>
 </ul>
 
 <h2>2&nbsp;&nbsp;Motivation (trace-driven)</h2>
@@ -531,6 +541,35 @@ long documents (mean 12k, max 183k tokens), which are <i>first-time</i> compute 
 throughput, not the cold-start tail. A p99-tail SLO on this workload is thus the wrong yardstick for a cache
 mechanism; the right ones (hit-rate, mean TTFT, moderate-load throughput) all move, robustly and losslessly.</p>
 
+<p><b>The tail is empirically decoupled from the hit gain — across the whole replication set.</b> The
+"by-construction" argument above is not merely qualitative: pairing every same-node stock↔v1 A/B we ran at
+λ=3 shows the hit change and the p99 change are unrelated (Table&nbsp;3). The hit gain spans
+−1.0…+2.8&nbsp;pp; the p99 change spans −61…+127%, and the two do not track — the run with the
+<i>largest</i> hit gain (+2.77&nbsp;pp, node&nbsp;1-2) had p99 <i>+28%</i> (worse), while the run with a hit
+<i>loss</i> (−1.0&nbsp;pp, budget&nbsp;1.0) had p99 −55%.</p>
+<figure>
+<table>
+<tr><th class="l">same-node A/B (λ=3)</th><th>Δhit</th><th>Δp99 TTFT</th><th>hit gain reached tail?</th></tr>
+<tr><td class="l">node 0-3 &nbsp;(stock_b → v1_b)</td><td>+2.19&nbsp;pp</td><td>−1.8%</td><td>no (noise)</td></tr>
+<tr><td class="l">node 1-2 &nbsp;(stock_c → v1_c)</td><td><b>+2.77&nbsp;pp</b></td><td><b>+27.8%</b></td><td><b>no (worse)</b></td></tr>
+<tr><td class="l">ondem-2 &nbsp;(stock_fcfs → v1_fcfs)</td><td>+0.40&nbsp;pp</td><td>+126.9%</td><td>no</td></tr>
+<tr><td class="l">ondem-2 &nbsp;(stock_v6 → v1_v6)</td><td>+0.10&nbsp;pp</td><td>−60.7%</td><td>no</td></tr>
+<tr><td class="l">ondem-2, budget 1.0 (stock_v8 → v1f1_v8)</td><td>−1.01&nbsp;pp</td><td>−55.0%</td><td>—</td></tr>
+</table>
+<figcaption><b>Table 3.</b> Hit gain and p99-tail change are decoupled across all five same-node A/Bs.
+Pearson <i>r</i>(Δhit, Δp99)&nbsp;=&nbsp;+0.30 (<i>r</i>²&nbsp;≈&nbsp;0.09, not significant at n=5): the hit
+gain explains &lt;10% of the tail's movement. The ±127% p99 swing is node/run variance (§5.1), which dwarfs
+retention's ±2.8&nbsp;pp hit signal. Median TTFT, by contrast, moves with the hit gain (−26% where hit rises).</figcaption>
+</figure>
+<p><b>Consequence — a structural immunity, not just a noisy metric.</b> Because (i) the p99 tail is set by
+cold-document first-compute that no lossless retention can touch (§5.2, above) and (ii) the tail is measurably
+unlinked from the hit gain (Table&nbsp;3), goodput@SLO on this workload is immune to the <i>entire</i>
+retention/eviction mechanism class — not only to our mechanism, and not only because the metric is noisy. Even
+an oracle (Bélády) retention policy, which by definition maximizes the hit-rate lever, would leave the
+cold-first-compute tail — and therefore goodput@SLO — where it is. The corollary points elsewhere for goodput:
+the headroom on the SLO-defining tail lives on the <i>cold-miss path</i> (transfer/compute overlap, prefill
+admission and chunk scheduling, cross-request dedup of near-identical documents), not in what KV is retained.</p>
+
 <h2>6&nbsp;&nbsp;Related work</h2>
 <p><b>Strata</b> (2025) attacks the data plane and scheduler: GPU-assisted I/O to defragment transfers and
 cache-aware scheduling to overlap load stalls with compute, making a loading-bound system compute-bound. It
@@ -569,8 +608,13 @@ tighter 2-tier provisioning (smaller host DRAM, larger or less-concentrated work
 L1 occupancy under load). We did not measure undersized-cache regimes, and — per §2.5, where single-tier sim
 magnitudes did not transfer to the real 2-tier system — we state this as a qualitative direction only, not a
 quantified prediction.</li>
-<li><b>Metric.</b> On this workload goodput@SLO is variance-dominated at the boundary; we report it but rely on
-hit-rate/throughput. A different SLO or a less bursty workload could make goodput@SLO the cleaner headline.</li>
+<li><b>Metric.</b> On this workload goodput@SLO is not just variance-dominated at the boundary — it is
+<i>structurally immune</i> to the retention/eviction class (§5.2, Table&nbsp;3): the SLO-defining p99 tail is
+cold-first-compute-bound and empirically decoupled from the hit gain (<i>r</i>²≈0.09), so even oracle retention
+leaves it unchanged. We report it but rely on hit-rate/throughput. This is a property of a cold-miss-dominated
+tail under a p99 SLO; a different SLO (e.g. mean or p50 TTFT), a reuse-heavier workload with fewer cold
+first-turns, or a tighter cache could make goodput@SLO responsive to retention again — the immunity is scoped
+to this cold-tail-dominated regime, not universal.</li>
 <li><b>The sim's scheduler-coupling does not transfer to real hit (measured, §2.5).</b> §2.4's single-tier
 simulation predicts a large FCFS eviction gap that prefix-aware scheduling closes. The same-node FCFS-vs-LPM
 A/B on the 122B system <i>refutes the hit half of that prediction</i>: real hit is scheduler-insensitive

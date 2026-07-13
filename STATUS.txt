@@ -17,3 +17,4 @@
 13:29:28 DONE stock_v8 :: good@SLO=0.00 peak_tok=609 best_hit=0.681 | req_s@3=3.0 ttft_p99@3=18559.3 req_s@5=4.1 ttft_p99@5=23545.0 req_s@7=4.6 ttft_p99@7=33800.8 req_s@10=4.8 ttft_p99@10=39737.9
 14:59:30 DONE v1f1_v8 :: good@SLO=0.00 peak_tok=0 best_hit=0.671 | hit@3=0.7 ttft_p99@3=8349.7 hit@5=0.7 ttft_p99@5=24299.2
 17:31:33 DONE stock_v9a :: good@SLO=3.02 peak_tok=612 best_hit=0.676 | req_s@3=3.0 ttft_p99@3=7816.6 req_s@5=4.1 ttft_p99@5=22880.9 req_s@7=4.6 ttft_p99@7=33889.9 req_s@10=4.8 ttft_p99@10=39653.9
+19:47:35 DONE stock_v9b :: good@SLO=0.00 peak_tok=603 best_hit=0.673 | req_s@3=3.0 ttft_p99@3=12804.0 req_s@5=4.1 ttft_p99@5=23856.8 req_s@7=4.6 ttft_p99@7=34466.5 req_s@10=4.7 ttft_p99@10=40806.9

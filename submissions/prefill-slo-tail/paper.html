@@ -404,7 +404,15 @@ body; the tail-SLO metric simply cannot resolve it above the metastability noise
 targeted lossless mechanisms do not reliably move goodput@SLO: L2→L1 movement is already fast (load-back
 p99 ≤ 8.6 ms, §5.2) so overlap has nothing to hide; hit-rate gains land on already-sub-second follow-ups;
 and shortest-first scheduling backfires by starving the long cold documents that constitute the p99 (§2.4).
-Any real per-config difference is smaller than the coin-flip.</p>
+The one prefill-scheduling direction that could <i>in principle</i> raise goodput@SLO — <b>length-aware
+(deadline) reordering</b> that deprioritizes documents whose prefill alone already exceeds the SLO (a 192 K-token
+turn-0 needs ≈9.4 s at the calibrated rate — structurally hopeless regardless of scheduling) so that borderline
+documents queue behind fewer of them — is a textbook deadline-scheduling transplant rather than a new primitive,
+and, decisively, it acts <i>precisely on the coin-flip tail this paper shows the metric cannot resolve</i>:
+goodput@SLO could neither confirm nor refute it. The metric's unreliability is therefore not only an obstacle to
+<i>comparing</i> caches but to <i>validating any tail-targeting mechanism at all</i> — which is exactly why the
+contribution here is the measurement, not another mechanism. Any real per-config difference is smaller than the
+coin-flip.</p>
 
 <p><b>Scope / when it does NOT hold.</b> The coin-flip is specific to workloads whose SLO-tail mass is
 heavy-tailed cold prefills evaluated near the knee with a binary p99-SLO. It would shrink or vanish if

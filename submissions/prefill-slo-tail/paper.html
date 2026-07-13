@@ -704,7 +704,15 @@ trigger, and the prefill queue's depth→slot-occupancy→queue-growth loop (§5
 what we add is that this metastability manifests as <i>run-to-run non-determinism of a benchmark metric</i>,
 not an outage — the deadline sits inside the metastable band, so goodput@SLO samples the feedback loop's
 coin toss. Our analytical frame is classical queueing theory (Kleinrock;
-Pollaczek–Khinchine; Harchol-Balter on tail-optimal scheduling), applied to the LLM prefill server; to our
+Pollaczek–Khinchine; Harchol-Balter on tail-optimal scheduling), applied to the LLM prefill server.
+<b>Systems-measurement rigor.</b> A long line of work warns that naive systems benchmarking misleads:
+Georges et al. (<i>Statistically Rigorous Java Performance Evaluation</i>, OOPSLA'07) showed single-run
+comparisons are unsound and mandated replication with confidence intervals; Mytkowicz et al.
+(<i>Producing Wrong Data Without Doing Anything Obviously Wrong!</i>, ASPLOS'09) documented systematic
+measurement bias; and Kalibera &amp; Jones (ISMM'13) formalized how many repetitions rigor requires. We
+extend this tradition to LLM-serving goodput@SLO, but with a sharper twist: the tail metric here is not
+merely noisy — it is <i>metastable</i>, so its variance does not shrink usefully with replication near the
+knee (required-k diverges, §5.5), and the standard remedy of median-of-k is itself insufficient. To our
 knowledge we are the first to show that the standard goodput@SLO metric is a metastable coin-flip on a
 heavy-tailed cold-prefill serving workload, and to separate the cache's stable gains from the noisy tail.
 </p>

@@ -633,3 +633,24 @@ the one further (ondem-3) — exactly required-k↑ as median→SLO. Explains di
 (n=5-6) → exact k coarse; qualitative result robust. Reflexive point added: precisely measuring required-k is
 expensive BECAUSE required-k is large — the difficulty IS the finding. HTML re-validated (43/43 p, 0 bare &,
 0 dangling refs). Paper: 9 sections / 6 figs / 10 tables. W&B: log as note (variance study), not new curve.
+
+### §5.5 SELF-CORRECTION: required-k unstable (23→9) + session-variance finding (2026-07-13 ~14:10Z)
+Launched a DURABLE exclusive sbatch (job 19658, ondem-3, 10h, immune to hold reclamation — the fix for the
+earlier --overlap death) on a freely-idle certified node (wilkes pipeline was node-constrained elsewhere =
+no starvation) to firm ondem-3 required-k n=6→n=16. Got 3 fresh same-node stock λ=3 draws before I stopped:
+{30050, 28389, 23991}ms — ALL deep-fail (0/3 pass), higher than ANY earlier ondem-3 draw (prior max 25761).
+KEY (integrity): this OVERTURNED my just-integrated n=6 number. ondem-3 bootstrap required-k is UNSTABLE:
+  • n=6 (2/6 pass, median 11.4s): k≈23
+  • n=9 (2/9 pass, median 14.1s): k≈9   ← the 3 fresh fails moved the pooled op-point DEEPER into fail
+  ⇒ 'k≈23' did NOT hold. Small-n coarseness caveat now DEMONSTRATED (not just hedged). Self-corrected §5.5.
+NEW FINDING (honestly caveated): the SAME node's goodput dist shifts across SERVER LAUNCHES — session2 (medk)
+median 9.4s/2-of-5 pass vs session3 (reqk16) median ~28s/0-of-3 pass = a SESSION-LEVEL variance layer on top
+of run-to-run. Caveat: could be session-level metastability OR uncontrolled node state between launches
+(confound I can't fully separate) — either way an ADDITIONAL variance source supporting the thesis.
+DIVERGENCE still holds & cleaner: node1-2 (median 7.2s, AT knee) UNRESOLVED @k=25; ondem-3 (further out)
+resolves @k≈9. Nearer SLO ⇒ more k = the model's prediction, on real data.
+GOOD CITIZENSHIP: killed job 19658 at n=9 (enough for the honest point) → freed idle certified node for the
+sibling pipeline (wilkes whale-cb*/lru-cb*). Committed be7530308. required_k_empirical.py now reads live
+medk.csv per-node. Paper: 9 sections / 6 figs / 10 tables (empirical para split into 2). HTML validated.
+LESSON: getting MORE same-node data before finalizing caught an unstable number — replication guardrail worked
+(consistent w/ my base-v031 campaign's 4 over-claim self-corrections). W&B: log as note, not a curve version.

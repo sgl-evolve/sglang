@@ -13,20 +13,22 @@ TTFT −25%, p99 distribution shifted below LRU/CAR); (d) goodput@SLO is METASTA
 volume), so the SLO crossing is probabilistic and must be read distributionally. Contributions that are robust
 regardless of the whale replicate outcome: the size-observability analysis + offline victim-choice test, the
 chash tail decomposition, the two-bound model, and the metastability characterization. The whale GPU result is
-n=4 (same-node λ=3); the median win is the low-variance part, the goodput crossing the metastable part (2/4).
+n=4 (same-node λ=3): a robust ~30% p99 reduction (all whale runs below all LRU/CAR runs, p≈0.029) whose absolute
+SLO crossing is metastable (2/4, the reduced p99 sits on the boundary).
 
 ## Major weaknesses (ranked by how much a PC would push)
 
-**W1 — the p99/goodput win is metastable (2/4 cross); is it a real policy effect?**
+**W1 — the absolute goodput crossing is metastable (2/4); is it a real policy effect?**
 Attack: whale crosses the SLO on only half its runs — could be luck, not a mechanism.
-Defense: (i) all FOUR whale runs lie below BOTH LRU and BOTH CAR runs on median, mean, AND p99 — full separation
-(rank-sum p≈0.067); (ii) the MEDIAN win (~555 vs 678–876 ms) has far higher SNR than p99, is tight across all four
-runs, and is the primary claim; (iii) we explicitly do NOT claim a deterministic goodput 0→3.02 win — only a robust median shift +
-a probabilistic crossing. Status: n=4 complete — the median held tight (550–568 ms across all four) and all four
-p99 stayed below the LRU/CAR band (6.2–9.3 s vs 10.4–11.3 s), confirming the distributional shift; the crossing
-landed at 2/4 (the metric sits on the SLO boundary). Remaining: n→3 LRU (in flight) and a certified-node
-confirmation would tighten the crossing probability, but the median win and the offline size result do not depend
-on the crossing count.
+Defense: the robust claim is the RELATIVE p99 reduction, not the absolute crossing. (i) All four whale runs' p99
+lie below all three LRU and both CAR runs' (max whale 9.3 s < min LRU 10.4 s) — fully separated, rank-sum p≈0.029,
+a ~30% cut (mean 7.7 vs 11.9 s); mean TTFT also ~19% lower. (ii) The reduced p99 sits ON the 8 s boundary, so the
+absolute crossing is a metastable queue draw (2/4), while LRU/CAR are far enough above that they never cross (0/5)
+— we report goodput@SLO as a distributional shift, not a deterministic 0→3.02 win. (iii) We do NOT claim a median
+win: whale's median is lower-variance (σ≈8 vs LRU σ≈145) but LRU's median is itself highly variable (534–876 ms,
+one run below whale), so the median is not a reliable discriminator — a self-correction after lru-r3 (the earlier
+"median win" rested on LRU's two high runs). A certified-node confirmation would further tighten the crossing
+probability; the p99 reduction and the offline size result are the robust claims and do not depend on it.
 
 **W2 — the p99 improvement is metastable queue-timing, not a real mechanism.**
 Attack: if p99 is decoupled from recompute (you say so yourself), how is whale's lower p99 a mechanism and not a
@@ -78,12 +80,13 @@ confirmation of the whale vs LRU λ=3 comparison is queued.
   offline it is uniquely sufficient among causal victim rules. (pending)
 - Reproducibility §8: add whale run dirs (runs/whale-full, whale-r2..r4) + the simulate.py whale branch commit. (pending)
 
-## What would change the verdict
-- If whale replicates (n=4) keep the median low and p99 below the LRU band → the mechanism claim strengthens to a
-  robust median win + reliable-enough crossing (positive mechanism paper).
-- If whale regresses to LRU at n=4 → the GPU win was n=2 noise; retract the crossing claim, keep (i) the size
-  signal + offline unique-capture (the "right signal in principle" result), (ii) the metastability finding, and
-  (iii) the gap-cap synthesis — a characterization paper rather than a mechanism paper. Both are falsifiable now.
+## Outcome at n=4 (resolved)
+- The p99 result held and strengthened: at n=4 whale + n=3 LRU, all whale p99 stayed below all LRU/CAR p99
+  (p≈0.029) — a robust ~30% reduction. The median claim did NOT hold (lru-r3 median 534 ms dipped below whale),
+  so we retracted the median win and lead with the p99 reduction — a self-correction the data forced.
+- What would still change the verdict: if a certified-node whale-vs-LRU pairing failed to reproduce the p99
+  separation → the GPU effect would be node-specific; the offline size-signal result (deterministic) would still
+  stand. The size signal + offline unique-capture + metastability characterization are robust regardless.
 
 ## Resolution status (v0.2 reframe, 2026-07-12)
 - Reframed from bounded-impossibility → size-signal after discovering AUC 0.78 + offline whale unique-capture; the

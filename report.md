@@ -983,3 +983,17 @@ fail, but panel ttft_p99@3=8714 < lru 10360 shows the shift). Added whale rate-c
 λ3/5, NOT deep overload λ7/10 metastable). lru-r3 (19561) running on nodeset-0 → lru n=3 median (~00:15) to
 confirm the median win isn't lru-n=2 variance. After lru-r3: final median check + commit; campaign essentially
 COMPLETE (paper v0.2 honest + figure + curve + W&B + self-review).
+
+## 59. ★★★ lru-r3 λ=3: median 533 / p99 13991 → CORRECT the headline: P99 reduction (robust) NOT median (variable)
+lru-r3 λ=3: median **533.6**, p99 **13991**, hit 0.7029, req 3.02. This is a KEY honesty correction:
+- lru MEDIAN is now {678, 876, 533} = HIGHLY VARIABLE (533-876). lru-r3 (533) DIPS BELOW whale's tight {550,553,
+  563,568}. ⇒ the "whale median −25% win" is OVERSTATED (it rested on lru's 2 high runs). Whale median is LOW-
+  VARIANCE (~558, std 8) vs lru HIGH-VARIANCE (std ~145), but NOT cleanly lower (overlap). Downgrade median claim.
+- lru P99 is now {10360, 11254, 13991}. Whale p99 {6189, 6574, 8715, 9287} — ALL 4 whale BELOW ALL 3 lru
+  (max whale 9287 < min lru 10360). FULLY SEPARATED, rank-sum **p≈0.029 (SIGNIFICANT)**. whale cuts p99 ~30%
+  (whale mean ~7691 vs lru mean ~11868). Also below both car {10727,11174}.
+★ REFRAME the empirical headline from MEDIAN → P99 REDUCTION (the SLO-relevant metric AND the robust/significant
+one): whale robustly reduces λ=3 p99 ~30% vs lru/car (all-below-all, p≈0.029), landing it ON the 8s SLO boundary
+(mean ~7.7s) → crosses 2/4 (the ABSOLUTE crossing is metastable because the reduced p99 sits right at 8s; the
+RELATIVE reduction is robust). Median = secondary "lower-variance" point, not the core. This is a BETTER story
+(p99 is the goodput metric). MUST update paper §5.5/abstract/§7 + fig4 + reviews. lru n=3 now.

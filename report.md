@@ -1346,3 +1346,16 @@ proven non-existence), names the escape levers → BOUNDED no-go, not absolute i
 bounded-negative paper a memorable central result (the thing a PC remembers), which is exactly what elevates such a
 paper toward top-venue. Committed 77016ff45. Paper v0.5. VERDICT: this was the right kind of remaining work
 (synthesis/positioning, zero-risk, honest); further additions would be diminishing returns. HOLD/MAINTAIN.
+
+## 89. ★ Closed the no-go's "cross-request sharing" escape hatch with data (§2.1 + W10; sim/doc_sharing.py)
+Investigated the one escape hatch the no-go criterion (§9) names but hadn't quantified: cross-request document
+sharing as a capacity lever. DATASET (mooncake_mix_v1): 1553 convs = 538 empty-context ShareGPT (no shared doc) +
+1015 doc-bearing over 887 unique docs; only 157 (15.5%) share a doc — ONE gsm100 doc reused 100×, rest ≤3×. MAX
+lossless perfect cross-conv sharing = ~0.84M of 99.9M λ=3 prefill tokens = <1% (cannot move goodput@SLO). TRACE
+(cert-lru-full): RadixAttention already captures ~78% of shared-prefix reuse (top-12 groups: 1548 hit / 424 cold).
+The residual (e.g. gsm100 reused 220× yet ~73% evicted in its group) is a concrete instance of the FREQUENCY signal's
+blindness (LFU=0% Belady capture, §4.2/§5.3) and part of the §5.2 avoidable-recompute — NOT a separate lossless
+lever. ⇒ escape hatch CLOSED for this workload (negligible), with honest note that a shared-corpus/RAG regime could
+make sharing dominant (orthogonal capacity/dedup mechanism). Added §2.1 workload bullet + no-go escape note + reviews
+W10 + sim/doc_sharing.py. Deterministic, non-GPU. This HARDENS the crystallized central claim (v0.5). Genuinely new
+finding (workload doc-sharing was previously uncharacterized). Paper v0.5.1.

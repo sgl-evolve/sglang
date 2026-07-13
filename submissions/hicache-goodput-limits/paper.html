@@ -161,6 +161,11 @@ dataset with the model tokenizer:</p>
 <li>turn-0 documents dominate conversation KV: p50 7.9K, p90 32.6K, <b>max 192.7K tokens.</b></li>
 <li>Continuation hazard: P(continue | reached turn 1)=0.61, but <b>0.75–0.89 for turns ≥2</b>.</li>
 <li>Within-conversation reuse ceiling = 80.6% of prefill work; top-10% of convs hold 64.6% of reuse value.</li>
+<li><b>Cross-conversation document reuse is light.</b> 538 conversations are empty-context (ShareGPT) chats; the
+1015 document-bearing conversations draw on 887 unique documents, and only 15.5% share a document with another (one
+100×-reused document dominates; the rest ≤3×). Even <i>lossless, perfect</i> cross-conversation sharing would save
+<b>&lt;1% of prefill work (~0.8M of 99.9M tokens)</b>, and RadixAttention already captures ~78% of shared-prefix
+reuse — so cross-request sharing is <i>not</i> a lever in this workload (it quantifies the capacity escape of §9).</li>
 </ul>
 </div>
 <p><img src="fig2_turns.svg" alt="turns-per-conversation histogram" style="max-width:100%"></p>
@@ -669,7 +674,7 @@ via <code>sim/simulate.py</code>; Belady headroom + Fig 3 via <code>sim/gen_figu
 whale-vs-lru-vs-car TTFT figure (Fig 4) via <code>sim/fig_whale.py</code>; the cross-node p99 figure (Fig 5) via <code>sim/fig_crossnode.py</code>;
 the deterministic prefill-contention analysis (§9d: measured in-flight intervals → concurrency vs effective rate)
 via <code>sim/prefill_contention.py</code>; the fixed-workload metastability audit + Fig 6 (§5.6: 22 runs, completed/Σinput
-invariance vs 5.3× p99) from the per-run <code>bench_r3.json</code> via <code>sim/fig_fixed_workload.py</code>; workload facts via
+invariance vs 5.3× p99) from the per-run <code>bench_r3.json</code> via <code>sim/fig_fixed_workload.py</code>; the cross-request document-sharing quantification (§2.1, §9: dataset doc-reuse + trace shared-prefix capture) via <code>sim/doc_sharing.py</code>; workload facts via
 <code>sim/build_trace.py</code> / <code>sim/prefill_tail.py</code>.
 W&B evolution curve: project <code>sgl-evolve</code>, run <code>wilkes</code>.</p>
 
@@ -692,8 +697,11 @@ pinned to 1.1×, so any residual policy effect is a small fraction of the run-to
 </ol>
 Conditions (1)–(2) close the two lossless <i>scheduling</i> axes (residency and admission); condition (3) makes
 even a hypothetical effect uncertifiable. The lossless levers that remain are <i>orthogonal</i> to eviction and
-admission — raising effective capacity until <i>R</i> &gt; <i>G</i> (larger cache / cross-request sharing) or
+admission — raising effective capacity until <i>R</i> &gt; <i>G</i> (larger cache), cross-request prefix sharing, or
 raising the prefill bound <i>P</i> — i.e. outside what this eviction-policy-oriented metric was thought to probe.
+(In <i>this</i> workload even the sharing lever is quantitatively negligible: cross-conversation document reuse
+could save &lt;1% of prefill work and RadixAttention already captures ~78% of it, §2.1; it could dominate only in a
+shared-corpus regime, which this mix is not.)
 The <i>constructive</i> half of the paper delimits exactly where a lossless win could still come from: the turn-0
 <b>size</b> signal is the correct residency signal (offline, uniquely capturing Belady headroom), so a system that
 closes the gap (condition 1) could realize it.

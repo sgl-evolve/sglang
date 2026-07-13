@@ -131,6 +131,17 @@ reuse-distance replay (§5.2) computes this correctly and confirms 58% of contin
 first reuse — the paper leads with the replay precisely because the mean-rate intuition misleads. (Added a §4.2
 clarification paragraph so a reviewer doesn't have to rediscover this.)
 
+**W10 — your no-go names "cross-request sharing" as a capacity escape; how big is it? (quantified — negligible here.)**
+Attack: if documents are shared across conversations, a dedup/sharing mechanism could raise effective capacity and
+realize the offline win — you can't wave that away.
+Defense (quantified, §2.1 + sim/doc_sharing.py): we measured it. Of 1553 conversations, 538 are empty-context
+ShareGPT chats (no shared document); the 1015 doc-bearing ones draw on 887 unique documents, and only 15.5% share a
+document (a single 100x-reused doc dominates; the rest <=3x). Even LOSSLESS PERFECT cross-conversation sharing would
+save <1% of prefill work (~0.8M of 99.9M tokens), and RadixAttention already captures ~78% of shared-prefix reuse.
+So in THIS workload the sharing escape is quantitatively negligible and cannot move goodput@SLO — it tightens the
+no-go. We are explicit that a shared-corpus regime (e.g. RAG over a common corpus) could make sharing the dominant
+lever, but that is a capacity/dedup mechanism orthogonal to the eviction/admission axes this metric probes.
+
 ## Minor
 - §5.3 could add a one-line bridge to §5.5 ("the grace-trap motivates changing the SIGNAL, not the retention time
   — §5.5"). (pending)

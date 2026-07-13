@@ -691,17 +691,25 @@ sitting at the knee, no practical number of replicates yields a reproducible ver
 out (n=9, median 14.1&nbsp;s, 2/9 passing, σ/m&nbsp;&asymp;&nbsp;1.5) and does resolve — to goodput=0 — but only at
 <b>k&nbsp;&asymp;&nbsp;9</b>. Either way, this pinpoints why the same-node K=5 experiments (§3.1) could not separate the
 configurations: five replicates is below what either operating point needs.</p>
-<p><b>Strikingly, the empirical required-k is itself unstable — which reinforces the thesis rather than
-undercutting it.</b> An earlier ondem-3 server session (n=6, 2/6 passing) placed the node nearer the knee with a
-bootstrap k&nbsp;&asymp;&nbsp;23; a second session on the same node added three draws all in the 24&ndash;30&nbsp;s fail
-regime (0/3 passing), moving the <i>pooled</i> operating point deeper into failure and dropping the estimate to
-k&nbsp;&asymp;&nbsp;9. That the same node's goodput distribution shifts this much across server launches — whether from
-session-level metastability or uncontrolled node state between launches, a confound we cannot fully separate — is
-a further variance layer on top of run-to-run. The consequence is unavoidable: required-k, like goodput@SLO
-itself, is hard to pin down precisely <i>because</i> the underlying metric is so unstable. The small per-node
-pools (n&nbsp;=&nbsp;5&ndash;9) make the exact k coarse; the robust, direction-of-effect result — nearer the SLO needs
-more replicates, and no practical k rescues the knee — is what carries, and the difficulty of measuring it is
-itself part of the finding.</p>
+<p><b>The empirical required-k is itself sampling-sensitive — and a controlled experiment pins down why.</b>
+An earlier ondem-3 server session (n=6, 2/6 passing) placed the node nearer the knee with a bootstrap
+k&nbsp;&asymp;&nbsp;23; adding a second same-node session whose three draws happened to land in the
+24&ndash;30&nbsp;s fail regime (0/3) moved the <i>pooled</i> operating point deeper into failure and dropped the
+estimate to k&nbsp;&asymp;&nbsp;9. We initially wondered whether this cross-session shift was an additional,
+launch-level variance layer. A <b>controlled experiment settles it in the negative</b>: three back-to-back server
+launches in one exclusive allocation on one node (N=3 sessions &times; K=3 stock λ=3 draws each,
+<code>tools/session_var_analyze.py</code>) show that <i>within</i>-session run-to-run variance overwhelmingly
+dominates. The three session means are nearly identical (14.6, 17.7, 17.4&nbsp;s), yet <i>every</i> session spans
+the full coin-flip range (6.1&ndash;22.1, 7.7&ndash;36.7, 12.8&ndash;26.7&nbsp;s); the across-session variance
+component is just <b>2%</b> of the within-session component (σ<sub>across</sub>&nbsp;=&nbsp;1.4&nbsp;s vs
+σ<sub>within</sub>&nbsp;=&nbsp;11.5&nbsp;s). <b>There is no separable launch-level layer.</b> The earlier
+cross-<i>allocation</i> difference was within-session sampling (a single session can draw three high values by
+chance, as session&nbsp;2 does here) plus node state, not a genuine server-launch effect — so we retract that
+tentative third layer. This <i>reinforces</i> the core result: the coin-flip is fundamentally run-to-run, which
+is exactly why required-k, like goodput@SLO itself, is hard to pin down — a single server's draws already
+straddle the SLO. The small per-node pools (n&nbsp;=&nbsp;5&ndash;9) make the exact k coarse; the robust,
+direction-of-effect result — nearer the SLO needs more replicates, and no practical k rescues the knee — is what
+carries.</p>
 
 <h2>6 Related work</h2>
 <p>
@@ -756,12 +764,14 @@ it is a general property, not an artifact of one machine. The grid also makes an
 node1-2's <i>median</i> goodput is 3 while ondem-3's is 0, so node heterogeneity <i>additionally</i> shifts
 the metric on top of the within-node coin-flip — both axes matter, exactly as the confound warned. The
 methodological claim is thus demonstrated on two nodes: single-run — and especially cross-node — A/B on
-goodput@SLO is void, and even same-node median-of-k does not rescue it for KV-cache comparison. A later,
-independent stock session on ondem-3 (§5.5) drew three further λ=3 p99 values <i>all</i> in the 24–30 s fail
-regime (0 / 3, versus the first session's 2 / 5), pointing to a third variance layer — across server launches,
-whether session-level metastability or uncontrolled node state between launches — on top of run-to-run and node
-heterogeneity; we flag it as a threat rather than a clean result because we cannot fully separate the two
-causes.</li>
+goodput@SLO is void, and even same-node median-of-k does not rescue it for KV-cache comparison. We also tested
+whether server-launch (session) state adds a <i>third</i> variance layer: a controlled experiment (N=3
+back-to-back launches &times; K=3 stock draws in one allocation, §5.5) found within-session variance dominates
+(across-session component just 2% of within-session; all three session means 14.6&ndash;17.7&nbsp;s while each
+session spans the full 6&ndash;37&nbsp;s range), so <b>there is no separable launch-level layer</b> — the coin-flip
+is run-to-run, and node heterogeneity is the only additional axis. We had initially read an earlier
+cross-<i>allocation</i> difference as a possible launch-level effect; the controlled test attributes it to
+within-session sampling plus node state, and we retract that reading.</li>
 <li><b>Per-rate cache flush.</b> The harness cold-starts the cache before each rate (the load generator
 issues <code>/flush_cache</code> per invocation), compounding the metastability by ramping the queue to
 90–184 before it drains (§5.3). We tested the no-flush condition with an off-contract, node-controlled
@@ -812,7 +822,7 @@ disabled, run on the same node as v0-stock, §5.3). Each run's <code>curve.csv</
 taken directly from those files. Tooling: trace stats <code>tools/tokenize_trace.py</code> →
 <code>tools/trace_stats.json</code>; queueing model <code>tools/queue_model.py</code>; prefill-rate
 calibration <code>tools/calibrate.py</code>; per-run analysis <code>tools/analyze_run.py</code>; the minimal
-coin-flip Monte-Carlo <code>tools/coinflip_sim.py</code> (deterministic; phase diagram + required-k analysis via <code>KLEINROCK_REQK=1</code>; output <code>runs/coinflip_sim.txt</code>, §5.5); and the <b>empirical</b> per-node required-k bootstrap <code>tools/required_k_empirical.py</code> (deterministic; reads the same-node <code>v0-medk</code>, <code>v0-medk-bign</code> (the second ondem-3 session), and <code>v0-medk-n2</code> draws; output <code>runs/reqk_empirical.txt</code>, §5.5).</p>
+coin-flip Monte-Carlo <code>tools/coinflip_sim.py</code> (deterministic; phase diagram + required-k analysis via <code>KLEINROCK_REQK=1</code>; output <code>runs/coinflip_sim.txt</code>, §5.5); and the <b>empirical</b> per-node required-k bootstrap <code>tools/required_k_empirical.py</code> (deterministic; reads the same-node <code>v0-medk</code>, <code>v0-medk-bign</code> (the second ondem-3 session), and <code>v0-medk-n2</code> draws; output <code>runs/reqk_empirical.txt</code>, §5.5); and the <b>controlled session-variance</b> experiment <b>v0-sessvar</b> (N=3 back-to-back server launches &times; K=3 stock λ=3 draws in one exclusive allocation on node 0-3, <code>tools/session_var_eval.sh</code> + <code>tools/session_var_analyze.py</code>, output <code>runs/sessvar_analyze.txt</code>, §5.5) that decomposes within- vs across-session variance and rules out a launch-level layer.</p>
 
 <h2>9 Conclusion</h2>
 <p>goodput@SLO &mdash; the emerging headline metric for KV-cache serving &mdash; is, on heavy-tailed

@@ -593,3 +593,11 @@ medk bench outputs (5 same-node runs): TTFT p99 CV 0.65 (3.98× spread) vs decod
 than decode metrics → coin-flip is prefill-tail-SPECIFIC (the exact metric the community uses), corroborating
 the K·t prefill-serialization mechanism (§2.4). Added §5.2, committed eccd7cd2b. Contract-clean, no GPU.
 NOTE: bench captures E2E mean+median (not p99) + ITL p99 — E2E mean=34s vs median 3.3s confirms heavy E2E tail.
+
+### §6 measurement-rigor grounding (2026-07-13 ~10:52Z, contract-clean)
+Found real related-work gap: measurement paper lacked the systems-measurement-rigor lineage. Added Georges
+(OOPSLA'07 statistically-rigorous benchmarking), Mytkowicz (ASPLOS'09 measurement bias), Kalibera&Jones
+(ISMM'13 repetitions-for-rigor) — positions contribution in that tradition + sharpens novelty: goodput@SLO is
+METASTABLE not just noisy → variance doesn't shrink w/ replication near knee (required-k diverges §5.5),
+median-of-k insufficient. Committed 6949cfc46. Recent productive run: required-k + dual-nature + SLO-rebuttal
++ metric-localization + measurement-rigor — all genuine gaps, contract-clean, mostly GPU-free.

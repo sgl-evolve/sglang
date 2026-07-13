@@ -76,8 +76,10 @@ touch, and across all five same-node A/Bs the hit gain (−1.0…+2.8&nbsp;pp) a
 identical stock runs). So goodput@SLO is <b>immune to the entire retention/eviction mechanism class</b> — even
 an oracle (Bélády) policy would leave it unchanged — not merely to our mechanism, and not merely because the
 metric is noisy. Hit-rate, mean TTFT, and moderate-load throughput are the right yardsticks for a cache
-mechanism (and even they move by variance-affected margins, so we report ranges, not point claims); the
-goodput headroom lives on the <i>cold-miss path</i>, not in retention.
+mechanism (and even they move by variance-affected margins, so we report ranges, not point claims). Because a
+cold document has no KV to reload or dedup and its prefill is compute-bound, goodput@SLO here is in fact close
+to a <i>lossless-mechanism invariant</i> — movable only by scheduling under an explicit fairness trade, or by
+faster compute, not by any caching mechanism.
 </div>
 
 <h2>1&nbsp;&nbsp;Introduction</h2>
@@ -129,9 +131,10 @@ prompt tokens are irreducibly cold; every conversation's first turn plus 38% sin
 which no lossless retention can touch; and (ii) empirically, across all five same-node A/Bs the hit gain
 (−1.0…+2.8&nbsp;pp) and the p99 change (−61…+127%) are decoupled (<i>r</i>²≈0.09), the tail dominated by
 node/run variance that flips goodput 0↔3.0 across identical stock runs. Even an oracle (Bélády) policy would
-leave goodput@SLO where it is. Corollary: the goodput headroom lives on the <i>cold-miss path</i>
-(transfer/compute overlap, prefill admission/scheduling), not in retention — hit-rate is the robust
-cache-mechanism metric.</li>
+leave goodput@SLO where it is. Corollary (sharpened): because a cold document has no KV to reload or dedup and
+its prefill is compute-bound, goodput@SLO here is close to a <i>lossless-mechanism invariant</i> — movable only
+by scheduling under an explicit fairness trade (SJF/SRPF, excluded here) or by faster compute, not by any
+caching mechanism; hit-rate is the robust cache-mechanism metric.</li>
 </ul>
 
 <h2>2&nbsp;&nbsp;Motivation (trace-driven)</h2>
@@ -606,9 +609,17 @@ cold-document first-compute that no lossless retention can touch (§5.2, above) 
 unlinked from the hit gain (Table&nbsp;3), goodput@SLO on this workload is immune to the <i>entire</i>
 retention/eviction mechanism class — not only to our mechanism, and not only because the metric is noisy. Even
 an oracle (Bélády) retention policy, which by definition maximizes the hit-rate lever, would leave the
-cold-first-compute tail — and therefore goodput@SLO — where it is. The corollary points elsewhere for goodput:
-the headroom on the SLO-defining tail lives on the <i>cold-miss path</i> (transfer/compute overlap, prefill
-admission and chunk scheduling, cross-request dedup of near-identical documents), not in what KV is retained.</p>
+cold-first-compute tail — and therefore goodput@SLO — where it is. <b>The corollary sharpens the negative into
+a near-invariance.</b> A cold document — never seen before — has <i>no</i> cached KV to transfer, overlap, or
+dedup, and its prefill is compute-bound at the frozen chunk size, model, and hardware. So even the cold-miss
+levers that move <i>other</i> tails do not apply to this one: Strata-style load/compute overlap helps
+<i>warm</i> reloads (there is nothing to reload for a cold document), and cross-request dedup needs
+near-duplicate documents (this workload has no cross-conversation sharing). Within a lossless,
+fairness-preserving, fixed-budget engine, goodput@SLO here is therefore reducible only by <i>faster
+per-document prefill</i> (kernel/hardware — outside this budget) or by <i>reordering to prioritize the tail</i>
+(which trades TTFT fairness and is excluded by the protocol as SJF/SRPF). goodput@SLO is thus not merely
+retention-immune but close to a <i>lossless-mechanism invariant</i> on this workload; the only lever that
+remains is scheduling policy under an explicit fairness trade, not caching.</p>
 <p><b>The immunity generalizes to a testable condition, not just this workload.</b> Retention (and eviction
 order) can only shrink <i>reuse-recompute</i> — the re-prefill of already-seen prefixes. So goodput@SLO is
 immune to the retention/eviction class <b>whenever the SLO-defining tail is dominated by cold first-compute
@@ -623,8 +634,10 @@ largest cold prefill, or (b) a reuse-recompute-dominated tail — a tighter cach
 fraction, so that evicted-then-reused continuations, not cold documents, become the slowest requests. Case (b)
 is the same undersized-cache axis on which §7 predicts the hit gain itself grows: retention regains traction on
 goodput exactly where the tail stops being cold-bound. This turns the negative into a positive design rule —
-<i>match the mechanism class to what sets the tail</i>: retention for reuse-recompute tails, the cold-miss path
-for cold-first-compute tails.</p>
+<i>match the mechanism class to what sets the tail</i>: retention/eviction for reuse-recompute tails;
+load/compute overlap or dedup for warm-reload or duplicate-content tails; and for a cold-first-compute tail
+like this one, only scheduling under an explicit fairness trade (or faster compute) can move goodput@SLO —
+caching cannot.</p>
 
 <h2>6&nbsp;&nbsp;Related work</h2>
 <p><b>Strata</b> (2025) attacks the data plane and scheduler: GPU-assisted I/O to defragment transfers and

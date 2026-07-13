@@ -630,6 +630,20 @@ per-document prefill</i> (kernel/hardware — outside this budget) or by <i>reor
 (which trades TTFT fairness and is excluded by the protocol as SJF/SRPF). goodput@SLO is thus not merely
 retention-immune but close to a <i>lossless-mechanism invariant</i> on this workload; the only lever that
 remains is scheduling policy under an explicit fairness trade, not caching.</p>
+<p><b>Even the one non-reorder scheduling lever has no headroom — the SLO regime is prefill-compute-bound.</b>
+One might hope to cut the cold-document TTFT without reordering by giving prefill priority over decode (a
+fairness-neutral scheduling change). We measured the batch mix from the server logs: at λ=3 — the only rate
+that can pass the 8&nbsp;s SLO, so the rate that <i>defines</i> goodput here — <b>85.8% of batches are prefill</b>
+(6.1:1 prefill:decode), rising to <b>97.8%</b> at λ=10; and each prefill batch is a single long document chunked
+at the frozen 6144-token limit, run back-to-back. Because a 6144-token prefill batch costs far more GPU-time
+than a 256-sequence decode step, decode's share of GPU <i>time</i> is smaller still — so eliminating decode
+entirely would speed prefill by a few percent at most, nowhere near the ≈3× a 12–27&nbsp;s cold-document TTFT
+needs to reach 8&nbsp;s. The engine already spends essentially all of the SLO-deciding regime on prefill; there
+is nothing to reprioritize. A cold document's TTFT is set by its own prefill compute plus the FIFO prefill
+backlog ahead of it — reducible only by <i>reordering</i> that backlog (SJF/SRPF, excluded and fairness-costly)
+or <i>faster prefill kernels</i> (out of this fixed budget). This closes the last lever with direct evidence:
+goodput@SLO here is prefill-compute-bound, and no lossless, fairness-preserving, in-budget mechanism — cache or
+scheduler — moves it.</p>
 <p><b>The immunity generalizes to a testable condition, not just this workload.</b> Retention (and eviction
 order) can only shrink <i>reuse-recompute</i> — the re-prefill of already-seen prefixes. So goodput@SLO is
 immune to the retention/eviction class <b>whenever the SLO-defining tail is dominated by cold first-compute

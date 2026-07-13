@@ -64,24 +64,33 @@ def required_k(pool, target=0.95, kmax=25, experiments=4000, seed=42):
             kk = k; verdict = "goodput=3" if f3 >= 0.5 else "goodput=0"
     return kk, verdict, rows
 
-if __name__ == "__main__":
-    pool = []
-    pool += from_medk(os.path.join(ROOT, "runs", "v0-medk", "summary.json"))
-    pool += from_medk(os.path.join(ROOT, "runs", "v0-medk-bign", "summary.json"))
-    pool += from_stock_curve(os.path.join(ROOT, "runs", "v0-stock", "summary.json"))
+def report_pool(label, pool):
     pool = [x for x in pool if x and x > 0]
     n = len(pool)
     if n < 3:
-        print("NOT ENOUGH DRAWS yet (n=%d) -- run medk_bign_eval.sh first" % n); sys.exit(0)
+        print(f"## {label}: NOT ENOUGH DRAWS (n={n})"); return
     med = st.median(pool); sd = st.pstdev(pool)
     m = abs(SLO - med); npass = sum(1 for x in pool if x <= SLO)
-    print(f"# EMPIRICAL required-k (ondem-3, stock, n={n} cold lambda=3 draws)")
-    print(f"# p99(ms): sorted = {sorted(round(x) for x in pool)}")
-    print(f"# median={med:.0f}ms  min={min(pool):.0f}  max={max(pool):.0f}  pstdev={sd:.0f}ms")
-    print(f"# margin m=|SLO-median|={m:.0f}ms  sigma/m={sd/m if m>1 else float('inf'):.2f}  "
-          f"pass_frac={npass/n:.2f} ({npass}/{n})  spread={max(pool)/min(pool):.1f}x")
+    print(f"## {label}  (stock, n={n} cold lambda=3 draws)")
+    print(f"#  p99(ms) sorted = {sorted(round(x) for x in pool)}")
+    print(f"#  median={med:.0f}ms  min={min(pool):.0f}  max={max(pool):.0f}  pstdev={sd:.0f}ms  "
+          f"spread={max(pool)/min(pool):.1f}x")
+    print(f"#  margin m=|SLO-median|={m:.0f}ms  sigma/m={sd/m if m>1 else float('inf'):.2f}  "
+          f"pass_frac={npass/n:.2f} ({npass}/{n})")
     kk, verdict, rows = required_k(pool)
-    print(f"# bootstrap median-of-k agreement (target 95%):")
+    print(f"#  bootstrap median-of-k agreement (target 95%):")
     for k, f3 in rows:
-        print(f"    k={k:2d}  P(goodput=3)={f3:.3f}  P(=0)={1-f3:.3f}  {'<-- 95% resolved' if (kk==k) else ''}")
-    print(f"# REQUIRED-K (95%): {kk if kk else '>%d (UNRESOLVED)'%rows[-1][0]}   verdict={verdict}")
+        mark = '  <-- 95% resolved' if (kk == k) else ''
+        print(f"     k={k:2d}  P(goodput=3)={f3:.3f}  P(=0)={1-f3:.3f}{mark}")
+    print(f"#  REQUIRED-K (95%): {kk if kk else '>%d (UNRESOLVED)'%rows[-1][0]}   verdict={verdict}\n")
+
+if __name__ == "__main__":
+    # ondem-3 same-node stock pool (medk K=5 + any bign draws + the original v0-stock lambda=3 point)
+    ondem3 = (from_medk(os.path.join(ROOT, "runs", "v0-medk", "summary.json"))
+              + from_medk(os.path.join(ROOT, "runs", "v0-medk-bign", "summary.json"))
+              + from_stock_curve(os.path.join(ROOT, "runs", "v0-stock", "summary.json")))
+    # node1-2 same-node stock pool (medk-n2 K=5)
+    node12 = from_medk(os.path.join(ROOT, "runs", "v0-medk-n2", "summary.json"))
+    print("# EMPIRICAL required-median-of-k, PER NODE (same-node stock cold lambda=3 draws)\n")
+    report_pool("ondem-3", ondem3)
+    report_pool("node1-2", node12)

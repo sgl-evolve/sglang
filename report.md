@@ -585,3 +585,11 @@ where it coin-flips). Major objections now all covered (node confound, single-wo
 sufficiency, stable-gains-from-noise, why-not-mechanism, model-overclaim, dual-nature, SLO-arbitrariness).
 Remaining conceivable objections = contract-fixed params (chunk-size/concurrency/num-prompts, forbidden to
 change) — marginal. Paper argumentatively well-defended. Contract-clean, no new experiments.
+
+### §5.2 metric-localization (2026-07-13 ~10:45Z, GPU-free, existing data)
+"Bolder angle" (metric-generality): does the coin-flip affect other tail metrics? Extracted from existing
+medk bench outputs (5 same-node runs): TTFT p99 CV 0.65 (3.98× spread) vs decode-influenced E2E-mean CV 0.22
+(1.9×), ITL-p99 CV 0.19 (1.6×). ⇒ metastability CONCENTRATED in the prefill (TTFT) tail — ~3× more variable
+than decode metrics → coin-flip is prefill-tail-SPECIFIC (the exact metric the community uses), corroborating
+the K·t prefill-serialization mechanism (§2.4). Added §5.2, committed eccd7cd2b. Contract-clean, no GPU.
+NOTE: bench captures E2E mean+median (not p99) + ITL p99 — E2E mean=34s vs median 3.3s confirms heavy E2E tail.

@@ -1,6 +1,6 @@
 # Self-PC-review — "The Turn-0 Size Signal: Observable Liveness for KV Eviction under a Metastable Tail-SLO" (wilkes, v0.31)
 
-Adversarial read as a skeptical top-venue PC, for DRAFT v0.2 (reframed from the earlier bounded-impossibility once
+Adversarial read as a skeptical top-venue PC, for DRAFT v0.3 (reframed twice from the earlier bounded-impossibility once
 the size signal was found). Each point: the attack, then the paper's defense / action.
 
 ## Summary judgment
@@ -34,11 +34,11 @@ retracted as more data arrived.)
 **W2 — the p99 improvement is metastable queue-timing, not a real mechanism.**
 Attack: if p99 is decoupled from recompute (you say so yourself), how is whale's lower p99 a mechanism and not a
 lucky draw?
-Defense: the claim is that whale shifts the p99 DISTRIBUTION down (median ~40% lower, Mann-Whitney p≈0.033), not
-that any single run is guaranteed lower. p99 is a queue draw, so we characterize it distributionally — and the
-metastability itself is a first-class finding (it makes single-run A/Bs on this metric unreliable, which we
-demonstrate: a whale run that recomputed MORE than LRU still had a lower p99; and both policies show rare high
-draws). The mechanism claim is scoped as "size-ranked victim choice shifts the typical p99," honestly bounded.
+Defense: we do NOT claim it as a mechanism win. On nodeset-0 whale shifted the p99 distribution down (median
+−45%, p≈0.026), but p99 is a queue draw decoupled from recompute (a whale run that recomputed MORE than LRU still
+had a lower p99), and across nodes the effect has no stable sign (§5.6). The metastability itself is the
+first-class finding — it makes single-run and single-node A/Bs on this metric unreliable — which is exactly why we
+report the online effect as weak/node-dependent, not a mechanism win.
 
 **W3 — the offline −23% recompute does not materialize on GPU; is the size signal actually useless?**
 Attack: your headline offline number evaporates online.
@@ -57,8 +57,9 @@ worst whale run shows the waiting-queue depth is unchanged vs LRU (mean 3.7 vs 3
 running-batch composition at prefill admission (whale p50 21 vs LRU p50 246) and the count of large prefills
 (−10%), but we do not claim a definite microscopic pathway; the paper (§4.2/§5.5/§9) now states this explicitly
 and scopes the exact timing cause as future work. We deliberately retracted the earlier "reduces queueing" wording
-once the wq trace refuted it — the empirical claim (whale robustly lowers median TTFT, losslessly, not via hit
-rate) stands independent of the unresolved mechanism.
+once the wq trace refuted it. Moot in the end: since the online p99 effect is itself weak/node-dependent (§5.6),
+we make no portable mechanism claim — the robust results are the deterministic offline size-signal and the
+metastability caution, neither of which depends on isolating an online scheduling pathway.
 
 **W5 — AUC 0.78 is imperfect; size-ranked eviction will wrongly drop big continuers.**
 Attack: 22% of the ranking is wrong; you will evict live big-turn-0 conversations.
@@ -86,18 +87,19 @@ nodeset-0, but 3 nodes already establish sign-instability.
   offline it is uniquely sufficient among causal victim rules. (pending)
 - Reproducibility §8: add whale run dirs (runs/whale-full, whale-r2..r6) + the simulate.py whale branch commit. (pending)
 
-## Outcome at n=6 whale / n=4 LRU (resolved, two self-corrections)
-- The TYPICAL p99 reduction held (median ~40% lower, Mann-Whitney p≈0.033, 5/6 whale below LRU's best) — the
-  SLO-relevant, significant result.
-- Two self-corrections the added replicates forced: (a) the "median-TTFT win" was retracted after lru-r3 (LRU's
-  median is highly variable, one run below whale); (b) the "fully separated p99 (p≈0.029)" was downgraded after
-  whale-r6 hit 26.6 s — whale has rare high-metastable draws too, so the p99 distributions overlap at the top.
-  The honest claim is a distributional (typical) reduction, not full separation or a per-run guarantee.
-- What would still change the verdict: a certified-node whale-vs-LRU pairing failing to reproduce the typical p99
-  reduction → GPU effect node-dependent (no stable sign); the offline size-signal result (deterministic) would still stand.
+## Outcome (resolved; a chain of self-corrections)
+- On nodeset-0 the whale p99 reduction was significant (median −45%, Mann-Whitney n=6/n=5, p≈0.026), but the
+  three-node cross-node test showed it has NO STABLE SIGN (lower on 2/3 nodes, reversed on 1) → weak/node-dependent,
+  not portable. The robust, SLO-relevant contributions are the deterministic offline size-signal and the cross-node
+  metastability caution.
+- Self-corrections the replication forced, in order: cold-doc-floor prediction → median-TTFT win (lru-r3) →
+  full-separation p≈0.029 (whale-r6 high draw) → node-portability (certified 0-3) → refined to node-dependent
+  sign-instability (3-node) — plus the earlier "reduces-queueing" mechanism (wq trace) and the whole
+  bounded-impossibility framing. Each retracted as more data arrived.
 
-## Resolution status (v0.2, updated 2026-07-13)
-- Reframed from bounded-impossibility → size-signal after discovering AUC 0.78 + offline whale unique-capture; the
-  earlier "liveness unobservable" premise is RETRACTED (self-caught hole).
-- W1: n=6 whale / n=4 LRU done; headline is the typical p99 reduction (p≈0.033), overlapping tails stated.
+## Resolution status (v0.3, updated 2026-07-13)
+- Reframed twice: bounded-impossibility → size-signal (AUC 0.78 + offline unique-capture) → insight+caution after
+  the 3-node cross-node test retracted the portable online win.
+- W1: 3 nodes done; headline is the deterministic offline size-signal + the cross-node metastability (no stable
+  sign across nodes) — the online whale advantage is weak/node-dependent, not claimed as portable.
 - OPEN: certified confirmation (W6, job queued on contended pool), direct scheduling-mechanism trace (W4).

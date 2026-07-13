@@ -505,6 +505,22 @@ A flaky node, thermal throttling, or I/O contention would inflate the median too
 which is the signature of a small set of large cold-prefills catching a good-vs-bad queue moment. The portable, robust
 contributions are the offline size-signal analysis (§4.2, deterministic) and this cross-node metastability
 characterization. (Certified-pool contention limited us to n=2–3/node beyond nodeset-0.)</p>
+
+<p><b>The metastability is execution-driven on a byte-identical workload — the sharpest form of the caution.</b>
+The benchmark fixes the RNG seed (<code>seed=1</code>) and disables shuffling, so the request content, order, and
+nominal Poisson arrival schedule are identical across every run. This is not an assumption: pooling <b>all 21
+full-throughput λ=3 runs</b> (every policy, all three nodes), each completes exactly <b>7037 requests</b> with total
+input tokens agreeing to <b>within 0.016%</b> (99.870M–99.886M). On this fixed workload the p99 TTFT spans
+<b>5.9–31.2 s (5.3×)</b>, while the median TTFT is pinned to <b>528–574 ms (1.1×)</b> and throughput to
+<b>3.022–3.024 req/s</b>. Identical input, constant body latency, constant throughput — yet a 5.3× tail. The
+variance is therefore not workload draw but <i>execution nondeterminism</i> (GPU kernel-scheduling and
+cache-eviction-race timing, amplified by the closed-loop multiturn arrival feedback, in which a request's next-turn
+arrival depends on the current turn's engine-timed completion) landing a few large cold prefills at good-versus-bad
+queue moments. It also swamps the policy signal: the whale (6.2–26.6 s) and LRU (5.9–31.2 s) p99 ranges overlap
+almost entirely, so the between-policy difference is a small fraction of the within-policy execution variance —
+precisely why a single A/B, even same-node and even replicated, cannot be trusted for this metric. This is a
+first-class systems finding: <b>goodput@SLO under a metastable tail is an execution-variance–dominated metric, and
+must be evaluated with multi-node median-of-k, never a single run.</b></p>
 <p><img src="fig5_crossnode.svg" alt="λ=3 p99 whale vs LRU across 3 nodes: whale below LRU on nodeset-0 and 1-2 but reversed on 0-3 (metastable)" style="max-width:100%"></p>
 
 <h2>6 Related work</h2>
@@ -612,7 +628,10 @@ whale-vs-lru comparison via <code>trace_analyze.py</code>; peak-live-KV, turn-0�
 turn-0-size→continuation AUC (0.78) and the offline 7-policy victim-choice replay (lru/lfu/slru/car 0%, fifo/mru/
 size-only catastrophic, whale −23% capture)
 via <code>sim/simulate.py</code>; Belady headroom + Fig 3 via <code>sim/gen_figures.py</code>; the λ=3 per-run
-whale-vs-lru-vs-car TTFT figure (Fig 4) via <code>sim/fig_whale.py</code>; the cross-node p99 figure (Fig 5) via <code>sim/fig_crossnode.py</code>; workload facts via
+whale-vs-lru-vs-car TTFT figure (Fig 4) via <code>sim/fig_whale.py</code>; the cross-node p99 figure (Fig 5) via <code>sim/fig_crossnode.py</code>;
+the deterministic prefill-contention analysis (§9d: measured in-flight intervals → concurrency vs effective rate)
+via <code>sim/prefill_contention.py</code>; the fixed-workload metastability audit (§5.6: 21 runs, completed/Σinput
+invariance vs 5.3× p99) from the per-run <code>bench_r3.json</code>; workload facts via
 <code>sim/build_trace.py</code> / <code>sim/prefill_tail.py</code>.
 W&B evolution curve: project <code>sgl-evolve</code>, run <code>wilkes</code>.</p>
 
@@ -638,13 +657,23 @@ implications: (a) the correct residency <i>signal</i> is size-among-unproven, no
 transferable finding); (b) but online, residency is gap-capped and the tail-SLO metric is so metastable that even a
 same-node replicated A/B does not establish a portable policy win — <b>tail-SLO cache evaluation demands multi-node
 median-of-k, not single-node A/Bs</b>; (c) durable recompute wins require closing the reuse gap (larger effective
-capacity / cross-request sharing) or the prefill/context bound (raising P, lossy context reduction); (d) since the
-p99 instability is a queue-<i>tail</i> effect (the body is stable) driven by large cold prefills coinciding with —
-and compounding — queue congestion (in the trace, queue depth at large-prefill admissions is 2× the mean, and the
-most-congested moments admit 2.5× larger prefills), the most promising lever against goodput@SLO variance is not
-residency but <i>admission/prefill scheduling</i> — staggering or rate-limiting concurrent large cold prefills so
-they do not pile onto the tail — which our size signal (a cheap at-admission classifier of large cold documents) is
-well-suited to drive; we leave this to future work. The
+capacity / cross-request sharing) or the prefill/context bound (raising P, lossy context reduction); (d) the
+p99 instability is a queue-<i>tail</i> effect (the body is stable), and we localize it — it is <b>not</b>
+prefill-execution contention. We implemented a lossless admission-staggering mechanism (cap concurrent large cold
+prefills per prefill batch, deferring extras to a later batch; <code>SGLANG_WILKES_MAXBIG</code>, off by default) and
+tested its premise <i>deterministically</i> on the trace. At λ=3 large prefills almost never co-execute: peak
+concurrency is 2, only 15–17% of ≥20K-token prefills overlap another, and overlapping ones prefill at essentially
+the solo rate (≤1.04× slower); prefill throughput is near-constant at ~35K tok/s (a mild ≤17% chunk-budget penalty
+appears only at the rare 3-way overlap). A concurrent-count cap therefore has almost nothing to bite on: the
+large-prefill effect on the tail is not big-vs-big execution contention but the admission-<i>wait</i> it imposes on
+other requests (queue depth at large-prefill admissions is 2× the mean while the prefills themselves run at full
+speed). The tail is thus an admission-queue timing phenomenon, decoupled from <i>both</i> cache hit rate (§5.5) and
+prefill-execution contention (this analysis) — which is why neither residency nor admission-count staggering is a
+robust lever, and why on a byte-identical workload the tail still swings 5.3× (§5.6). A remaining candidate lever is
+memory-pressure-gated admission or added effective capacity, but the execution-variance dominance bounds what any
+single-node experiment can establish. (This is our final self-correction: the "admission-staggering is the promising
+lever" conjecture of the earlier draft is refuted by our own deterministic analysis, mirroring the residency
+gap-cap — both scheduling axes are dead ends for this metastable tail.) The
 methodological tools — the conversation-id tail decomposition, the two-bound goodput model, the size-observability
 analysis + offline-replay victim-choice test, and the cross-node metastability protocol — transfer to any
 tiered-cache tail-SLO setting where reuse is separated from production by a load-dependent gap.</p>

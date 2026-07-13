@@ -1235,3 +1235,48 @@ Refine §9(d)/§5.6: "large cold prefills coinciding with & compounding queue co
 "bursts" (CV≈1 refutes clustering). 8th self-correction (verified my own asserted mechanism, corrected the framing).
 Admission-staggering future-work still valid (spreading frequent big prefills decongests), just not framed as
 de-bursting. Non-GPU, from existing trace.
+
+## 83. ★★ NEW THREAD: testing the §9(d) admission-staggering mechanism (could convert null→online WIN)
+Implemented lossless admission-staggering (schedule_policy.py add_one_req, env SGLANG_WILKES_MAXBIG, off by
+default, committed 2245d7947): cap concurrent large(≥BIGTOK uncached) prefills per prefill batch, defer extras
+(empty-batch always admits → no starvation). Targets the VERIFIED bottleneck (§82: large prefills coincide with/
+compound queue congestion). Test on idle certified 1-2: stag1/2/3 = LRU+MAXBIG=1 vs plain-LRU (lruB3 + existing
+1-2 lru {21907,8089}) → same-node median-of-k (n=3 each; metastability demands it). Jobs 19665-68, scancel-after-
+λ3, SERIAL (avoid flashinfer JIT race). HYPOTHESIS: staggering caps per-batch prefill duration → fewer/smaller p99
+spikes → lower/stabler p99 than plain LRU. If robust → ONLINE mechanism WIN (the admission axis succeeds where
+residency was gap-capped) → upgrades paper insight+caution → +solution. If metastable-null → admission axis ALSO
+succumbs (still informative, reinforces caution). Honest either way. stag1 λ=3 ~50min. Node 1-2 idle (siblings on
+other nodes); ondem-3 also idle if I need parallelism (separate flashinfer cache).
+
+## 84. ★★ TWO major results this session: (A) fixed-workload metastability (definitive), (B) admission-staggering premise REFUTED deterministically (9th self-correction)
+Both NON-GPU, from existing traces/bench jsons across ~25 runs. Sharpen the paper's central caution AND close the
+§9(d) admission direction honestly.
+
+**(A) The metastability is EXECUTION-driven on a BYTE-IDENTICAL workload (definitive form of the caution).**
+eval.sh passes NO --seed → hicache bench_serving default seed=1, and --disable-shuffle → content+order+nominal
+Poisson arrival schedule IDENTICAL every run. Verified: all 21 full-throughput λ=3 runs (every policy, 3 nodes)
+complete EXACTLY 7037 requests, total_input_tokens agree to within 0.0156%. On this fixed workload: p99 TTFT spans
+5.9–31.2s (5.3×) while MEDIAN TTFT pinned to 528–574ms (1.1×) and throughput pinned to 3.022–3.024. Identical input,
+constant body, constant throughput, 5.3× tail ⇒ execution nondeterminism (GPU kernel-sched + eviction-race timing,
+amplified by closed-loop multiturn arrival feedback), NOT workload draw. Also swamps policy: whale [6.2–26.6s] &
+LRU [5.9–31.2s] p99 ranges OVERLAP almost entirely. This is the strongest possible statement of "single-run/single-
+node A/Bs void for this metric." Added to §5.6 (new capstone para) + reviews W7. (Prior W7 used within-run
+median-vs-p99 on a few runs; now n=21, workload-identity rigorously established.)
+
+**(B) Admission-staggering (§9d) premise REFUTED by deterministic trace analysis (sim/prefill_contention.py).**
+Measured in-flight prefill intervals from trace.rank0 (chunked prefill emits lines with DECREASING uncached; rid
+in-flight while uncached>0; effective rate=unc/duration). If big prefills piled up & shared chunk budget, overlap
+→ rate drop. RESULT (whale-full & cert-lru-full, λ=3): big(≥20K) prefills peak concurrency = **2**, only 15–17%
+overlap another big, and overlapped bigs prefill at ~SOLO rate (36118 vs 35278 = **1.02×**). General (≥2000tok):
+peak concurrency 3; rate 36.3K→33.8K→30.1K tok/s at conc 0→1→2 (mild ≤17%, and conc=2 is rare n=16). ⇒ prefill
+throughput near-CONSTANT ~35K tok/s; there is NO big-vs-big execution pileup to stagger. My MAXBIG cap has almost
+nothing to bite on → predicted near-no-op (consistent with stag1=6264 being just an ordinary low LRU draw). The
+large-prefill effect on the tail is the admission-WAIT it imposes on OTHERS (memory occupancy → wq 2× per §82),
+NOT big-vs-big contention. **9th self-correction**: the earlier "admission-staggering is the promising lever"
+conjecture is refuted by my own deterministic analysis. §9(d) rewritten: the tail is an admission-queue TIMING
+phenomenon, decoupled from BOTH cache-hit (§5.5) AND prefill-execution contention (this) → neither residency nor
+admission-count staggering is a robust lever → coheres with (A)'s 5.3× fixed-workload swing. This TIGHTENS the paper
+into a well-bounded negative: the metastable tail-SLO is not addressable by cache residency OR prefill-admission
+scheduling, shown deterministically WHY for each; the one constructive deterministic result stays the turn-0 size
+signal (offline unique Belady capture, online gap-capped). GPU stag n=3 vs plain n=3 on 1-2 still running as
+confirmation (expect within-band null, matching the deterministic no-op prediction).

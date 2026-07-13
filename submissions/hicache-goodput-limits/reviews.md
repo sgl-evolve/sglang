@@ -82,12 +82,17 @@ nodeset-0, but 3 nodes already establish sign-instability.
 **W7 — is the metastability a real system property or an eval-harness/node-health artifact?**
 Attack: nodeset-0 was flagged flaky; maybe the huge p99 swings are throttling / NFS / neighbor noise, not a real
 queue property — which would undercut the central caution.
-Defense: it is a genuine queue-TAIL phenomenon. Across the same runs whose p99 swings 4–5×, the median TTFT (body)
-moves only 1.1–1.6× (LRU 534–876 ms, whale 528–568 ms). A flaky node / thermal throttle / I/O contention would
-inflate the median too; instead only the tail moves — the signature of a few large cold-prefills catching a
-good-vs-bad queue moment. It also appears on all three nodes (not one flaky node) and under --exclusive (no
-neighbor). So the metastability is intrinsic to the prefill-queue dynamics of this tail-SLO workload, not an
-artifact. (§5.1 and §5.6.)
+Defense: it is a genuine queue-TAIL phenomenon on a BYTE-IDENTICAL workload. The benchmark fixes the RNG seed
+(seed=1) and disables shuffle, so content, order, and nominal arrival schedule are identical every run — verified:
+all 21 full-throughput λ=3 runs (every policy, 3 nodes) complete exactly 7037 requests with total input tokens
+agreeing to within 0.016%. On this fixed workload p99 spans 5.9–31.2 s (5.3×) while the MEDIAN TTFT is pinned to
+528–574 ms (1.1×) and throughput to 3.022–3.024 req/s. Identical input, constant body, constant throughput, 5.3×
+tail. A flaky node / thermal throttle / I/O contention would inflate the median and throughput too; instead ONLY
+the tail moves — the signature of a few large cold-prefills catching a good-vs-bad queue moment (execution
+nondeterminism amplified by closed-loop multiturn arrival feedback). It appears on all three nodes and under
+--exclusive (no neighbor). So the metastability is intrinsic to the prefill-queue dynamics, not a node-health or
+harness artifact — it is execution-variance, not workload variance. (§5.6.) This is also why the whale (6.2–26.6 s)
+and LRU (5.9–31.2 s) p99 ranges overlap: the policy signal is a small fraction of the execution variance.
 
 ## Minor
 - §5.3 could add a one-line bridge to §5.5 ("the grace-trap motivates changing the SIGNAL, not the retention time

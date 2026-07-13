@@ -1333,3 +1333,16 @@ fires only after turn N completes — confirmed in bench_serving.py), which is a
 measurement. Suggestive divergence evidence kept here (report) as internal corroboration, not a paper claim.
 VERDICT unchanged: paper v0.4 is COMPLETE + hardened; HOLD/MAINTAIN. This is the honest limit of what the existing
 data + the (untrustworthy) metric permit.
+
+## 88. ★ v0.5 — crystallized the contribution into a boxed NO-GO CRITERION (§9); paper positioning strengthened
+The three established pillars (residency gap-capped §4.2/§5.5, admission no-pileup §9d, execution-variance-dominated
+tail §5.6) were DISTRIBUTED across sections — no single quotable central claim. Synthesized them into ONE boxed
+proposition (§9, class="prop"): "no lossless residency/admission mechanism yields a CERTIFIABLE goodput@SLO gain
+when (1) reuse gap-dominated G/R≈5, (2) no prefill co-execution contention, (3) execution-variance-dominated tail;
+remaining lossless levers (capacity R>G, prefill P) are ORTHOGONAL to eviction/admission." Surfaced in abstract +
+reviews summary + INDEX. Writing-only, deterministic, faithful synthesis of what's already proven — no new
+experiments, no new data. Carefully scoped to avoid over-claim: "certifiable" (condition 3 = identifiability, not
+proven non-existence), names the escape levers → BOUNDED no-go, not absolute impossibility. This gives the
+bounded-negative paper a memorable central result (the thing a PC remembers), which is exactly what elevates such a
+paper toward top-venue. Committed 77016ff45. Paper v0.5. VERDICT: this was the right kind of remaining work
+(synthesis/positioning, zero-risk, honest); further additions would be diminishing returns. HOLD/MAINTAIN.

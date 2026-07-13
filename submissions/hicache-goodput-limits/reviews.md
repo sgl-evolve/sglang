@@ -6,7 +6,12 @@ the size signal was found). Each point: the attack, then the paper's defense / a
 ## Summary judgment
 The paper is now an INSIGHT + CAUTION + BOUNDED-NEGATIVE paper (the online mechanism claim was retracted under
 cross-node testing; v0.4 adds execution-driven metastability + a deterministic refutation of the admission axis, so
-BOTH scheduling axes are shown dead-end). Spine:
+BOTH scheduling axes are shown dead-end). v0.5 crystallizes the three established pillars into a single quotable
+NO-GO CRITERION (§9, boxed): no lossless residency/admission mechanism yields a certifiable goodput@SLO gain when
+(1) reuse is gap-dominated (G/R≈5), (2) prefill has no co-execution contention, (3) the tail is
+execution-variance-dominated — remaining lossless levers (capacity so R>G; prefill bound P) are orthogonal to
+eviction/admission. Carefully scoped: "certifiable" (condition 3 is about identifiability, not proven non-existence)
+and it names the escape levers, so it is a bounded no-go, not an absolute impossibility. Spine:
 (a) the p99 tail is avoidable recompute over a live set that fits (chash + peak-live-KV); (b) CONSTRUCTIVE,
 DETERMINISTIC: liveness is partially observable at the eviction decision point via turn-0 SIZE (AUC 0.78), and in
 an offline replay size-among-unproven eviction with proven-protection is the UNIQUE causal victim rule capturing

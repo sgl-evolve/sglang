@@ -1217,3 +1217,11 @@ only the tail moves → genuine queue-tail phenomenon (few large cold-prefills c
 an artifact. Also: all 3 nodes show it, --exclusive (no neighbor). Added to §5.6 + reviews W7. Preempts the
 "is it just a flaky harness?" attack on the now-central metastability claim. Paper's central result is now
 defended against its strongest counter, from existing data (no GPU).
+
+## 81. ★ Constructive forward link: size signal → admission-STAGGERING as the lever vs p99 metastability (§9(d))
+Added §9 implication (d): since the p99 instability is a queue-TAIL effect (body stable) from bursts of large cold
+prefills, the lever against goodput@SLO VARIANCE is admission/prefill SCHEDULING (stagger/rate-limit concurrent
+large cold prefills), NOT residency — and the size signal (cheap at-admission large-cold-doc classifier) is
+well-suited to drive it. This connects the paper's two threads: the size signal, which failed as an online
+residency lever (gap-capped), points to a concrete online REMEDY for the metastability it can't fix via eviction.
+Turns the caution into an actionable future direction. Non-GPU (follows from established queue-tail finding).

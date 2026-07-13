@@ -638,7 +638,12 @@ implications: (a) the correct residency <i>signal</i> is size-among-unproven, no
 transferable finding); (b) but online, residency is gap-capped and the tail-SLO metric is so metastable that even a
 same-node replicated A/B does not establish a portable policy win — <b>tail-SLO cache evaluation demands multi-node
 median-of-k, not single-node A/Bs</b>; (c) durable recompute wins require closing the reuse gap (larger effective
-capacity / cross-request sharing) or the prefill/context bound (raising P, lossy context reduction). The
+capacity / cross-request sharing) or the prefill/context bound (raising P, lossy context reduction); (d) since the
+p99 instability is a queue-<i>tail</i> effect (the body is stable) driven by bursts of large cold prefills, the
+most promising lever against goodput@SLO variance is not residency but <i>admission/prefill scheduling</i> —
+staggering or rate-limiting concurrent large cold prefills so a burst cannot pile onto the tail — which our
+size signal (a cheap at-admission classifier of large cold documents) is well-suited to drive; we leave this to
+future work. The
 methodological tools — the conversation-id tail decomposition, the two-bound goodput model, the size-observability
 analysis + offline-replay victim-choice test, and the cross-node metastability protocol — transfer to any
 tiered-cache tail-SLO setting where reuse is separated from production by a load-dependent gap.</p>

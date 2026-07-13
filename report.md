@@ -496,3 +496,12 @@ Pool had idle capacity (all 3 held flocks FREE) → fair to run via overlap. Flu
 node where v0-stock-r3 PASSED at 6.79s in my cross-node n=3). Tests: is node0-3 reliably fast, or ALSO a
 coin-flip? Builds node×run grid row 2 (row 1 = ondem-3 medk 2/5 pass). Converts §7 limit ("K=5 for one node")
 → two-node result. nohup flock-overlap into hold 19542, OUT runs/v0-medk-n2/, stock write_through.
+
+### medk-n2 overlap attempt FAILED (hold timeout) — honest record (2026-07-13 ~05:16Z)
+The node0-3 overlap eval was KILLED at rep1 79% (0 complete draws) when node0-3's manager hold job (19542,
+~20h old) TIMED OUT (~23h lifecycle), terminating the --overlap step (pool log "DONE rc=0" but bench frozen
+at 5546/7037). No medk-n2 data produced. Cause = external pool instability (hold timeout kills overlap
+evals), NOT a design flaw. LESSON: overlap into held nodes is fragile for multi-hour runs; durable exclusive
+sbatch survives hold timeouts. Re-submitting medk-n2 as durable sbatch (fair-share queue). Paper stands
+complete WITHOUT it (§7 honestly states single-node limit); this is incremental (2nd-node grid row). Do NOT
+claim any 2-node result unless medk-n2 completes cleanly.

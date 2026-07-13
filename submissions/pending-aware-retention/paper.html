@@ -84,9 +84,10 @@ node-dependent (+2.2/+2.8&nbsp;pp on two nodes vs +0.4/+0.10&nbsp;pp on a third;
 another that crashed <i>despite</i> both attempted fixes). This is the core negative result.</li>
 <li>A <b>scheduler/tier analysis, tested on the real system</b> (the deeper insight): a single-tier sim makes
 the eviction gap look scheduler-created (FCFS 7–23&nbsp;pp, ≈0 under prefix-aware pull), but a same-node
-FCFS-vs-LPM A/B on the 122B system shows real hit is <b>scheduler-insensitive</b> (Δ&lt;0.5&nbsp;pp) while LPM
-worsens p99 by 41–65% — the 2-tier host absorbs eviction order, so <b>retention, not scheduling, is the hit
-lever</b>. What transfers is an arrival-order <b>recency-inversion</b> (ρ=+0.81 under the FIFO closed-loop
+FCFS-vs-LPM A/B on the 122B system shows real hit is <b>scheduler-insensitive</b> (Δ&lt;0.5&nbsp;pp, robust as
+hit is node-stable) while LPM does not improve the p99 tail at any rate (single-run deltas up to +41–65%,
+direction-consistent but of a magnitude within the documented p99 variance) — the 2-tier host absorbs eviction
+order, so <b>retention, not scheduling, is the hit lever</b>. What transfers is an arrival-order <b>recency-inversion</b> (ρ=+0.81 under the FIFO closed-loop
 pattern FCFS follows; independent of the cache-tier model: among queued continuations the LRU victim is the
 soonest-reused), which explains both why the narrow pending signal works and why broad recency-based retention
 (the post-completion ablation) does not. Reporting a directly-measured refutation of our
@@ -310,14 +311,18 @@ denylist). The prediction was that LPM would raise stock hit and shrink our gap 
 </table>
 <p class="note">Table 2. Same-node (ondem-2) stock FCFS vs stock LPM on the frozen 122B rate sweep.
 LPM never raises hit (flat to marginally lower at every rate — decisively not the +7&nbsp;pp the single-tier
-sim predicts) and worsens the p99 tail at every rate (+41–65% at moderate load, converging under saturation).</p>
+sim predicts) and does not improve the p99 tail at any rate. The <i>hit</i> comparison is robust (hit is
+node-stable to ≈0.5&nbsp;pp, §5.1); the <i>p99</i> deltas are single-run and of a magnitude comparable to the
+p99 run-to-run variance we document in §5.1, so we read the <b>consistent direction</b> (LPM ≥ FCFS p99 at all
+four rates, with a plausible starvation mechanism below) rather than the precise +41–65% magnitude.</p>
 <p><b>Interpretation — the 2-tier host absorbs eviction order, so retention (not scheduling) is the hit lever.</b>
 On the real system the L2 host layer is large enough that a prefix evicted from L1 still hits in L2, so hit-rate
 is nearly <i>insensitive to admission/eviction order</i>: FCFS and LPM land within 0.5&nbsp;pp at every rate. The
 sim's dramatic FCFS-vs-Bélády gap is thus a single-tier artifact — and it is the same reason our mechanism's
 realized gain (~1–2&nbsp;pp) is far below the single-tier ceiling (~+7&nbsp;pp): the host tier has already
 captured most of what eviction order could. What the scheduler <i>does</i> control is the p99 <b>tail</b>: LPM's
-prefix reordering starves first-turn (short-prefix) requests, inflating p99 by 41–65% at moderate load. The
+prefix reordering starves first-turn (short-prefix) requests, inflating p99 at every rate (single-run +41–65% at
+moderate load — direction-consistent, magnitude subject to the §5.1 p99 variance). The
 upshot sharpens our thesis rather than weakening it: switching schedulers is <i>not</i> a way to buy cache
 efficiency here (LPM gives no hit gain and a large tail penalty), whereas pending-aware retention delivers a
 genuine, lossless, always-non-negative hit gain on top of FCFS while <i>preserving</i> FCFS's tail. Retention is the realizable

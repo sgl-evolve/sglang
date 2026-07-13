@@ -78,3 +78,36 @@ if __name__ == "__main__":
                   else ("reliable-pass" if r["pass_frac"] >= 0.98 else "reliable-fail"))
         print(f"{lam0:6.2f} {rho:6.2f} {r['med']:8.2f} {r['sd']:7.2f} {r['min']:6.2f} {r['max']:7.2f} "
               f"{r['sigma_over_m']:8.2f} {r['pass_frac']:9.2f}  {regime}")
+
+
+# ---------------------------------------------------------------------------
+# EXTENSION: how many median-of-k replicates does a RELIABLE goodput@SLO need?
+# For a given load, goodput_est(k) = 3 if median(k p99 draws) <= SLO else 0. We ask: what is the smallest
+# k for which >=95% of independent median-of-k experiments agree (same goodput)? This quantifies the LIMIT
+# of the median-of-k fix and connects it to the sigma/m diagnostic: required-k blows up as the operating
+# median approaches the SLO (the coin-flip band), so no practical k rescues the metric there.
+# ---------------------------------------------------------------------------
+def required_k(lam0, target=0.95, kmax=31, experiments=400, pool_n=1500, base=7000):
+    # Draw a pool of p99 realizations ONCE, then bootstrap the median-of-k distribution from it (fast,
+    # statistically equivalent to re-simulating each experiment).
+    rng = LCG(base + int(lam0 * 1000))
+    pool = [sim_one(lam0, rng) for _ in range(pool_n)]
+    for k in range(1, kmax + 1, 2):                 # odd k so median is a single draw
+        agree3 = 0
+        for _ in range(experiments):
+            s = sorted(pool[int(rng.u() * pool_n)] for _ in range(k))
+            if s[k // 2] <= SLO:
+                agree3 += 1
+        frac3 = agree3 / experiments
+        if max(frac3, 1 - frac3) >= target:
+            return k, ("goodput=3" if frac3 >= 0.5 else "goodput=0")
+    return None, "unresolved@k<=%d" % kmax
+
+if os.environ.get("KLEINROCK_REQK") == "1":
+    print("\n# required median-of-k for 95%-reliable goodput@SLO (model):")
+    print(f"{'lam0':>6} {'p99_med':>8} {'(med-SLO)':>9} {'sigma/m':>8} {'req_k(95%)':>11}  verdict")
+    for lam0 in [0.30, 0.45, 0.55, 0.60, 0.65, 0.70, 0.80, 1.00]:
+        r = study(lam0, K=120)
+        rk, verdict = required_k(lam0)
+        rkstr = (str(rk) if rk else ">99")
+        print(f"{lam0:6.2f} {r['med']:8.2f} {r['med']-SLO:9.2f} {r['sigma_over_m']:8.2f} {rkstr:>11}  {verdict}")

@@ -646,7 +646,26 @@ diagram for when goodput@SLO is unreliable. Both the <i>existence</i> of the coi
 versus the measured same-node medk (median 9.4 s, 6.5–25.8 s, §3.1). Because the model contains no cache,
 scheduler, or model-specific detail, <b>the coin-flip is a generic property of the workload class</b> —
 heavy-tailed cold prefills scheduled open-loop near the queueing knee — not an artifact of sglang or this
-model. <b>Scope/honesty:</b> this is an illustrative minimal model, not a point predictor — it omits decode
+model.</p>
+<p><b>How many replicates would rescue goodput@SLO? The model says: unboundedly many, near the knee.</b>
+We use the model to ask what the empirical triad could not: how large must the median-of-k be for a
+<i>reliable</i> (95%-reproducible) goodput@SLO classification? Because a median-of-k estimate's sampling
+error shrinks only as ∼1/√k while the quantity being classified is the sign of (median − SLO), the required
+k grows as the operating median approaches the deadline and <b>diverges at it</b>:</p>
+<table>
+<tr><th>operating point (median − SLO)</th><th>σ/m</th><th>required k for 95%-reliable goodput</th></tr>
+<tr><td>−3.3 s (far below)</td><td>0.2</td><td><b>1</b> (reliably passes)</td></tr>
+<tr><td>−1.1 s</td><td>1.2</td><td>17</td></tr>
+<tr><td>≈ 0 (±0.5 s, at the knee)</td><td>3–5</td><td><b>&gt; 99 — unresolvable</b></td></tr>
+<tr><td>+1.2 s</td><td>1.9</td><td>7</td></tr>
+<tr><td>+3.0 s (far above)</td><td>0.9</td><td><b>1</b> (reliably fails)</td></tr>
+</table>
+<p>This <b>unifies the methodology</b>: median-of-k rescues goodput@SLO only when the operating median is
+comfortably away from the SLO (σ/m ≪ 1, small k); when the operating point sits at the knee — precisely
+where goodput@SLO is used to characterize a serving system — <b>no practical number of replicates suffices</b>,
+because one cannot reliably classify the sign of a quantity whose true value is zero. This is exactly why
+K=5 could not resolve write-back (§3.1): its median sits near the SLO. The only reliable recourse there is to
+report the cache's stable metrics (§3.1 capstone), not the tail deadline. <b>Scope/honesty:</b> this is an illustrative minimal model, not a point predictor — it omits decode
 contention and the multiturn/cache structure, and models the heavy prefill load with turn-0 documents only,
 so the exact ρ that the frozen eval occupies is approximate (the eval's turn-0-only arrival rate sits just
 below the band; the real prefill load, including follow-up tokens, pushes it in). The claim is qualitative
@@ -738,7 +757,7 @@ disabled, run on the same node as v0-stock, §5.3). Each run's <code>curve.csv</
 taken directly from those files. Tooling: trace stats <code>tools/tokenize_trace.py</code> →
 <code>tools/trace_stats.json</code>; queueing model <code>tools/queue_model.py</code>; prefill-rate
 calibration <code>tools/calibrate.py</code>; per-run analysis <code>tools/analyze_run.py</code>; the minimal
-coin-flip Monte-Carlo <code>tools/coinflip_sim.py</code> (deterministic; output <code>runs/coinflip_sim.txt</code>, §5.5).</p>
+coin-flip Monte-Carlo <code>tools/coinflip_sim.py</code> (deterministic; phase diagram + required-k analysis via <code>KLEINROCK_REQK=1</code>; output <code>runs/coinflip_sim.txt</code>, §5.5).</p>
 
 </body>
 </html>

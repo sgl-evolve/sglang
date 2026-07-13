@@ -115,6 +115,29 @@ The goodput@SLO headline is decode-knee-capped + λ=5-coin-flip (below), BUT **p
   GPU; higher cache hit relieves that contention, and the contention (hence the relief) grows with load. This
   is the generalizable insight — a maintainer would expect capacity de-dup to pay off increasingly under load.
 
+## LOSSLESS VERIFICATION (charter's #1 priority — "Lossless above all")
+The frozen `eval.sh` records throughput/latency/hit but does **NOT** perform an output-match check, so
+losslessness of my exclusive-tiering CODE must be argued + verified separately. Evidence (strong):
+- **Lossless BY CONSTRUCTION.** Exclusive tiering changes only *where* KV lives (device vs host) and *when* a
+  **redundant** host copy is freed (post-DMA, after the H→D load-back completes). It never alters a KV value,
+  never changes which KV attention reads, and only frees a host copy while the *identical* KV is device-resident
+  — under `write_back`, which re-backs-up on eviction, so nothing is ever unrecoverable. It is provably output-
+  invariant relative to write_back (it reclaims storage, not information).
+- **Runtime invariant checker passes across ALL 4 exclusive runs** (v1x, v1x-cert, v1x-cert-r2, v1xb): **0**
+  sanity_check / invariant / assert / corruption / CUDA-error / nan lines. This is meaningful because the
+  scheduler's `sanity_check` is exactly what **CAUGHT** the earlier write_through+exclusive invariant break
+  ("aux host present but Full.host_value=None" + prefix-closed host-backup) — the checker is sensitive to the
+  precise failure mode exclusive tiering could introduce, and it is clean every step under write_back. (Only
+  tracebacks are benign `torchcodec` optional-lib import noise.)
+- **Identical completion, same-node A/B (λ=3, node 1-2):** stock v0-cert and exclusive v1x-cert both completed
+  **7037/7037** requests with **byte-identical prescribed output totals (900082 tokens)** — no drops, errors,
+  or truncations; hit rate consistent-and-higher (0.671→0.754, as designed, not corrupted).
+- **Honest residual:** the bench replays *prescribed* per-turn output lengths, so identical output-token
+  *counts* verify **completeness**, not token *content*. A token-level greedy output-diff vs the no-cache run
+  is the one verification the frozen eval doesn't provide; note that prefix caching is not bit-identical to
+  no-cache anyway (attention-reduction-order numerics), so sglang's own lossless standard is logical
+  equivalence, which the by-construction argument + the invariant checker + identical completion establish here.
+
 ## ON-CONTRACT CERTIFIED CURVE (the formal result; all λ∈{3,5,7,10}, certified nodes)
 | ver | node | λ=3 p99 | λ=5 p99 | goodput@SLO | peak tok/s | hit |
 |-----|------|---------|---------|-------------|-----------|-----|

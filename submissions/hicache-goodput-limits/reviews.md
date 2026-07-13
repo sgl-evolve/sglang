@@ -1,4 +1,4 @@
-# Self-PC-review — "The Turn-0 Size Signal: Observable Liveness for KV Eviction under a Metastable Tail-SLO" (wilkes, v0.31)
+# Self-PC-review — "The Metastable Tail-SLO: A No-Go Criterion for Lossless KV-Cache Optimization" (wilkes, v0.31; paper v0.8)
 
 Adversarial read as a skeptical top-venue PC, for DRAFT v0.3 (reframed twice from the earlier bounded-impossibility once
 the size signal was found). Each point: the attack, then the paper's defense / action.
@@ -51,8 +51,9 @@ report the online effect as weak/node-dependent, not a mechanism win.
 
 **W3 — the offline −23% recompute does not materialize on GPU; is the size signal actually useless?**
 Attack: your headline offline number evaporates online.
-Defense: no — the offline replay proves size is the UNIQUE causal signal that CAN capture headroom (LRU/SLRU/CAR
-capture 0%), i.e. it establishes the correct residency signal in principle. We are explicit that online the 460 s
+Defense: no — the offline replay proves proven-protection + a size/cost magnitude signal CAN capture headroom that
+recency/frequency cannot (LRU/SLRU/CAR/LFU/GDSF capture 0%), i.e. it establishes the correct residency signal-class
+in principle (cost-greedy +48% > size/whale +23%; NOT unique — see W11). We are explicit that online the 460 s
 reuse gap caps the realized recompute capture (§4.2 synthesis, §5.5): durable recompute wins require closing the
 gap, not just a better victim signal. This gap-cap is an honest bound, and the surviving online benefit
 (scheduling) is separately evidenced. The offline/online split is a feature (it localizes exactly what blocks the

@@ -343,6 +343,20 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self.cost_aware_enabled = os.environ.get("XTIER_COST_AWARE", "0") == "1"
         self.cost_threshold = int(os.environ.get("XTIER_COST_THRESHOLD", "8192"))
 
+        # REUSE-AWARE EXCLUSIVE TIERING (research mechanism, refines XTIER). Plain
+        # exclusive frees EVERY promoted node's host copy on load-back, so a hot prefix
+        # that churns evict<->reload pays a device->host RE-BACKUP on every eviction
+        # (write_back backs up on evict; exclusive dropped the host copy on the prior
+        # load-back). Shallow prefixes (small cum_len: shared system prompts / doc
+        # headers touched by many requests) are exactly the hot-churning set, and they
+        # hold FEW tokens -> keeping their host copy (inclusive) costs ~no capacity but
+        # avoids repeated re-backup DMA. So: when on, stay INCLUSIVE (skip the exclusive
+        # free) for nodes with cum_len < reuse_depth (shallow/hot), and go EXCLUSIVE
+        # (free host) only for deep/cold tails where the capacity win is largest.
+        # Requires xtier_enabled; gated OFF by default. Ablate vs plain XTIER (v1x).
+        self.reuse_aware_enabled = os.environ.get("XTIER_REUSE_AWARE", "0") == "1"
+        self.reuse_depth = int(os.environ.get("XTIER_REUSE_DEPTH", "4096"))
+
         if self.token_to_kv_pool_allocator:
             self.device = self.token_to_kv_pool_allocator.device
         else:
@@ -2475,6 +2489,12 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             if cd.value is None or cd.host_value is None:
                 continue
             if any(c.host_lock_ref > 0 for c in n.component_data):
+                continue
+            # Reuse-aware: keep the host copy (stay INCLUSIVE) for shallow/hot prefixes
+            # that churn -> avoids re-backup DMA on their next eviction. Deep/cold tails
+            # fall through to the exclusive free below (the capacity win). No-op unless
+            # the mechanism is enabled.
+            if self.reuse_aware_enabled and n.cum_len < self.reuse_depth:
                 continue
             for comp in self._components_tuple:
                 if comp.node_has_component_data(n, target=EvictLayer.HOST):

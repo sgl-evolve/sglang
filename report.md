@@ -566,3 +566,13 @@ sacred element even as a labeled diagnostic. The minimal model (§5.5) already p
 argument with ZERO contract deviation, and single-workload empirical scope is honestly stated in §7. Marginal
 empirical value does NOT justify touching the dataset. Removed the variant file. Contract-discipline > a
 nice-to-have empirical nugget. (Recorded as an integrity decision; no paper change.)
+
+### Devil's-advocate review — added dual-nature framing (2026-07-13 ~10:30Z)
+Found a real gap: paper framed the coin-flip as measurement-only ("measures noise not the cache", "wrong
+lens"), not acknowledging a likely reviewer objection — "unpredictable tail near the knee is a REAL serving
+problem, not just an eval artifact." Added §7 bullet: coin-flip has TWO faces — (i) invalid A/B metric for KV
+caches (thesis), (ii) real operational tail-instability (metastable near knee). Not dismissed; results BOUND
+the operational side (structural cold-turn-0 tail, no lossless KV fix → remedy = provision below knee /
+admission control / accept tail, orthogonal to cache A/B). Complementary: goodput@SLO wrong for COMPARING
+caches precisely because the tail is a workload/queueing property not a cache property. Committed 58481fb12,
+validated (tags/refs/&). Quality-strengthening (defends real objection), not sprawl.

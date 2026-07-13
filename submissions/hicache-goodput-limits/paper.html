@@ -97,9 +97,11 @@ the SLO-breaching tail is avoidable recompute from evicted proven multi-turn con
 caution: a match-fraction classifier conflates the two and hides this entirely.</li>
 <li><b>The turn-0 SIZE signal</b> (§4.2): liveness is <i>partially observable at the decision point</i> — a
 will-continue conversation starts tiny (turn-0 median 241 tok) while a single-turn "whale" is large (median
-17,051), AUC 0.78. In an offline replay, <b>size-aware eviction is the only causal policy that captures Belady
-headroom</b> (−23% recompute), where recency-/grace-based policies (LRU, SLRU, CAR) capture 0% — establishing
-SIZE, not recency, as the correct residency signal. This refutes a natural "liveness-unobservable" impossibility.</li>
+17,051), AUC 0.78. In an offline replay, <b>size-among-unproven eviction with proven-protection (whale) is the
+only causal policy that captures Belady headroom</b> (−23% recompute); a 7-policy sweep shows recency, frequency,
+and grace rules (LRU, LFU, SLRU, CAR) all capture 0% and a naive size-only rule is catastrophic (−529%) —
+isolating the precise ingredient (size-among-unproven + proven-protection), not recency/frequency or size alone.
+This refutes a natural "liveness-unobservable" impossibility.</li>
 <li><b>Two online obstacles that bound the realized gain</b> (§4.2, §5.5): (i) the turn-0→turn-1 reuse gap
 (p50 460 s) is ~5× the ~90 s of turn-0 retention a finite cache affords, so <i>no</i> residency policy — size-aware
 included — holds a continuer across the gap under 1.89× oversubscription; on GPU whale's recompute work ≈ LRU's,
@@ -563,7 +565,8 @@ slru = <code>runs/screen-slru</code>; car grace 90 = <code>runs/screen-car90</co
 (<code>SGLANG_CAR_GRACE_S=90 … --radix-eviction-policy car</code>); car grace 300 = <code>runs/screen-car300</code>.
 <b>Offline analysis</b> (from the trace + tokenized dataset): conversation-id tail decomposition + λ=3-window
 whale-vs-lru comparison via <code>trace_analyze.py</code>; peak-live-KV, turn-0→turn-1 gap, grace-demand; the
-turn-0-size→continuation AUC (0.78) and the offline victim-choice replay (lru/slru/car 0% vs whale −23% capture)
+turn-0-size→continuation AUC (0.78) and the offline 7-policy victim-choice replay (lru/lfu/slru/car 0%, fifo/mru/
+size-only catastrophic, whale −23% capture)
 via <code>sim/simulate.py</code>; Belady headroom + Fig 3 via <code>sim/gen_figures.py</code>; the λ=3 per-run
 whale-vs-lru-vs-car TTFT figure (Fig 4) via <code>sim/fig_whale.py</code>; workload facts via
 <code>sim/build_trace.py</code> / <code>sim/prefill_tail.py</code>.
@@ -575,7 +578,8 @@ p99 tail is avoidable recompute over a live set that fits (0.87× cache), and �
 "liveness-unobservable" impossibility — liveness <i>is</i> partially observable at the eviction decision point,
 through turn-0 <b>size</b> (whales large, continuers tiny; AUC 0.78). Size is the correct residency signal: in an
 offline replay it is the only causal policy that captures Belady headroom (−23% recompute), where every
-recency-/grace-based policy (LRU, SLRU, CAR) captures 0%. Two obstacles bound the online payoff. (i) The
+recency-, frequency-, or grace-based policy (LRU, LFU, SLRU, CAR) captures 0% and naive size-only is catastrophic
+— the precise ingredient is size-among-unproven with proven-protection. Two obstacles bound the online payoff. (i) The
 turn-0→turn-1 reuse gap (median 460 s) is ~5× the ~90 s of retention a finite cache affords, so no residency
 policy — size-aware included — holds a continuer across the gap under 1.89× oversubscription; the offline −23%
 recompute does not materialize, and what survives is a scheduling benefit — whale's size-ranked victim choice

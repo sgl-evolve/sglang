@@ -308,6 +308,14 @@ is therefore evicted long before its first reuse under <i>any</i> grace setting:
 gaps; larger grace is clipped to the same ~90 s of real retention. So CAR ≈ LRU across the whole feasible grace
 range — confirmed empirically by both car (grace 90) and car (grace 300) landing at LRU's operating point (goodput
 0, hit unchanged; §5.3). Covering the median gap would require holding 2.6× the cache — impossible.</p>
+<p><small><b>Why a "big enough cache" intuition misleads here.</b> A tempting objection: the λ=3 mean KV write rate is
+only ~20K tok/s (measured, uncached tokens written), which naively implies an average entry survives
+capacity/rate ≈ 540 s — seemingly more than the 460 s gap, so why is anything evicted early? Because LRU eviction
+is governed by reuse <i>distance</i> (distinct KV touched between two accesses), not mean <i>time</i>. Writes are
+dominated by large cold prefills, so retaining every turn-0 across the gap means holding them <i>all at once</i>
+(the resident-demand table: 2.6× capacity at the median gap), and the LRU tail — where old, idle turn-0 prefixes
+sit — is clipped in bursts well before their reuse. The reuse-distance replay (§5.2, §4.2) computes this correctly
+and confirms 58% of continuer prefixes are evicted before first reuse; the mean-time estimate is the wrong lens.</small></p>
 <p><b>The synthesis: SIZE is the correct signal, but the reuse gap caps its online recompute-capture.</b> The
 offline replay proves size-aware eviction is the unique causal policy that captures headroom (−23%), so the
 <i>recompute</i> win exists in principle. But that capture assumes a kept continuer is reused before it is

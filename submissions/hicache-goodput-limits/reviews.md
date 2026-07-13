@@ -114,6 +114,18 @@ pileup to remove, BOTH scheduling axes are deterministically-shown dead ends for
 from a hole, testing-and-refuting the obvious fix — from our own analysis, before claiming it — is exactly the
 rigor the metric demands.
 
+**W9 — the cache looks big enough: capacity/mean-write-rate ≈ 650 s > the 460 s gap, so why is anything evicted?**
+Attack: your own numbers (10.7M cache, ~20K tok/s λ=3 mean uncached write rate) imply an average entry survives
+~540 s — longer than the median reuse gap. So LRU should already hold continuers across the gap, contradicting the
+58%-avoidable-recompute and the gap-cap.
+Defense (preempted in §4.2): the mean-time estimate is the WRONG lens — LRU eviction is governed by reuse DISTANCE
+(distinct KV touched between two accesses), not mean time. Writes are dominated by large cold prefills, so retaining
+every turn-0 across the gap means holding them ALL simultaneously; the resident-demand table shows that is 2.6×
+capacity at the median gap, so the LRU tail (old, idle turn-0 prefixes) is clipped in bursts long before reuse. The
+reuse-distance replay (§5.2) computes this correctly and confirms 58% of continuer prefixes are evicted before
+first reuse — the paper leads with the replay precisely because the mean-rate intuition misleads. (Added a §4.2
+clarification paragraph so a reviewer doesn't have to rediscover this.)
+
 ## Minor
 - §5.3 could add a one-line bridge to §5.5 ("the grace-trap motivates changing the SIGNAL, not the retention time
   — §5.5"). (pending)

@@ -1302,3 +1302,15 @@ deterministically). 9 self-corrections. Sole constructive positive = size signal
 stated honestly). The metric is proven execution-variance-dominated → NO further single/few-node GPU p99 chase
 (would be futile + integrity risk). Deterministic offline analyses are where the real results live. HOLD/MAINTAIN
 unless genuinely new deterministic work appears.
+
+## 86. ★ INTEGRITY CHECK + PC-hardening: verified the "90s retention" claim, preempted the mean-survival fallacy (W9)
+Re-examined the paper's quantitative gap-cap claim (90s affordable retention vs 460s gap). VERIFIED it is SOUND: the
+90s is the volume-based grace-trap (§4.2 / report §31: holding all recent turn-0s for a G-second window; at G=90s
+demand=9.0M=0.85× cap fits; at G=460s demand=27.7M=2.6× cap → clipped), NOT the crude capacity/mean-write-rate
+model. Cross-checked: measured λ=3 uncached write rate = 19937 tok/s (cert-lru-full trace, warmup+λ3 window, Σunc
+35.9M/1800s) → capacity/rate ≈ 540s. This naive mean-survival (540s) EXCEEDS the 460s gap — a natural PC objection
+("cache is big enough, why evict?"). RESOLVED (and now PREEMPTED in paper §4.2 + reviews W9): LRU eviction is
+reuse-DISTANCE-driven, not mean-time; large-cold-prefill bursts clip the LRU tail (old idle turn-0s) long before
+reuse; the reuse-distance replay (§5.2) correctly gives 58% avoidable. Added a §4.2 clarification paragraph + W9 so
+a reviewer doesn't rediscover the fallacy and mistake it for a hole. No error in the paper; hardened against a sharp
+quantitative objection. Deterministic, non-GPU.

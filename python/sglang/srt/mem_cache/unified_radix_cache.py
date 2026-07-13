@@ -357,6 +357,16 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self.reuse_aware_enabled = os.environ.get("XTIER_REUSE_AWARE", "0") == "1"
         self.reuse_depth = int(os.environ.get("XTIER_REUSE_DEPTH", "4096"))
 
+        # PROFILING (research, default OFF, no behavior change): measure how much
+        # wall-time the BLOCKING write_back eviction-backup synchronize costs (the
+        # demand-driven data dependency: can't free a device slot until its D->H
+        # backup DMA completes). Decides whether a speculative-async-backup mechanism
+        # (back up unlocked LRU-tail leaves ahead of demand, overlapped with decode)
+        # is worth building. Gated by XTIER_PROFILE_BACKUP=1.
+        self._prof_backup = os.environ.get("XTIER_PROFILE_BACKUP", "0") == "1"
+        self._backup_block_s = 0.0
+        self._backup_block_n = 0
+
         if self.token_to_kv_pool_allocator:
             self.device = self.token_to_kv_pool_allocator.device
         else:
@@ -2407,6 +2417,7 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
 
         if write_back:
             # Blocking: wait for all pending write-backs
+            _pt0 = time.perf_counter() if self._prof_backup else 0.0
             while self.ongoing_write_through:
                 for _, finish_event, ack_list in cc.ack_write_queue:
                     finish_event.synchronize()
@@ -2415,6 +2426,14 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
                             self._finish_write_through_ack(ack_id)
                 cc.ack_write_queue.clear()
                 assert len(self.ongoing_write_through) == 0
+            if self._prof_backup:
+                self._backup_block_s += time.perf_counter() - _pt0
+                self._backup_block_n += 1
+                if self._backup_block_n % 100 == 0:
+                    logger.info(
+                        f"[XTIER_PROF] write_back eviction-backup BLOCKING: "
+                        f"calls={self._backup_block_n} total_block_s={self._backup_block_s:.3f}"
+                    )
             return
 
         # Every rank must enter the all_reduce below; ongoing_write_through can

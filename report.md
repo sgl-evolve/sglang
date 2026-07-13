@@ -518,3 +518,17 @@ Durable sbatch (job 19620) landed on node1-2 (robust, survived where overlap fai
    of within-node coin-flip (both axes matter, as confound warned). §7 residual limit CLOSED. Integrated
    §3.1/§7/§8/abstract, committed 823ee469b, validated. Durable-sbatch beat the fragile overlap (which died
    to hold timeout) — lesson confirmed.
+
+### ★★ §5.5 minimal Monte-Carlo model — GENERALITY (2026-07-13 ~09:40Z, GPU-free)
+tools/coinflip_sim.py: minimal transient-queue MC (strips cache/decode/batching; keeps only Poisson arrivals
+of cold docs w/ MEASURED doc-token demand, FCFS single server @ calibrated P=20.5K tok/s, cold start).
+FORWARD PREDICTION (params = independently-measured doc dist + P; nothing fit to coin-flip). Deterministic
+(LCG). RESULT: reproduces the coin-flip from first principles — phase diagram:
+  ρ≲0.4 reliable-pass | ρ≈0.5-0.7 COIN-FLIP (σ/m>1, straddling: ρ0.59 p99 med 8.5s range 5.9-16.8 σ/m 4.1
+  40% pass) | ρ≳0.8 reliable-fail. Magnitude MATCHES measured medk (median 9.4s, 6.5-25.8s). ⇒ coin-flip is
+  GENERIC to the workload class (heavy-tailed cold prefills, open-loop, near knee), NOT sglang/model artifact.
+HONEST: illustrative minimal model (not point predictor); turn-0-only load → exact eval ρ approximate (eval
+turn-0 rate just below band; real load incl follow-ups pushes in). Addresses generality (reviewer's main
+concern) that more nodes/configs can't. Integrated §1/§5.5(phase table)/§8, committed b57811233.
+PAPER now: negative + queueing model + minimal-MC generality + warmdiag + methodology triad + σ/m diagnostic
++ constructive capstone + node×run grid. 5 figs/9 tables.

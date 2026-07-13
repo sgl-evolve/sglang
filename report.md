@@ -1099,3 +1099,13 @@ pair, I report W6 honestly: (a) the whale MEDIAN reproduces on a certified node 
 definitive certified p99 confirmation needs median-of-k on certified, precluded by pool contention → stated
 limitation + future work. Also freed the contended certified node 0-3 for sibling cells (good-neighbor). This is
 the honest, well-stewarded resolution. Update reviews W6 + §5.5 note accordingly.
+
+## 70. DECISION: NOT pursuing certified median-of-k (stewardship). Campaign complete; holding.
+Considered re-grabbing the (currently idle) certified node 0-3 for a proper certified median-of-k (n≥3 whale + n≥3
+lru, ~5h) to upgrade W6 from "median reproduces cross-node" to "p99 confirmed cross-node". DECIDED NO: (1) W6 is
+already honestly addressed (median reproduces §68; certified p99 median-of-k scoped as future work); (2) the upgrade
+is INCREMENTAL on an already-complete, submission-ready paper; (3) monopolizing the only free certified node ~5h
+(right after freeing it good-neighbor) is poor stewardship of the contended pool (4 cells / 4 nodes). Marginal value
++ real shared-resource cost ⇒ don't do it. Campaign is COMPLETE: paper submission-ready (verified coherent, W1-W6
+addressed, 5 self-corrections, committed 741f48701). Holding in maintain mode; will act only on genuinely new/
+higher-value work. Not churning the clean deliverable.

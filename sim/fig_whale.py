@@ -12,9 +12,9 @@ RUNS = os.path.join(BASE, "runs")
 
 # policy -> list of run dirs (λ=3 measurements)
 POLICIES = {
-    "lru":   ["screen-v0b", "cert-lru-full", "lru-r3"],
+    "lru":   ["screen-v0b", "cert-lru-full", "lru-r3", "lru-r4", "lru-r5"],
     "car90": ["screen-car90", "cert-car90-full"],
-    "whale": ["whale-full", "whale-r2", "whale-r3", "whale-r4"],
+    "whale": ["whale-full", "whale-r2", "whale-r3", "whale-r4", "whale-r5", "whale-r6"],
 }
 COLORS = {"lru": "#8c8c8c", "car90": "#4c72b0", "whale": "#d62728"}
 LABELS = {"lru": "LRU (stock)", "car90": "CAR (grace 90s)", "whale": "whale (size-aware)"}

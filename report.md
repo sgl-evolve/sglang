@@ -1016,3 +1016,37 @@ DELIVERABLES DONE: paper.html v0.2 (all sections), reviews.md v0.2 (6 W's), INDE
 OPEN (fire-and-forget): certified-node W6 confirmation job 19585 (whale+lru λ=3 same node, pinned 0-3, runs when
 pool frees) → will confirm the p99 separation reproduces cross-node. Data=nodeset-0 (verified-usable, same-node
 control satisfied). NOT chasing further variants (metastable metric caps the crossing; offline insight is the core).
+
+## 61. ADDENDUM: strengthening W1 (n) — whale-r5/r6 + lru-r4/r5 λ=3 on nodeset-0 (deliverable already complete)
+Deliverable is done (§60); this is a robustness addendum. nodeset-0 idle → queued whale-r5/r6 (19586/19588) +
+lru-r4/r5 (19587/19589), scancel-after-λ3 (~50min each). Target: whale n=4→6, lru n=3→5. If separation holds
+(all whale p99 < all lru p99): rank-sum p 0.029→~0.002. If a whale run >10.4s or lru <9.3s: separation is
+fragile → report honestly (distributions still differ). Either outcome informative. Will update §5.5 table + fig4
++ reviews W1 with the larger n. certified W6 job 19585 still PD (pool contended). NOT chasing variants.
+
+## 62. whale-r5 λ=3 = 6698ms PASS → whale n=5: 3/5 cross, separation HOLDS (p≈0.018)
+whale-r5: median 550, p99 6698 (PASS), hit 0.669. whale λ=3 n=5 p99 {6189,6574,6698,8715,9287} → 3/5 cross SLO;
+ALL 5 still below lru {10360,11254,13991} + car → separation holds, rank-sum p≈0.018 (5-vs-3 all-separated).
+median stays tight {550,553,563,568,550}≈557. lru-r4 next (chain). Trending: more whale runs pass (3/5=60%) +
+p99-separation tightening. Good for W1.
+
+## 63. lru-r4 λ=3 = 28325ms (high metastable spike) → separation STRENGTHENS (p≈0.008)
+lru-r4: median 557, p99 **28325** (huge — lru λ=3 p99 is highly variable 10-28s), hit 0.675. lru n=4 p99
+{10360,11254,13991,28325}. whale n=5 {6189,6574,6698,8715,9287}. ALL 5 whale (max 9287) < ALL 4 lru (min 10360)
+→ separation HOLDS, rank-sum p≈0.008 (5-vs-4 all-separated). lru-r4 median 557 ≈ whale ~557 → MEDIAN confirmed
+NOT a discriminator (both variable ~530-880); P99 is the clean separator (whale 6-9s vs lru 10-28s). Even lru's
+metastable spikes stay ≥10s, never near whale's range. whale-r6 next. Strong W1 result forming.
+
+## 64. ★★★ whale-r6 λ=3 = 26589ms — BREAKS clean separation. HONEST correction: stochastically-lower, overlapping tails.
+whale-r6: median 545, p99 **26589** (high-metastable spike, like lru's 28325), hit 0.675. whale n=6 p99
+{6189,6574,6698,8715,9287,26589} → 3/6 cross SLO. lru n=4 {10360,11254,13991,28325}.
+★ SEPARATION BROKEN: whale-r6 (26589) is IN lru's range (>lru-min 10360). So NOT "all whale < all lru" anymore.
+The n=5 "fully separated p≈0.008" was because I hadn't yet sampled a whale high-metastable draw. whale ALSO has
+rare huge p99 spikes (metastability affects both). CORRECTED STAT: Mann-Whitney U=21/24, exact one-sided
+**p≈0.033** (still significant) — whale STOCHASTICALLY lower. Median p99 whale ~7.7s vs lru ~12.6s (~40% lower);
+5/6 whale below lru-best (10360); mean 10675 vs 15982 (~33%, but mean outlier-inflated → use MEDIAN ~40%).
+★ HONEST HEADLINE (n=6/n=4): whale reduces the TYPICAL (median) λ=3 p99 ~40% vs lru (Mann-Whitney p≈0.033), 5/6
+runs below lru's best — but both policies have rare high-metastable p99 spikes (~26-28s), so it is a DISTRIBUTIONAL/
+typical reduction, NOT a per-run guarantee or full separation. MUST update paper (was "fully separated p≈0.029" →
+"stochastically lower, Mann-Whitney p≈0.033, overlapping high tails"). This is why the extra replicates mattered
+(revealed fragility). lru-r5 running (chain) for lru n=5.

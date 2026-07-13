@@ -33,9 +33,10 @@ AUC(turn-0 size→single-turn)=<b>0.78</b>. In an offline replay this size signa
 that captures Belady headroom (whale-first: −23% recompute; LRU/SLRU/CAR capture 0%). <b>But two obstacles remain.</b>
 (1) <b>Online the 460 s reuse gap caps the realized recompute capture ≈ 0</b> (no residency can hold a continuer
 across the gap under 1.89× oversubscription): on GPU whale's evicted-recompute work ≈ LRU's; the residual benefit
-is on the <i>scheduling</i> axis: whale cuts λ=3 p99 <b>~30%</b> vs LRU/CAR (all 4 whale runs below all 5 LRU/CAR
-runs, rank-sum p≈0.029), landing it <i>on</i> the 8 s SLO boundary — crossing on 2 of 4 runs where LRU/CAR never
-cross (0/5). (2) <b>goodput@SLO is METASTABLE</b>: p99 is decoupled from recompute volume (a whale run
+is on the <i>scheduling</i> axis: whale cuts the <b>typical (median) λ=3 p99 ~40%</b> (≈7.7 s vs LRU ≈12.6 s; 5/6
+whale runs below LRU's best; Mann-Whitney p≈0.033), landing it <i>on</i> the 8 s SLO boundary — crossing on 3 of 6
+runs where LRU/CAR never cross (0/6). (2) <b>goodput@SLO is METASTABLE for BOTH policies</b>: p99 is decoupled from
+recompute volume (a whale run
 that recomputed MORE than LRU still had a lower p99), so it is a queue-timing phenomenon and single-run A/Bs are
 unreliable. The naive TIME axis of continuation-residency is trapped (CAR completion-grace ≈ LRU: cache affords
 ~90 s ≪ 460 s gap) and SLRU backfires (evicts turn-0 entry points, hit 0.68→0.51). NOTE: earlier match-only
@@ -64,9 +65,10 @@ Belady headroom</b> (−23% recompute vs LRU), where recency-/grace-based polici
 realized gain. First, the turn-0→turn-1 reuse gap is minutes (p50 460 s) while a finite cache affords only ~90 s
 of turn-0 retention, so <i>no</i> residency policy — size-aware included — can hold a continuer across the gap
 under 1.89× oversubscription: on GPU whale's evicted-recompute work ≈ LRU's, and the realized benefit is on the
-<i>scheduling</i> axis: whale cuts λ=3 p99 ~30% vs LRU/CAR (all four whale runs' p99 below all five LRU/CAR runs',
-rank-sum p≈0.029), landing it on the 8 s SLO boundary and crossing on 2 of 4 same-node runs (LRU/CAR: 0/5).
-Second, <b>goodput@SLO is metastable</b>: p99 is
+<i>scheduling</i> axis: whale cuts the typical (median) λ=3 p99 ~40% (≈7.7 s vs LRU ≈12.6 s; 5 of 6 whale runs
+below LRU's best; Mann-Whitney p≈0.033), landing it on the 8 s SLO boundary and crossing on 3 of 6 same-node runs
+(LRU/CAR: 0/6). Second, <b>goodput@SLO is metastable for both policies</b> (both show rare high-tail p99 draws
+~26–28 s, so the p99 distributions overlap at the top): p99 is
 decoupled from recompute volume (a whale run that recomputed <i>more</i> than LRU still had a lower p99), a
 queue-timing phenomenon that makes single-run A/Bs unreliable and demands a distributional read. The naive TIME
 axis of continuation-residency is trapped — CAR completion-grace ≈ LRU at grace 90 s <i>and</i> 300 s — and the
@@ -98,8 +100,9 @@ SIZE, not recency, as the correct residency signal. This refutes a natural "live
 <li><b>Two online obstacles that bound the realized gain</b> (§4.2, §5.5): (i) the turn-0→turn-1 reuse gap
 (p50 460 s) is ~5× the ~90 s of turn-0 retention a finite cache affords, so <i>no</i> residency policy — size-aware
 included — holds a continuer across the gap under 1.89× oversubscription; on GPU whale's recompute work ≈ LRU's,
-and the realized benefit moves to the <i>scheduling</i> axis (a robust ~30% λ=3 p99 reduction, all whale runs
-below all LRU/CAR runs, p≈0.029). (ii) <b>goodput@SLO is
+and the realized benefit moves to the <i>scheduling</i> axis (a ~40% reduction of the typical/median λ=3 p99,
+Mann-Whitney p≈0.033, 5/6 whale runs below LRU's best — though both policies show rare high-tail draws, so the
+distributions overlap at the top). (ii) <b>goodput@SLO is
 metastable</b>: p99 is decoupled from recompute volume (a whale run recomputing more than LRU still had a lower
 p99), a queue-timing phenomenon requiring a distributional read, not a single-run A/B.</li>
 <li>Empirical <b>negatives</b> (§5.3): the textbook <b>SLRU backfires</b> (evicting unproven turn-0 entry points
@@ -390,26 +393,31 @@ GPU with <b>whale-first</b> eviction (evict the largest unproven conversation fi
 tiebreak — a one-line victim rule, lossless). All rows same-node (nodeset-0), λ=3, warmup-corrected.</p>
 <table>
 <tr><th>policy (λ=3, same node)</th><th>runs</th><th>median TTFT</th><th>mean TTFT</th><th>p99 TTFT</th><th>hit</th><th>goodput@SLO</th></tr>
-<tr><td>lru (stock)</td><td>n=3</td><td>534, 678, 876 ms</td><td>1420, 1529, 1752</td><td>10,360 / 11,254 / 13,991 ms</td><td>0.68–0.70</td><td>0 (0/3 cross)</td></tr>
-<tr><td>car (grace 90 s)</td><td>n=2</td><td>574, 722 ms</td><td>1571, —</td><td>10,727 / 11,174 ms</td><td>0.68–0.70</td><td>0 (0/2 cross)</td></tr>
-<tr><td><b>whale (this work)</b></td><td>n=4</td><td>550, 553, 563, 568 ms</td><td>1204, 1216, 1244, 1441</td><td><b>6,189 / 6,574 / 8,715 / 9,287 ms</b></td><td>0.67–0.71</td><td><b>3.02 (2/4)</b></td></tr>
+<tr><td>lru (stock)</td><td>n=4</td><td>534–876 ms</td><td>1420–1752</td><td>10.4 / 11.3 / 14.0 / 28.3 s</td><td>0.68–0.70</td><td>0 (0/4 cross)</td></tr>
+<tr><td>car (grace 90 s)</td><td>n=2</td><td>574, 722 ms</td><td>1571, —</td><td>10.7 / 11.2 s</td><td>0.68–0.70</td><td>0 (0/2 cross)</td></tr>
+<tr><td><b>whale (this work)</b></td><td>n=6</td><td>545–568 ms</td><td>1204–1441 (+1 outlier)</td><td><b>6.2 / 6.6 / 6.7 / 8.7 / 9.3 / 26.6 s</b></td><td>0.67–0.71</td><td><b>3.02 (3/6)</b></td></tr>
 </table>
-<p><small>The robust, SLO-relevant result is the <b>p99 reduction</b>: all four whale runs' p99 lie below all
-three LRU runs' <i>and</i> both CAR runs' (max whale 9.3 s &lt; min LRU 10.4 s) — fully separated, rank-sum
-<b>p≈0.029</b>, a ~30% cut (whale mean p99 ≈7.7 s vs LRU ≈11.9 s). This shift lands p99 <i>on</i> the 8 s SLO
-boundary, so the <i>absolute</i> crossing is metastable — 2 of 4 whale runs cross, LRU/CAR never do (0/5) — while
-the <i>relative</i> reduction is robust. Whale's mean TTFT is also ~19% below LRU. The <i>median</i> is
-lower-<i>variance</i> for whale (550–568 ms, σ≈8) than for LRU (534–876 ms, σ≈145) but not reliably lower — LRU's
-median is itself highly variable and one run (534 ms) dipped below whale's, so we do <b>not</b> claim a median
-win. goodput@SLO therefore moves from a categorical 0 (LRU/CAR) to a metastable {0, 3.02} — a robust ~30% p99
-reduction that crosses the SLO on a fraction of runs, not a deterministic win.</small></p>
+<p><small>The SLO-relevant result is a <b>reduction of the typical (median) p99</b>: whale's median p99 is ≈7.7 s
+vs LRU's ≈12.6 s (~40% lower), and 5 of 6 whale runs fall below LRU's <i>best</i> run (10.4 s). A Mann-Whitney
+test (whale n=6 vs LRU n=4) gives whale stochastically lower, one-sided <b>p≈0.033</b>. Importantly the reduction
+is <i>distributional, not per-run</i>: p99 at λ=3 is metastable for <b>both</b> policies (rare high-tail draws —
+whale once hit 26.6 s, LRU once 28.3 s), so the two p99 distributions overlap at the top and whale is <i>not</i>
+fully separated from LRU. The typical whale p99 lands on the 8 s SLO boundary, so the absolute crossing is
+metastable: 3 of 6 whale runs cross, LRU/CAR never do (0/6). The <i>median</i> TTFT (body of the distribution) is
+lower-variance for whale (545–568 ms, σ≈9) than for LRU (534–876 ms, σ≈140) but not reliably lower — LRU's median
+is itself variable and one run (534 ms) dipped below whale's, so we do <b>not</b> claim a median-TTFT win.
+goodput@SLO therefore moves from a categorical 0 (LRU/CAR) to a metastable {0, 3.02} — whale reduces the typical
+p99 ~40% and crosses the SLO on half its runs, but this is a distributional shift with overlapping tails, not a
+deterministic win.</small></p>
 <p><img src="fig4_whale.svg" alt="λ=3 per-run p99 and median TTFT, whale vs LRU vs CAR, with 8s SLO line" style="max-width:100%"></p>
-<p><b>Two findings.</b> (1) <b>The robust effect is a ~30% p99 reduction:</b> all four whale runs' p99 lie below
-all three LRU and both CAR runs' (max whale 9.3 s &lt; min LRU 10.4 s; rank-sum p≈0.029), a ~30% cut (mean p99
-≈7.7 s vs ≈11.9 s); mean TTFT is ~19% lower too. (The median is lower-variance for whale but not reliably lower —
-LRU's median is itself highly variable, 534–876 ms — so we do not rest the claim on it.) (2) <b>The absolute
-goodput crossing is metastable.</b> whale's reduced p99 lands on the 8 s boundary, so it crosses on 2 of 4 runs
-while LRU/CAR never do — and the reduction is <i>not</i> recompute-driven: the conversation-id
+<p><b>Two findings.</b> (1) <b>The effect is a ~40% cut in the typical (median) p99:</b> whale's median p99 ≈7.7 s
+vs LRU's ≈12.6 s, with 5 of 6 whale runs below LRU's <i>best</i> run (10.4 s); a Mann-Whitney test (whale n=6 vs
+LRU n=4) puts whale stochastically lower, one-sided p≈0.033. It is a distributional, not per-run, effect — p99 at
+λ=3 is metastable for <i>both</i> policies (whale once hit 26.6 s, LRU once 28.3 s), so the top tails overlap and
+whale is not fully separated from LRU. (The median TTFT — the distribution body — is lower-variance for whale but
+not reliably lower, since LRU's median is itself variable, 534–876 ms — so we do not rest the claim on it.)
+(2) <b>The absolute goodput crossing is metastable.</b> whale's typical p99 lands on the 8 s boundary, so it
+crosses on 3 of 6 runs while LRU/CAR never do — and the reduction is <i>not</i> recompute-driven: the conversation-id
 decomposition gives whale's evicted-recompute work ≈ LRU's (whale 0.183P vs LRU 0.184P at λ=3), and one whale run
 that recomputed <i>more</i> tokens than LRU (hit 0.675 vs 0.68) still had a far lower p99 (6.6 s vs 10.4 s). So
 the λ=3 p99 is decoupled from hit rate — a queue-timing phenomenon. We do <i>not</i> fully isolate <i>how</i>
@@ -429,7 +437,7 @@ decoupled from the cache's recompute work.</p>
 <p><b>Full rate curve (whale vs LRU, same node).</b> A complete whale sweep:</p>
 <table>
 <tr><th>λ (offered)</th><th>whale p99 TTFT</th><th>LRU p99 TTFT</th><th>whale req/s</th><th>LRU req/s</th></tr>
-<tr><td>3</td><td><b>8.7 s</b> (2/4 runs 6.2–6.6 s)</td><td>10.4 s</td><td>3.02</td><td>2.99</td></tr>
+<tr><td>3</td><td><b>~7.7 s median</b> (3/6 runs cross 8s)</td><td>~12.6 s median</td><td>3.02</td><td>2.99</td></tr>
 <tr><td>5</td><td><b>13.5 s</b></td><td>28.5 s</td><td>4.12</td><td>3.69</td></tr>
 <tr><td>7</td><td>34.0 s</td><td>25.7 s</td><td>4.47</td><td>4.19</td></tr>
 <tr><td>10</td><td>40.6 s</td><td>36.7 s</td><td>4.68</td><td>4.31</td></tr>
@@ -438,7 +446,7 @@ decoupled from the cache's recompute work.</p>
 λ=5 p99, 13.5 vs 28.5 s) and lifts peak throughput ~8–12%. At <b>deep overload</b> (λ=7, 10) both policies fail by
 3–5× and the p99 becomes metastable-noisy — LRU's own curve is non-monotonic (28.5→25.7 s from λ=5→7) — so the
 λ=7/10 ordering is not meaningful and we do <b>not</b> claim whale helps there. goodput@SLO is decided at λ=3
-(the only rate either policy can approach): whale 3.02 (metastable, 2/4), LRU 0.</p>
+(the only rate either policy can approach): whale 3.02 (metastable, 3/6), LRU 0.</p>
 
 <h2>6 Related work</h2>
 <p><b>Tiered KV caching &amp; prefetch.</b> AttentionStore/CachedAttention (ATC'24) does hierarchical KV
@@ -478,13 +486,16 @@ cold-document floor (≈37%); size-aware eviction is the only causal policy that
 crossing (§5.5), while recency-/grace-based policies do not move it (SLRU backfires, CAR ≈ LRU). The following
 delimit the regime and the strength of these claims:</p>
 <ul>
-<li><b>The p99 reduction is robust; the absolute goodput crossing is metastable.</b> All four whale runs' p99 lie
-below all three LRU and both CAR runs' (rank-sum p≈0.029) — a ~30% reduction. But that reduced p99 sits on the 8 s
-boundary, so the <i>absolute</i> SLO crossing is a metastable queue-timing draw: 2 of 4 whale runs cross (the
-other two are close misses, 8.7 and 9.3 s), LRU/CAR never (0/5). We report goodput@SLO as a distributional shift
-onto the boundary, <b>not</b> a deterministic 0→3.02 win. We deliberately do <b>not</b> claim a <i>median</i> win:
-whale's median is lower-variance (σ≈8 vs LRU σ≈145) but LRU's median is itself highly variable (534–876 ms) and
-one LRU run dipped below whale's, so the median is not a reliable discriminator here. Larger n and a certified-node
+<li><b>The typical p99 reduction is significant; but the effect is distributional with overlapping tails.</b>
+whale's median p99 (≈7.7 s) is ~40% below LRU's (≈12.6 s), 5 of 6 whale runs fall below LRU's best (10.4 s), and a
+Mann-Whitney test (whale n=6 vs LRU n=4) puts whale stochastically lower (one-sided p≈0.033). It is <i>not</i>
+full separation: p99 at λ=3 is metastable for both policies (whale once hit 26.6 s, LRU once 28.3 s), so the top
+tails overlap — a larger n showed the earlier "fully separated" impression was an artifact of not yet sampling a
+whale high-tail draw (a self-correction). The reduced typical p99 sits on the 8 s boundary, so the absolute
+crossing is metastable (3 of 6 whale runs cross; LRU/CAR never, 0/6) — we report goodput@SLO as a distributional
+shift, <b>not</b> a deterministic 0→3.02 win. We also do <b>not</b> claim a <i>median</i>-TTFT win: whale's median
+is lower-variance (σ≈9 vs LRU σ≈140) but LRU's median is itself variable (534–876 ms) with one run below whale's.
+A certified-node
 confirmation would tighten the crossing probability; the p99 reduction and the offline size-signal result are the
 robust claims.</li>
 <li><b>Size-aware residency is gap-capped, not gap-free.</b> The offline −23% recompute (§4.2) is an upper bound
@@ -550,7 +561,8 @@ recency-/grace-based policy (LRU, SLRU, CAR) captures 0%. Two obstacles bound th
 turn-0→turn-1 reuse gap (median 460 s) is ~5× the ~90 s of retention a finite cache affords, so no residency
 policy — size-aware included — holds a continuer across the gap under 1.89× oversubscription; the offline −23%
 recompute does not materialize, and what survives is a scheduling benefit — whale's size-ranked victim choice
-robustly cuts λ=3 p99 ~30% (all whale runs below all LRU/CAR runs, p≈0.029), landing it on the SLO boundary
+cuts the typical (median) λ=3 p99 ~40% (Mann-Whitney p≈0.033, 5/6 runs below LRU's best, though both policies'
+top tails overlap under metastability), landing it on the SLO boundary
 (the microscopic timing pathway is not isolated: waiting-queue depth is unchanged, batch composition differs —
 future work). (ii)
 goodput@SLO is metastable — p99 is a queue-timing draw decoupled from recompute volume — so that scheduling

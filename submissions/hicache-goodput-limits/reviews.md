@@ -15,7 +15,7 @@ p99 is lower on 2 of 3 nodes (nodeset-0, 1-2) but REVERSES on the third (0-3: LR
 with per-policy p99 swinging 6–31 s by node/run; and the 460 s reuse gap caps online recompute capture ≈0 regardless. Robust
 contributions: the size-observability + offline victim-choice test (deterministic), the chash decomposition, the
 two-bound model, and the cross-node metastability result (single-node A/Bs unreliable for tail-SLO residency). The
-GPU whale p99-reduction is RETRACTED as a portable win → reported as node-specific.
+GPU whale p99-reduction is RETRACTED as a portable win → reported as weak/node-dependent (no stable sign across 3 nodes).
 
 ## Major weaknesses (ranked by how much a PC would push)
 
@@ -94,7 +94,7 @@ nodeset-0, but 3 nodes already establish sign-instability.
   whale-r6 hit 26.6 s — whale has rare high-metastable draws too, so the p99 distributions overlap at the top.
   The honest claim is a distributional (typical) reduction, not full separation or a per-run guarantee.
 - What would still change the verdict: a certified-node whale-vs-LRU pairing failing to reproduce the typical p99
-  reduction → GPU effect node-specific; the offline size-signal result (deterministic) would still stand.
+  reduction → GPU effect node-dependent (no stable sign); the offline size-signal result (deterministic) would still stand.
 
 ## Resolution status (v0.2, updated 2026-07-13)
 - Reframed from bounded-impossibility → size-signal after discovering AUC 0.78 + offline whale unique-capture; the

@@ -549,8 +549,8 @@ mechanism; the right ones (hit-rate, mean TTFT, moderate-load throughput) all mo
 
 <p><b>The tail is empirically decoupled from the hit gain — across the whole replication set.</b> The
 "by-construction" argument above is not merely qualitative: pairing every same-node stock↔v1 A/B we ran at
-λ=3 shows the hit change and the p99 change are unrelated (Table&nbsp;3). The hit gain spans
-−1.0…+2.8&nbsp;pp; the p99 change spans −61…+127%, and the two do not track — the run with the
+λ=3 shows the hit change and the p99 change are unrelated (Table&nbsp;3, and plotted in Fig.&nbsp;4). The hit
+gain spans −1.0…+2.8&nbsp;pp; the p99 change spans −61…+127%, and the two do not track — the run with the
 <i>largest</i> hit gain (+2.77&nbsp;pp, node&nbsp;1-2) had p99 <i>+28%</i> (worse), while the run with a hit
 <i>loss</i> (−1.0&nbsp;pp, budget&nbsp;1.0) had p99 −55%.</p>
 <figure>
@@ -566,6 +566,40 @@ mechanism; the right ones (hit-rate, mean TTFT, moderate-load throughput) all mo
 Pearson <i>r</i>(Δhit, Δp99)&nbsp;=&nbsp;+0.30 (<i>r</i>²&nbsp;≈&nbsp;0.09, not significant at n=5): the hit
 gain explains &lt;10% of the tail's movement. The ±127% p99 swing is node/run variance (§5.1), which dwarfs
 retention's ±2.8&nbsp;pp hit signal. Median TTFT, by contrast, moves with the hit gain (−26% where hit rises).</figcaption>
+</figure>
+<figure>
+<svg viewBox="0 0 460 300" width="100%" style="max-width:520px" font-family="Georgia,serif" xmlns="http://www.w3.org/2000/svg">
+  <!-- axes -->
+  <line x1="62" y1="18" x2="62" y2="250" stroke="#333" stroke-width="1"/>
+  <line x1="62" y1="250" x2="440" y2="250" stroke="#333" stroke-width="1"/>
+  <!-- zero reference lines -->
+  <line x1="188" y1="18" x2="188" y2="250" stroke="#bbb" stroke-width="1" stroke-dasharray="4,3"/>
+  <line x1="62" y1="166" x2="440" y2="166" stroke="#bbb" stroke-width="1" stroke-dasharray="4,3"/>
+  <!-- x ticks -->
+  <g font-size="10" fill="#444" text-anchor="middle">
+    <text x="104" y="264">−1</text><text x="188" y="264">0</text><text x="272" y="264">1</text>
+    <text x="356" y="264">2</text><text x="440" y="264">3</text>
+    <text x="251" y="284">Δ hit-rate @λ3 (pp)</text>
+  </g>
+  <!-- y ticks -->
+  <g font-size="10" fill="#444" text-anchor="end">
+    <text x="58" y="221">−50</text><text x="58" y="169">0</text><text x="58" y="116">+50</text><text x="58" y="63">+100</text>
+  </g>
+  <text x="16" y="135" font-size="10" fill="#444" transform="rotate(-90 16 135)" text-anchor="middle">Δ p99 TTFT @λ3 (%)</text>
+  <!-- points: (Δhit, Δp99) -->
+  <!-- big-hit-gain nodes (0-3, 1-2) in dark blue -->
+  <circle cx="372" cy="167" r="5" fill="#1a5276"/><text x="366" y="159" font-size="9.5" fill="#1a5276" text-anchor="end">0-3 (+2.2, −2%)</text>
+  <circle cx="421" cy="136" r="5" fill="#1a5276"/><text x="415" y="130" font-size="9.5" fill="#1a5276" text-anchor="end">1-2 (+2.8, +28%)</text>
+  <!-- ondem-2 group in orange -->
+  <circle cx="222" cy="32" r="5" fill="#ca6f1e"/><text x="230" y="30" font-size="9.5" fill="#ca6f1e">ondem-2 (+0.4, +127%)</text>
+  <circle cx="196" cy="230" r="5" fill="#ca6f1e"/><text x="204" y="234" font-size="9.5" fill="#ca6f1e">ondem-2 (+0.1, −61%)</text>
+  <circle cx="103" cy="224" r="5" fill="#ca6f1e"/><text x="111" y="228" font-size="9.5" fill="#ca6f1e">ondem-2 f=1.0 (−1.0, −55%)</text>
+</svg>
+<figcaption><b>Fig.&nbsp;4 —</b> The five same-node A/Bs, plotted as (Δ hit-rate, Δ p99 tail). If retention moved the
+SLO-defining tail, the points would trend down-left→up-right; instead they scatter with no trend
+(<i>r</i>²≈0.09). The largest hit gain (1-2, +2.8&nbsp;pp) has the tail getting <i>worse</i> (+28%); a hit
+<i>loss</i> (ondem-2, f=1.0) has the tail improving −55%. The vertical spread (−61%…+127%) is run/node variance,
+independent of the horizontal (hit) axis — the visual signature of the structural immunity.</figcaption>
 </figure>
 <p><b>Consequence — a structural immunity, not just a noisy metric.</b> Because (i) the p99 tail is set by
 cold-document first-compute that no lossless retention can touch (§5.2, above) and (ii) the tail is measurably

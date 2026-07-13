@@ -461,3 +461,19 @@ steady-state), OUT runs/v0-warm-medk/. Outcomes, both honest:
      fundamentally unsuited; MUST use stable metrics. (warmdiag n=1 warm λ3=9.1s hints warm still fails.)
 Submitted exclusive-durable (pool saturated, all held flocks busy); will route via nohup flock-overlap if a
 held flock frees (faster). Paper stands complete without it; this is the final triad-completing validation.
+
+### ★★ warm-medk COMPLETE — warm-steady-state NECESSARY BUT INSUFFICIENT (2026-07-13 ~04:10Z)
+Triad-completing experiment. WARM (no-flush) stock K=5 λ=3 same-node (ondem-2, worktree NOFLUSH bench, stock
+engine verified; ran via nohup flock-overlap after exclusive queue starved ~1h then got exclusive node):
+p99 {13.60, 6.41, 9.84, 10.34, 14.49}s → median 10.34, sample-std 3.23, 1 PASS / 4 FAIL, COIN_FLIP=True,
+hit ~0.67-0.70.
+★ FINDING (node-controlled on ondem-2): warm-steady-state λ=3 is STILL a coin-flip (σ/m=1.38>1). vs stock
+flush (medk, ondem-3, σ/m=5.70): warm lowers σ/m 5.7→1.4, removes 25.8s catastrophe, spread 4.0×→2.3× — a
+big variance reduction (flush-vs-warm is cross-node → suggestive; warmdiag same-node ondem-3 confirms flush
+inflates tail 33-45%) — BUT does NOT clear σ/m<1 → coin-flip PERSISTS → warm-steady-state is NECESSARY but
+INSUFFICIENT. Combined w/ medk_wb (median-of-k can't separate configs): BOTH recommended fixes individually
+insufficient → the reliable evaluation is stable metrics (hit/p50/throughput). Methodology-validation TRIAD
+complete: (1) medk coin-flip exists; (2) medk_wb median-of-k can't A/B configs; (3) warm-medk warm-steady-
+state still coin-flip. Integrated §5.3 (warm median-of-k para) + §4 (σ/m warm data point 1.4) + §7 (necessary
+-but-insufficient). Committed 335655ba7, validated (tags/refs/numbers). Every σ/m config we measured fails
+the <1 bar (stock-flush 5.7, write_back 0.9-edge, warm 1.4).

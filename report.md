@@ -1391,3 +1391,16 @@ value. Do NOT re-attempt without a fresh multi-run λ≥5 campaign (not worth GP
 VERDICT: paper v0.5.1 is complete, QA'd, internally consistent, adversarially stress-tested, submission-ready. The
 science is done (full lever space + all escapes closed). HOLD/MAINTAIN; act only on genuinely new clean deterministic
 work or a changed protocol/external input.
+
+## 92. ★ REPRODUCIBILITY CERTIFICATION (charter-mandated: "paper claims must match raw runs; never inflate") — ALL PASS
+Re-ran every offline reproducibility script and verified all headline numbers match the paper EXACTLY:
+- sim/simulate.py 9-policy sweep @cap 10.7M: LRU/SLRU/CAR/LFU 7,244,293 (0%); FIFO 43,562,075 (−501%); MRU
+  33,731,249 (−366%); size_only 45,595,469 (−529%); WHALE 5,550,505 (+23%); Belady/opt 0 (+100%). Matches §4.2
+  table to the token.
+- sim/doc_sharing.py: 15.5% share a doc, 0.84M MAX shareable (<1%), 78.5% radix-captured. Matches §2.1/W10 exactly.
+- sim/prefill_contention.py (cert-lru-full): big peak-concurrency 2, overlap 17%, solo 36143/ovl 34776 (1.04×),
+  all peak 3, rates 36.3K→33.8K→30.1K. Matches §9d exactly.
+(simulate.py's default print shows only lru/slru/car/opt; ran the full 9-policy list via a temporary patch, reverted
+clean — git status clean.) ⇒ paper v0.5.1 is CERTIFIED ACCURATE against raw data; no inflation. This satisfies the
+charter integrity requirement. Combined with §90 (internal consistency QA) + §91 (adversarial stress-test), the
+manuscript is complete, consistent, accurate, and submission-ready. HOLD/MAINTAIN.

@@ -80,7 +80,10 @@ deadline (here 8 s). A better cache is expected to lower prefill work and thus T
 asymmetry with a heavy-tailed cold-prefill distribution (§2.1).</li>
 <li><b>A trace-driven queueing model</b> (Pollaczek–Khinchine) that predicts goodput@SLO from the prefill
 rate and the prefill-token distribution, and separates the roles of the cache: it controls
-<i>stability</i> (mean, ρ) but not the <i>SLO tail</i> (§2.2).</li>
+<i>stability</i> (mean, ρ) but not the <i>SLO tail</i> (§2.2). A minimal transient Monte-Carlo model,
+parameterized only by the measured document distribution, <b>reproduces the coin-flip from first principles
+and maps its phase boundary</b> (a coin-flip band at ρ ≈ 0.5–0.7), showing it is generic to the workload
+class, not an sglang artifact (§5.5).</li>
 <li><b>An eval-methodology observation</b>: the harness flushes the KV cache per rate, so each measured
 point is cold-started, compounding the cold-start metastability that makes the p99 tail bimodal (§2.3).</li>
 <li><b>A measurement result</b> (§3, §5): goodput@SLO on this benchmark is a <b>cold-start coin-flip</b>.
@@ -576,6 +579,40 @@ help is entirely in the body of the distribution; the SLO is defined on the p99 
 result is lossless by construction (radix prefix matching returns byte-identical KV; write policy and
 movement timing do not alter outputs).</p>
 
+<h3>5.5 A minimal model reproduces the coin-flip (generality)</h3>
+<p>Is the coin-flip specific to sglang, or a generic consequence of open-loop scheduling of heavy-tailed
+cold prefills? We test this with a <b>minimal transient-queue Monte-Carlo</b>
+(<code>tools/coinflip_sim.py</code>) that strips away the KV cache, decode interleaving, and batching, keeping
+only the hypothesized mechanism: Poisson(λ₀) arrivals of cold documents whose prefill demand is drawn from
+the <i>measured</i> turn-0 token distribution, served by a single FCFS server of the <i>calibrated</i> rate
+P = 20.5 K tok/s (chunked prefill serializes concurrent heavy docs, §2.4), starting from an empty/cold queue.
+This is a <b>forward prediction</b>: it is parameterized <i>only</i> by the independently-measured document
+distribution and P — nothing is fit to the observed coin-flip. We draw 200 independent arrival realizations
+per load and record the distribution of λ=3-style p99 TTFT (the variance-domination ratio σ/m of §4 uses
+m = |SLO − median|).</p>
+<table>
+<tr><th>load ρ</th><th>p99 median</th><th>p99 range (min–max)</th><th>σ/m</th><th>pass fraction</th><th>regime</th></tr>
+<tr><td>0.27</td><td>4.8 s</td><td>3.6–7.9 s</td><td>0.2</td><td>1.00</td><td>reliable pass</td></tr>
+<tr><td>0.50</td><td>7.0 s</td><td>4.9–14.3 s</td><td>1.5</td><td>0.79</td><td><b>coin-flip</b></td></tr>
+<tr><td>0.59</td><td>8.5 s</td><td>5.9–16.8 s</td><td>4.1</td><td>0.40</td><td><b>coin-flip</b></td></tr>
+<tr><td>0.69</td><td>10.0 s</td><td>6.4–21.7 s</td><td>1.3</td><td>0.10</td><td><b>coin-flip</b></td></tr>
+<tr><td>0.78</td><td>12.4 s</td><td>7.4–27.9 s</td><td>0.8</td><td>0.01</td><td>reliable fail</td></tr>
+<tr><td>0.91</td><td>22.9 s</td><td>11.2–48.3 s</td><td>0.5</td><td>0.00</td><td>reliable fail</td></tr>
+</table>
+<p><b>The minimal model reproduces the coin-flip from first principles.</b> There is a distinct
+<b>coin-flip band at ρ ≈ 0.5–0.7</b> where the p99 straddles the SLO (σ/m &gt; 1, pass fraction strictly
+between 0 and 1), bracketed by a reliable-pass regime below and a reliable-fail regime above — a phase
+diagram for when goodput@SLO is unreliable. Both the <i>existence</i> of the coin-flip and its
+<i>magnitude</i> match the measurement: in the band the model's p99 spans ~6–22 s with median ~7–10 s,
+versus the measured same-node medk (median 9.4 s, 6.5–25.8 s, §3.1). Because the model contains no cache,
+scheduler, or model-specific detail, <b>the coin-flip is a generic property of the workload class</b> —
+heavy-tailed cold prefills scheduled open-loop near the queueing knee — not an artifact of sglang or this
+model. <b>Scope/honesty:</b> this is an illustrative minimal model, not a point predictor — it omits decode
+contention and the multiturn/cache structure, and models the heavy prefill load with turn-0 documents only,
+so the exact ρ that the frozen eval occupies is approximate (the eval's turn-0-only arrival rate sits just
+below the band; the real prefill load, including follow-up tokens, pushes it in). The claim is qualitative
+and mechanistic: the coin-flip band exists and is generic.</p>
+
 <h2>6 Related work</h2>
 <p>
 <b>Strata</b> (arXiv 2508.18572) manages KV across GPU/CPU/SSD with cross-tier prefetch and placement,
@@ -661,7 +698,8 @@ disabled, run on the same node as v0-stock, §5.3). Each run's <code>curve.csv</
 <code>summary.json</code> hold the per-rate points and the goodput headline; every number in this paper is
 taken directly from those files. Tooling: trace stats <code>tools/tokenize_trace.py</code> →
 <code>tools/trace_stats.json</code>; queueing model <code>tools/queue_model.py</code>; prefill-rate
-calibration <code>tools/calibrate.py</code>; per-run analysis <code>tools/analyze_run.py</code>.</p>
+calibration <code>tools/calibrate.py</code>; per-run analysis <code>tools/analyze_run.py</code>; the minimal
+coin-flip Monte-Carlo <code>tools/coinflip_sim.py</code> (deterministic; output <code>runs/coinflip_sim.txt</code>, §5.5).</p>
 
 </body>
 </html>

@@ -106,7 +106,8 @@ scheduler's pending set (a guaranteed-imminent-reuse signal); realizable, non-or
 replication (n=4 same-node A/B nodes) it is <b>neither a robust win nor reliably safe</b>: the hit gain is
 node-dependent (+2.2/+2.8&nbsp;pp on two nodes vs +0.4/+0.10&nbsp;pp on a third; +0.1–2.8&nbsp;pp, mean
 ≈+1.4&nbsp;pp), and at high pin counts the pin exposes a latent radix-tree eviction-invariant bug that
-<b>intermittently crashes the scheduler</b> (λ=7, all 8 TP ranks, 26 pins). This is the core negative result.</li>
+<b>intermittently crashes the scheduler</b> (λ=7, all 8 TP ranks, ≥~20 concurrent pins — 26 in one run, 20 in
+another that crashed <i>despite</i> both attempted fixes). This is the core negative result.</li>
 <li>A <b>scheduler/tier analysis, tested on the real system</b> (the deeper insight): a single-tier sim makes
 the eviction gap look scheduler-created (FCFS 7–23&nbsp;pp, ≈0 under prefix-aware pull), but a same-node
 FCFS-vs-LPM A/B on the 122B system shows real hit is <b>scheduler-insensitive</b> (Δ&lt;0.5&nbsp;pp) while LPM

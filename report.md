@@ -1373,3 +1373,21 @@ cross-refs resolve (§2.1..§9,§9d), no TODO/pending/placeholder markers, HTML 
 this contributions edit). The QA pass earned its keep via the §7↔§2.1 contradiction — exactly the failure mode
 incremental multi-version editing produces. Paper v0.5.1 is now internally consistent end-to-end + submission-ready.
 HOLD/MAINTAIN.
+
+## 91. Adversarial pre-submission pass + λ-sweep extension evaluated/declined — paper confirmed complete
+Two final pre-submission checks, both concluding HOLD:
+(1) ADVERSARIAL "why reject at SOSP/OSDI" pass. Strongest attacks + where they're already answered: (a) "degenerate
+metric — goodput@SLO=0 for everything" → ANSWERED by the metastability result (it's not a clean 0; it's a metastable
+{0,X} that flips on execution variance at the 8s boundary; p50 sub-1.1s so not a systemic failure; 63% of tail is
+avoidable so the metric is meaningful, not impossible). (b) "workload-specific no-go" → the two-bound model + 3
+conditions are stated generally; §7 scopes single-workload honestly; escape levers named+quantified. (c) "size signal
+is offline-only vaporware" → honestly framed as the correct-signal characterization, gap-capped online (§4.2). (d)
+"didn't try X" → full lossless lever space covered (eviction/admission/prefetch/capacity-sharing/prefill-P). Defenses
+already present in the manuscript; no new gap found.
+(2) METASTABILITY-ACROSS-λ extension: checked fixed-workload p99 variance at λ=5/7/10. Data too SPARSE (n=3-4; most
+runs scancel-after-λ3) to characterize, AND higher-λ metastability is irrelevant to goodput@SLO (all policies fail
+SLO at λ≥5 regardless; metric decided at λ=3). Paper already treats this (§5.3). DECLINED — no clean result, low
+value. Do NOT re-attempt without a fresh multi-run λ≥5 campaign (not worth GPU).
+VERDICT: paper v0.5.1 is complete, QA'd, internally consistent, adversarially stress-tested, submission-ready. The
+science is done (full lever space + all escapes closed). HOLD/MAINTAIN; act only on genuinely new clean deterministic
+work or a changed protocol/external input.

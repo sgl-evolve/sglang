@@ -203,3 +203,26 @@ This weakens the size-signal-as-headline and is a further argument for the metas
   W8 resolved (admission axis refuted deterministically). Remaining OPEN only as future work: a larger multi-node
   median-of-k (contended pool precludes) and a memory-pressure-gated admission variant — both bounded by the
   execution-variance dominance.
+
+## Second independent adversarial review (v0.7 → v0.8), resolutions
+A fresh hostile PC review of the repositioned v0.7. Verdict: still weak-reject as-framed, but confirmed the
+reposition fixed the integrity problem (no more advertise-then-withdraw of a false positive). It found concrete
+revision seams + one deep issue; all actionable ones fixed in v0.8:
+- ★ STRONGEST REJECTION ARG (metastability confounded with node/environment health, flagship A/B on a "flaky" node):
+  ADDRESSED with a within-vs-between-node VARIANCE DECOMPOSITION (§5.6, sim/power_auc.py). **95% of the p99 variance
+  is WITHIN-node** (between-node η²=0.05); a CERTIFIED node (0-3) alone spans the full 5.3× range at n=3, and the
+  screening node nodeset-0 has the SMALLEST within-node spread — so it is run-to-run on a fixed node, not node-choice
+  or nodeset-0 flakiness. (Whether the within-node residual is intrinsic vs transient-environment stays unseparated,
+  but it is same-node/run-to-run either way → single-node A/Bs void regardless. Honest.)
+- O2 (power law used POOLED cross-node CV but labeled it same-node): FIXED — recomputed within-node CV=0.63 →
+  n≈31/policy (was 24 mislabeled). E4 (4 dead "§9d" refs): FIXED → §9. E6 (§8 stale "7-policy/whale −23%"): FIXED →
+  11-policy/whale +23%/cost-greedy +48% (+sign). E2 (§4.1 stale hit 0.62/R_thru 6.5 vs §5.1's 0.68/7.8): FIXED.
+  O4 (+48% skim-bankable before caveat): FIXED — inline gap-capped + near-tautological flag. E5 (single-run 63% vs
+  "single runs untrustworthy"): FIXED — clarified the decomposition is a COMPOSITIONAL quantity (stable 58–63%),
+  distinct from the metastable p99 TIMING (5.3×).
+- DEFERRED (polish/judgment, not integrity): E1 (clarify the 22-run pooled range coincides with LRU's because LRU
+  holds both extremes; whale 6.2–26.6), O1 (title "criterion" — box already scopes it to a conjecture+checklist),
+  O5 ("5/6 below LRU's best" one-sided phrasing), and collapsing the ~700-word Summary that restates facts 2–3×.
+NET: two independent adversarial reviews survived; the honest verdict remains that this is a rigorous bounded-negative
+on a single frozen workload with goodput@SLO≡0 — a legitimate but hard-to-place contribution whose ceiling is set by
+the single-workload scope the frozen protocol imposes, not by remaining fixable flaws.

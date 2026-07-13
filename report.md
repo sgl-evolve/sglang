@@ -1314,3 +1314,22 @@ reuse-DISTANCE-driven, not mean-time; large-cold-prefill bursts clip the LRU tai
 reuse; the reuse-distance replay (§5.2) correctly gives 58% avoidable. Added a §4.2 clarification paragraph + W9 so
 a reviewer doesn't rediscover the fallacy and mistake it for a hole. No error in the paper; hardened against a sharp
 quantitative objection. Deterministic, non-GPU.
+
+## 87. Evaluated (and correctly declined) a deterministic deepening: isolating the metastability amplifier
+Considered strengthening §5.6's "closed-loop feedback amplifies jitter" claim with a direct measurement: match
+conversations by chash across two runs, measure admission-time divergence by turn index (turn-0 seed-fixed vs
+turn-k closed-loop). Result (cert-lru-full vs cert-car90-full, both have chash; 1664 common convs): divergence
+GROWS turn-0 22.0s → turn-1 56.4 → turn-2 73.3 → turn-3 86.6s (median |Δt|), consistent with per-turn completion
+jitter compounding into arrival divergence — SUGGESTIVE of the amplification. BUT CONFOUNDED and NOT PC-clean:
+(1) turn-0 already diverges 22s = send-vs-admission confound (trace logs admission=send+queue-wait; queue-wait is
+itself metastable), so the baseline isn't 0; (2) cert-lru vs cert-car90 = policy confound (CAR90≈LRU but not
+identical) + likely cross-node (speed) confound → the growth partly reflects node-speed accumulation, not pure
+feedback. A clean isolation needs two SAME-policy SAME-node chash-traces (screen-v0/v0b predate the chash field;
+only cert-lru-full is LRU-with-chash) = new controlled GPU runs on a variance-mechanism hunt — HIGH cost, and
+against the disciplined no-GPU-chase stance (variance needs many runs; metric is chaotic). DECISION: do NOT add the
+confounded number to the paper (would introduce a weakly-supported claim a PC would attack = the opposite of
+hardening). The paper's closed-loop-feedback attribution stands on the VERIFIED architectural structure (turn N+1
+fires only after turn N completes — confirmed in bench_serving.py), which is a sound mechanism statement without the
+measurement. Suggestive divergence evidence kept here (report) as internal corroboration, not a paper claim.
+VERDICT unchanged: paper v0.4 is COMPLETE + hardened; HOLD/MAINTAIN. This is the honest limit of what the existing
+data + the (untrustworthy) metric permit.

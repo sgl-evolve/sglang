@@ -544,3 +544,11 @@ methodology: median-of-k rescues goodput@SLO ONLY when median comfortably from S
 failed (its median sits near SLO). Integrated §5.5 (req-k table) + §8, committed 11221a764, validated (10
 tables/6 figs, tags/refs/&). Connects the fix (median-of-k) ↔ diagnostic (σ/m) ↔ capstone (stable metrics)
 into one quantitative story. Paper methodology now: RECOMMENDED + VALIDATED + BOUNDED + UNIFIED.
+
+### Integrity note — rejected an analytical required-k formula (2026-07-13 ~10:15Z)
+Considered adding a closed-form k_req≈c(σ/m)² (median SE~σ/√k) to generalize the required-k result. CHECKED
+vs sim data → REFUTED: req-k is 17 at σ/m=1.2 (median 1.1s BELOW SLO) but only 7 at σ/m=1.9 (1.2s ABOVE) —
+inverted from (σ/m)². Cause = right-skewed prefill tail (below-SLO points have the upper tail crossing the
+deadline → need more replicates than above-SLO at equal σ/m). So the naive formula is WRONG; correctly did
+NOT add it. The simulated required-k (which honestly shows this asymmetry in its table) stands. Integrity:
+killed a tempting-but-data-refuted addition. No paper change.

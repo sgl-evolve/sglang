@@ -133,7 +133,7 @@ which no lossless retention can touch; and (ii) empirically, across all five sam
 node/run variance that flips goodput 0↔3.0 across identical stock runs. Even an oracle (Bélády) policy would
 leave goodput@SLO where it is. Corollary (sharpened): because a cold document has no KV to reload or dedup and
 its prefill is compute-bound, goodput@SLO here is close to a <i>lossless-mechanism invariant</i> — movable only
-by scheduling under an explicit fairness trade (SJF/SRPF, excluded here) or by faster compute, not by any
+by reordering the prefill queue to run the <i>longest</i> (cold) documents first — a fairness-destroying policy that starves short requests, and the <i>opposite</i> of the excluded SJF/SRPF (which prioritize short jobs and would push the long tail later, <i>worsening</i> goodput@SLO) — or by faster compute, not by any
 caching mechanism; hit-rate is the robust cache-mechanism metric.</li>
 </ul>
 
@@ -626,10 +626,12 @@ levers that move <i>other</i> tails do not apply to this one: Strata-style load/
 <i>warm</i> reloads (there is nothing to reload for a cold document), and cross-request dedup needs
 near-duplicate documents (this workload has no cross-conversation sharing). Within a lossless,
 fairness-preserving, fixed-budget engine, goodput@SLO here is therefore reducible only by <i>faster
-per-document prefill</i> (kernel/hardware — outside this budget) or by <i>reordering to prioritize the tail</i>
-(which trades TTFT fairness and is excluded by the protocol as SJF/SRPF). goodput@SLO is thus not merely
-retention-immune but close to a <i>lossless-mechanism invariant</i> on this workload; the only lever that
-remains is scheduling policy under an explicit fairness trade, not caching.</p>
+per-document prefill</i> (kernel/hardware — outside this budget) or by <i>reordering the prefill queue to run
+the longest (cold) documents first</i> — a fairness-destroying policy that starves short requests, and notably
+the <i>opposite</i> of the excluded SJF/SRPF, which prioritize short jobs and would push the long tail later,
+<i>worsening</i> goodput@SLO. goodput@SLO is thus not merely retention-immune but close to a
+<i>lossless-mechanism invariant</i> on this workload; no lossless, fairness-preserving, in-budget policy —
+cache or scheduler — moves it, and the textbook reorder policies (SJF/SRPF) move it the wrong way.</p>
 <p><b>Even the one non-reorder scheduling lever has no headroom — the SLO regime is prefill-compute-bound.</b>
 One might hope to cut the cold-document TTFT without reordering by giving prefill priority over decode (a
 fairness-neutral scheduling change). We measured the batch mix from the server logs: at λ=3 — the only rate
@@ -640,8 +642,9 @@ than a 256-sequence decode step, decode's share of GPU <i>time</i> is smaller st
 entirely would speed prefill by a few percent at most, nowhere near the ≈3× a 12–27&nbsp;s cold-document TTFT
 needs to reach 8&nbsp;s. The engine already spends essentially all of the SLO-deciding regime on prefill; there
 is nothing to reprioritize. A cold document's TTFT is set by its own prefill compute plus the FIFO prefill
-backlog ahead of it — reducible only by <i>reordering</i> that backlog (SJF/SRPF, excluded and fairness-costly)
-or <i>faster prefill kernels</i> (out of this fixed budget). This closes the last lever with direct evidence:
+backlog ahead of it — reducible only by <i>reordering</i> that backlog to run the longest documents first
+(fairness-destroying, and the reverse of the excluded SJF/SRPF, which would delay the tail further) or by
+<i>faster prefill kernels</i> (out of this fixed budget). This closes the last lever with direct evidence:
 goodput@SLO here is prefill-compute-bound, and no lossless, fairness-preserving, in-budget mechanism — cache or
 scheduler — moves it.</p>
 <p><b>The immunity generalizes to a testable condition, not just this workload.</b> Retention (and eviction

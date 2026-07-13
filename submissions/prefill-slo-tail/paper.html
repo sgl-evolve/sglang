@@ -599,6 +599,42 @@ m = |SLO − median|).</p>
 <tr><td>0.78</td><td>12.4 s</td><td>7.4–27.9 s</td><td>0.8</td><td>0.01</td><td>reliable fail</td></tr>
 <tr><td>0.91</td><td>22.9 s</td><td>11.2–48.3 s</td><td>0.5</td><td>0.00</td><td>reliable fail</td></tr>
 </table>
+<figure>
+<svg width="560" height="270" viewBox="0 0 560 270" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="11">
+  <!-- coin-flip band shading: rho 0.455..0.735 -> x -->
+  <rect x="222" y="30" width="139" height="200" fill="#fff3e0"/>
+  <text x="291" y="44" text-anchor="middle" fill="#a15c00">coin-flip band</text>
+  <line x1="70" y1="230" x2="500" y2="230" stroke="#333"/><line x1="70" y1="230" x2="70" y2="24" stroke="#333"/>
+  <text x="285" y="258" text-anchor="middle">offered load ρ (minimal model)</text>
+  <text x="18" y="127" text-anchor="middle" transform="rotate(-90 18 127)">λ=3 p99 TTFT (s)</text>
+  <text x="65" y="233" text-anchor="end">0</text><text x="65" y="159" text-anchor="end">10</text><text x="65" y="87" text-anchor="end">20</text>
+  <line x1="66" y1="159" x2="70" y2="159" stroke="#333"/><line x1="66" y1="87" x2="70" y2="87" stroke="#333"/>
+  <!-- SLO 8s: y=230-8*7.14=173 -->
+  <line x1="70" y1="173" x2="500" y2="173" stroke="#c00" stroke-dasharray="5,3"/><text x="440" y="169" fill="#c00">SLO = 8 s</text>
+  <!-- x(rho)=80+(rho-0.25)*709 ; y(s)=230-s*7.14 ; whiskers min-max + median dot -->
+  <!-- 0.27: min3.62 max7.94 med4.75  reliable-pass (green) -->
+  <line x1="94" y1="204" x2="94" y2="173" stroke="#3a7a3a" stroke-width="2"/><circle cx="94" cy="196" r="3.5" fill="#3a7a3a"/>
+  <!-- 0.41: min4.41 max10.62 med5.91 -->
+  <line x1="194" y1="198" x2="194" y2="154" stroke="#7a2020" stroke-width="2"/><circle cx="194" cy="188" r="3.5" fill="#7a2020"/>
+  <!-- 0.50: min4.86 max14.27 med7.02  coin-flip -->
+  <line x1="257" y1="195" x2="257" y2="128" stroke="#7a2020" stroke-width="2.5"/><circle cx="257" cy="180" r="4" fill="#c05000"/>
+  <!-- 0.59: min5.87 max16.81 med8.46 -->
+  <line x1="321" y1="188" x2="321" y2="110" stroke="#7a2020" stroke-width="2.5"/><circle cx="321" cy="170" r="4" fill="#c05000"/>
+  <!-- 0.69: min6.40 max21.69 med10.04 -->
+  <line x1="392" y1="184" x2="392" y2="75" stroke="#7a2020" stroke-width="2.5"/><circle cx="392" cy="158" r="4" fill="#c05000"/>
+  <!-- 0.78: min7.41 max27.94(clip 30->y16) med12.35  reliable-fail -->
+  <line x1="456" y1="177" x2="456" y2="31" stroke="#7a2020" stroke-width="2"/><circle cx="456" cy="142" r="3.5" fill="#7a2020"/>
+  <text x="94" y="245" text-anchor="middle" font-size="10">.27</text><text x="194" y="245" text-anchor="middle" font-size="10">.41</text><text x="257" y="245" text-anchor="middle" font-size="10">.50</text><text x="321" y="245" text-anchor="middle" font-size="10">.59</text><text x="392" y="245" text-anchor="middle" font-size="10">.69</text><text x="456" y="245" text-anchor="middle" font-size="10">.78</text>
+</svg>
+<figcaption><b>Figure (coin-flip phase diagram).</b> Minimal transient-queue Monte-Carlo
+(<code>tools/coinflip_sim.py</code>), parameterized only by the measured document distribution and calibrated
+P. Each bar is the min–max range of λ=3 p99 TTFT over 200 arrival realizations; the dot is the median.
+Below ρ≈0.45 the whole range is under the SLO (<span style="color:#3a7a3a">reliable pass</span>); above ρ≈0.75
+it is entirely above (<span style="color:#7a2020">reliable fail</span>); in between, the range
+<b><span style="color:#c05000">straddles the SLO</span></b> — the coin-flip band, where goodput@SLO is
+decided by chance. The model reproduces both the coin-flip and its magnitude (cf. measured medk 6.5–25.8 s,
+§3.1) from first principles, so the phenomenon is generic to heavy-tailed cold-prefill workloads.</figcaption>
+</figure>
 <p><b>The minimal model reproduces the coin-flip from first principles.</b> There is a distinct
 <b>coin-flip band at ρ ≈ 0.5–0.7</b> where the p99 straddles the SLO (σ/m &gt; 1, pass fraction strictly
 between 0 and 1), bracketed by a reliable-pass regime below and a reliable-fail regime above — a phase

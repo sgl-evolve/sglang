@@ -1059,3 +1059,14 @@ lru-r5 λ=3 = 17133ms (median 537). lru n=5 p99 {10360,11254,13991,17133,28325}.
 regenerated. Replicate phase COMPLETE (freed node). Final honest result stands. Remaining: certified W6 (job 19585,
 still PD on contended pool, fire-and-forget). Campaign deliverable done + rigorously honest (4 self-corrections
 total: goodput-floor, median-win, full-separation, queueing-mechanism all retracted under scrutiny).
+
+## 66. ★★★ OFFLINE POLICY SWEEP (7 causal rules): whale UNIQUELY captures; naive size_only CATASTROPHIC (−529%)
+Offline replay @10.7M, Belady-capture = (lru−p)/(lru−opt):
+  lru/slru/car/LFU  = 7.24M  → +0.0%  (recency AND frequency rules ALL coincide/fail)
+  fifo 43.6M −501% | mru 33.7M −366% | size_only 45.6M −529% (CATASTROPHIC) | whale 5.55M +23.4% | opt +100%.
+★ KEY SHARPENING: it is NOT "size" naively — pure size_only (evict biggest regardless of proven) is CATASTROPHIC
+(−529%, evicts big proven multi-turn convs → destroys reuse). The unique winning rule = evict biggest UNPROVEN,
+PROTECT proven (whale). So the insight is precisely "SIZE-among-unproven + proven-protection," not size alone and
+not recency/frequency. This is a much sharper, more defensible claim (7-policy sweep isolates the exact ingredient).
+★ Also: LFU (frequency) joins lru/slru/car at exactly 0% — frequency is as blind as recency here (proven convs
+already have recent access + high freq, so LFU's victim = same old unproven turn-0). Add to §4.2 offline proof.

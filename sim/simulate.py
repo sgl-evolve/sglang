@@ -131,11 +131,14 @@ def trace_headroom(access_order, convs, cap):
     W=int(os.environ.get("SIM_CARW", 300))
     def run(policy):
         depth=defaultdict(int); used=0; last=defaultdict(int); recompute=0; proven=defaultdict(bool)
+        served=defaultdict(int); first_seen=defaultdict(lambda: 10**12)
         # per-conv future accesses pointer
         fut={ci:deque(v) for ci,v in nextpos.items()}
         for p,(ci,t) in enumerate(access_order):
             if fut[ci] and fut[ci][0]==p: fut[ci].popleft()
             if t>=1: proven[ci]=True   # served a later turn => proven multi-turn conv (hit_count>=1)
+            served[ci]+=1
+            if p<first_seen[ci]: first_seen[ci]=p
             d=depth[ci]
             if d<t:
                 recompute += sum(rs(ci,k) for k in range(d,t))
@@ -154,6 +157,14 @@ def trace_headroom(access_order, convs, cap):
                     elif policy=="whale":  # evict BIGGEST unproven first (size-aware liveness); protect proven, LRU tiebreak
                         size=sum(rs(cj,k) for k in range(depth[cj]))
                         sc=(1 if proven[cj] else 0, -size, last[cj])
+                    elif policy=="lfu":    # least-frequently-served first, LRU tiebreak
+                        sc=(served[cj], last[cj])
+                    elif policy=="fifo":   # oldest-created (first seen) first
+                        sc=(first_seen[cj],)
+                    elif policy=="mru":    # most-recently-used first (adversarial control)
+                        sc=(-last[cj],)
+                    elif policy=="size_only":  # evict BIGGEST regardless of proven (no proven protection)
+                        sc=(-sum(rs(cj,k) for k in range(depth[cj])), last[cj])
                     else:  # opt: evict conv whose NEXT access is farthest (or none)
                         sc = (-(fut[cj][0] if fut[cj] else 10**12),)
                     if best is None or sc<best: best=sc; victim=cj

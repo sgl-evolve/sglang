@@ -30,7 +30,8 @@ proven multi-turn convs</b>, 37% cold docs) and the real-time live set <b>fits</
 liveness-bound, Belady≈0 → cache-addressable <i>offline</i>. Liveness is <b>partially OBSERVABLE at turn-0 — via
 SIZE</b>: single-turn "whales" have a big turn-0 (median 17,051 tok) while continuers start tiny (median 241),
 AUC(turn-0 size→single-turn)=<b>0.78</b>. In an offline replay this size signal is the <b>only</b> causal policy
-that captures Belady headroom (whale-first: −23% recompute; LRU/SLRU/CAR capture 0%). <b>But two obstacles remain.</b>
+that captures Belady headroom (whale-first: −23% recompute; a 7-policy sweep shows LRU/LFU/SLRU/CAR all 0% and
+naive size-only catastrophic −529% → the ingredient is size-among-UNPROVEN + proven-protection). <b>But two obstacles remain.</b>
 (1) <b>Online the 460 s reuse gap caps the realized recompute capture ≈ 0</b> (no residency can hold a continuer
 across the gap under 1.89× oversubscription): on GPU whale's evicted-recompute work ≈ LRU's; the residual benefit
 is on the <i>scheduling</i> axis: whale cuts the <b>typical (median) λ=3 p99 ~45%</b> (≈7.7 s vs LRU ≈14 s; 5/6
@@ -60,8 +61,10 @@ liveness is <b>partially observable at the decision point — through turn-0 SIZ
 (61% do) starts tiny (turn-0 median 241 tok) while a single-turn "whale" (39%) is large (median 17,051 tok),
 AUC(turn-0 size→single-turn) = <b>0.78</b>. In an offline replay over the served access order, <b>size-aware
 eviction (whale-first: evict the largest unproven conversation first) is the only causal policy that captures any
-Belady headroom</b> (−23% recompute vs LRU), where recency-/grace-based policies (LRU, SLRU, CAR) capture exactly
-0% — establishing SIZE, not recency, as the correct residency signal. Online, however, two obstacles bound the
+Belady headroom</b> (−23% recompute vs LRU); across a 7-policy sweep, recency-, frequency-, and grace-based rules
+(LRU, LFU, SLRU, CAR) all capture exactly 0% and a naive size-only rule is <i>catastrophic</i> (−529%, it evicts
+large proven conversations). The unique winning ingredient is <b>size <i>among unproven</i> nodes with proven
+conversations protected</b> — establishing this specific signal, not recency/frequency or size alone, as correct. Online, however, two obstacles bound the
 realized gain. First, the turn-0→turn-1 reuse gap is minutes (p50 460 s) while a finite cache affords only ~90 s
 of turn-0 retention, so <i>no</i> residency policy — size-aware included — can hold a continuer across the gap
 under 1.89× oversubscription: on GPU whale's evicted-recompute work ≈ LRU's, and the realized benefit is on the
@@ -234,13 +237,27 @@ rule at the real 10.7M capacity (sim/simulate.py): LRU, SLRU, and CAR all recomp
 conversation first) recomputes 5.55M — <b>−23%</b>, the only causal policy to capture any headroom. This holds
 across the capacity axis: whale captures 12%/34%/32%/23% of the Belady-achievable headroom at 4M/6M/8M/10.7M
 (peaking in the mid-pressure regime, shrinking only at the extreme 4M where everything churns), while
-LRU/SLRU/CAR capture 0% at every capacity. The coincidence of LRU/SLRU/CAR is not a bug but the crux: LRU's
-least-recently-used victim is <i>already</i> the
-oldest unproven turn-0 (a proven conversation, just reused, has recent access and is not the LRU victim), which is
-exactly the node SLRU and CAR also target — so all three recency-based rules evict the same nodes. Only whale
-changes the victim, by ranking unproven nodes by size rather than age. So the obstruction is not that liveness is
-unobservable; it is that the <i>recency</i> signal the standard heap uses is blind to it, while the <i>size</i>
-signal is not.</p>
+LRU/SLRU/CAR capture 0% at every capacity. A 7-policy sweep isolates the exact ingredient:</p>
+<table>
+<tr><th>causal policy (offline, cap 10.7M)</th><th>recompute</th><th>Belady-headroom captured</th></tr>
+<tr><td>LRU / SLRU / CAR / LFU</td><td>7.24M</td><td>0% (all coincide)</td></tr>
+<tr><td>FIFO</td><td>43.6M</td><td>−501% (catastrophic)</td></tr>
+<tr><td>MRU</td><td>33.7M</td><td>−366% (catastrophic)</td></tr>
+<tr><td>size-only (evict biggest, no proven-protection)</td><td>45.6M</td><td><b>−529% (catastrophic)</b></td></tr>
+<tr><td><b>whale (biggest UNPROVEN, protect proven)</b></td><td><b>5.55M</b></td><td><b>+23%</b></td></tr>
+<tr><td>Belady (offline oracle)</td><td>0</td><td>+100%</td></tr>
+</table>
+<p>Two things stand out. (a) <b>Recency and frequency are equally blind:</b> LRU, SLRU, CAR <i>and</i> LFU all land
+at the identical 7.24M — a proven conversation, just reused, has both recent access and high frequency, so it is
+never their victim; their victim is always the oldest/rarest unproven turn-0, the same node. (b) <b>It is not size
+alone:</b> a naive size-only rule (evict the biggest node regardless of proven status) is <i>catastrophic</i>
+(−529%) because it evicts the large proven multi-turn conversations that hold the reuse. The unique winning
+ingredient is <b>size <i>among the unproven</i>, with proven conversations protected</b> — whale. The coincidence
+of the recency/frequency rules is the crux: their victim is <i>already</i> the oldest unproven turn-0 (a proven,
+just-reused conversation has recent access and is not the victim), so they cannot express "evict the big dead whale,
+keep the small live continuer" — only a size-among-unproven rule can. So the obstruction is not that liveness is
+unobservable; it is that the recency/frequency signals the standard heap uses are blind to it, while the size
+signal (correctly scoped to unproven nodes) is not.</p>
 <p><b>The grace trap — why the TIME axis fails.</b> One might instead try to hold turn-0s <i>longer</i> (a
 completion-grace probation, CAR §5.3). This axis is trapped: the cache can only afford ~90 s of turn-0
 retention. The table below models the resident <i>demand</i> a grace-<i>G</i> policy would require (peak KV

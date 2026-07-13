@@ -900,6 +900,25 @@ class PrefillAdder:
         cand_extend_input_len = len(req.full_untruncated_fill_ids) - len(
             req.prefix_indices
         )
+
+        # --- wilkes admission-staggering (lossless; env-gated SGLANG_WILKES_MAXBIG=N, 0=off) ---
+        # The p99-tail is driven by large cold prefills coinciding in one prefill batch (each such
+        # batch is long, so everything queues behind it). Cap the number of LARGE (>= BIGTOK uncached
+        # tokens) prefills admitted per batch; defer extras to a later batch. Always admit if the batch
+        # is empty (no starvation: a lone large prefill still runs; deferred ones run next step).
+        _maxbig = int(os.environ.get("SGLANG_WILKES_MAXBIG", "0"))
+        if _maxbig > 0 and len(self.can_run_list) > 0:
+            _bigtok = int(os.environ.get("SGLANG_WILKES_BIGTOK", "20000"))
+            if cand_extend_input_len >= _bigtok:
+                _nbig = 0
+                for _r in self.can_run_list:
+                    if (
+                        len(_r.full_untruncated_fill_ids) - len(_r.prefix_indices)
+                    ) >= _bigtok:
+                        _nbig += 1
+                if _nbig >= _maxbig:
+                    return AddReqResult.OTHER  # defer this large prefill to a later batch
+
         total_tokens = cand_extend_input_len + max_new + self.page_size
 
         # adjusting the input_tokens based on host_hit_length and page_size

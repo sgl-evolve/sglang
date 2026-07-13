@@ -58,7 +58,7 @@ the tail is metastable, and show the effect is compounded by the harness cold-st
 each rate — the load generator issues <code>/flush_cache</code> at the start of every invocation, so the
 warmup burst warms the compute pipeline (CUDA graphs, JIT) but not the cache. Contributions: (1) <b>a measurement result</b>
 — goodput@SLO is unreliable for single-run KV-cache A/B on heavy-tailed cold-prefill workloads, a pitfall
-that explains a family of null and contradictory results; (2) <b>a queueing characterization</b> of the
+that would render such single-run A/B comparisons null or contradictory; (2) <b>a queueing characterization</b> of the
 metastability and the SLO-straddling tail; (3) <b>a methodology and a reusable diagnostic</b> — a workload-
 agnostic σ/m test for when goodput@SLO is trustworthy at all, warm steady-state (no per-rate flush),
 same-node median-of-k, and (since even median-of-k cannot resolve the tail here) reporting the cache's

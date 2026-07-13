@@ -5,19 +5,21 @@ W&B: project `sgl-evolve`, run `base` (group v0.31).
 
 ## ★★ KEY FINDINGS (2026-07-12, replicated — honest, nuanced)
 ### (A) DEFINITIVE: goodput@SLO is a metastable COIN-FLIP, even at λ=3 (warmup did NOT fix it)
-- **Stock λ=3 p99 (SLO 8 s, n=5):** 6505 (1-2) · **23718 (1-2, SAME node!)** · 20174 (0-3) · 11663 (0-1) · 36660 (1-2) → **4/5 FAIL.**
+- **Stock λ=3 p99 (SLO 8 s, n=6):** 6505 (1-2) · **23718 (1-2, SAME node!)** · 20174 (0-3) · 11663 (0-1) · 36660 (1-2) · 12223 (0-3) → **5/6 FAIL.**
   Same-node 1-2 stock varies **6.5 s ↔ 23.7 s (3.6×)** ⇒ pure RUN-variance metastable queue (definitive; not
   node/config). ⇒ **stock goodput@SLO is 0-or-3 by luck.** The v0.31 warmup+no-flush stabilized nothing at λ=3.
 - Implication (methodology): **single-run / single-node goodput A/Bs are VOID**; the metric needs median-of-k.
   This reproduces the v0.3 coin-flip on v0.31 and is itself a maintainer-relevant result (the eval is noisy).
-### (B) SIGNIFICANT: capacity de-dup REDUCES the goodput coin-flip (variance ↓61×, median p99 ↓3×)
-- **Stock λ=3 p99 (n=5):** 6505·11663·20174·23718·36660 → median **20174 ms**, std 10418, **1/5 pass**.
+### (B) SIGNIFICANT: capacity de-dup REDUCES the goodput coin-flip (variance ↓~20×, median p99 ↓2.3×; firmed n=6/12)
+- **Stock λ=3 p99 (n=6):** 6505·11663·12223·20174·23718·36660 → median **16198 ms**, std 9915, **1/6 pass**.
 - **Mechanism λ=3 p99 (write_back/exclusive/cost-aware, n=7):** 6461·6607·6851·6972·7032·7278·10597 →
   median **6972 ms**, std 1329, **6/7 pass**. (Mechanism isn't perfect — 1 fail at 10.6 s — but far tighter.)
-- **Tests on the actual p99 values (pass/fail Fisher underpowered — discards magnitude). ROBUST at n=5/11:**
-  STOCK n=5 (median 20174, std 10418, 1/5 pass) vs ALL-DE-DUP n=11 (write_back+exclusive+cost-aware; median
-  **7032**, std 1970, 7/11 pass): **Levene p=0.0055, Mann-Whitney p=0.034.** ⇒ the variance/median reduction is
-  STATISTICALLY SIGNIFICANT. **Caveat (from (D) below): this is a de-dup-CLASS effect, config-reachable via the
+- **Tests on the actual p99 values (pass/fail Fisher underpowered — discards magnitude). ROBUST, firmed to n=6/12:**
+  STOCK n=6 (median 16198, std 9915, 1/6 pass) vs ALL-DE-DUP n=12 (write_back+exclusive+cost-aware, incl. the
+  firming replicates' 2 de-dup fails 12237/12760; median **7154**, std 2198, 7/12 pass): **Levene/BF W=11.46
+  (p≈0.004), Mann-Whitney p≈0.049.** ⇒ the variance (↓~4.5×) / median (↓~2.3×) reduction is STATISTICALLY
+  SIGNIFICANT (Levene strong; MWU borderline — honestly, the firming replicates' 2 de-dup fails softened MWU
+  from 0.034→0.049, but the variance result strengthened and the conclusion holds). **Caveat (from (D) below): this is a de-dup-CLASS effect, config-reachable via the
   write_back flag — NOT specific to my exclusive CODE** (exclusive ≈ write_back on reliability, Levene p=0.92).
   So per the charter's "a config flip is not a contribution," the WIN here is the config-reachable de-dup;
   the CONTRIBUTION is the characterization + the insight (de-dup is a goodput-variance lever under metastable load).
@@ -25,7 +27,7 @@ W&B: project `sgl-evolve`, run `base` (group v0.31).
   prefill recompute ⇒ prefill queue robust to Poisson bursts ⇒ tighter goodput distribution (lower mean AND variance).
 - Attribution (honest): mostly the write_back CONFIG; exclusive CODE realizes it lossless/config-indep (+1.7pp hit).
   My earlier single-run claims ("6/6 reliable", etc.) were variance artifacts; the SIGNIFICANT, defensible claim
-  is the variance/median REDUCTION (Levene/MWU on n=5/7), not "always passes".
+  is the variance/median REDUCTION (Levene/MWU on n=6/12), not "always passes".
 - OPS: v-wb-cert-r3 CRASHED (exit 3, boot) — flashinfer JIT race from launching 2 pool evals together; run
   pool replicates SERIALLY. Held-pool hold-jobs time out ~23h (killed v0-cert-r2/r3 mid-run); manager re-heals.
 
@@ -47,11 +49,11 @@ W&B: project `sgl-evolve`, run `base` (group v0.31).
 On sglang's 2-tier HiCache (L1 GPU + L2 768 GB host, hybrid-Mamba Qwen3.5-122B, active cache =
 `UnifiedRadixCache`), under the v0.31 full-decode Poisson rate-sweep with a goodput@SLO (p99 TTFT ≤ 8 s) headline:
 1. **goodput@SLO is a metastable COIN-FLIP (even at λ=3), and cache capacity de-dup is a SIGNIFICANT
-   reliability lever.** STOCK λ=3 p99 (n=5) swings **6.5 s ↔ 36.7 s** (same-node 1-2: 6.5 vs 23.7 s), median
-   20.2 s, **1/5 pass** the 8 s SLO ⇒ stock goodput is 0-or-3 by luck; the v0.31 warmup did NOT fix it
+   reliability lever.** STOCK λ=3 p99 (n=6) swings **6.5 s ↔ 36.7 s** (same-node 1-2: 6.5 vs 23.7 s), median
+   16.2 s, **1/6 pass** the 8 s SLO ⇒ stock goodput is 0-or-3 by luck; the v0.31 warmup did NOT fix it
    (reproduces the v0.3 coin-flip). ⇒ **single-run/single-node goodput A/Bs are VOID** (median-of-k required)
-   — itself a maintainer-relevant result. **Capacity de-dup (write_back/exclusive/cost-aware, n=11) SIGNIFICANTLY
-   reduces this**: median p99 **7.0 s** (vs 20.2 s), 7/11 pass (vs 1/5) — **Levene p=0.0055, Mann-Whitney p=0.034**.
+   — itself a maintainer-relevant result. **Capacity de-dup (write_back/exclusive/cost-aware, n=12) SIGNIFICANTLY
+   reduces this**: median p99 **7.2 s** (vs 16.2 s), 7/12 pass (vs 1/6) — **Levene p≈0.004, Mann-Whitney p≈0.049**.
    So the cache's on-contract value is a statistically-significant goodput **RELIABILITY** effect (tightens the
    metastable distribution). **BUT it is a de-dup-CLASS effect, config-reachable via the write_back flag — NOT
    specific to my exclusive CODE** (exclusive vs write_back reliability: Levene p=0.92, n=5/5 — indistinguishable).
@@ -92,15 +94,16 @@ The goodput@SLO headline is decode-knee-capped + λ=5-coin-flip (below), BUT **p
   distributions even with cross-node variance folded in — the strongest form of the result:
   | tier | full-sweep certified peak tok/s | n | mean | hit@3 range |
   |------|--------------------------------|---|------|-------------|
-  | stock         | 586, 603                | 2 | 594.9 | 0.671–0.675 |
+  | stock         | 586, 603, 606           | 3 | 598.3 | 0.663–0.675 |
   | write_back    | 651, 671, 671           | 3 | 664.1 | 0.733–0.774 |
   | exclusive     | 659, 666, 669, 677      | 4 | 667.8 | 0.755–0.783 |
-  **max stock (603) < min de-dup (651)** — zero overlap across 2 stock vs **7** de-dup runs; **+12.1% mean, +8%
-  min-to-max.** (Firming replicates vxc-cf3 peak 666, vxc-cf4 peak 677 both landed 2026-07-13; de-dup arm n=7.
-  Stock arm still n=2 — v0-cert-r6 in flight to grow it to n=3 and formalize the MWU.) Formal MWU is underpowered at n=2 stock (best-case p≈0.095 — stated honestly, not claimed
-  significant), so the evidence is the **clean non-overlap + the two same-node controls** (node 1-2 +8%, node
-  0-1 +18%, which rule out the node confound for the primary comparison) + **hit-monotonicity** (the causal
-  chain). This is a robust, replicated, lossless throughput result — my strongest positive.
+  **max stock (606) < min de-dup (651)** — zero overlap across **3 stock vs 7 de-dup** runs; **+11.4% mean**,
+  arm stds tiny (stock 8.8, de-dup 8.0 — the throughput metric is STABLE, unlike the coin-flip goodput).
+  **Now FORMALLY SIGNIFICANT: Mann-Whitney U=0 (complete separation), exact one-tailed p = 1/C(10,3) = 0.0083**
+  (the earlier n=2 underpowered p≈0.095 is superseded — firming replicates v0-cert-r6/vxc-cf3/vxc-cf4 landed
+  2026-07-13). Corroborated by the **two same-node controls** (node 1-2 +8%, node 0-1 +18%, ruling out the node
+  confound) + **hit-monotonicity** (0.66→0.73→0.78, the causal chain). A robust, replicated, formally-significant,
+  lossless throughput result — my strongest positive.
 - **Mechanism**: higher cache hit ⇒ less prefill recompute competing with decode for the GPU ⇒ more decode
   cycles ⇒ higher sustained decode tok/s. **This CONTRADICTS the protocol's "a cache mechanism will NOT
   raise peak decode throughput" assumption** — on a prefill/decode-shared GPU it does, and the gain scales
@@ -352,10 +355,11 @@ This is the evidence behind "goodput is decode-knee-capped": it's decode-slot sa
   goodput 3.02 on certified nodes; caching cannot raise it (three independent diagnoses). Single-run/single-node
   goodput A/Bs are VOID — the eval headline is noise-dominated (a maintainer-relevant methodology result).
 - **What capacity de-dup DOES buy (two real, lossless effects):** (B) it SIGNIFICANTLY reduces the goodput
-  coin-flip variance (stock median p99 20.2 s/1-of-5 vs all-de-dup 7.0 s/7-of-11; Levene p=0.0055, MWU
-  p=0.034) — but this is a de-dup-CLASS effect **config-reachable via `write_back`, NOT specific to my code**
+  coin-flip variance (stock median p99 16.2 s/1-of-6 vs all-de-dup 7.2 s/7-of-12; Levene p≈0.004, MWU
+  p≈0.049) — but this is a de-dup-CLASS effect **config-reachable via `write_back`, NOT specific to my code**
   (exclusive ≈ write_back on reliability, Levene p=0.92; (D) refuted). (C) it raises **peak decode throughput
-  +8–18%, scaling with load** (error-barred: full-sweep certified peak tok/s form non-overlapping tiers, stock
+  +8–18%, scaling with load** (error-barred: full-sweep certified peak tok/s form non-overlapping tiers **MWU
+  p=0.008**, stock
   ≤603 < de-dup ≥651; two same-node controls; hit-monotone) — because higher hit cuts cold-prefill volume
   competing with decode (Diagnosis #3: the regime is 94% prefill-bound). **This contradicts the protocol's own
   "a cache cannot raise peak decode throughput" assumption** and is my strongest positive.

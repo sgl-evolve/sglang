@@ -14,9 +14,13 @@ W&B: project `sgl-evolve`, run `base` (group v0.31).
 - **Stock λ=3 p99 (n=5):** 6505·11663·20174·23718·36660 → median **20174 ms**, std 10418, **1/5 pass**.
 - **Mechanism λ=3 p99 (write_back/exclusive/cost-aware, n=7):** 6461·6607·6851·6972·7032·7278·10597 →
   median **6972 ms**, std 1329, **6/7 pass**. (Mechanism isn't perfect — 1 fail at 10.6 s — but far tighter.)
-- **Tests on the actual p99 values (the pass/fail Fisher p=0.072 was UNDERPOWERED — discards magnitude):**
-  **Levene (variance) p=0.014**, **Mann-Whitney (p99 shift) p=0.037**, variance ratio **61×**. ⇒ the variance
-  reduction is STATISTICALLY SIGNIFICANT at n=5/7. The huge effect (3× median, 61× var) is significant despite small n.
+- **Tests on the actual p99 values (pass/fail Fisher underpowered — discards magnitude). ROBUST at n=5/11:**
+  STOCK n=5 (median 20174, std 10418, 1/5 pass) vs ALL-DE-DUP n=11 (write_back+exclusive+cost-aware; median
+  **7032**, std 1970, 7/11 pass): **Levene p=0.0055, Mann-Whitney p=0.034.** ⇒ the variance/median reduction is
+  STATISTICALLY SIGNIFICANT. **Caveat (from (D) below): this is a de-dup-CLASS effect, config-reachable via the
+  write_back flag — NOT specific to my exclusive CODE** (exclusive ≈ write_back on reliability, Levene p=0.92).
+  So per the charter's "a config flip is not a contribution," the WIN here is the config-reachable de-dup;
+  the CONTRIBUTION is the characterization + the insight (de-dup is a goodput-variance lever under metastable load).
 - Same-node rescues on all 3 nodes (0-1 11.7→7.0; 0-3 20.2→6.6/10.6; 1-2 23.7→6.97). Insight: higher hit ⇒ less
   prefill recompute ⇒ prefill queue robust to Poisson bursts ⇒ tighter goodput distribution (lower mean AND variance).
 - Attribution (honest): mostly the write_back CONFIG; exclusive CODE realizes it lossless/config-indep (+1.7pp hit).
@@ -28,14 +32,14 @@ W&B: project `sgl-evolve`, run `base` (group v0.31).
 ### (D) OPEN LEAD (testing): does EXCLUSIVE CODE beat WRITE_BACK CONFIG on reliability?
 - λ=3 p99 by tier: **STOCK** n=5 std **10418** (1/5 pass) · **WRITE_BACK** n=3 std **1695** [6972,7032,10597]
   (2/3 pass) · **EXCLUSIVE (my code)** n=4 std **312** [6461,6606,6658,7277] (4/4 pass) · cost-aware n=1 6850.
-- **UPDATE (replicates): write_back's spread is NOT a fluke** — a 2nd write_back run failed (9769 ms). Now:
-  **WRITE_BACK n=4 = [6972,7032,9769,10597], 2/4 pass, std 1617** vs **EXCLUSIVE n=4 = [6461,6606,6658,7277],
-  4/4 pass, std 312** ⇒ **Levene(excl vs wb) p=0.002** (MWU p=0.057). Strongly suggests my exclusive-tiering
-  CODE is significantly MORE RELIABLE than the write_back CONFIG (tighter goodput tail) — the free-on-loadback
-  frees more capacity ⇒ higher hit ⇒ more burst-robust. **BUT** exclusive 4/4-tight at n=4 could be
-  under-sampled luck (I over-claimed "N/N reliable" twice before) — firming the exclusive arm (vxc-cf3/4 → n=6)
-  before claiming. If exclusive stays tight ⇒ **novel CODE contribution beyond the config**; if it gets a high
-  run ⇒ code≈config (win (B) stands). Honest: strong lead, being confirmed.
+- **RESOLVED → REFUTED (honest negative).** The n=4 lead (Levene p=0.002) was under-sampled: the 5th exclusive
+  run failed at **12760 ms**. Final: **EXCLUSIVE n=5 = [6461,6606,6658,7277,12760], 4/5 pass, std 2420** vs
+  **WRITE_BACK n=5 = [6972,7032,8682,9769,10597], 2/5 pass, std 1447** ⇒ **Levene p=0.92, MWU p=0.15 — NOT
+  significant.** ⇒ **exclusive-CODE is NOT more reliable than write_back-CONFIG**; both de-dup, both coin-flip
+  with similar variance. My exclusive code's +1.7pp hit does NOT improve goodput reliability beyond the config.
+  This is the **4th over-claim caught by replication** (goodput-0→3, reliably-3, 6/6-reliable, now excl>wb) —
+  each a variance artifact; the firming guardrail (which I'd pre-warned) worked. ⇒ the reliability win (B) is a
+  de-dup-CLASS effect (config-reachable via write_back), **NOT a novel-code contribution**. Honest.
 
 ## ABSTRACT (final, for a skeptical maintainer)
 On sglang's 2-tier HiCache (L1 GPU + L2 768 GB host, hybrid-Mamba Qwen3.5-122B, active cache =
@@ -44,12 +48,16 @@ On sglang's 2-tier HiCache (L1 GPU + L2 768 GB host, hybrid-Mamba Qwen3.5-122B, 
    reliability lever.** STOCK λ=3 p99 (n=5) swings **6.5 s ↔ 36.7 s** (same-node 1-2: 6.5 vs 23.7 s), median
    20.2 s, **1/5 pass** the 8 s SLO ⇒ stock goodput is 0-or-3 by luck; the v0.31 warmup did NOT fix it
    (reproduces the v0.3 coin-flip). ⇒ **single-run/single-node goodput A/Bs are VOID** (median-of-k required)
-   — itself a maintainer-relevant result. **Capacity de-dup (write_back/exclusive/cost-aware, n=7) SIGNIFICANTLY
-   reduces this**: median p99 **6.97 s**, std **1329 vs 10418 ms (61×)**, 6/7 pass — **Levene variance-test
-   p=0.014, Mann-Whitney p=0.037**. So the cache's on-contract value is a statistically-significant goodput
-   **RELIABILITY** win (tightens the metastable distribution), not a mean-throughput headline. (My earlier
-   single-run claims — "goodput 0→3", "reliably 3", "6/6 reliable" — were variance artifacts, each corrected by
-   replication; the defensible claim is the variance/median reduction on the p99 values, NOT "always passes".)
+   — itself a maintainer-relevant result. **Capacity de-dup (write_back/exclusive/cost-aware, n=11) SIGNIFICANTLY
+   reduces this**: median p99 **7.0 s** (vs 20.2 s), 7/11 pass (vs 1/5) — **Levene p=0.0055, Mann-Whitney p=0.034**.
+   So the cache's on-contract value is a statistically-significant goodput **RELIABILITY** effect (tightens the
+   metastable distribution). **BUT it is a de-dup-CLASS effect, config-reachable via the write_back flag — NOT
+   specific to my exclusive CODE** (exclusive vs write_back reliability: Levene p=0.92, n=5/5 — indistinguishable).
+   Per the charter's "a config flip is not a contribution," the reliability WIN is config-reachable; the
+   CONTRIBUTION is the characterization + the insight (de-dup is a goodput-variance lever under metastable load).
+   (FOUR single-run claims — "goodput 0→3", "reliably 3", "6/6 reliable", "exclusive>write_back" — were variance
+   artifacts, EACH corrected by replication; the firming guardrail worked. Defensible claim = the class-level
+   variance/median reduction, NOT "always passes" and NOT a code-specific win.)
 2. **A real lossless WIN on the stable throughput dimension:** capacity de-duplication of the host tier
    (write_back-family, incl. my exclusive-tiering engine code) **raises the sustained decode-throughput ceiling
    +8 % (fast node) to +18 % (prefill-contended node)**, monotonic with hit, same-node-attributable — because

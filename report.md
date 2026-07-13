@@ -532,3 +532,15 @@ turn-0 rate just below band; real load incl follow-ups pushes in). Addresses gen
 concern) that more nodes/configs can't. Integrated §1/§5.5(phase table)/§8, committed b57811233.
 PAPER now: negative + queueing model + minimal-MC generality + warmdiag + methodology triad + σ/m diagnostic
 + constructive capstone + node×run grid. 5 figs/9 tables.
+
+### ★★ §5.5 required-k analysis — UNIFIES the methodology (2026-07-13 ~10:05Z, GPU-free)
+Extended coinflip_sim.py (bootstrap median-of-k from a pooled p99 distribution; deterministic). Result:
+required median-of-k for 95%-reliable goodput@SLO classification vs operating point:
+  median-SLO=-3.3s (σ/m 0.2): k=1 | -1.1s (σ/m 1.2): k=17 | ≈0 ±0.5s (σ/m 3-5): k>99 UNRESOLVABLE |
+  +1.2s (σ/m 1.9): k=7 | +3.0s (σ/m 0.9): k=1.
+KEY: required-k DIVERGES as median→SLO (can't classify sign of a ~0 quantity; error ~1/√k). ⇒ UNIFIES
+methodology: median-of-k rescues goodput@SLO ONLY when median comfortably from SLO (σ/m≪1); AT the knee
+(where goodput@SLO is used) NO practical k suffices → must report stable metrics. Explains WHY medk_wb K=5
+failed (its median sits near SLO). Integrated §5.5 (req-k table) + §8, committed 11221a764, validated (10
+tables/6 figs, tags/refs/&). Connects the fix (median-of-k) ↔ diagnostic (σ/m) ↔ capstone (stable metrics)
+into one quantitative story. Paper methodology now: RECOMMENDED + VALIDATED + BOUNDED + UNIFIED.

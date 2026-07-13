@@ -17,6 +17,7 @@
   th:first-child,td:first-child{text-align:left}
   .todo{background:#fff3cd;border:1px solid #ffe08a;padding:.3em .6em;border-radius:3px;font-size:.85em;color:#664d03}
   .fig{background:#fafafa;border:1px solid #e2e2e2;padding:.6em;margin:1em 0;border-radius:4px}
+  .prop{background:#f0f4f8;border:1px solid #9db8cf;border-left:4px solid #3a6ea5;padding:.8em 1.1em;margin:1.2em 0;border-radius:4px;font-size:.97em}
   small{color:#555}
 </style>
 </head>
@@ -42,9 +43,12 @@ residency claims, and the online reuse gap (p50 460 s) caps any residency's reco
 (grace-trap); SLRU backfires (hit 0.68→0.51). <b>The metastability is EXECUTION-driven</b>: on a byte-identical
 workload (fixed seed + no-shuffle; 22 runs, 7037 compl each, Σin within 0.016%) p99 swings 5.9–31.2 s (5.3×) while
 median is pinned to 528–574 ms (1.1×). And the tail resists prefill scheduling too: <b>admission-staggering is
-refuted deterministically</b> (large prefills peak concurrency 2, ~const 35K tok/s → nothing to stagger). = an
-observable offline liveness lever + a cross-node, execution-driven metastability caution + both scheduling axes
-(residency gap-capped, admission no-pileup) shown dead-end deterministically, for tail-SLO cache evaluation. NOTE: earlier match-only classifier mislabeled evicted as
+refuted deterministically</b> (large prefills peak concurrency 2, ~const 35K tok/s → nothing to stagger). These
+crystallize into a <b>no-go criterion</b> (§9): no lossless residency/admission mechanism yields a certifiable
+goodput@SLO gain when reuse is gap-dominated (G/R≈5), prefill has no co-execution contention, and the tail is
+execution-variance-dominated — the remaining lossless levers (capacity so R&gt;G; prefill bound P) are orthogonal
+to eviction/admission. = an observable offline liveness lever + a cross-node, execution-driven metastability
+caution + a bounded no-go result for lossless tail-SLO cache/admission optimization. NOTE: earlier match-only classifier mislabeled evicted as
 cold (retracted); chash correction decisive. Stable: §4.1 two-bound+P, §4.2
 size-observability + grace-trap, §5.2 decomposition, §5.3 SLRU-backfire, §5.5 size-aware eviction.</p>
 
@@ -670,6 +674,30 @@ invariance vs 5.3× p99) from the per-run <code>bench_r3.json</code> via <code>s
 W&B evolution curve: project <code>sgl-evolve</code>, run <code>wilkes</code>.</p>
 
 <h2>9 Conclusion</h2>
+<div class="prop">
+<b>A no-go criterion for lossless goodput@SLO improvement (the crystallized result).</b> For two-tier HiCache
+serving concurrent multi-turn long-context conversations under a tail-SLO, <i>no lossless cache-residency or
+prefill-admission mechanism yields a certifiable goodput@SLO gain</i> whenever all three regime conditions hold —
+each of which we establish empirically here:
+<ol style="margin:.4em 0 .2em 0">
+<li><b>Gap-dominated reuse</b> — the turn-0→turn-1 reuse gap <i>G</i> exceeds the affordable retention <i>R</i> a
+finite cache provides (here G/R ≈ 460 s / 90 s ≈ 5). Then <i>no</i> residency policy — even one on the correct
+(size) signal — holds a continuer across the gap; the offline recompute headroom does not materialize online (§4.2, §5.5).</li>
+<li><b>No prefill-execution contention to remove</b> — prefill runs at a near-constant rate with negligible
+large-prefill co-execution (peak concurrency 2, ≤1.04× penalty), so admission staggering / rate-limiting has
+nothing to bite on; the tail is admission-<i>wait</i>, not execution contention (§9d).</li>
+<li><b>Execution-variance-dominated tail</b> — on a byte-identical workload the p99 spans 5.3× while the median is
+pinned to 1.1×, so any residual policy effect is a small fraction of the run-to-run execution variance and is
+<i>unidentifiable</i> at feasible replication (§5.6).</li>
+</ol>
+Conditions (1)–(2) close the two lossless <i>scheduling</i> axes (residency and admission); condition (3) makes
+even a hypothetical effect uncertifiable. The lossless levers that remain are <i>orthogonal</i> to eviction and
+admission — raising effective capacity until <i>R</i> &gt; <i>G</i> (larger cache / cross-request sharing) or
+raising the prefill bound <i>P</i> — i.e. outside what this eviction-policy-oriented metric was thought to probe.
+The <i>constructive</i> half of the paper delimits exactly where a lossless win could still come from: the turn-0
+<b>size</b> signal is the correct residency signal (offline, uniquely capturing Belady headroom), so a system that
+closes the gap (condition 1) could realize it.
+</div>
 <p>For a two-tier HiCache serving concurrent multi-turn long-context conversations under a tail-latency SLO, the
 p99 tail is avoidable recompute over a live set that fits (0.87× cache), and — contrary to a natural
 "liveness-unobservable" impossibility — liveness <i>is</i> partially observable at the eviction decision point,

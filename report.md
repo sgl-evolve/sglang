@@ -86,6 +86,18 @@ The goodput@SLO headline is decode-knee-capped + λ=5-coin-flip (below), BUT **p
 | cert 1-2 | 603 (4.72) | 651 (5.09) [same-node] | — | **+8%** |
 | 0-1  | 537 (4.20) | 636 (4.97) [same-node] | 656 (5.13) | **+18%** (+3% from code) |
 - Monotonic with hit (0.67→0.73→0.75), consistent across BOTH nodes, same-node ⇒ **attributable, lossless**.
+- **★ ERROR BARS (replicated, all full-sweep certified runs, peak tok/s):** the tiers form **NON-OVERLAPPING**
+  distributions even with cross-node variance folded in — the strongest form of the result:
+  | tier | full-sweep certified peak tok/s | n | mean | hit@3 range |
+  |------|--------------------------------|---|------|-------------|
+  | stock         | 586, 603                | 2 | 594.9 | 0.671–0.675 |
+  | write_back    | 651, 671, 671           | 3 | 664.1 | 0.733–0.774 |
+  | exclusive     | 659, 669                | 2 | 663.7 | 0.755–0.756 |
+  **max stock (603) < min de-dup (651)** — zero overlap across 2 stock vs 5 de-dup runs; **+11.6% mean, +8%
+  min-to-max.** Formal MWU is underpowered at n=2 stock (best-case p≈0.095 — stated honestly, not claimed
+  significant), so the evidence is the **clean non-overlap + the two same-node controls** (node 1-2 +8%, node
+  0-1 +18%, which rule out the node confound for the primary comparison) + **hit-monotonicity** (the causal
+  chain). This is a robust, replicated, lossless throughput result — my strongest positive.
 - **Mechanism**: higher cache hit ⇒ less prefill recompute competing with decode for the GPU ⇒ more decode
   cycles ⇒ higher sustained decode tok/s. **This CONTRADICTS the protocol's "a cache mechanism will NOT
   raise peak decode throughput" assumption** — on a prefill/decode-shared GPU it does, and the gain scales

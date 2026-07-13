@@ -756,7 +756,12 @@ it is a general property, not an artifact of one machine. The grid also makes an
 node1-2's <i>median</i> goodput is 3 while ondem-3's is 0, so node heterogeneity <i>additionally</i> shifts
 the metric on top of the within-node coin-flip — both axes matter, exactly as the confound warned. The
 methodological claim is thus demonstrated on two nodes: single-run — and especially cross-node — A/B on
-goodput@SLO is void, and even same-node median-of-k does not rescue it for KV-cache comparison.</li>
+goodput@SLO is void, and even same-node median-of-k does not rescue it for KV-cache comparison. A later,
+independent stock session on ondem-3 (§5.5) drew three further λ=3 p99 values <i>all</i> in the 24–30 s fail
+regime (0 / 3, versus the first session's 2 / 5), pointing to a third variance layer — across server launches,
+whether session-level metastability or uncontrolled node state between launches — on top of run-to-run and node
+heterogeneity; we flag it as a threat rather than a clean result because we cannot fully separate the two
+causes.</li>
 <li><b>Per-rate cache flush.</b> The harness cold-starts the cache before each rate (the load generator
 issues <code>/flush_cache</code> per invocation), compounding the metastability by ramping the queue to
 90–184 before it drains (§5.3). We tested the no-flush condition with an off-contract, node-controlled

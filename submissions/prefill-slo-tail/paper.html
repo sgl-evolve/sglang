@@ -49,8 +49,9 @@ even starker: λ=3 p99 spans <b>6.5–25.8 s (a 4.0× spread, two pass / three f
 band (λ=3 p99 7.5 s), so its single-run "win" cannot be attributed to write-back — even though write-back's
 <i>stable</i> effects are real and do not flip (hit rate +6 pp, peak throughput +18%). Running the same-node
 K=5 protocol for write-back too, <b>even median-of-k cannot separate stock from write-back on goodput@SLO
-(both pass 2 of 5)</b>, though write-back plainly wins on hit (+7 pp), median TTFT, and tail variance —
-all invisible to the binary metric. The point is not
+(both pass 2 of 5; 0.4σ)</b>, though on the <i>same</i> runs the stable metrics separate the two configs at
+<b>7–9σ</b> (hit +7 pp, median TTFT −64 ms) — the information to rank the caches is present all along, and
+the binary tail metric simply discards it. The point is not
 that a better cache never helps, but that <b>a single run cannot tell — and even median-of-k cannot tell on the tail</b>: goodput@SLO is dominated by
 variance (cold-start metastability plus node heterogeneity), both invisible to a single-run A/B. We give a trace-driven Pollaczek–Khinchine account of why
 the tail is metastable, and show the effect is compounded by the harness cold-starting the cache before
@@ -359,6 +360,22 @@ variance-dominated even at K=5 — so a correct evaluation must report the cache
 TTFT, throughput) and, if the tail matters, its <i>variance</i>, rather than a single binary deadline.
 Write-back is <i>itself</i> a coin-flip on goodput@SLO (2 / 5 pass, straddling the SLO), confirming the
 phenomenon is a property of the workload, not of any one configuration.</p>
+
+<p><b>The same data, the right metric: stable metrics separate the configs at 7–9σ.</b> The failure is
+specific to the p99-gated tail. Taking the <i>same</i> K=5 same-node runs and comparing stock to write-back
+on each metric — separation measured in pooled standard deviations — the stable metrics are not
+variance-dominated and cleanly discriminate the two caches, exactly where goodput@SLO cannot:</p>
+<table>
+<tr><th>metric (same-node K=5, stock vs write-back)</th><th>stock</th><th>write-back</th><th>separation</th></tr>
+<tr><td>p99 TTFT — <i>the goodput@SLO metric</i></td><td>12.3 ± 8.0 s</td><td>10.0 ± 2.7 s</td><td><b>0.4σ — indistinguishable</b></td></tr>
+<tr><td>median (p50) TTFT</td><td>546 ± 11 ms</td><td>482 ± 6 ms</td><td><b>7.2σ</b></td></tr>
+<tr><td>hit rate</td><td>0.659 ± 0.009</td><td>0.730 ± 0.007</td><td><b>8.9σ</b></td></tr>
+</table>
+<p>The two configurations are statistically indistinguishable on goodput@SLO (0.4σ) yet separated by
+<b>7–9 standard deviations</b> on p50 TTFT and hit rate. <b>The information to rank the caches is present in
+the measurement all along — the binary tail metric simply discards it.</b> This is the constructive core of
+the paper: evaluate KV caches on their stable, low-variance effects (§4's σ/m ≪ 1 metrics), which resolve
+precisely the comparison the coin-flipping tail cannot.</p>
 
 <h3>3.2 Why the tail is a coin-flip: cold-start metastability</h3>
 <p>The p99 is metastable because prefill service time is heavy-tailed and bimodal (§2.1): a request is

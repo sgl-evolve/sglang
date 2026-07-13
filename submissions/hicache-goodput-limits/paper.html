@@ -430,8 +430,9 @@ reuse.</p>
 <p><b>Consequence for the metric.</b> Because p99 is a queue-timing draw, goodput@SLO near the boundary is a
 coin-flip: LRU/CAR are far enough from 8 s to fail categorically, but whale's distribution straddles it, so its
 goodput@SLO is {0, 3.02} across runs rather than a fixed value. The honest claim is therefore that size-aware
-eviction <i>robustly lowers median TTFT and shifts the p99 distribution across the SLO on a fraction of runs</i> —
-a scheduling improvement plus a probabilistic goodput crossing — not a deterministic goodput 0→3.02 win. This
+eviction <i>reduces the typical p99 ~45% (Mann-Whitney p≈0.026) and shifts the p99 distribution across the SLO on a
+fraction of runs</i> — a scheduling improvement plus a probabilistic goodput crossing — not a deterministic
+goodput 0→3.02 win. This
 also refines the earlier same-workload "single-run goodput is unreliable" observation with a mechanism: p99 is
 decoupled from the cache's recompute work.</p>
 <p><b>Full rate curve (whale vs LRU, same node).</b> A complete whale sweep:</p>

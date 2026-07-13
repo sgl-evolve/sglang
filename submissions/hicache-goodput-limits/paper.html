@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>The Turn-0 Size Signal: Observable Liveness for KV Eviction under a Metastable Tail-SLO — wilkes</title>
+<title>The Metastable Tail-SLO: A No-Go Criterion for Lossless KV-Cache Optimization — wilkes</title>
 <style>
   body{font:16px/1.55 Georgia,serif;max-width:52em;margin:2em auto;padding:0 1.2em;color:#161616}
   h1{font-size:1.6em;line-height:1.25;margin-bottom:.1em}
@@ -23,15 +23,23 @@
 </head>
 <body>
 
-<h1>The Turn-0 Size Signal: Observable Liveness for KV Eviction under a Metastable Tail-SLO</h1>
-<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>v0.6</b></div>
+<h1>The Metastable Tail-SLO: A No-Go Criterion for Lossless KV-Cache Optimization</h1>
+<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>v0.7</b></div>
 
-<p class="abstract"><b>Summary.</b> The p99 tail is AVOIDABLE recompute (chash: <b>63% of the ≥40K-tok tail is evicted
-proven multi-turn convs</b>, 37% cold docs) and the real-time live set <b>fits</b> (peak 9.3M = 0.87× cache) →
-liveness-bound, Belady≈0 → cache-addressable <i>offline</i>. <b>Constructive insight (deterministic):</b> liveness
-is partially OBSERVABLE at turn-0 via SIZE (whales median 17,051 tok, continuers 241; AUC 0.78), and in an offline
-replay <b>proven-protection paired with a prefix-size/cost signal captures Belady headroom where recency/frequency
-capture 0%</b> (an 11-policy sweep: LRU/LFU/SLRU/CAR/GDSF all 0%; proven-protected recompute-cost-greedy +48%,
+<p class="abstract"><b>Summary.</b> <b>Headline (a bounded negative + a methodology result).</b> For a two-tier HiCache
+serving concurrent multi-turn long-context conversations under a tail-latency SLO, <b>no lossless cache-residency or
+prefill-admission mechanism yields a certifiable goodput@SLO gain</b> — a no-go criterion (§9) with three measurable
+conditions (gap-dominated reuse, no prefill co-execution contention, an execution-variance-dominated tail). The
+metric itself is the deepest finding: <b>goodput@SLO is EXECUTION-VARIANCE-DOMINATED</b> — a byte-identical workload
+(fixed seed, no-shuffle, 22 runs) yields a <b>5.3× p99 spread</b> (5.9–31.2 s) while the median is pinned to 1.1×,
+so certifying even a 45% policy effect at 0.8 power needs <b>~24 same-node runs per policy</b>; single/small-n A/Bs
+on this metric are void.
+<br><b>Constructive but OFFLINE-only.</b> Why the cache <i>could</i> matter in principle: the p99 tail is AVOIDABLE
+recompute (chash: <b>63% of the ≥40K-tok tail is evicted proven multi-turn convs</b>, 37% cold docs) and the
+real-time live set <b>fits</b> (peak 9.3M = 0.87× cache) → liveness-bound, Belady≈0. Liveness is partially
+OBSERVABLE at turn-0 via SIZE (whales median 17,051 tok, continuers 241; AUC 0.78, held-out 0.783), and in an
+offline replay <b>proven-protection paired with a prefix-size/cost signal captures Belady headroom where
+recency/frequency capture 0%</b> (an 11-policy sweep: LRU/LFU/SLRU/CAR/GDSF all 0%; proven-protected recompute-cost-greedy +48%,
 size-aware "whale" +23%; without proven-protection cost-only/size-only are catastrophic −311%/−529%). Turn-0 size
 is the cheap at-admission instance of such a signal (AUC 0.78). <b>Cautionary result (the online reality):</b> goodput@SLO is so METASTABLE that causal
 residency claims do not survive. p99 is a queue-timing draw decoupled from recompute volume; and — decisively — a
@@ -56,6 +64,12 @@ caution + a bounded no-go result for lossless tail-SLO cache/admission optimizat
 For long-context multi-turn serving under a tail-latency SLO — a hybrid Mamba–Transformer MoE (Qwen3.5-122B)
 serving a Mooncake-style 1:1:1 mix under a Poisson rate sweep scored by <i>goodput@SLO</i> (max req/s with
 p99 TTFT ≤ 8 s) — we ask whether the eviction policy is a lever, and if so, what observable signal drives it.
+Our answer is a bounded negative and a methodology result: <b>no lossless residency- or admission-based mechanism
+yields a certifiable goodput@SLO gain</b> (a no-go criterion with three measurable conditions), and the metric is
+<b>execution-variance-dominated</b> — a byte-identical workload produces a 5.3× p99 spread, so certifying even a 45%
+policy effect needs ~24 same-node runs per policy. Constructively but <i>offline-only</i>, we identify the correct
+residency signal-class (proven-protection + a prefix size/cost magnitude, of which turn-0 size is the cheap
+at-admission instance); it does not convert online. In detail:
 We cast goodput as <b>goodput@SLO = min(R_thru, R_p99)</b>: a throughput bound R_thru = P/avg-uncached-prefill
 (P≈35K tok/s measured) and a tail bound R_p99 set by the largest prefills under concurrency. A conversation-id
 (chash) per-request decomposition of a warmup-corrected pressured rate sweep — distinguishing genuine cold
@@ -271,11 +285,14 @@ requires protecting it for ~8 minutes.</li>
 <li><b>Liveness IS partially observable at turn-0 — through SIZE.</b> A natural conjecture is that liveness is
 unobservable: a conversation that will continue (61% do) and a single-turn "whale" that never will (39%) are
 both unproven (hit_count = 0) at turn-0, so <i>turn-count</i> carries no signal. But turn-0 <i>size</i> does:
-whales are large (turn-0 median <b>17,051 tok</b>) while continuers start tiny (median <b>241 tok</b>) — a 70×
-separation, AUC(turn-0 size → single-turn) = <b>0.78</b>. Size is an observable, causal proxy for Belady's
-evict-dead-first, available at the decision point. (It is imperfect — big continuers exist — but continuers'
-turn-1 is small and near-immediate in closed-loop, so a true continuer is promoted to proven before a soft
-size-ranked eviction reaches it.)</li>
+whales are large (turn-0 median <b>17,051 tok</b>) while continuers start tiny (median <b>241 tok</b>). The 70×
+gap is between <i>medians</i>; the operative quantity is discriminability, AUC(turn-0 size → single-turn) =
+<b>0.78</b> — a useful but imperfect signal (the class-conditional size distributions overlap, so ~22% of pairs are
+mis-ranked). The signal is not overfit to the evaluated trace: fitting on the first half of conversations and
+testing on the held-out second half gives AUC <b>0.775 → 0.783</b> (within 0.008; <code>sim/power_auc.py</code>).
+Size is an observable, causal proxy for Belady's evict-dead-first, available at the decision point. (It is
+imperfect — big continuers exist — but continuers' turn-1 is small and near-immediate in closed-loop, so a true
+continuer is promoted to proven before a soft size-ranked eviction reaches it.)</li>
 </ul>
 <p><b>Proven-protection plus a size/cost-differentiated victim rule — offline sweep.</b> Replaying the served
 access order through each causal victim rule at the real 10.7M capacity (sim/simulate.py): recency- and
@@ -592,6 +609,16 @@ first-class systems finding: <b>goodput@SLO under a metastable tail is an execut
 must be evaluated with multi-node median-of-k, never a single run.</b> Fig 6 makes this visual: across the 22
 byte-identical runs the p99 (colored by policy) fans from 5.9 to 31.2 s with whale and LRU fully interleaved, while
 the median sits pinned at ~0.54 s.</p>
+<p><b>How much replication would a certifiable A/B need? A power law.</b> The pooled LRU λ=3 p99 has coefficient of
+variation CV = 0.55 (mean 16.8 s, sd 9.2 s, n=11). For a two-sample test at α=0.05 and 0.80 power, detecting the
+nodeset-0-claimed <b>45% p99 shift requires n ≈ 24 runs per policy</b> (a 25% shift needs n ≈ 76; even a 60% shift
+needs n ≈ 14). Conversely, at the n = 5–6 per policy the contended certified pool actually affords, the <i>minimum</i>
+detectable shift at 0.80 power is <b>≈ 90–97%</b> — so our nodeset-0 comparison was powered only to catch an
+~90% effect, not the 45% it reported. The single "significant" online result (p ≈ 0.026, §5.5) was therefore
+underpowered, which is exactly consistent with its failure to reproduce across nodes (§5.6). This turns
+"unidentifiable at feasible replication" into a number: on this metric a residency-policy A/B needs
+<b>~24 same-node runs per arm</b> to be trustworthy — orders of magnitude beyond what single-run or small-n
+evaluations (the norm in this literature) provide. (Computed in <code>sim/power_auc.py</code>.)</p>
 <p><img src="fig6_fixed_workload.svg" alt="22 byte-identical runs: p99 TTFT swings 5.9-31.2s (5.3x, whale/LRU interleaved) while median pinned ~0.54s" style="max-width:100%"></p>
 <p><img src="fig5_crossnode.svg" alt="λ=3 p99 whale vs LRU across 3 nodes: whale below LRU on nodeset-0 and 1-2 but reversed on 0-3 (metastable)" style="max-width:100%"></p>
 
@@ -706,7 +733,7 @@ size-only catastrophic, whale −23% capture)
 via <code>sim/simulate.py</code>; Belady headroom + Fig 3 via <code>sim/gen_figures.py</code>; the λ=3 per-run
 whale-vs-lru-vs-car TTFT figure (Fig 4) via <code>sim/fig_whale.py</code>; the cross-node p99 figure (Fig 5) via <code>sim/fig_crossnode.py</code>;
 the deterministic prefill-contention analysis (§9d: measured in-flight intervals → concurrency vs effective rate)
-via <code>sim/prefill_contention.py</code>; the fixed-workload metastability audit + Fig 6 (§5.6: 22 runs, completed/Σinput
+via <code>sim/prefill_contention.py</code>; the power-law replication-requirement (§5.6) and held-out AUC (§4.2) via <code>sim/power_auc.py</code>; the fixed-workload metastability audit + Fig 6 (§5.6: 22 runs, completed/Σinput
 invariance vs 5.3× p99) from the per-run <code>bench_r3.json</code> via <code>sim/fig_fixed_workload.py</code>; the cross-request document-sharing quantification (§2.1, §9: dataset doc-reuse + trace shared-prefix capture) via <code>sim/doc_sharing.py</code>; workload facts via
 <code>sim/build_trace.py</code> / <code>sim/prefill_tail.py</code>.
 W&B evolution curve: project <code>sgl-evolve</code>, run <code>wilkes</code>.</p>
@@ -739,6 +766,12 @@ The <i>constructive</i> half of the paper delimits exactly where a lossless win 
 proven-protected size/cost-magnitude residency signal captures Belady headroom offline where recency/frequency
 capture 0% (turn-0 size is its cheap at-admission instance), so a system that closes the gap (condition 1) could
 realize it.
+<br><small><b>Scope.</b> We state the criterion as a general predicate, but its three conditions are <i>measured</i>
+on a single model (Qwen3.5-122B) and a single workload (the frozen Mooncake-style mix), and condition (2) is
+measured at the goodput-deciding rate (λ=3). It is therefore a characterization of this regime that we conjecture
+generalizes to gap-dominated long-context multiturn serving — not a proven theorem. Its <i>value</i> is as a
+checklist: a practitioner can measure G/R, prefill co-execution, and fixed-workload p99 spread on their own system
+to predict whether a lossless residency/admission mechanism can help before building one.</small>
 </div>
 <p>For a two-tier HiCache serving concurrent multi-turn long-context conversations under a tail-latency SLO, the
 p99 tail is avoidable recompute over a live set that fits (0.87× cache), and liveness <i>is</i> partially

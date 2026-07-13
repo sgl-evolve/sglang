@@ -165,12 +165,14 @@ This weakens the size-signal-as-headline and is a further argument for the metas
 ## Minor
 - §5.3 could add a one-line bridge to §5.5 ("the grace-trap motivates changing the SIGNAL, not the retention time
   — §5.5"). (pending)
-- MAJOR OPEN (v0.6, from review #6): consider REPOSITIONING the paper to lead with the execution-variance
-  metastability result (the surviving, broadly-useful contribution) and demote the size/cost signal to a cautionary
-  offline case study — the reviewer argues (compellingly) the paper currently leads with a constructive claim it
-  internally withdraws. Also pending from review: held-out AUC validation (#5.3), a power-law quantifying
-  "unidentifiable at feasible n" (#5.4), and scoping the no-go "criterion" generality to the single-workload
-  evidence (#4.1). None require GPU. (deferred to a careful follow-up pass)
+- RESOLVED in v0.7 (all the deferred review items): (#6) REPOSITIONED — retitled "The Metastable Tail-SLO: A No-Go
+  Criterion for Lossless KV-Cache Optimization"; Summary + Abstract now lead with the no-go + execution-variance
+  metastability, with the size/cost signal explicitly framed as constructive-but-offline-only. (#5.4) POWER LAW added
+  to §5.6: CV=0.55 → n≈24/policy to certify a 45% p99 shift @0.8 power; at n=6 only a ~89% shift is detectable →
+  quantifies "unidentifiable at feasible n" and explains the non-reproduction. (#5.3) HELD-OUT AUC added to §4.2:
+  fit 0.775 → held-out 0.783 (within 0.008) → size signal not overfit. (#3.3) tempered the 70× framing (medians;
+  AUC 0.78 = 22% misrank). (#4.1) scoped the no-go "criterion" generality to the single-workload evidence + reframed
+  as a practitioner checklist. All offline/no-GPU (sim/power_auc.py). Paper v0.7.
 - §6 related work: add a sentence distinguishing the size-observability result from continuation-predictor /
   TTL-aware works (Continuum, Predictive-Multi-Tier) — we identify a SPECIFIC observable (turn-0 size) and show
   offline it is uniquely sufficient among causal victim rules. (pending)

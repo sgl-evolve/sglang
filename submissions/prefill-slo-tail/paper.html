@@ -594,7 +594,7 @@ help is entirely in the body of the distribution; the SLO is defined on the p99 
 result is lossless by construction (radix prefix matching returns byte-identical KV; write policy and
 movement timing do not alter outputs).</p>
 
-<h3>5.5 A minimal model reproduces the coin-flip (generality)</h3>
+<h3>5.5 Generality, and the limits of replication</h3>
 <p>Is the coin-flip specific to sglang, or a generic consequence of open-loop scheduling of heavy-tailed
 cold prefills? We test this with a <b>minimal transient-queue Monte-Carlo</b>
 (<code>tools/coinflip_sim.py</code>) that strips away the KV cache, decode interleaving, and batching, keeping

@@ -24,7 +24,7 @@
 <body>
 
 <h1>The Turn-0 Size Signal: Observable Liveness for KV Eviction under a Metastable Tail-SLO</h1>
-<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>v0.5.1</b></div>
+<div class="authors">wilkes (independent research-tier researcher) · sglang KV-cache architecture · v0.31 · <b>v0.6</b></div>
 
 <p class="abstract"><b>Summary.</b> The p99 tail is AVOIDABLE recompute (chash: <b>63% of the ≥40K-tok tail is evicted
 proven multi-turn convs</b>, 37% cold docs) and the real-time live set <b>fits</b> (peak 9.3M = 0.87× cache) →
@@ -425,7 +425,9 @@ tok/s (LRU: 4.31, 552) — <b>goodput@SLO = 0 for both, everywhere</b>. (Per-rat
 high-λ metastable variance, but never approaches 8 s.) Replicated: CAR λ=3 = {11.2, 10.7} s, LRU λ=3 =
 {11.3, 10.4} s across two same-node runs each — the zero-goodput verdict is not a single-run artifact.</p>
 <p><b>SLRU is counterproductive</b> — protecting proven conversations made the cache <i>worse</i> (hit
-0.68→0.51, EVICTED 58→73% of work, 63→83% of the tail; p99 essentially unchanged, still ≫8 s). The reason is
+0.68→0.51, EVICTED 61→73% of work, 65→83% of the tail; p99 essentially unchanged, still ≫8 s). (This SLRU-vs-LRU
+pair is a separate same-node run from the §5.2 decomposition, whose LRU baseline read 58%/63%; the few-point
+difference between the two LRU runs is ordinary run-to-run variation, cf. the metastability of §5.6.) The reason is
 structural and is the key insight of this section: <b>SLRU protects hit_count≥1 by evicting hit_count=0 nodes
 first — but a conversation's turn-0 has hit_count=0 until its first reuse</b>. Turn-0s are the <i>entry point</i>
 to multi-turn reuse (61% of conversations continue), so evicting them aggressively destroys the very reuse SLRU
@@ -557,14 +559,20 @@ single-node A/Bs are unreliable for residency-policy claims; multi-node median-o
 evidence that this metastability is <i>intrinsic to the metric</i> (not a whale-vs-LRU artifact) is the variance of
 a single fixed policy: LRU's own λ=3 p99, pooled over all 11 runs across the three nodes, spans <b>5.9–31.2 s
 (a 5.3× range)</b> with per-node medians of 6.1 / 14.0 / 21.9 s; whale's spans 6.2–26.6 s (4.3×). When one fixed
-policy's p99 varies 4–5× by node/run, no single A/B between two policies can be trusted. <b>This metastability is a
-genuine queue-<i>tail</i> phenomenon, not a node-health or harness artifact:</b> across the same runs whose p99
-swings 4–5×, the <i>median</i> TTFT (the distribution body) moves far less — 1.1× among the full-throughput runs
-(next paragraph), and only 1.6× (534–876 ms) even including the two throughput-degraded SLRU/screen runs.
-A flaky node, thermal throttling, or I/O contention would inflate the median too; instead only the tail moves,
-which is the signature of a small set of large cold-prefills catching a good-vs-bad queue moment. The portable, robust
-contributions are the offline size-signal analysis (§4.2, deterministic) and this cross-node metastability
-characterization. (Certified-pool contention limited us to n=2–3/node beyond nodeset-0.)</p>
+policy's p99 varies 4–5× by node/run, no single A/B between two policies can be trusted. <b>The body-vs-tail split
+narrows the cause but we are careful not to over-claim it.</b> Across the same runs whose p99 swings 4–5×, the
+<i>median</i> TTFT (the distribution body) moves far less — 1.1× among the full-throughput runs (next paragraph),
+and only 1.6× (534–876 ms) even including the two throughput-degraded SLRU/screen runs. A <i>sustained</i> slowdown
+(thermal throttling, prolonged I/O contention, a persistently slow node) would inflate the median too, so the
+body-stable/tail-chaotic signature rules those out and points to a small set of large cold prefills catching a
+good-vs-bad queue moment. It does <i>not</i>, however, rule out <i>transient</i> per-prefill stalls (a brief
+NFS-metadata stall or kernel-launch jitter hitting a few large prefills would also move only the tail); separating
+intrinsic queue metastability from transient environment jitter would need kernel-level instrumentation we do not
+have. The decisive, airtight claim is the weaker one the next paragraph establishes: the variance is <i>not</i>
+workload variance (the workload is byte-identical). And the evaluation consequence is the same either way —
+single/same-node A/Bs on this tail metric are unreliable. The portable, robust contributions are the offline
+size/cost-signal analysis (§4.2, deterministic) and this cross-node metastability characterization. (Certified-pool
+contention limited us to n=2–3/node beyond nodeset-0.)</p>
 
 <p><b>The metastability is execution-driven on a byte-identical workload — the sharpest form of the caution.</b>
 The benchmark fixes the RNG seed (<code>seed=1</code>) and disables shuffling, so the request content, order, and
@@ -573,10 +581,11 @@ full-throughput λ=3 runs</b> (every policy, all three nodes), each completes ex
 input tokens agreeing to <b>within 0.016%</b> (99.870M–99.886M). On this fixed workload the p99 TTFT spans
 <b>5.9–31.2 s (5.3×)</b>, while the median TTFT is pinned to <b>528–574 ms (1.1×)</b> and throughput to
 <b>3.022–3.024 req/s</b>. Identical input, constant body latency, constant throughput — yet a 5.3× tail. The
-variance is therefore not workload draw but <i>execution nondeterminism</i> (GPU kernel-scheduling and
-cache-eviction-race timing, amplified by the closed-loop multiturn arrival feedback, in which a request's next-turn
-arrival depends on the current turn's engine-timed completion) landing a few large cold prefills at good-versus-bad
-queue moments. It also swamps the policy signal: the whale (6.2–26.6 s) and LRU (5.9–31.2 s) p99 ranges overlap
+variance is therefore <i>not</i> workload draw; it is run-to-run <i>execution/environment nondeterminism</i>
+(plausibly GPU kernel-scheduling and cache-eviction-race timing, amplified by the closed-loop multiturn arrival
+feedback in which a request's next-turn arrival depends on the current turn's engine-timed completion — though as
+§5.6 notes we cannot fully separate intrinsic queue dynamics from transient environment jitter) landing a few large
+cold prefills at good-versus-bad queue moments. It also swamps the policy signal: the whale (6.2–26.6 s) and LRU (5.9–31.2 s) p99 ranges overlap
 almost entirely, so the between-policy difference is a small fraction of the within-policy execution variance —
 precisely why a single A/B, even same-node and even replicated, cannot be trusted for this metric. This is a
 first-class systems finding: <b>goodput@SLO under a metastable tail is an execution-variance–dominated metric, and

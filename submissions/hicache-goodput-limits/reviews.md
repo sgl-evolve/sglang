@@ -14,8 +14,10 @@ eviction/admission. Carefully scoped: "certifiable" (condition 3 is about identi
 and it names the escape levers, so it is a bounded no-go, not an absolute impossibility. Spine:
 (a) the p99 tail is avoidable recompute over a live set that fits (chash + peak-live-KV); (b) CONSTRUCTIVE,
 DETERMINISTIC: liveness is partially observable at the eviction decision point via turn-0 SIZE (AUC 0.78), and in
-an offline replay size-among-unproven eviction with proven-protection is the UNIQUE causal victim rule capturing
-Belady headroom (−23%; a 7-policy sweep: recency/frequency/grace all 0%, naive size-only −529%); (c) CAUTIONARY,
+an offline replay PROVEN-PROTECTION + a prefix size/cost magnitude signal captures Belady headroom where
+recency/frequency capture 0% (11-policy sweep: LRU/SLRU/CAR/LFU/GDSF 0%; proven-protected cost-greedy +48%, size
+"whale" +23%; cost-only/size-only w/o protection −311%/−529%). [v0.6 11th self-correction: an earlier draft claimed
+size was the UNIQUE such rule; adding recompute-cost eviction on adversarial review showed it captures MORE — see W11.]; (c) CAUTIONARY,
 CROSS-NODE (3 nodes): online, the metric defeats causal residency claims — a same-node whale-vs-LRU p99 reduction
 significant on ONE node (nodeset-0: median −45%, p≈0.026, n=6/n=5) has NO STABLE SIGN across nodes: whale median
 p99 is lower on 2 of 3 nodes (nodeset-0, 1-2) but REVERSES on the third (0-3: LRU median 6.1 s vs whale 11.5 s),
@@ -94,12 +96,15 @@ Defense: it is a genuine queue-TAIL phenomenon on a BYTE-IDENTICAL workload. The
 all 22 full-throughput λ=3 runs (every policy, 3 nodes) complete exactly 7037 requests with total input tokens
 agreeing to within 0.016%. On this fixed workload p99 spans 5.9–31.2 s (5.3×) while the MEDIAN TTFT is pinned to
 528–574 ms (1.1×) and throughput to 3.022–3.024 req/s. Identical input, constant body, constant throughput, 5.3×
-tail. A flaky node / thermal throttle / I/O contention would inflate the median and throughput too; instead ONLY
-the tail moves — the signature of a few large cold-prefills catching a good-vs-bad queue moment (execution
-nondeterminism amplified by closed-loop multiturn arrival feedback). It appears on all three nodes and under
---exclusive (no neighbor). So the metastability is intrinsic to the prefill-queue dynamics, not a node-health or
-harness artifact — it is execution-variance, not workload variance. (§5.6.) This is also why the whale (6.2–26.6 s)
-and LRU (5.9–31.2 s) p99 ranges overlap: the policy signal is a small fraction of the execution variance.
+tail. A SUSTAINED slowdown (thermal throttle, prolonged I/O contention, a persistently slow node) would inflate the
+median and throughput too; that only the tail moves rules THOSE out and points to a few large cold-prefills catching
+a good-vs-bad queue moment. HONEST CAVEAT (v0.6, from adversarial review): the body-stable/tail-only signature does
+NOT rule out TRANSIENT per-prefill stalls (a brief NFS-metadata stall or kernel-launch jitter hitting a few large
+prefills would also move only the tail); we cannot separate intrinsic queue metastability from transient environment
+jitter without kernel-level instrumentation. The DECISIVE, airtight claim is the weaker one: the variance is NOT
+workload variance (byte-identical workload). And the evaluation consequence is identical either way — single/
+same-node A/Bs on this tail metric are unreliable. (§5.6.) This is also why the whale (6.2–26.6 s) and LRU
+(5.9–31.2 s) p99 ranges overlap: the policy signal is a small fraction of the run-to-run variance.
 
 **W8 — you localize the tail to large prefills; did you test the obvious fix (prefill/admission scheduling)?**
 Attack: if large cold prefills drive the tail, stagger/rate-limit them — a natural mechanism you should evaluate,
@@ -142,9 +147,30 @@ So in THIS workload the sharing escape is quantitatively negligible and cannot m
 no-go. We are explicit that a shared-corpus regime (e.g. RAG over a common corpus) could make sharing the dominant
 lever, but that is a capacity/dedup mechanism orthogonal to the eviction/admission axes this metric probes.
 
+**W11 — "size is the UNIQUE causal victim rule" — did you test recompute-cost-aware eviction? (No; it's better.)**
+Attack (from an independent adversarial review): your "unique" claim rests on a 7-policy sweep that omits the obvious
+competitor — recompute-cost-aware eviction — which sibling work found wins elsewhere. "Unique among the rules you
+happened to try" is not unique.
+Defense (CONCEDED — 11th self-correction, v0.6): correct, and we tested it. Added cost_aware / cost_aware_pp /
+hit_density / gdsf to sim/simulate.py. Result @10.7M: proven-protected recompute-cost-greedy (evict cheapest-to-
+rebuild unproven first) captures +48% of the Belady headroom — roughly TWICE the size-aware whale's +23% (robust:
++61% vs +29% @8M). So size is NOT the unique or best signal. We retracted "unique" throughout and reframed the
+constructive result to its correct form: the headroom-capturing signal-CLASS is proven-protection + a prefix
+size/cost magnitude signal (recency/frequency capture 0% even with proven-protection, cf. SLRU=0%; without
+proven-protection cost-only/size-only are catastrophic −311%/−529%). Important honesty: cost-greedy wins the offline
+recompute metric by directly minimizing it, but keeps dead single-turn KV resident (poorer live-set utilization),
+whereas whale targets liveness — and BOTH are gap-capped online (§5.5), so neither yields an online goodput gain.
+This weakens the size-signal-as-headline and is a further argument for the metastability-forward framing (see below).
+
 ## Minor
 - §5.3 could add a one-line bridge to §5.5 ("the grace-trap motivates changing the SIGNAL, not the retention time
   — §5.5"). (pending)
+- MAJOR OPEN (v0.6, from review #6): consider REPOSITIONING the paper to lead with the execution-variance
+  metastability result (the surviving, broadly-useful contribution) and demote the size/cost signal to a cautionary
+  offline case study — the reviewer argues (compellingly) the paper currently leads with a constructive claim it
+  internally withdraws. Also pending from review: held-out AUC validation (#5.3), a power-law quantifying
+  "unidentifiable at feasible n" (#5.4), and scoping the no-go "criterion" generality to the single-workload
+  evidence (#4.1). None require GPU. (deferred to a careful follow-up pass)
 - §6 related work: add a sentence distinguishing the size-observability result from continuation-predictor /
   TTL-aware works (Continuum, Predictive-Multi-Tier) — we identify a SPECIFIC observable (turn-0 size) and show
   offline it is uniquely sufficient among causal victim rules. (pending)

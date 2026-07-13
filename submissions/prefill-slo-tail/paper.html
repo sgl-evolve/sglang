@@ -411,9 +411,11 @@ deviation σ of the gating-rate p99 TTFT with a small same-node median-of-k (k�
 margin <b>m = |SLO − median(p99)|</b> at that rate. <b>If σ ≳ m, goodput@SLO is variance-dominated</b>: a
 single run — and even median-of-k — cannot resolve configuration differences, and the metric should be
 replaced by the stable metrics (hit rate, median TTFT, throughput) plus, if the tail matters, the p99
-<i>distribution</i> rather than a binary deadline. In our data the gating rate is λ=3: stock has σ = 8.0 s
-against m = 1.4 s (<b>σ/m ≈ 5.7</b>, deeply variance-dominated), and even the tighter write-back config has
-σ = 2.7 s against m = 3.1 s (σ/m ≈ 0.9, still on the edge). The test is workload-agnostic — it follows from
+<i>distribution</i> rather than a binary deadline. In our data the gating rate is λ=3, and every configuration we
+measured fails the test: stock-flush has σ = 8.0 s against m = 1.4 s (<b>σ/m ≈ 5.7</b>, deeply
+variance-dominated); the tighter write-back config σ = 2.7 s against m = 3.1 s (σ/m ≈ 0.9, on the edge);
+and even warm-steady-state stock (no per-rate flush) σ = 3.2 s against m = 2.3 s (<b>σ/m ≈ 1.4</b>, still
+variance-dominated) — warm serving lowers σ/m from 5.7 to 1.4 but does not clear the σ/m &lt; 1 bar (§5.3). The test is workload-agnostic — it follows from
 the p99 being a metastable queueing tail (§2.2) and needs only k measurements, no model — and it "flips
 safe": it certifies goodput@SLO as trustworthy only when the deadline sits many run-to-run standard
 deviations from the typical p99, i.e. far from the queueing knee.</p>
@@ -533,8 +535,19 @@ so <b>warm serving does not rescue goodput@SLO (still 0)</b>. The flush shifts t
 irreducible cold turn-0 prefill floor keeps it above the deadline. So while a warm-steady-state eval is the
 right methodology (it removes the flush transient and its arrival-phase variance, §7), on this workload it
 narrows the coin-flip band rather than eliminating the failure — the structural floor, not the flush, is the
-binding ceiling. (The λ=3 warm point, 9.12 s, is a single draw; a warm median-of-k would pin the residual
-variance, §7.)</p>
+binding ceiling.</p>
+<p><b>Warm median-of-k: warm-steady-state narrows the coin-flip but does not remove it (v0-warm-medk).</b>
+The warmdiag λ=3 above is a single draw; we pin the residual warm variance with a warm median-of-k — K=5
+no-flush stock λ=3 draws on one fixed node. The warm p99 values are <b>{6.4, 9.8, 10.3, 13.6, 14.5} s</b>
+— median 10.3 s, sample std 3.2 s — <b>still straddling the SLO (1 / 5 pass)</b>. So warm serving
+<i>reduces</i> the variance markedly (the variance-domination ratio σ/m of §4 falls from 5.7 under flush to
+1.4; the flush's catastrophic-outlier tail vanishes, spread 4.0×→2.3×) <b>but does not eliminate the
+coin-flip</b>: warm λ=3 is still variance-dominated (σ/m = 1.4 &gt; 1). Warm-steady-state is therefore a
+<i>necessary but insufficient</i> part of the fix on this workload — the residual cold turn-0 prefill floor
+keeps the tail metastable. (Honesty on the confound: the flush-vs-warm σ comparison is cross-node — flush on
+ondem-3, warm on ondem-2 — so we take the variance <i>reduction</i> only as suggestive; the node-controlled
+claim is that warm λ=3 on a single node is itself a coin-flip, and warmdiag's same-node ondem-3
+flush-vs-no-flush confirms the flush inflates the tail 33–45%.)</p>
 
 <h3>5.4 Honest controls & attribution</h3>
 <p>Peak output throughput rises monotonically (365→538 tok/s) — decode is <i>not</i> saturated; the knee
@@ -590,10 +603,14 @@ issues <code>/flush_cache</code> per invocation), compounding the metastability 
 90–184 before it drains (§5.3). We tested the no-flush condition with an off-contract, node-controlled
 diagnostic (v0-warmdiag, §5.3): warm steady-state lowers p99 by 33–45% at every rate but leaves every rate
 above the SLO (λ=3 14.1→9.1 s), so it <i>narrows</i> the coin-flip band without <i>removing</i> the failure
-— the structural cold-prefill floor, not the flush, is the binding ceiling. This both validates
-warm-steady-state as the correct methodology (it removes a large, real variance source) and shows it is not
-sufficient here. The one residual gap is that our warm λ=3 point is a single draw; a warm median-of-k would
-pin how much of the coin-flip variance the flush contributes versus the arrival-phase transient.</li>
+— the structural cold-prefill floor, not the flush, is the binding ceiling. We further ran a <b>warm
+median-of-k</b> (v0-warm-medk, §5.3): K=5 no-flush λ=3 draws are still a coin-flip (1 / 5 pass, σ/m = 1.4),
+so warm-steady-state lowers the variance-domination ratio from 5.7 to 1.4 but does not clear σ/m &lt; 1.
+Warm-steady-state is thus a <i>necessary but insufficient</i> part of the fix here: it removes a large, real
+variance source, yet even warm + median-of-k cannot make goodput@SLO trustworthy on this workload — the
+reliable evaluation is the stable metrics. (The flush-vs-warm σ reduction is cross-node, so taken only as
+suggestive; the node-controlled facts are warmdiag's same-node flush effect and warm-medk's same-node
+coin-flip.)</li>
 <li><b>Model simplification.</b> The M/G/1 model is single-server and ignores decode contention, mixed
 prefill/decode batching, and the device/host KV split; it is an explanatory tool for the metastability,
 not a point predictor.</li>

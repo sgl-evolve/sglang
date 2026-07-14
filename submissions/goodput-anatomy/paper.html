@@ -63,7 +63,9 @@ compute/scheduling phenomenon the cache cannot touch. goodput@SLO is consequentl
 (the same stock config passes at 6.2&nbsp;s p99 in one run and fails at 11.5&nbsp;s in another on the <em>same</em>
 node). We conclude that on this regime a <em>novel</em> lossless KV-cache mechanism has essentially no room over
 the known exclusive-tiering configuration: the reachable hit slice is &le;7&nbsp;pp, the natural admission signal
-for it backfires, and the goodput tail is compute-irreducible. We bound exactly why.
+for it backfires, and the goodput tail is compute-irreducible. We further show the tail is beyond prefill
+<em>scheduling</em> too&mdash;the giants <em>are</em> the p99, so SRPF only delays them and tail-acceleration
+serializes them&mdash;so the sole remaining lever is the SLO/workload shape (&sect;7). We bound exactly why.
 </div>
 
 <h2>1 Introduction</h2>

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cache-Adjusted Prefill Admission Control for Stable Goodput in Two-Tier LLM Serving</title>
+<style>
+  :root { --ink:#1a1a1a; --mut:#666; --acc:#0b5; --bad:#c33; --line:#ddd; }
+  body { font: 16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,serif; color:var(--ink);
+         max-width: 860px; margin: 40px auto; padding: 0 22px; }
+  h1 { font-size: 25px; line-height:1.25; margin:0 0 6px; }
+  h2 { font-size: 19px; margin: 32px 0 8px; border-bottom:2px solid var(--line); padding-bottom:4px; }
+  h3 { font-size: 16px; margin: 20px 0 6px; }
+  .aut { color:var(--mut); margin: 2px 0 18px; }
+  .abs { background:#f7f7f7; border-left:3px solid var(--acc); padding: 12px 16px; border-radius:4px; }
+  code,pre { font-family: ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; }
+  pre { background:#f5f5f5; padding:11px 13px; border-radius:6px; overflow-x:auto; }
+  table { border-collapse: collapse; width:100%; margin: 12px 0; font-size:14px; }
+  th,td { border:1px solid var(--line); padding:6px 9px; text-align:right; }
+  th:first-child, td:first-child { text-align:left; }
+  caption { color:var(--mut); font-size:13px; margin-bottom:6px; text-align:left; }
+  .fig { margin: 18px 0; text-align:center; }
+  .fig figcaption { color:var(--mut); font-size:13px; text-align:left; margin-top:6px; }
+  .todo { background:#fff6e5; border:1px dashed #e0a800; padding:8px 12px; border-radius:5px; color:#8a6d00; }
+  .k { color:var(--acc); font-weight:600; } .b { color:var(--bad); font-weight:600; }
+  ul { margin: 6px 0 6px 0; } li { margin: 3px 0; }
+</style>
+</head>
+<body>
+
+<h1>Cache-Adjusted Prefill Admission Control:<br>Keeping Goodput Off the Retraction Cliff in Two-Tier LLM Serving</h1>
+<div class="aut"><b>floyd</b> · sglang KV-cache research · v0.31 · draft (evaluation in progress)</div>
+
+<div class="abs">
+<b>Abstract.</b> Long-context multiturn LLM serving over a two-tier (GPU&nbsp;HBM&nbsp;+&nbsp;host&nbsp;DRAM)
+KV cache exhibits a <em>metastable</em> tail-latency collapse: identical stock configurations flip
+between passing and failing a p99&nbsp;TTFT SLO run-to-run, so goodput@SLO behaves like a coin toss.
+We trace this instability to a <em>cost-blind admission policy</em>. A trace-driven analysis of the
+fixed evaluation workload shows prefill cost is extraordinarily heterogeneous — cache-adjusted per-turn
+work spans <b>~1500&times;</b> (median 26 tokens of prefix-reuse vs. p99 of 40.6k tokens of cold
+document), and the <b>top 5% of turns carry 50%</b>, the top 10% carry 78%, of all prefill compute.
+The scheduler admits prefill by raw token budget and request count, so a burst of a few cold-document
+prefills — a handful of requests but the bulk of the work — saturates the KV pool (we observe stock
+reaching 100% device-pool usage repeatedly), stalling admission and spiking the TTFT tail. We introduce
+<b>Cache-Adjusted prefill admission control (CCA)</b>: a preventive gate that meters admission in
+<em>cache-adjusted work</em> (input minus radix-resident prefix) and defers only <em>expensive</em>
+prefills once projected pool usage would breach a watermark, reserving decode headroom to keep the
+system off the retraction cliff. Cheap prefix-reuse turns are never gated; a starvation valve bounds
+worst-case TTFT. CCA is lossless — it changes only <em>when</em> prefills run, never KV contents or
+outputs. <span class="todo">[Evaluation in progress: same-node replicated rate-sweep A/B, goodput@SLO,
+ablations. Preliminary: CCA caps device-pool usage at 0.70 vs. stock's repeated 1.00.]</span>
+</div>
+
+<h2>1 Introduction</h2>
+<p>
+sglang's HiCache tiers the KV cache across L1 (GPU HBM) and L2 (768&nbsp;GB host DRAM). Under an
+open-loop Poisson rate sweep of a realistic long-document multiturn workload, the headline metric is
+<b>goodput@SLO</b>: the maximum request rate sustaining p99&nbsp;TTFT&nbsp;&le;&nbsp;8&nbsp;s. Prior
+measurement on this platform established that goodput@SLO is <em>variance-dominated</em> — a metastable
+coin-flip in which the same stock build passes or fails at random. That work characterized the
+instability but did not cure it.
+</p>
+<p>This paper makes three contributions:</p>
+<ul>
+<li><b>A diagnosis.</b> The collapse is a <em>control instability driven by cost misestimation</em>.
+Prefill cost varies ~1500&times; across turns because of cache residency, yet admission is metered in
+request count / raw tokens, so a small cluster of cold-document prefills tips the KV pool into
+saturation and stalls the pipeline.</li>
+<li><b>A mechanism.</b> <span class="k">CCA</span> — work-bounded prefill admission in
+<em>cache-adjusted currency</em>. The right unit for admission control is residency-adjusted compute
+work, not requests or raw tokens. To our knowledge no serving system meters admission this way.</li>
+<li><b>Evidence.</b> <span class="todo">[rate-sweep curve vs. baseline; goodput@SLO; ablations
+isolating the cache-adjustment; n&ge;2 same-node replicates; lossless verification. In progress.]</span></li>
+</ul>
+
+<h2>2 Motivation</h2>
+<h3>2.1 The workload: a few giant cold prefills amid a sea of cheap reuse</h3>
+<p>
+The fixed workload is 1553 multiturn conversations (LEval/LooGLE long-document QA + ShareGPT chat)
+replayed at Poisson rate, 7163 total turns. Turn&nbsp;0 embeds an entire document (p90&nbsp;&approx;29k
+tokens); turns 1..N reuse it through the radix cache. We replay the trace through an idealized LRU radix
+cache at the real two-tier capacity (~10.7M tokens) and measure each turn's <em>cache-adjusted prefill
+work</em> = tokens that must actually be computed (input &minus; resident prefix).
+</p>
+
+<figure class="fig">
+<!-- Lorenz-style concentration curve -->
+<svg width="620" height="240" viewBox="0 0 620 240" font-family="sans-serif" font-size="12">
+  <line x1="60" y1="200" x2="580" y2="200" stroke="#333"/>
+  <line x1="60" y1="200" x2="60" y2="20" stroke="#333"/>
+  <text x="320" y="232" text-anchor="middle" fill="#666">turns ranked by cost (cumulative %)</text>
+  <text x="18" y="110" text-anchor="middle" fill="#666" transform="rotate(-90 18 110)">% of total prefill work</text>
+  <!-- equality diagonal -->
+  <line x1="60" y1="200" x2="580" y2="20" stroke="#bbb" stroke-dasharray="4 4"/>
+  <!-- concentration: (0,0)(1,16.6)(5,50.1)(10,77.7)(20,98.9)(100,100). x scaled 60..580 over 0..100, y 200..20 over 0..100 -->
+  <polyline fill="none" stroke="#0b5" stroke-width="2.5"
+    points="60,200 65.2,113.6 86,109.4 112,60.6 164,4.7 580,20 580,20"/>
+  <!-- markers -->
+  <circle cx="86" cy="113.6" r="3" fill="#0b5"/><text x="92" y="112">5% turns &rarr; 50% work</text>
+  <circle cx="112" cy="60.6" r="3" fill="#0b5"/><text x="118" y="58">10% &rarr; 78%</text>
+  <circle cx="164" cy="24.7" r="3" fill="#0b5"/><text x="170" y="30">20% &rarr; 99%</text>
+  <text x="300" y="150" fill="#999">dashed = uniform cost</text>
+</svg>
+<figcaption><b>Figure 1.</b> Prefill-work concentration. The top 5% of turns carry 50%, the top 10%
+carry 78%, of all prefill compute. Per-turn cache-adjusted work: p50=26 tokens, p90=17.4k, p99=40.6k,
+max=190.9k — a ~1500&times; spread. 70% of turns are near-free reuse (&le;26 tokens).</figcaption>
+</figure>
+
+<p>
+Two facts follow. First, <b>caching is near its ceiling here</b>: of all prefill work, 75% is
+<em>cold</em> (first-ever document prefill — unavoidable by any cache) and only ~24% is
+<em>avoidable</em> evicted-recompute; with eviction already near-optimal (LRU&approx;Belady) and L2
+transfer cheap (~1.6&nbsp;ms), residency mechanisms have little headroom left. Second, <b>the lever is
+scheduling, not caching</b>: cost is so concentrated that <em>how</em> the few giant prefills are
+admitted dominates the tail.
+</p>
+
+<h3>2.2 The collapse: cost-blind admission saturates the pool</h3>
+<p>
+goodput@SLO is a p99 metric. In our stock baseline at &lambda;=3, p50&nbsp;TTFT is a healthy 1056&nbsp;ms
+but <b class="b">p99 is 11787&nbsp;ms — over the 8&nbsp;s SLO</b>. The tail is not steady-state; it is a
+few events. Watching the live scheduler, stock reaches <b class="b">100% device-pool usage ten times</b>
+during the &lambda;=3 measurement: bursts of cold-document prefills fill the KV pool, admission stalls
+(no free tokens), queued requests wait, and the tail explodes. Because admission is metered by request
+count and raw tokens, the scheduler cannot see that three "requests" are actually 120k tokens of compute
+about to saturate the pool. That misestimation is the instability.
+</p>
+
+<h2>3 Design</h2>
+<h3>3.1 Mechanism</h3>
+<p>
+CCA adds a preventive gate to the prefill admission loop. For each waiting request it computes the
+<b>cache-adjusted cost</b>
+</p>
+<pre>cost(req) = len(fill_ids) − len(device_prefix) − host_hit_length     # tokens to actually compute</pre>
+<p>
+i.e. total tokens minus what the radix cache already holds (device prefix + host prefix that loads back
+cheaply). A prefix-reuse turn is ~0; a cold document is tens of thousands. The gate:
+</p>
+<pre>if cost &gt; θ                                  # expensive (cold) prefill only
+   and running_batch nonempty                # progress guarantee: never stall an empty pipeline
+   and base_used + admitted + cost &gt; W·pool: # projected pool usage breaches watermark
+      if req.waited &lt; max_defer:  DEFER      # keep it queued; reserve decode headroom
+      else:                        ADMIT      # starvation valve bounds worst-case TTFT</pre>
+<p>
+<code>base_used</code> is the pool usage snapshotted this pass; <code>admitted</code> accumulates the
+cost of prefills already admitted this pass, so the projection sees the batch being built. Cheap turns
+(<code>cost&le;θ</code>) are never gated — the 70% near-free reuse stream flows unimpeded. Deferred
+requests stay in the waiting queue and are reconsidered next pass, once decode drains the pool below the
+watermark. The valve force-admits any expensive prefill that has already waited <code>max_defer</code>,
+bounding its TTFT under the SLO.
+</p>
+<h3>3.2 Why it is novel</h3>
+<ul>
+<li><b>vs. SRPF/SJF:</b> those <em>reorder</em> the queue; they do not <em>bound</em> in-flight work,
+so a burst still saturates the pool. Here reordering is counterproductive — the cold prefills that SRPF
+defers <em>are</em> the p99, so deferring them raises the tail.</li>
+<li><b>vs. the stock <code>PrefillDelayer</code>:</b> that batches prefills to avoid decode-batch
+fragmentation, keyed on slot/queue counts and current pool usage; it is cache-blind and off by default.
+CCA meters <em>cache-adjusted work</em> and is <em>predictive</em> of the retraction cliff.</li>
+<li><b>vs. reactive retraction (<code>check_decode_mem</code>):</b> stock admits greedily until the
+pool is full, then retracts running requests (re-prefill — pure waste). CCA is the <em>preventive
+dual</em>: don't admit what would force a retraction.</li>
+<li><b>The insight:</b> prefill cost varies 1500&times; because of cache residency, so admission must
+be metered in residency-adjusted work to stay off the cliff. This generalizes to any prefix-cached
+long-context serving system.</li>
+</ul>
+
+<h2>4 Implementation</h2>
+<p>
+CCA is ~40 lines in the sglang scheduler, hooking the live prefill admission path
+(<code>Scheduler._get_new_batch_prefill_raw</code>), plus a cost helper and four server-args knobs
+(<code>--enable-cca-prefill</code>, <code>--cca-watermark</code>, <code>--cca-threshold</code>,
+<code>--cca-max-defer-ms</code>, and <code>--cca-use-raw-cost</code> for the ablation). It touches no
+KV data, no prefix matching, no token generation — proving losslessness by construction. A per-pass log
+(<code>cca[defer/gated-pass/force]</code>) confirms the gate exercises the live path.
+Commit <code>8ca2a0ea4</code> on <code>evolve/floyd</code>.
+</p>
+
+<h2>5 Evaluation</h2>
+<p class="todo">
+<b>In progress.</b> Protocol: fixed rate sweep &lambda;&isin;{3,5,7,10}, NUMP=1553, warmup burst,
+no flush; headline goodput@SLO (p99&nbsp;TTFT&le;8&nbsp;s); honest controls peak tok/s &amp; req/s
+(decode-bound, expected flat). Plan: (a) same-node stock-vs-CCA A/B, n&ge;2 replicates each (goodput@SLO
+is variance-dominated → compare p99 <em>distributions</em>, Levene + Mann-Whitney, not single runs);
+(b) ablations — <code>--cca-use-raw-cost</code> (remove cache-adjustment), stock
+<code>PrefillDelayer</code>, watermark/threshold sweep; (c) lossless verification via greedy-decode
+output diff.
+</p>
+<p><b>Preliminary mechanism result (node-independent).</b> With CCA enabled, device-pool usage is
+capped at <span class="k">0.70</span> with <b>0</b> saturation events, versus stock reaching
+<b>1.00 ten times</b> at &lambda;=3; CCA sustains 70–99 concurrently-running requests at 0.20–0.36 pool
+usage while the gate fires (thousands of deferrals, hundreds of valve force-admits). The mechanism does
+what it is designed to do — the open question the full curve answers is whether pool control translates
+into a p99/goodput win.</p>
+
+<h2>6 Related work</h2>
+<p>
+<b>Mooncake</b> (FAST'25) disaggregates prefill/decode and rejects load on overload; <b>Strata</b>
+(arXiv 2508.18572) balances prefill/decode batching for cache efficiency; the sglang <b>HiCache</b>
+blog introduces the two-tier hierarchy. All admit prefill by token/slot budgets. CCA differs by metering
+admission in <em>cache-adjusted compute work</em> and targeting the metastable pool-saturation collapse
+specifically. Classic admission control / load shedding and CPU cache hierarchies inform the framing;
+the novelty is the residency-adjusted currency and the preventive-retraction target.
+</p>
+
+<h2>7 Limitations &amp; when it fails</h2>
+<ul>
+<li>Under sustained saturation (&lambda; far past the knee) no admission policy can help — the valve
+degrades CCA gracefully to stock. CCA targets the <em>metastable knee</em>, not hard overload.</li>
+<li>The cost currency counts recompute, not the device footprint of large L2&rarr;L1 load-backs; a burst
+of reuse turns loading big prefixes could still pressure the pool. A device-footprint currency variant
+is a one-line change under evaluation.</li>
+<li>The p99 floor is the intrinsic compute time of the largest cold document (~6&nbsp;s at ~30k&nbsp;tok/s);
+CCA cannot beat that floor, only prevent queueing on top of it.</li>
+</ul>
+
+<h2>8 Reproducibility</h2>
+<p>
+Base commit <code>a334877e5</code> (stock sglang v0.31); mechanism on <code>evolve/floyd</code>.
+Trace diagnostic: <code>analysis/trace_diag.py</code>. Eval: the fixed
+<code>eval-on-pool.sh floyd &lt;version&gt; --enable-cca-prefill --cca-watermark 0.85 --cca-threshold 4096</code>.
+Each number ties to <code>runs/&lt;version&gt;/summary.json</code>.
+</p>
+
+</body>
+</html>

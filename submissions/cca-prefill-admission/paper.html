@@ -266,9 +266,9 @@ touches cold prefills (0 retracts, pool capped ~0.54). It <em>tightens</em> the 
 and, crucially, <em>no</em> goodput gain: by removing the unlucky-high fails it also removes the
 lucky-low passes, so the pass-rate is 2/5 vs stock's 3/5 (if anything lower). It converts an
 unpredictable coin-flip into a predictable near-8&nbsp;s value that still straddles the SLO — making
-failure reliable, not passing. The spread reduction is not significant at feasible n (Levene p=0.15,
-Fligner p=0.16) on this heavy-tailed distribution. <span class="todo">[The spread reduction is reported descriptively; a formal Levene
-test is underpowered at feasible n (p≈0.11 at n=4/5) on this heavy-tailed coin-flip.]</span></li>
+failure reliable, not passing. The spread reduction is reported descriptively: a formal Levene test is
+underpowered at feasible n (p=0.15, Fligner p=0.16) on this heavy-tailed coin-flip, so we do not claim it
+as a significant variance effect.</li>
 </ul>
 <p><b>Why admission fails while reordering works.</b> The λ=3 coin-flip is head-of-line blocking: the p99
 turns are small/medium turns stuck behind the back-to-back chunked prefill of a few large cold documents

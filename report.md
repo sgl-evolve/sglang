@@ -818,3 +818,12 @@ result distinct from Paper 1.
   cut p99 toward the ~9.4s mega-doc floor (big distribution shift) but not below 8s (no goodput flip); the
   fail→pass goodput WIN is likelier at λ3 (coin-flip boundary). Screen at λ5 still detects the p99 cut; if
   present, run full sweep incl λ3. Awaiting more reps + srpf arm + shortlane reserve0/reserve2048.
+
+### A/B baselines + NODE HETEROGENEITY (2026-07-14 ~23:32Z)
+Stock baselines differ BY NODE (both byte-identical stock, λ5): fcfs on ondem-2 = p99 22.4s (n=2: 22331,22491
+— reliable-fail, 0.7% apart, LOW variance ⇒ λ5 is the reliable-FAIL regime, NOT coin-flip → clean A/B),
+p50 679ms, req 4.12, hit .672. reserve0 on node 1-1 = p99 26.5s, p50 1395ms, req 3.23, hit .677. Node 1-1 is
+~18% higher p99 / ~2× p50 / ~22% lower throughput = NODE HETEROGENEITY (Paper-1's ±45% node var). ⇒ compare
+ONLY same-node (reserve2048 vs reserve0 both on 1-1; srpf vs fcfs both on ondem-2); NEVER cross-node. Also
+req<λ on both ⇒ λ5 SATURATES both nodes → reserve (slightly slows mega-docs) may trade throughput for victim-p99
+at λ5; clean goodput win likelier at λ3. Decisive shortlane data (reserve2048@1-1) ~2.5h out; SRPF srpf arm ~4h.

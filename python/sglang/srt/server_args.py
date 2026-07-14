@@ -1332,22 +1332,6 @@ class ServerArgs:
     ] = 200
 
     # -------------------------------------------------------------------------
-    # Hot-document pinning (floyd, paper-2 empirical: popularity-aware retention)
-    # -------------------------------------------------------------------------
-    enable_hot_doc_pin: A[
-        bool,
-        "Popularity-aware KV retention: protect frequently-reused radix nodes "
-        "(hit_count >= --hot-doc-pin-min-hits) from L1 eviction, evicting them "
-        "only as an OOM-safe last resort. Steelman test of whether pinning the "
-        "few hot documents (that serve many conversations) moves goodput@SLO.",
-    ] = False
-    hot_doc_pin_min_hits: A[
-        int,
-        "Reuse-count threshold above which a radix node is treated as a pinned "
-        "hot document and evicted last. ~16 isolates the top-few hottest docs.",
-    ] = 16
-
-    # -------------------------------------------------------------------------
     # Min free slots delay (prefill refill batching)
     # -------------------------------------------------------------------------
     min_free_slots_delay: A[

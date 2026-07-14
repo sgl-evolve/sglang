@@ -177,16 +177,6 @@ class HiMambaRadixCache(MambaRadixCache):
         )
         self.load_back_threshold = 10
 
-        # floyd (paper-2 empirical): popularity-aware hot-document pinning.
-        self.hot_doc_pin = getattr(server_args, "enable_hot_doc_pin", False)
-        self.hot_pin_min_hits = getattr(server_args, "hot_doc_pin_min_hits", 16)
-        self._hot_pin_evicted = 0  # counts pinned nodes evicted as OOM-safe fallback
-        if self.hot_doc_pin:
-            logger.info(
-                f"Hot-doc pinning ENABLED: protect radix nodes with hit_count >= "
-                f"{self.hot_pin_min_hits} from L1 eviction (OOM-safe fallback)."
-            )
-
         self.evictable_full_device_leaves: set[TreeNode] = set()
         self.evictable_full_host_leaves: set[TreeNode] = set()
         self.mamba_host_lru_list = HostLRUList()
@@ -719,26 +709,14 @@ class HiMambaRadixCache(MambaRadixCache):
         mamba_num_evicted = 0
 
         if full_num_tokens > 0:
-            # floyd: pin-aware key. When hot-doc pinning is on, a "pinned" node
-            # (hit_count >= threshold) gets a leading key of 1 so it sorts AFTER
-            # every unpinned node — evicted only as an OOM-safe last resort. When
-            # pinning is off this reduces exactly to the stock last_access_time LRU.
-            def _evk(n):
-                if self.hot_doc_pin and n.hit_count >= self.hot_pin_min_hits:
-                    return (1, n.last_access_time)
-                return (0, n.last_access_time)
-
             leaves = list(self.evictable_full_device_leaves)
-            eviction_heap = [(_evk(n), n) for n in leaves]
+            eviction_heap = [(n.last_access_time, n) for n in leaves]
             heapq.heapify(eviction_heap)
 
             while full_num_evicted < full_num_tokens and eviction_heap:
-                key, x = heapq.heappop(eviction_heap)
+                _, x = heapq.heappop(eviction_heap)
                 if x not in self.evictable_full_device_leaves:
                     continue
-
-                if self.hot_doc_pin and key[0] == 1:
-                    self._hot_pin_evicted += 1  # forced to evict a pinned node (OOM-safe)
 
                 evicted_full, evicted_mamba = self._evict_device_leaf(x)
                 full_num_evicted += evicted_full
@@ -746,7 +724,7 @@ class HiMambaRadixCache(MambaRadixCache):
 
                 parent = x.parent
                 if parent in self.evictable_full_device_leaves:
-                    heapq.heappush(eviction_heap, (_evk(parent), parent))
+                    heapq.heappush(eviction_heap, (parent.last_access_time, parent))
 
         if params.mamba_num > 0:
             mamba_num_evicted += self.evict_mamba(params.mamba_num)

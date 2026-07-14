@@ -177,7 +177,15 @@ to measure (in progress).
   pass-rate gain). The sweep (v5-w90/v6-w95/v7-th16k) is the last chance for a config that reliably
   clears 8s; absent that, the honest result is the NEGATIVE + a suggestive variance-reduction observation.
 
-## Contribution = variance-reduction lead OR rigorous negative (charter-valid either way)
+### ★★★ v5-w90 (watermark 0.90) λ=3 = 7789ms — PASSES 8s SLO (n=1)
+- Less-aggressive gating (w0.90 vs 0.85) LOWERS the stable point: 7789 < v4-w85 mean 8291 (less
+  load-back deferral overhead) AND still variance-reduced. **7789 < 8000 ⇒ PASSES.** If v5-w90
+  RELIABLY lands <8000, CCA-lb@0.90 converts stock's λ=3 coin-flip (1/3 pass) into reliable pass
+  ⇒ goodput 0→3 = a real WIN. MUST replicate n≥3-4 (coin-flip guardrail: single-run VOID).
+- Trend: watermark ↑ (0.85→0.90) lowers overhead → lower tail, keeps variance reduction. Sweet spot.
+- NEXT: replicate v5-w90 (r2/r3/r4) + paired stock; if reliably <8000 → positive paper.
+
+## Contribution = variance-reduction lead → possible goodput WIN (v5-w90) OR rigorous negative
 **Thesis:** goodput@SLO for long-document multiturn 2-tier serving is a **cold-prefill-compute-bound
 metastable coin-flip**, and **prefill admission control that defers expensive prefills cannot improve
 it (and can catastrophically harm it)** — because the SLO tail IS the expensive cold prefills.

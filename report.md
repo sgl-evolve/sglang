@@ -787,3 +787,26 @@ TODO before implementing: (1) await SRPF result; (2) per-request instrumentation
 prefill size) or a bench patch. Prior art to position vs: Sarathi/chunked-prefill (prefill↔decode mixing),
 FastServe (preemptive), Mooncake, and classic fair-queuing (must frame novelty as the INSIGHT + inter-prefill
 mechanism, not fair-queuing-transplanted, to clear the bar).
+
+### Paper 2 — prior-art positioning (from training knowledge, VERIFY+cite before submission; web search blocked here)
+Closest prior art for the reserved-short-prefill-lane, and why the mechanism is distinct:
+- **Sarathi-Serve (Agrawal et al., OSDI'24) / chunked prefill (also vLLM):** the ORIGIN of chunked prefill —
+  splits a long prefill into token-budget chunks and piggybacks decodes ("stall-free batching") to stop long
+  prefills from STALLING DECODE. Target = prefill→DECODE interference. It does NOT reserve budget for other
+  WAITING PREFILLS; a single large chunked prefill can still monopolize the per-iteration prefill token budget
+  across its many chunks → INTER-PREFILL head-of-line blocking remains (exactly what sglang, a Sarathi-style
+  system, exhibits: add_chunked_req takes the full 6144). My mechanism fills that gap: reserve a slice so short
+  waiting prefills co-run. Distinct AXIS (prefill↔prefill, not prefill↔decode).
+- **FastServe (Wu et al.):** MLFQ + PREEMPTION + skip-join to avoid request-level HOL. Mechanism = preempt
+  running reqs. Mine is NON-preemptive (no eviction/recompute) — a within-iteration budget split. Different.
+- **SRPF/SJF/shortest-first (explicitly DISQUALIFIED by charter L23):** reorders to serve short first but
+  STARVES the large cold docs (their TTFT explodes). My reserve does NOT reorder and does NOT starve — the
+  mega-doc keeps progressing every iteration, just shares the budget. Strictly better on the starvation axis.
+- **Classic fair-queuing / DRR:** the reserve is fair-queuing-flavored at the prefill-token-budget level. RISK:
+  a reviewer may call it "textbook FQ transplanted." DEFENSE (must carry the paper): the NOVELTY is the
+  DIAGNOSIS (goodput@SLO tail = inter-prefill HOL behind a heavy-tailed cold-doc workload, quantified) + that a
+  tiny reserved lane collapses the victim tail LOSSLESSLY without the starvation SRPF causes — evidenced by
+  beating BOTH fcfs and srpf. Clears the bar only if the effect is real + attributed (per-req input_len vs TTFT).
+Novelty hinges on the empirical signal (screen 19836) + attribution. If the effect is null → a NEW bounded
+negative ("even fair prefill budget-sharing can't beat the cold mega-doc prefill floor"), still a Paper-2-worthy
+result distinct from Paper 1.

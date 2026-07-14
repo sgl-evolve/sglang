@@ -9,19 +9,14 @@
 set -uo pipefail
 ROOT=/home/junyanch_google_com/autoresearch
 SGL=$ROOT/programs/sgl/v0.31/research
-EVAL=$SGL/researcher/.claude/skills/evaluation-sop/scripts/eval.sh
 WORK=$ROOT/workspace/sgl/v0.31/research/researchers/floyd
 LOGD=$SGL/manager/.runtime/logs
 NODE="${1:-slurm2-a3nodesetondem-3}"
+EVAL="${2:-$SGL/researcher/.claude/skills/evaluation-sop/scripts/eval.sh}"
+JOBSPEC="${3:-$WORK/analysis/jobs.txt}"   # file: "version<TAB or :>flags" per line
 
 # version : extra eval flags  (stock has no flags). Same-node A/B, interleaved.
-JOBS=(
-  "v1-cca:--enable-cca-prefill --cca-watermark 0.85 --cca-threshold 4096 --cca-max-defer-ms 4000"
-  "v0-stock-r2:"
-  "v1-cca-r2:--enable-cca-prefill --cca-watermark 0.85 --cca-threshold 4096 --cca-max-defer-ms 4000"
-  "v0-stock-r3:"
-  "v1-cca-r3:--enable-cca-prefill --cca-watermark 0.85 --cca-threshold 4096 --cca-max-defer-ms 4000"
-)
+mapfile -t JOBS < <(grep -vE '^\s*(#|$)' "$JOBSPEC")
 
 echo "[campaign] node=$NODE  $(date -u)"
 for entry in "${JOBS[@]}"; do

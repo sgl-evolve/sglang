@@ -1,0 +1,7 @@
+# floyd screen-based same-node A/B replicates (RATES="3 5"), interleaved on ondem-3
+v0-stock-r2:
+v1-cca-r2:--enable-cca-prefill --cca-watermark 0.85 --cca-threshold 4096 --cca-max-defer-ms 4000
+v0-stock-r3:
+v1-cca-r3:--enable-cca-prefill --cca-watermark 0.85 --cca-threshold 4096 --cca-max-defer-ms 4000
+v0-stock-r4:
+v1-cca-r4:--enable-cca-prefill --cca-watermark 0.85 --cca-threshold 4096 --cca-max-defer-ms 4000

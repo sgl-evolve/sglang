@@ -1,0 +1,16 @@
+Heavy-tailed prefill analysis (turn-0 document prompt tokens, tok≈chars/4):
+  p50=7395  p90=28862  p95=34634  p99=62396  max=190890
+Irreducible turn-0 prefill > 8s SLO (single-req best case), by effective prefill rate:
+  PREFILL_TPS=12000: 0.2% of convs   (=admit ≤96K tok in 8s)
+  PREFILL_TPS= 8000: 0.7% of convs   (≤64K tok)
+  PREFILL_TPS= 5000: 3.2% of convs   (≤40K tok)
+turn-0 = 22% of all 7163 requests.
+
+Conclusion for Paper 1:
+- p99 TTFT (11-41s measured) >> what giant-doc irreducibility ALONE predicts (<1% of requests over-SLO
+  at reasonable rates) => the tail is SEEDED by irreducible giant prefills and AMPLIFIED by prefill<->decode
+  interference (12.6% decode stalls, 70% giant prefill chunks) + queueing under saturation.
+- The tail is NEW-document prefill (uncacheable) + interference, NOT cache misses. => caching cannot move
+  goodput@SLO here; the lever is prefill scheduling (SRPF-class, known/textbook) or the SLO/workload itself.
+- Under saturation the effective per-request prefill rate is well below single-req peak (shared GPU with 256
+  decodes), pushing more docs over the SLO => explains goodput@SLO=0 and its coin-flip sensitivity.

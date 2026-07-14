@@ -127,6 +127,30 @@ lossless *deferring* admission/scheduling mechanism improves it (device-footprin
 but cannot beat the ~6s largest-cold-doc compute floor). Needs one clean device-footprint CCA curve
 to measure (in progress).
 
+### v3-cca (device-footprint + DETERMINISTIC valve, stable) — DECISIVE NEGATIVE
+- First CCA run to complete stably (deterministic-count valve fixed the TP-desync hang).
+- **λ=3: p99 = 56157ms — CATASTROPHIC (5–9× WORSE than stock {11787, 6327}).** p50 fine (1126ms),
+  req/s 3.02, hit 0.722 (even higher). 0 retracts, pool capped ~0.92.
+- **Why (measured confirmation of the misalignment):** CCA DEFERS expensive prefills (cold docs +
+  big load-backs). But the p99 tail IS exactly those expensive prefills. Deferring them (up to the
+  valve, 200 passes) multiplies their TTFT → p99 explodes to 56s. The cheap reuse turns (p50) are
+  unaffected. So capping the pool via deferral cannot help a tail-of-expensive-prefills metric — it
+  directly inflates the tail.
+- **Bracketing argument:** aggressive gating → catastrophic (56s); minimal gating (high watermark /
+  small valve) → converges to stock (no benefit). No (watermark, valve) setting where deferring the
+  tail-causing prefills helps. CCA is dominated by stock across its parameter space.
+
+## Contribution = rigorous NEGATIVE + characterization (charter-valid)
+**Thesis:** goodput@SLO for long-document multiturn 2-tier serving is a **cold-prefill-compute-bound
+metastable coin-flip**, and **prefill admission control that defers expensive prefills cannot improve
+it (and can catastrophically harm it)** — because the SLO tail IS the expensive cold prefills.
+Evidence: (1) cost bimodal 1500×, 75% cold, top-10%-turns=78%-work; (2) pool bimodal (metastable);
+(3) stock goodput coin-flip {0, 3.02} same-node, **0 retracts** (collapse ≠ retraction, it's
+prefill-compute queueing); (4) CCA measured negative — recompute-currency induces 0→518-retract crash
+(cost-misestimation via ignored load-back footprint); device-footprint currency (correct, stable)
+craters λ=3 p99 to 56s. (5) Systems by-product: a per-rank wall-clock scheduling decision desyncs TP
+ranks' prefill batches → NCCL hang (must be deterministic / all-gathered).
+
 ## Formal Submissions
 
-(none yet — awaiting one clean device-footprint CCA curve to finalize win-vs-rigorous-negative)
+(finalizing the negative/characterization paper; firming CCA n≥2 + one watermark-sweep point to show domination)

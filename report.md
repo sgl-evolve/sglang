@@ -185,5 +185,16 @@ tail/interference framing. TEST next session.
    L2 eviction (ADMIT-independent; new eviction-priority in UnifiedRadixCache). 4. Update paper.html eval
    section; flip draft→submitted if airtight. 5. Log all to W&B.
 
+## Direction 3 (bolder, orthogonal — after Paper 1 is firm)
+Since the caching axis is bounded and the goodput@SLO bottleneck is **prefill compute** (heavy-tailed,
+uncacheable turn-0 documents), the bolder orthogonal question is whether prefill COMPUTE can be reduced
+losslessly using the model's structure — hybrid Mamba/GDN (only 12/48 layers hold attention KV; 36 are
+constant-state recurrent) and MoE (10B active/122B). This is a different subsystem (compute, not cache),
+genuinely un-probed by me, ambitious/risky. Scope only after Paper 1 is submitted. (Lossy sparse-attention is
+out of bounds.)
+
 ## Formal submissions
-_(none yet — Paper 1 in preparation; will register in submissions/INDEX.md when evidence is airtight)_
+- `submissions/goodput-anatomy/paper.html` — **DRAFT** (registered INDEX.md 2026-07-14). Bounded-negative
+  anatomy: effective-capacity collapse + admission backfire (−25pp) + heavy-tailed-prefill tail + within-node
+  coin-flip. Figures: oracle decomposition, rate-sweep curve. Firm w/ crater replicate + write_back control,
+  then flip draft→submitted.

@@ -54,35 +54,43 @@ def load_curve(v):
         except Exception: pass
     return out
 
-# variant -> kind
+# variant -> kind. K-classification (resolved by v6_flat λ10): K is invariant ONLY for
+# PURE WRITE-POLICY variants (stock/wb: same backup targeting, differ eager vs lazy). Backup-
+# GATING (size gate-giants, flat gate-all) RAISES K monotonically; scheduling (lpm) also raises K.
 VAR = {
- "v1_stock":"cache: stock write_through", "v1b_stock":"cache: stock write_through",
- "v3_wb":"cache: write_back", "v3b_wb":"cache: write_back",
- "v2_flat2":"cache: flat-admission (crater)", "v2b_flat2":"cache: flat-admission (crater)",
- "v4_lpm":"schedule: lpm co-residency", "v5_size":"cache: size-admission",
- "v6_flat_sweep":"cache: flat-admission (low-hit anchor)",
+ "v1_stock":"pure-write-policy: stock write_through", "v1b_stock":"pure-write-policy: stock write_through",
+ "v3_wb":"pure-write-policy: write_back", "v3b_wb":"pure-write-policy: write_back",
+ "v2_flat2":"backup-gating: flat (crater)", "v2b_flat2":"backup-gating: flat (crater)",
+ "v4_lpm":"schedule: lpm co-residency", "v5_size":"backup-gating: size (gate giants)",
+ "v6_flat_sweep":"backup-gating: flat (gate all)",
 }
 
 print("="*74)
 print("1) CAPACITY LAW  C = K/(1-h)   [K := C*(1-h), saturated region lam>=7]")
 print("="*74)
-print(f"{'variant':30} {'lam':>3} {'C':>6} {'hit':>7} {'K=C(1-h)':>9}")
-Kcache, Ksched = [], []
+print(f"{'variant':34} {'lam':>3} {'C':>6} {'hit':>7} {'K=C(1-h)':>9}")
+Kbase, Kgate, Ksched = [], [], []
 for v,kind in VAR.items():
     cur = load_curve(v)
     for lam in (7,10):
         if lam in cur:
             C,h = cur[lam]["C"], cur[lam]["h"]
             K = C*(1-h)
-            print(f"{v:30} {lam:3d} {C:6.2f} {h:7.4f} {K:9.3f}   {kind}")
-            (Ksched if kind.startswith('schedule') else Kcache).append(K)
-if Kcache:
-    Km, Ks = statistics.mean(Kcache), (statistics.pstdev(Kcache) if len(Kcache)>1 else 0)
-    print(f"\nCACHE-variant K: mean={Km:.3f}  sd={Ks:.3f}  n={len(Kcache)}  "
-          f"CV={100*Ks/Km:.1f}%   <-- invariant => C=K/(1-h) holds")
+            print(f"{v:34} {lam:3d} {C:6.2f} {h:7.4f} {K:9.3f}   {kind}")
+            if kind.startswith('pure'): Kbase.append(K)
+            elif kind.startswith('schedule'): Ksched.append(K)
+            else: Kgate.append((h,K,v))
+if Kbase:
+    Km, Ks = statistics.mean(Kbase), (statistics.pstdev(Kbase) if len(Kbase)>1 else 0)
+    print(f"\nK_base (PURE write-policy stock+wb): mean={Km:.3f} sd={Ks:.3f} n={len(Kbase)} "
+          f"CV={100*Ks/Km:.1f}%  <-- INVARIANT => cache-hit lever moves C along C=K_base/(1-h)")
+    print("BACKUP-GATING raises K (monotone in gating amount), at cost of hit:")
+    for h,K,v in sorted(Kgate, key=lambda x:-x[0]):
+        print(f"   {v:16} h={h:.3f} K={K:.3f}  ({100*(K/Km-1):+.0f}% vs K_base)")
     if Ksched:
-        print(f"SCHED-variant K (lpm): {['%.3f'%x for x in Ksched]}  "
-              f"=> {100*(statistics.mean(Ksched)/Km-1):+.0f}% vs cache-K (scheduling raises K)")
+        print(f"   lpm (schedule)   K={statistics.mean(Ksched):.3f}  ({100*(statistics.mean(Ksched)/Km-1):+.0f}% vs K_base)")
+    print("=> Two levers on C: HIT via 1/(1-h) [strong, eager full backup] vs K via backup-I/O-reduction")
+    print("   [linear, gating]. Anti-correlated (gating craters h). Hit wins: flat C<stock C despite +K.")
     print(f"\nPredicted vs measured C(h) = {Km:.3f}/(1-h):")
     for v in ("v2_flat2","v1_stock","v5_size","v3_wb"):
         cur=load_curve(v); lam=10 if 10 in cur else (7 if 7 in cur else (3 if 3 in cur else None))

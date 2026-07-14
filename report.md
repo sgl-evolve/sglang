@@ -146,8 +146,12 @@ to measure (in progress).
   defer 1920 (vs v3's 21591 — gates only load-backs). ⇒ load-back gating is ~NEUTRAL: pacing reuse
   load-backs neither craters nor clearly helps, because stock's collapse is NOT retraction/pool-driven
   (0 retracts) — capping the pool addresses a non-bottleneck. Firming n≥3.
+- **v4-lb full (n=1):** λ=3 8556 (FAIL, neutral), λ=5 **13528** vs stock λ=5 {17372, 23130} — load-back
+  gating may REDUCE the λ=5 tail (~13.5s vs ~20s), but still >8s ⇒ goodput still 0. Suggestive
+  tail-reduction at higher rate; firming n≥3 to confirm vs noise.
 - **Complete CCA picture:** deferring cold prefills = CATASTROPHIC (they ARE the tail); deferring only
-  load-backs = NEUTRAL (wrong bottleneck). No admission-control variant improves goodput@SLO.
+  load-backs = NEUTRAL at λ=3, maybe mild λ=5 tail-reduction, but NO goodput@SLO improvement (never
+  clears 8s). No admission-control variant improves the headline.
 
 ## Contribution = rigorous NEGATIVE + characterization (charter-valid)
 **Thesis:** goodput@SLO for long-document multiturn 2-tier serving is a **cold-prefill-compute-bound

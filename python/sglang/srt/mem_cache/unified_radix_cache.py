@@ -550,10 +550,17 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self._turing_admit = _os.environ.get("SGLANG_TURING_ADMIT", "off").lower()
         self._turing_gate_hits = int(_os.environ.get("SGLANG_TURING_GATE_HITS", "2"))
         self._turing_size_tok = int(_os.environ.get("SGLANG_TURING_SIZE_TOK", "4096"))
+        # `writeback` CONTROL: activate stock write_back (backup on eviction, never
+        # eager, never lost) via engine code so it runs under the frozen eval flags.
+        # Isolates the admission-crater mechanism: write_back also delays backup but
+        # never LOSES content -> should NOT crater, unlike `flat` (=selective).
+        if self._turing_admit == "writeback" and self.cache_controller is not None:
+            self.cache_controller.write_policy = "write_back"
         if self._turing_admit != "off":
             logger.info(
                 f"[turing] reuse-gated backup admission: mode={self._turing_admit} "
-                f"gate_hits={self._turing_gate_hits} size_tok={self._turing_size_tok}"
+                f"gate_hits={self._turing_gate_hits} size_tok={self._turing_size_tok} "
+                f"write_policy={getattr(self.cache_controller,'write_policy',None)}"
             )
         self._turing_gated_skips = 0  # backups withheld pending demonstrated reuse
         self._turing_backups = 0      # backups actually issued (all policies)

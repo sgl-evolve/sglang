@@ -140,7 +140,10 @@ same node 0-3, same stock config, λ=3: v1_stock p99=**11494** (FAIL) vs v1b_sto
 (1017 vs 583). But **hit_rate is rock-stable: 0.6753 vs 0.6762 (Δ<0.1pp).** ⇒ (a) single-run goodput@SLO is
 meaningless (within-node run variance, not just cross-node — baseline.json p99=6326 was simply a lucky run);
 (b) hit_rate is THE robust comparator, so the −25pp admission crater (v2_flat2) is real signal, not noise.
-(Full v1b sweep completing; λ=3 datum above.)
+★Refinement (per-rate variance): the coin-flip is a BOUNDARY phenomenon — λ=3 (straddles SLO) v1_stock
+p99=11494 vs v1b p99=6175 (1.86×); λ=5 (deep saturation) 24957 vs 23533 (~1.06×, both FAIL → converged).
+hit_rate invariant across runs AND rates (λ3: 0.6753/0.6762; λ5: 0.6627/0.6617; Δ<0.15pp). ⇒ metastable
+straddle at the knee (λ=3); reliably-saturated above. (Full v1b sweep completing.)
 
 ## Paper 1 (planned) — "Why hierarchical KV caching stalls on saturated conversational serving:
 ## the effective-capacity collapse and the admission backfire"

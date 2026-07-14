@@ -312,3 +312,16 @@ cold-start backlog drains slowly → metastable high-latency basin. Suggestive: 
 {6175,11494}=COIN-FLIP; wb (C≈5.1, margin 2.1) λ=3 p99 {6591,7406}=RELIABLE PASS. **BUT size (C≈4.6) λ=3 p99
 15553=FAIL at n=1 CONTRADICTS** → margin-reliability is NOT established; needs n≥3 per config at λ=3. Real open
 question, honest.
+
+## PAPER 3 (ACCUMULATING, free byproduct): goodput reliability = a distribution, margin-damped
+**★ FREE FINDING (decisive for methodology):** eval passes `--disable-shuffle` + no `--seed` (default seed=1,
+re-seeded per rate process) ⇒ arrival times + prompt order are BYTE-IDENTICAL across runs. + warmup burst applied.
+YET stock λ=3 p99 = {6175 PASS, 11494 FAIL} (n=2, same node, hit invariant <0.1pp). ⇒ the coin-flip is NOT
+workload variance and NOT cold-start (warmup was designed to kill it) — it is **system-timing nondeterminism**
+(batch-formation + prefill↔decode interleaving races) amplified by the metastable queue near the stability edge
+(margin C−λ≈1 for stock). This SHARPENS/DISTINGUISHES from siblings' "cold-start coin-flip" (my warmup'd eval still
+flips). **goodput@SLO must be read as a DISTRIBUTION, not a single number.** Folded into Paper 2 §5.
+- **Plan:** RATES hardcoded in eval.sh (can't override → every replicate = full 3h sweep). So accumulate λ=3
+  points as a BYPRODUCT of every full sweep. Have: flat{12060}, stock{6175,11494}, size{15553(+λ3 of v5)},
+  lpm{7801}, wb{6591,7405}. v6_flat adds flat(2). When n≥4-5 per config across the C-range → Paper 3 on
+  reliability-vs-margin (does higher C damp the coin-flip? size@C4.6 FAILS contradicts naive margin story → real Q).

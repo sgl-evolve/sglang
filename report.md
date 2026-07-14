@@ -391,3 +391,11 @@ capacity-margin reliability law (Paper 3) is now well-supported (was n=2 on 2 co
 margin 0→2). Fold into Paper 3 when finalizing (upgrades the variance claim from "suggestive n=2" toward
 established-direction across a 3-point margin range). Still need n≥3/config to FIT the exponent, but the LAW
 (monotone decreasing) is now robust.
+
+## v6_flat λ=5 (19:41): C=3.15 h=0.4029 → K=1.88 (rising from λ3 1.67). p99=20s (< λ3's 48s = non-monotonic!)
+- K-rising-with-λ trend (flat 1.67→1.88, size 1.44→1.58) both ABOVE stock/wb baseline (1.34-1.43) → backup-gating
+  (flat gates ALL, size gates giants) plausibly raises K (less host↔device backup I/O → higher effective prefill R).
+  CLEAN saturated K comparison at λ=10 (~21:20) — decisive for the K-lever classification.
+- flat p99 non-monotonic (λ3=48s > λ5=20s) despite λ5 more overloaded → METASTABILITY (basin selection dominates
+  over offered-rate at low margin). More Paper-3 evidence. Both FAIL (goodput=0, crater as expected).
+- hit drops with λ (0.435→0.403) = more churn at higher rate.

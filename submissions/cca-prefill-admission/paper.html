@@ -110,8 +110,9 @@ prefills dominate; 70% of turns are near-free prefix reuse (≤26 tok).</figcapt
 <h3>2.2 The collapse is prefill-compute queueing, not retraction</h3>
 <p>
 Stock p50 TTFT is a healthy ~1&nbsp;s across the sweep, but p99 fails the SLO and swings wildly. On the
-<em>same</em> node, two stock runs give λ=3 p99 = <b>11787&nbsp;ms (FAIL)</b> and <b>6327&nbsp;ms
-(PASS)</b> — goodput <b>{0, 3.02}</b>, a coin-flip straddling the SLO. The device KV-pool usage is
+<em>same</em> node (n=3 stock runs), λ=3 p99 = <b>{11787 FAIL, 6327 PASS, 8124 FAIL}</b> — goodput
+<b>{0, 3.02, 0}</b> (1/3 pass, median 0), a coin-flip straddling the SLO (λ=5 p99 {17.4, 23.1, 23.6}s
+all fail). The device KV-pool usage is
 <b>bimodal</b> (Fig.&nbsp;2): 21.7% of samples ≥0.90 (incl. 18 at 1.00) and 18.4% ≤0.05, only 26%
 mid-range — the classic metastable signature. Yet, critically, <b>stock retracts zero requests</b>:
 when the pool briefly saturates, prefill admission simply stalls and decode drains it; there is no
@@ -158,11 +159,10 @@ flags; hooks the live path (per-pass <code>cca[defer/gated/force]</code> log con
 <table>
 <caption>Same-node (ondem-3) λ=3, screen sweep. Stock is a coin-flip; every CCA variant is dominated.</caption>
 <tr><th>config</th><th>λ=3 p99 (ms)</th><th>retracts</th><th>verdict</th></tr>
-<tr><td>stock (run A)</td><td>6327</td><td>0</td><td>PASS (lucky)</td></tr>
-<tr><td>stock (run B)</td><td>11787</td><td>0</td><td>FAIL (unlucky)</td></tr>
+<tr><td>stock (n=3)</td><td>{6327, 8124, 11787}</td><td>0</td><td>coin-flip (1/3 pass)</td></tr>
 <tr><td>CCA recompute-currency</td><td>—</td><td class="b">518 → crash</td><td class="b">HARMFUL</td></tr>
 <tr><td>CCA device-footprint</td><td class="b">56157</td><td>0</td><td class="b">CATASTROPHIC</td></tr>
-<tr><td>CCA load-back-only</td><td>8556</td><td>0</td><td>NEUTRAL (≈stock, fails)</td></tr>
+<tr><td>CCA load-back-only</td><td>8556 (n≥2 firming)</td><td>0</td><td>NEUTRAL (in stock band)</td></tr>
 </table>
 <ul>
 <li><b>Deferring cold prefills is self-defeating.</b> The device-footprint gate defers the large cold

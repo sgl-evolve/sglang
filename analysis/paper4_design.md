@@ -54,3 +54,30 @@ turn-0 prefills at low occupancy are NOT delayed (preserves the TTFT tail; addre
 - If NEGATIVE → folds into Paper 3 as "the feedback is memory/slot-mediated, not compute-mediated; decode-floor
   cannot damp it" — a characterized bound on reliability mechanisms.
 - Either way lossless, on-contract, novel, motivated by validated data. NEXT ACTION after Paper 2 firming.
+
+## Concrete implementation hook (located, ready to implement)
+File: `python/sglang/srt/managers/scheduler.py`, fn `get_new_batch_prefill` (line ~2738).
+Injection: right AFTER the `chunked_prefill_size` is computed (lines 2814-2819, which already has an
+`enable_dynamic_chunking`/`predict_next_chunk_size` precedent — my cap composes on top), BEFORE `PrefillAdder(...)`
+(line 2822 takes `chunked_prefill_size` as its budget arg).
+```python
+# turing occupancy-feedback damping (env-gated, default OFF; lossless — only reshapes batch, not admission)
+if getattr(self, "_turing_decode_floor", False):
+    alloc = self.token_to_kv_pool_allocator
+    occ = 1.0 - alloc.available_size() / alloc.size            # device KV occupancy in [0,1]
+    if occ > self._turing_theta_hi:                            # e.g. 0.90 (bad-basin regime only)
+        chunked_prefill_size = max(self.page_size,
+                                   int(chunked_prefill_size * (1.0 - self._turing_gain)))  # reserve compute for decode
+```
+Init (in Scheduler.__init__, near line 992 where self.chunked_prefill_size is set):
+```python
+import os
+self._turing_decode_floor = os.environ.get("SGLANG_TURING_DECODE_FLOOR","0")=="1"
+self._turing_theta_hi = float(os.environ.get("SGLANG_TURING_THETA_HI","0.90"))
+self._turing_gain     = float(os.environ.get("SGLANG_TURING_GAIN","0.5"))
+```
+Occupancy signal = device KV util (1 − available/size) — the SAME signal Paper 1 measured at 0.84-1.0 (eff-cap
+collapse), so θ_hi=0.90 fires in exactly the saturated regime where the coin-flip lives. Hysteresis: chunked
+prefill is already incremental so no explicit θ_lo needed (cap lifts automatically when occ drops). Verify lossless
+(outputs match) + resolved_args frozen (chunked_prefill_size server-arg unchanged; only the per-step LOCAL is
+reshaped). Test: `SGLANG_TURING_DECODE_FLOOR=1 eval.sh turing v7_decfloor`, focus λ=3, n≥3 vs stock n≥3.

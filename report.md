@@ -400,6 +400,24 @@ write_back (+6pp hit) further compresses the tail, cutting violations from 83→
 5. **To reliably PASS r7, a mechanism must push the residual from ~70 to ≤55.** The SRPF+WT r2 run (55 violations,
    PASS with margin) shows this IS reachable — the question is whether it's reproducible or luck.
 
+## MECHANISTIC DIAGNOSIS #1.6 — under SRPF, the r7 burst queue is ALL-COLD (running-batch-capacity bottleneck)
+Server log analysis of the SRPF+WB r1 r7 window (v-srpf-wb, 04:14:22–04:14:30, queue ≥43):
+- **ALL queued prefills during the burst are COLD** (cached_tok=0, new_tok=6144 = full chunk).
+  SRPF has already drained all cached continuations — they're admitted and running immediately.
+  The queue=43–48 consists entirely of cold first-turn documents waiting for admission.
+- **Running batch near saturation**: running=186→228 (max 270). The PrefillAdder limits admission
+  when running_bs approaches max_running_requests. Cold documents can't be admitted not because SRPF
+  deprioritizes them (there are NO cached requests left to compete), but because the running batch is full.
+- **Queue refill rate ≈ drain rate**: at λ=7, ~7 cold first-turns arrive per second. Each takes 3-5
+  chunks (6144 tokens/chunk). The queue stays at ~45 for 12+ seconds — a steady-state cold-document backlog.
+- **Implication**: the r7 residual violations (55–83) are a **RUNNING-BATCH-CAPACITY bottleneck**, not a
+  cache-capacity or scheduling issue. SRPF is already OPTIMAL — it has cleared all cacheable work. The
+  remaining cold documents wait because the GPU can't admit them (running batch ≈ max). No KV-cache
+  mechanism or scheduling policy can address this — it requires either faster cold prefill (hardware),
+  higher max_running_requests (more GPU memory), or smarter decode-slot management.
+- Queue depth stats during r7: p50=0 (!), p90=10, p99=39, max=48. The queue is empty MOST of the time.
+  The violations come from rare transient bursts where cold arrivals briefly exceed service capacity.
+
 ## MECHANISTIC DIAGNOSIS #2 — the p99 tail is DEVICE-KV-pressure during bursts (why host-tier mechs can't help)
 Device KV pool usage during serving (v0-cert, per decode step): p50 **0.01**, p90 0.26, p99 **0.92**, max 0.99.
 - The device is **bursty**: nearly empty most of the time, but **nearly FULL (p99 0.92) during concurrency

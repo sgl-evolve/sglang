@@ -183,7 +183,11 @@ queue is shallow on average (median depth ≈0, bursts to p90≈9, max≈27), bu
 <em>far exceeds any single request's prefill time</em> — at the batched ~39k&nbsp;tok/s the largest
 document is ~5&nbsp;s and <b>fewer than 0.1% of turns prefill ≥6&nbsp;s</b> — so the tail is not a
 per-request floor but <em>queue-wait</em>: small turns stuck behind the back-to-back chunked prefill of a
-few large cold documents (which the scheduler runs without yielding). This makes the tail
+few large cold documents (which the scheduler runs without yielding). <b>Direct trace evidence:</b> in the
+stock run's <code>server.log</code>, the waiting queue is <b>9.6× deeper</b> during big-cold-document
+prefill chunks (steps with #new-token ≥ 6144 and #cached-token = 0: mean depth 11.9, p90 33, max 183)
+than during all other prefill steps (mean 1.2, p90 0) — small turns are demonstrably piling up behind the
+cold grind, exactly the head-of-line signature (<code>analysis/hol_trace.py</code>). This makes the tail
 <em>reducible by reordering</em>: a scheduling simulation calibrated to the measured coin-flip (stock λ=3
 p99 mean 7.5&nbsp;s, straddling the SLO) shows shortest-prefill-first collapses it to ~4&nbsp;s and
 removes the coin-flip (all seeds pass), while round-robin interleaving does not. So the goodput lever here

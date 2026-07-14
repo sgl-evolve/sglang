@@ -222,12 +222,15 @@ rather than helps. Zero headroom.</li>
 device-footprint CCA → λ=3 p99 ~56&nbsp;s), and cost-blind deferral crashes the server. Zero headroom.</li>
 <li><b>Scheduling / reordering — the lever.</b> The λ=3 p99 (6–11&nbsp;s) is <em>not</em> a per-request
 floor: fewer than 0.1% of turns prefill ≥6&nbsp;s, so the tail is head-of-line queue-wait — small turns
-stuck behind the back-to-back chunked prefill of a few large cold documents. A calibrated prefill-schedule
-simulation (<code>analysis/hol_sim.py</code>) reproduces the stock coin-flip (p99 mean 7.5&nbsp;s,
-straddling the SLO) and shows <b>shortest-prefill-first collapses it to ~4&nbsp;s with the coin-flip
-removed</b> (all seeds pass), while round-robin interleaving does not. Above the knee, shortest-prefill-first
-also raises throughput toward the ~4.2&nbsp;req/s ceiling (concurrent SRPF work). Scheduling moves the
-metric at both regimes.</li>
+stuck behind the back-to-back chunked prefill of a few large cold documents. <b>Directly in the stock run,
+the waiting queue is 9.6× deeper during big-cold-document prefill chunks</b> (mean 11.9, p90 33) than
+during other prefill steps (mean 1.2, p90 0) (<code>analysis/hol_trace.py</code>) — turns pile up
+specifically behind the big cold docs. A calibrated prefill-schedule simulation
+(<code>analysis/hol_sim.py</code>) reproduces the stock coin-flip (p99 mean 7.5&nbsp;s, straddling the SLO)
+and shows <b>shortest-prefill-first collapses it to ~4&nbsp;s with the coin-flip removed</b> (all seeds
+pass), while round-robin interleaving does not. Above the knee, shortest-prefill-first also raises
+throughput toward the ~4.2&nbsp;req/s ceiling (concurrent SRPF work). Scheduling moves the metric at both
+regimes.</li>
 </ul>
 <p>
 The unifying statement inverts the caching intuition: for long-document conversational serving, the

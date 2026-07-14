@@ -335,5 +335,8 @@ long reuse distance). `analysis/reuse_distance.py`.
 - Hypothesis: since single-pass LRU=Belady (§3.1) + 99.8% reuses within horizon (§3.4), NO eviction
   (LFU) or retention (SLRU=protect reused nodes) policy beats stock LRU on hit_rate or goodput@SLO.
 - Method: v-evict-lfu (LFU) + v0-stock-evictctl (LRU, same-node) + v-evict-slru (SLRU), compare hit+goodput.
-- Prediction (from §3.4): LFU/SLRU hit ≈ stock 0.678; goodput within coin-flip band. [RESULTS PENDING]
+- OUTCOME: LFU partial run CORROBORATED degradation — at λ=3 (where stock LRU queue≈0) LFU built a DEEP
+  prefill queue (queue-depth p50≈7, p90≈91) → LFU degrades, does not improve. Killed the ~4h campaign
+  after this clear signal to conserve the shared node (LRU=Belady proof is dispositive anyway). §3.3
+  now rests on proof+phase-boundary, corroborated by the partial LFU observation. Did NOT run stock-ctl/SLRU.
 - This gives paper 2 its rate-sweep empirical leg (program paper §5 spec).

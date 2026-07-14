@@ -34,8 +34,9 @@ which no eviction or retention policy can remove. The only "avoidable" re-prefil
 benchmark artifact of sweeping four request rates over the same conversation set, and even that is
 un-capturable by any online policy (LFU ≈ LRU; only a clairvoyant oracle recovers it). The eviction
 policy is a live, pluggable knob on the active cache, but since LRU is already Belady-optimal here no
-policy can beat it — a same-node A/B confirms LFU does not improve hit rate or goodput over LRU. The
-consequence is a control-invariance law: <b>goodput@SLO is a function of the corpus's unique-document set
+policy can beat it — a partial LFU rate-sweep corroborated this, building a <em>deeper</em> prefill queue
+than LRU (degrading, not improving). The consequence is a control-invariance law: <b>goodput@SLO is a
+function of the corpus's unique-document set
 and the hardware's prefill throughput, not of the serving policy.</b> Together with our companion result that
 prefill <em>admission</em> control cannot help, and a scheduling analysis showing reordering is inert
 below the load knee and compute-capped above it, this closes the KV-cache control-policy design space
@@ -146,11 +147,12 @@ The eviction policy <em>is</em> a live, pluggable knob on the active cache: the 
 <code>--radix-eviction-policy {lru,lfu,slru,priority,…}</code> (default LRU). So a policy A/B is
 meaningful, not a no-op. But §3.1 already settles the outcome: since single-pass LRU is Belady-optimal
 (zero avoidable re-prefill), <em>no</em> eviction policy can beat LRU on this workload — the only thing a
-different policy can do is match it or do worse. We confirm this empirically with a same-node rate-sweep
-A/B (LFU vs stock LRU): LFU does not improve hit rate or goodput@SLO over LRU (consistent with prior
-reports that frequency-based eviction is neutral-to-catastrophic on this serving workload), while LRU
-already sits at the single-pass optimum. Eviction policy is thus a non-lever for <em>improving</em>
-goodput — by proof (no policy beats Belady=LRU) and by measurement.</p>
+different policy can do is match it or do worse. This is dispositive by proof, so we do not spend a full
+confirmatory sweep on it; a partial LFU rate-sweep corroborates the direction — at λ=3, where stock LRU
+keeps the prefill queue near-empty, LFU instead builds a deep queue (queue-depth p50≈7, p90≈91),
+<em>degrading</em> rather than improving (consistent with prior reports that frequency-based eviction is
+neutral-to-catastrophic on this serving workload). Eviction policy is thus a non-lever for
+<em>improving</em> goodput — dispositively by the LRU=Belady proof, and corroborated empirically.</p>
 <h3>3.4 Generalization: a caching-headroom phase boundary</h3>
 <p>
 The mirage generalizes through a simple, measurable boundary. LRU captures a re-use exactly when its

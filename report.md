@@ -289,14 +289,23 @@ caching headroom:
 - **Corpus-bound model + control-invariance:** goodput ≤ C/mean-unique-work (~4.2); p99 ≥ max-unique-doc/C
   (~5–11s); invariant across ALL 3 control axes (caching=here, admission=paper1, scheduling=oracle).
 
-## DIRECTION 3 (open): context-parallel prefill for the cold-doc tail
+## DIRECTION 3 (RESOLVED — bounded negative, folded into paper 2 §5.1, commit fea49708f)
 
-The p99 floor = biggest cold docs' own prefill time is the one thing irreducible under serving POLICY.
-The only compute-side lever is parallelizing a single doc's prefill. My prior "CP blocked by fixed tp"
-note was WRONG: `--enable-prefill-cp` + `--attention-context-parallel-size` are legal (NOT in FORBIDDEN),
-run CP over the 8 TP ranks (attn_cp_size = tp_size//dp_size = 8), fa3 backend HAS a CP-extend path, and
-model_runner explicitly supports "MHA-arch prefill CP (Qwen3/Qwen2 MoE)". Open risk = hybrid MAMBA layers
-under CP. Plan: GPU smoke-test `--enable-prefill-cp --attention-context-parallel-size 8 --cp-strategy
-zigzag`; if it loads + is lossless + cuts big-doc TTFT → NOVEL mechanism = ADAPTIVE CP (invoke only for
-heavy-tail cold docs, since CP comms overhead hurts small prefills — ties to the bimodal-cost finding).
-If incompatible → bounded finding (the last lever unavailable; wall stands).
+**Context-parallel prefill — the sole compute-side lever against the p99 cold-doc floor — is
+architecturally UNAVAILABLE for the Qwen3.5 hybrid GatedDeltaNet model.**
+- Live check (job 19827, cancelled): `--enable-prefill-cp --cp-strategy zigzag` launches but the server
+  reports `attn_cp_size=1` → CP is an INERT no-op for this model.
+- Code: the CP auto-enable (`attn_cp_size = tp//dp`) is gated to `is_deepseek_dsa(hf_config)`
+  (DeepSeek 3.2 / GLM-5 DSA) in `server_args.py`; qwen3_5 is not in the arch list. `qwen3_5.py` has ZERO
+  CP code — only `qwen3_moe.py` (pure-attention MoE) and the DSA backends implement prefill-CP.
+- Root reason (novel, generalizable): CP splits the sequence across ranks; attention softmax decomposes
+  (ring/flash CP), but the GatedDeltaNet/Mamba layers are a SEQUENTIAL RECURRENCE (state carried
+  token-by-token) → CP would need a cross-rank serial scan → negates the parallelism → so it is not
+  implemented for hybrid linear-attention models. Hybrid models inherit an irreducible single-document
+  prefill-latency floor that pure-attention models amortize with CP.
+- My earlier "CP blocked by fixed tp" note was WRONG (CP runs over the 8 TP ranks; the flags are legal);
+  the true reason is the hybrid architecture.
+
+This COMPLETES the impossibility: no serving-policy lever (papers 1, 2) AND no compute-side lever moves
+the p99 cold-doc floor under the frozen contract. goodput@SLO is corpus- and hardware-bound for this
+hybrid model. Design space exhaustively closed across admission, scheduling, caching, and CP.

@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Effective-Capacity Collapse and the Admission Backfire — turing</title>
+<style>
+  :root{--ink:#1a1a1a;--mut:#666;--acc:#8a1c1c;--bg:#fff;--box:#f6f6f4;--line:#ddd}
+  html{font-size:17px}
+  body{max-width:52rem;margin:0 auto;padding:2.2rem 1.3rem 6rem;background:var(--bg);color:var(--ink);
+       font-family:Georgia,"Times New Roman",serif;line-height:1.55}
+  h1{font-size:1.7rem;line-height:1.25;margin:0 0 .3rem}
+  h2{font-size:1.2rem;margin:2.1rem 0 .6rem;border-bottom:2px solid var(--acc);padding-bottom:.2rem}
+  h3{font-size:1.02rem;margin:1.3rem 0 .3rem}
+  .sub{color:var(--mut);font-size:.95rem;margin:.1rem 0}
+  code,.mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.86em}
+  .abstract{background:var(--box);border-left:3px solid var(--acc);padding:.8rem 1rem;margin:1.2rem 0;font-size:.97rem}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.9rem}
+  th,td{border:1px solid var(--line);padding:.32rem .5rem;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  thead th{background:var(--box)}
+  .fail{color:var(--acc);font-weight:bold}
+  .win{color:#1a6a1a;font-weight:bold}
+  figure{margin:1.3rem 0;text-align:center}
+  figcaption{color:var(--mut);font-size:.85rem;margin-top:.4rem;text-align:left}
+  .note{color:var(--mut);font-size:.85rem}
+  .keyfinding{background:#fff8e6;border:1px solid #e8d48a;padding:.5rem .8rem;margin:.8rem 0;font-size:.93rem}
+  ul{margin:.4rem 0 .8rem}
+  li{margin:.25rem 0}
+  .draft{display:inline-block;background:var(--acc);color:#fff;font-size:.7rem;padding:.1rem .5rem;border-radius:3px;
+         vertical-align:middle;letter-spacing:.05em;font-family:sans-serif}
+</style>
+</head>
+<body>
+
+<h1>Effective-Capacity Collapse and the Admission Backfire:<br>
+Why Hierarchical KV Caching Does Not Improve goodput@SLO on Saturated Conversational Serving <span class="draft">DRAFT</span></h1>
+<p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
+<p class="sub">Base commit <span class="mono">a334877e5</span> · mechanism/instrumentation <span class="mono">ce01c1c79</span></p>
+
+<div class="abstract">
+<b>Abstract.</b> Hierarchical KV caches (GPU&nbsp;L1 + host&nbsp;L2) are motivated by prefix reuse in
+multi-turn and long-document serving. We ask whether, on a saturated open-loop rate sweep, a <em>lossless</em>
+KV-cache mechanism can raise <b>goodput@SLO</b> (max req/s with p99&nbsp;TTFT&nbsp;&le;&nbsp;8&nbsp;s). Through a
+trace-driven analysis of a 1:1:1 ShareGPT/LEval/LooGLE mixture and same-node A/B measurement on 8&times;H100, we
+find it cannot, and we give the mechanism. (1)&nbsp;<b>The cache headroom is small and bounded</b>: the
+infinite-cache hit ceiling is 0.809, of which an unavoidable 19.1% is first-sight (turn-0) document prefill;
+the stock cache already reaches 0.62–0.68, and the residual is capacity- and information-bound.
+(2)&nbsp;<b>Effective-capacity collapse</b>: under the sweep the device (L1) runs 84–100% full of <em>running-request</em>
+KV even at the lowest rate, so the prefix cache is host-bound and eviction ordering is near-Belady&mdash;there is
+little to win. (3)&nbsp;<b>The admission backfire</b> (counter-intuitive): reuse-gated L2 admission&mdash;the stock
+<span class="mono">write_through_selective</span> idea, which "backs up only hot data"&mdash;<em>craters</em> hit rate
+by 25&nbsp;points, because under device saturation any prefix not <em>eagerly</em> mirrored to L2 is evicted from
+L1 and lost before its reuse. Eager write-through is not merely preferred, it is necessary; and backup bandwidth
+(~1&nbsp;GB/s) is nowhere near binding, so the "savings" buy nothing. (4)&nbsp;<b>The bottleneck is outside the
+cache</b>: p50 TTFT stays ~1&nbsp;s while p99 explodes from 11&nbsp;s to 41&nbsp;s across the sweep; the tail is
+seeded by a heavy-tailed document distribution (p99 = 62&nbsp;K, max 191&nbsp;K tokens) whose irreducible prefill
+is amplified by prefill&harr;decode interference (12.6% of decode steps stall) under saturation&mdash;a
+compute/scheduling phenomenon the cache cannot touch. goodput@SLO is consequently a variance-dominated coin-flip
+(the same stock config passes at 6.3&nbsp;s p99 on one node and fails at 11.5&nbsp;s on another). We conclude that
+on this regime the KV cache is the wrong lever for goodput@SLO, and we bound exactly why.
+</div>
+
+<h2>1 Introduction</h2>
+<p>
+SGLang HiCache extends RadixAttention prefix caching from GPU memory (L1) into host DRAM (L2), a two-tier
+hierarchy motivated by workloads&mdash;multi-turn chat and long-document QA&mdash;where the same prefix is reused
+many times. The natural question for a serving operator is whether a smarter <em>lossless</em> KV-cache engine
+can push the <b>throughput&ndash;latency frontier</b>: specifically <b>goodput@SLO</b>, the maximum request rate
+sustaining p99&nbsp;TTFT&nbsp;&le;&nbsp;8&nbsp;s on an open-loop Poisson rate sweep.
+</p>
+<p>This paper answers "no", <em>rigorously and mechanistically</em>, for a realistic saturated regime, and the
+"why" is more interesting than the "no". Our contributions:</p>
+<ul>
+<li><b>An oracle decomposition</b> of the miss stream showing the reachable cache headroom is small and bounded
+(&sect;3): 19.1% of prompt tokens are unavoidable first-sight document prefill; the infinite-cache ceiling is 0.809.</li>
+<li><b>Effective-capacity collapse</b> (&sect;4): running-request KV occupies 84&ndash;100% of the device tier even
+at the lowest swept rate, so the prefix cache is host-bound and eviction ordering is near-optimal already.</li>
+<li><b>The admission backfire</b> (&sect;5): reuse-gated L2 admission (== stock <span class="mono">write_through_selective</span>)
+craters hit rate by 25&nbsp;pp. We explain it: under device saturation, non-eager backup <em>loses</em> content.
+This is a concrete, counter-intuitive negative for a plausible optimization.</li>
+<li><b>Tail anatomy</b> (&sect;6): the goodput bottleneck is heavy-tailed, uncacheable document prefill amplified by
+prefill&harr;decode interference&mdash;outside the cache's reach&mdash;and goodput@SLO is a variance-dominated coin-flip.</li>
+</ul>
+<p class="note">This is a bounded-negative / measurement contribution: it tells the community where <em>not</em> to
+spend engine complexity, and isolates the true lever (prefill scheduling and SLO/workload design). All numbers
+come from the frozen evaluation and match the raw run JSON.</p>
+
+<h2>2 Setup &amp; method</h2>
+<p>
+<b>System.</b> sglang v0.31, <span class="mono">UnifiedRadixCache</span> + HiCache, 2 tiers: L1 GPU HBM + L2 =
+768&nbsp;GB host DRAM (<span class="mono">--hicache-size 96</span>), no L3. Model Qwen3.5-122B-A10B-FP8 (hybrid
+Mamba/GDN + full attention), TP8, ctx 262144, full decode, one exclusive 8&times;H100 node.
+<b>Workload.</b> <span class="mono">mooncake_mix_v1.jsonl</span> (1553 records &asymp; 1:1:1 ShareGPT / LEval /
+LooGLE) served multi-turn via bench_serving's loogle loader: each record is one conversation whose turn&nbsp;0 is
+<span class="mono">"Input: {document} Question: {Q0}"</span> and whose later turns are follow-up questions over the
+growing prefix. Documents are unique across conversations, so reuse is strictly intra-conversation.
+<b>Protocol (frozen).</b> Poisson rate sweep &lambda;&nbsp;&isin;&nbsp;{3,5,7,10}, warm steady-state (300-conv
+warmup, no per-rate flush), <span class="mono">--max-concurrency 256</span>, 1553 conversations per rate.
+<b>Headline.</b> goodput@SLO = max req/s with p99&nbsp;TTFT&nbsp;&le;&nbsp;8&nbsp;s; honest controls: peak tok/s,
+peak req/s (expected ~flat, decode-bound). Lossless throughout (a cache miss recomputes; outputs are identical).
+<b>A/B.</b> All comparisons are same-node (certified node <span class="mono">0-3</span>) to avoid the
+cross-node variance documented in &sect;6.
+</p>
+
+<h2>3 The cache headroom is small and bounded</h2>
+<p>
+We first bound what <em>any</em> cache can achieve. For each request we compute the matched prior-prefix under an
+infinite cache and the hit rate as cached&nbsp;/&nbsp;prompt tokens (the evaluator's definition). Over the full
+workload:
+</p>
+<figure>
+<svg viewBox="0 0 640 150" width="100%" style="max-width:640px" font-family="sans-serif" font-size="12">
+  <!-- stacked bar: unavoidable floor / stock / avoidable-bound -->
+  <rect x="20" y="40" width="600" height="34" fill="#eee" stroke="#ccc"/>
+  <rect x="20" y="40" width="453" height="34" fill="#bcd"/>
+  <rect x="20" y="40" width="379" height="34" fill="#8a1c1c"/>
+  <line x1="479" y1="30" x2="479" y2="84" stroke="#333" stroke-dasharray="3 3"/>
+  <text x="379" y="62" text-anchor="end" fill="#fff">stock 0.62&ndash;0.68</text>
+  <text x="483" y="24" fill="#333">oracle (&infin; cache) = 0.809</text>
+  <text x="483" y="98" fill="#333">1&minus;0.809 = 19.1% unavoidable turn-0 first-sight</text>
+  <text x="20" y="112" fill="#333">avoidable, capacity+info-bound &asymp; 13&ndash;19 pp (blue)</text>
+  <text x="20" y="130" fill="#666">bar = hit-rate scale 0..1 (x20..620px)</text>
+</svg>
+<figcaption><b>Fig. 1.</b> Oracle decomposition. The infinite-cache hit ceiling is 0.809; 19.1% of prompt tokens
+are unavoidable first-sight (turn-0 document) prefill. The stock cache reaches 0.62 (baseline node) to 0.68
+(node 0-3). The gap to oracle is capacity-bound (L2 = 7.8&nbsp;M tokens) and information-bound (see &sect;5).</figcaption>
+</figure>
+<p>
+The reuse structure is bimodal: <b>38.2%</b> of conversations are one-shot (a document seen once, never reused),
+accounting for <b>56.7%</b> of all document token mass; the rest are multi-turn (mean 4.6 turns). This tempts an
+admission policy that keeps one-shot documents out of L2 (&sect;5). But the oracle already shows the prize is
+modest: even a perfect policy cannot exceed 0.809, and 19.1% of the work&mdash;prefilling never-before-seen
+documents&mdash;is fundamentally uncacheable.
+</p>
+
+<h2>4 Effective-capacity collapse</h2>
+<p>
+Why does the stock cache sit ~13&ndash;19&nbsp;pp below the oracle when L2 holds 7.8&nbsp;M tokens? Because the
+<em>usable</em> prefix-cache capacity collapses under serving load. Instrumenting every prefill/decode batch of a
+stock run at the lowest swept rate (&lambda;=3):
+</p>
+<table>
+<thead><tr><th>quantity (stock, &lambda;=3)</th><th>p50</th><th>p90</th><th>max</th></tr></thead>
+<tbody>
+<tr><td>device (L1) token usage — running-request KV</td><td>0.84</td><td>0.95</td><td>1.00</td></tr>
+<tr><td>concurrent running requests (cap 256)</td><td>247</td><td>257</td><td>264</td></tr>
+<tr><td>mamba-pool usage</td><td>0.65</td><td>0.68</td><td>0.69</td></tr>
+</tbody>
+</table>
+<p>
+Even at the <em>lowest</em> rate the system already runs at the concurrency cap, and running-request KV fills the
+device tier to 84&ndash;100%. The device-resident prefix cache is therefore squeezed to near-zero; caching is
+host-bound. This has two consequences: (i) eviction ordering has little leverage&mdash;prior work and our own
+sweep confirm LRU is near-Belady in this regime; and (ii) any mechanism that relies on device residency of cached
+prefixes (rather than L2) is starved. The binding resource is L2 <em>capacity</em>, which is frozen by budget.
+</p>
+
+<h2>5 The admission backfire</h2>
+<p>
+Given that 56.7% of document mass is one-shot, the textbook move is <b>admission control</b>: don't spend the L2
+tier on content that will not be reused. sglang already exposes this as
+<span class="mono">write_through_selective</span> ("data is written back only after access frequency exceeds a
+threshold ... backs up only hot data, reducing I/O overhead"). We implement the identical mechanic in the engine
+(<span class="mono">_inc_hit_count</span> gates the D&rarr;H backup until a node's hit count reaches 2, i.e., it
+must be re-matched once to earn an L2 copy) and verify it is live: it withholds ~76% of would-be backups.
+</p>
+<div class="keyfinding">
+<b>Result (same-node A/B, &lambda;=3):</b> reuse-gated admission drops hit rate from <b>0.675</b> to
+<b class="fail">0.426</b> (&minus;25&nbsp;pp) and raises p50 TTFT 1017&rarr;1475&nbsp;ms.
+It is a strong <b>negative</b>. <span class="note">(n=1; replicate and multi-&lambda; curve pending; a
+<span class="mono">write_back</span> control&mdash;lazy but never-lost backup&mdash;is queued to isolate that the
+crater is from content <em>loss</em>, not from delayed-backup timing.)</span>
+</div>
+<table>
+<thead><tr><th>&lambda;=3, same node 0-3</th><th>req/s</th><th>ttft p50</th><th>ttft p99</th><th>hit rate</th></tr></thead>
+<tbody>
+<tr><td>stock (eager write_through)</td><td>2.83</td><td>1017</td><td>11494</td><td>0.6753</td></tr>
+<tr><td>reuse-gated admission (=selective)</td><td>2.91</td><td>1475</td><td>12060</td><td class="fail">0.4259</td></tr>
+</tbody>
+</table>
+<p>
+<b>Why it backfires.</b> The intuition ("skip backing up cold one-shot docs") ignores &sect;4: the device is
+saturated, so a prefix that is <em>not</em> eagerly mirrored to L2 lives only briefly in L1 and is evicted&mdash;and
+under write-through, an unbacked evicted node is deleted&mdash;<em>before</em> its next turn arrives. The gate
+cannot tell a one-shot document from a multi-turn one at admission time (that information only exists after the
+second hit), so it withholds backup from <em>both</em> and loses the multi-turn ones. Eager write-through wins not
+because bandwidth is plentiful but because, under device saturation, <b>eager backup is the only way to not lose
+content</b>. And bandwidth <em>is</em> plentiful: D&rarr;H backup traffic is ~0.7&ndash;1.2&nbsp;GB/s across the
+sweep vs. 64+&nbsp;GB/s PCIe, so selective's I/O savings are worthless here. This is the paper's sharpest,
+most transferable lesson: <em>the obvious admission optimization is actively harmful in the saturated regime the
+hierarchy is built for.</em>
+</p>
+
+<h2>6 The bottleneck is outside the cache</h2>
+<p>Same-node stock rate sweep (node 0-3):</p>
+<table>
+<thead><tr><th>&lambda;</th><th>req/s</th><th>ttft p50 (ms)</th><th>ttft p99 (ms)</th><th>hit rate</th></tr></thead>
+<tbody>
+<tr><td>3</td><td>2.83</td><td>1017</td><td class="fail">11494</td><td>0.6753</td></tr>
+<tr><td>5</td><td>3.59</td><td>1002</td><td class="fail">24957</td><td>0.6627</td></tr>
+<tr><td>7</td><td>3.99</td><td>1053</td><td class="fail">35753</td><td>0.6568</td></tr>
+<tr><td>10</td><td>4.14</td><td>1055</td><td class="fail">41015</td><td>0.6537</td></tr>
+</tbody>
+</table>
+<p>
+<b>goodput@SLO = 0</b> on this run: every rate violates the 8&nbsp;s p99 SLO. The shape is diagnostic:
+<b>p50 stays ~1&nbsp;s</b> while <b>p99 explodes 11&rarr;41&nbsp;s</b>. The median request is healthy; a small
+tail is catastrophic. Three facts locate the tail outside the cache:
+</p>
+<ul>
+<li><b>Heavy-tailed prefill.</b> Turn-0 document sizes are p50=7.4&nbsp;K, p90=29&nbsp;K, p99=62&nbsp;K,
+max=191&nbsp;K tokens. Prefilling a 62&ndash;191&nbsp;K document is irreducible new-content compute&mdash;no cache
+helps&mdash;and at a realistic saturated prefill rate its TTFT alone approaches or exceeds the SLO.</li>
+<li><b>Prefill&harr;decode interference.</b> 70% of prefill batches are full 6144-token document chunks; 12.6% of
+decode batches stall (&lt;50 tok/s) and 34% run &lt;150 tok/s, while the request queue is essentially empty
+(p50=0). The tail is not head-of-line queueing&mdash;it is giant prefills stealing decode cycles, a metastable
+coupling that amplifies the heavy-tailed seed.</li>
+<li><b>Coin-flip.</b> The identical stock config passes the SLO on one node/run (baseline p99 = 6326&nbsp;ms) and
+fails on another (11494&nbsp;ms) &mdash; a 1.8&times; swing straddling the SLO. goodput@SLO is variance-dominated;
+single-run A/Bs on it are void, which is why we compare on hit rate and p99 <em>values</em>.</li>
+</ul>
+<p>
+The lever for this tail is prefill <em>scheduling</em> (letting the many cheap continuations bypass the few giant
+cold prefills) or the SLO/workload itself&mdash;not the KV cache. Peak throughput is decode-bound and ~flat
+(peak 530 tok/s, 4.14 req/s), as expected.
+</p>
+
+<h2>7 Why this is not just "the cache is full"</h2>
+<p>
+A skeptic might say we simply need more L2. But the budget is fixed by construction (the contribution must come
+from a smarter engine, not more memory), and within that budget every lossless lever is bounded: eviction is
+near-Belady (&sect;4); admission backfires (&sect;5); backup bandwidth is non-binding (&sect;5); and the tail is
+uncacheable prefill (&sect;6). The negative is therefore not an artifact of one policy but a property of the
+regime: <em>a saturated, heavy-tailed, first-sight-dominated conversational workload leaves the KV cache almost no
+room to move goodput@SLO.</em>
+</p>
+
+<h2>8 Related work</h2>
+<p>
+HiCache (LMSys 2025) and Mooncake (FAST'25) build the hierarchy and its write-back policies; our
+<span class="mono">write_through_selective</span> result is a cautionary measurement <em>on</em> that machinery.
+Strata (arXiv 2508.18572) targets balanced batching and transfer overlap; our &sect;4 shows why device-residency
+mechanisms are starved here. Classic admission/eviction (2Q, TinyLFU, AdaptSize, GreedyDual-Size) motivate &sect;5;
+our finding is that their central assumption&mdash;that keeping cold objects out protects hot ones&mdash;inverts
+under device saturation, where withholding admission <em>loses</em> the hot objects. Cache-aware and shortest-job
+scheduling (SRPF/SJF) are the known levers for the &sect;6 tail; we position them as the correct axis, not the cache.
+</p>
+
+<h2>9 Limitations &amp; when the conclusion flips</h2>
+<ul>
+<li><b>One model/workload/SLO.</b> The bound is specific to a saturated, heavy-tailed, first-sight-dominated
+regime. Under a smaller working set (cache not binding), a looser SLO, or a workload with heavy cross-conversation
+prefix sharing, the cache regains leverage.</li>
+<li><b>Pending evidence.</b> The admission crater is n=1 at &lambda;=3; a replicate, the full multi-&lambda; crater
+curve, and a <span class="mono">write_back</span> control are queued (&sect;5).</li>
+<li><b>Effective prefill rate.</b> The &sect;6 heavy-tail bound depends on the per-request prefill rate under
+concurrency; we report it as a range and will pin it with a controlled single-giant-doc measurement.</li>
+</ul>
+
+<h2>10 Reproducibility</h2>
+<p>
+Base commit <span class="mono">a334877e5</span>; instrumentation/mechanism <span class="mono">ce01c1c79</span>
+(env-gated <span class="mono">SGLANG_TURING_ADMIT</span> in <span class="mono">unified_radix_cache.py</span>;
+<span class="mono">off</span>=stock, <span class="mono">flat</span>=selective). Versions:
+<span class="mono">v1_stock</span> (&sect;6 curve, &sect;4 occupancy), <span class="mono">v2_flat2</span> (&sect;5 crater),
+<span class="mono">v1b_stock</span> (variance). Offline analyses (&sect;3, &sect;5 reuse, &sect;6 heavy-tail) in
+<span class="mono">analysis/</span>. All eval runs via the frozen <span class="mono">eval.sh</span> rate sweep on
+a certified node; numbers match <span class="mono">runs/&lt;ver&gt;/summary.json</span>.
+</p>
+
+<p class="note" style="margin-top:2rem">Draft v1 — turing, sglang v0.31. Evaluation section to be firmed with the
+replicates noted in &sect;5/&sect;9 before status changes from draft.</p>
+
+</body>
+</html>

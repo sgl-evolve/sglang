@@ -1087,8 +1087,11 @@ class Scheduler(
         self.cca_ignore_loadback = bool(
             getattr(self.server_args, "cca_ignore_loadback", False)
         )
-        self.cca_max_defer_s = (
-            float(getattr(self.server_args, "cca_max_defer_ms", 4000.0)) / 1000.0
+        # DETERMINISTIC valve: force-admit after this many deferral passes. Must
+        # NOT use wall-clock — a per-rank clock desyncs TP ranks' prefill batches
+        # and hangs the NCCL collectives (root-caused: 4/4 CCA runs hung).
+        self.cca_max_defer_passes = int(
+            getattr(self.server_args, "cca_max_defer_passes", 200)
         )
         # Lightweight counters for observability / self-audit (not on hot path).
         self.cca_deferrals = 0
@@ -1097,11 +1100,11 @@ class Scheduler(
         if self.enable_cca_prefill:
             logger.info(
                 "CCA prefill admission control ENABLED "
-                "(watermark=%.3f threshold=%d use_raw_cost=%s max_defer_ms=%.0f)",
+                "(watermark=%.3f threshold=%d use_raw_cost=%s max_defer_passes=%d)",
                 self.cca_watermark,
                 self.cca_threshold,
                 self.cca_use_raw_cost,
-                self.cca_max_defer_s * 1000.0,
+                self.cca_max_defer_passes,
             )
 
     def init_soft_watchdog(self, server_args: ServerArgs):
@@ -2927,10 +2930,8 @@ class Scheduler(
         cca_admitted = 0
         cca_limit = 0
         cca_base_used = 0
-        cca_now = 0.0
         cca_gated_pass = False
         if cca_active:
-            cca_now = time.perf_counter()
             cca_limit = int(self.cca_watermark * self.max_total_num_tokens)
             try:
                 cca_base_used = (
@@ -2973,14 +2974,14 @@ class Scheduler(
 
             req.init_next_round_input(self.tree_cache)
 
-            # CCA gate: defer an *expensive* (cache-adjusted) prefill when
+            # CCA gate: defer an *expensive* (device-footprint) prefill when
             # admitting it would push projected KV-pool usage past the watermark,
-            # reserving decode headroom to prevent a retraction cascade. Cheap
-            # prefix-reuse turns (cost <= threshold) are never gated. Only gates
-            # while something is decoding (progress guarantee: an empty running
-            # batch always admits so the pipeline can't stall). Safety valve: a
-            # request that has already waited > cca_max_defer_s is force-admitted
-            # to bound worst-case TTFT under the SLO.
+            # reserving decode headroom. Cheap prefix-reuse turns (cost <=
+            # threshold) are never gated. Only gates while something is decoding
+            # (progress guarantee: an empty running batch always admits so the
+            # pipeline can't stall). Safety valve is a DETERMINISTIC per-req
+            # deferral COUNT (identical across TP ranks) — never wall-clock,
+            # which would desync ranks' prefill batches and hang NCCL.
             if cca_active:
                 cca_cost = self._cca_prefill_cost(req)
                 if (
@@ -2988,9 +2989,9 @@ class Scheduler(
                     and len(self.running_batch.reqs) > 0
                     and (cca_base_used + cca_admitted + cca_cost) > cca_limit
                 ):
-                    entry_t = req.time_stats.wait_queue_entry_time
-                    waited = (cca_now - entry_t) if entry_t > 0 else 0.0
-                    if waited < self.cca_max_defer_s:
+                    n_def = getattr(req, "_cca_defers", 0)
+                    if n_def < self.cca_max_defer_passes:
+                        req._cca_defers = n_def + 1
                         self.cca_deferrals += 1
                         cca_gated_pass = True
                         continue

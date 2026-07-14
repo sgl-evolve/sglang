@@ -1314,12 +1314,14 @@ class ServerArgs:
         "what actually pressures the KV pool; ignoring load-back lets reuse-heavy "
         "load-backs saturate the pool (measured: 0->518 retracts + crash).",
     ] = False
-    cca_max_defer_ms: A[
-        float,
-        "Safety valve: an expensive prefill that has already waited this long "
-        "(ms, since entering the waiting queue) is force-admitted regardless of "
-        "the watermark, bounding worst-case TTFT under the SLO. Typical 2000-5000.",
-    ] = 4000.0
+    cca_max_defer_passes: A[
+        int,
+        "Safety valve: an expensive prefill deferred this many scheduler passes "
+        "is force-admitted, bounding worst-case TTFT. MUST be a DETERMINISTIC "
+        "count (not wall-clock) so all TP ranks make the identical admission "
+        "decision — a wall-clock valve desyncs the ranks' prefill batches and "
+        "hangs the NCCL collectives. Typical 100-400.",
+    ] = 200
 
     # -------------------------------------------------------------------------
     # Min free slots delay (prefill refill batching)

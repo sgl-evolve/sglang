@@ -51,8 +51,8 @@ puzzle with a single closed-form law and, in doing so, unifies the cache and sch
 is a raw-prefill-rate constant. We validate it directly from the saturated region of every measured sweep:
 <span class="mono">K = C·(1&minus;h)</span> is invariant to <b>2.5%</b> across cache variants and predicts the
 measured ceiling to within 1&ndash;3%. Caching raises C only by lowering the miss rate (1&minus;h); a scheduling
-change (LPM co-residency) raises C by lifting K ~11% at fixed h&mdash;two <em>orthogonal</em> levers on the
-<em>same</em> ceiling. (2)&nbsp;<b>An intrinsic-feasibility floor.</b> Using the calibrated K we show every
+change (LPM co-residency) <em>appears</em> to raise C by lifting K ~11% at fixed h (suggestive, n=1)&mdash;two
+<em>orthogonal</em> levers on the <em>same</em> ceiling. (2)&nbsp;<b>An intrinsic-feasibility floor.</b> Using the calibrated K we show every
 request is <em>solo-feasible</em>: even the largest document (191&nbsp;K tokens) prefills alone in 6.95&nbsp;s,
 under the 8&nbsp;s SLO; the p99 request needs only 1.3&nbsp;s. Therefore <b>every SLO violation is contention/
 queueing, never irreducible service time</b>, and the offline-optimal goodput equals the capacity ceiling:

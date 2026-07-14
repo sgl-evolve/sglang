@@ -325,3 +325,14 @@ flips). **goodput@SLO must be read as a DISTRIBUTION, not a single number.** Fol
   points as a BYPRODUCT of every full sweep. Have: flat{12060}, stock{6175,11494}, size{15553(+λ3 of v5)},
   lpm{7801}, wb{6591,7405}. v6_flat adds flat(2). When n≥4-5 per config across the C-range → Paper 3 on
   reliability-vs-margin (does higher C damp the coin-flip? size@C4.6 FAILS contradicts naive margin story → real Q).
+
+## PAPER 3 SEED #2 (stronger): RAISE K via serving efficiency (the capacity ceiling is MFU-bound, not compute-bound)
+FLOP accounting (`analysis/flop_crossover.py`): linear prefill ≈ 2e10 FLOP/tok (A10B). Measured R_raw=27450 uncached
+tok/s at saturation ⇒ **MFU ≈ 3.4%** (vs 8×H100 FP8 peak 1.6e16). Isolated prefill typically hits 30-50% MFU ⇒
+**R_single could be ~9× R_raw** ⇒ the capacity ceiling C=K/(1−h) is set by SERVING-LOOP EFFICIENCY (prefill↔decode
+interference, MoE TP=8 comms, small per-step prefill batch), NOT the compute wall. lpm already raised K +11% (n=1).
+**⇒ genuine Paper 3 opportunity: a novel mechanism to raise K (prefill MFU) → raises C for ALL h → shifts the whole
+frontier up → could raise goodput** (the one lever that lifts the ceiling, orthogonal to cache & to SRPF-reordering).
+NEEDS: (a) isolated-prefill R_single measurement (single-req, any a3 node, diagnostic) to firm the headroom; (b) a
+mechanism (candidate: prefill-batch packing / interference-aware step composition — must beat Sarathi chunked-prefill
+baseline, non-trivial, lossless). Risk: sglang already chunks; headroom may be comms/MoE-bound (hard). Firm (a) first.

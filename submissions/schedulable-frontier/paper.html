@@ -206,12 +206,15 @@ confirmed by full-sweep runs <span class="mono">v6_flat_sweep</span> / <span cla
 
 <h2>4 The intrinsic-feasibility floor: no request is too big</h2>
 <p>
-The calibrated raw rate is <span class="mono">R = C·E[U] &approx; 27&ndash;30&nbsp;K tokens/s</span> (stock
+The <em>aggregate</em> prefill rate&mdash;the rate at which the fully-loaded system completes uncached prefill
+tokens&mdash;is <span class="mono">R<sub>raw</sub> = C·E[U] &approx; 27&ndash;30&nbsp;K tokens/s</span> (stock
 4.14&times;6630&nbsp;=&nbsp;27450; wb 5.11&times;5829&nbsp;=&nbsp;29788). We now ask the decisive question: is any
-single request <em>intrinsically</em> unable to meet the 8&nbsp;s SLO even if served <b>alone</b> on the whole
-machine? The solo prefill time of a request with uncached work U is U/R:</p>
+single request <em>intrinsically</em> unable to meet the 8&nbsp;s SLO even if served <b>alone</b>? A solo request
+commands <em>at least</em> the full aggregate rate (it no longer shares the machine, and prefill MFU only rises
+when isolated), so its service time is <b>at most</b> U/R<sub>raw</sub>&mdash;a conservative upper bound we use as
+the "solo TTFT" (isolation makes it strictly faster):</p>
 <table>
-<thead><tr><th>percentile of U</th><th>U (uncached tok)</th><th>solo TTFT = U/R (s)</th><th>vs 8&nbsp;s SLO</th></tr></thead>
+<thead><tr><th>percentile of U</th><th>U (uncached tok)</th><th>solo TTFT &le; U/R<sub>raw</sub> (s)</th><th>vs 8&nbsp;s SLO</th></tr></thead>
 <tbody>
 <tr><td>p50</td><td>4 227</td><td>0.15</td><td class="win">feasible</td></tr>
 <tr><td>p90</td><td>17 702</td><td>0.64</td><td class="win">feasible</td></tr>
@@ -221,8 +224,8 @@ machine? The solo prefill time of a request with uncached work U is U/R:</p>
 </tbody>
 </table>
 <div class="keyfinding">
-<b>Every request is solo-feasible.</b> The p99 request needs 1.3&nbsp;s; even the single largest document
-(191&nbsp;K tokens) prefills in 6.95&nbsp;s&mdash;<em>under</em> the 8&nbsp;s SLO. Therefore <b>no SLO violation is
+<b>Every request is solo-feasible.</b> The p99 request needs &le;1.3&nbsp;s; even the single largest document
+(191&nbsp;K tokens) prefills in &le;6.95&nbsp;s&mdash;<em>under</em> the 8&nbsp;s SLO (and faster still with isolation). Therefore <b>no SLO violation is
 irreducible service time; every violation is contention or queueing delay.</b> A clairvoyant, work-conserving
 scheduler operating below the capacity C could meet the SLO for every request, so:
 <div class="eq"><b>goodput@SLO<sub>offline</sub> = C(h,K).</b></div>

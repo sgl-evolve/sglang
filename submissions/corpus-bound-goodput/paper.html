@@ -230,11 +230,13 @@ during other prefill steps (mean 1.2, p90 0) (<code>analysis/hol_trace.py</code>
 specifically behind the big cold docs. A calibrated prefill-schedule simulation
 (<code>analysis/hol_sim.py</code>) reproduces the stock coin-flip (p99 mean 7.5&nbsp;s, straddling the SLO)
 and shows <b>shortest-prefill-first collapses it to ~4&nbsp;s with the coin-flip removed</b> (all seeds
-pass), while round-robin interleaving does not. A same-node GPU run of SRPF at λ=3 confirms this: p99 TTFT
-<b>5.9&nbsp;s</b> (p50 519&nbsp;ms), below the 8&nbsp;s SLO and below the stock coin-flip's mean (8.1&nbsp;s).
-Above the knee, shortest-prefill-first (SRPF/SJF) can further raise throughput toward the ~4.2&nbsp;req/s
-throughput ceiling of §4. Scheduling moves the metric at both regimes; SRPF/SJF is a textbook
-policy, so the contribution here is the <em>diagnosis</em> that scheduling — not caching — is the lever.</li>
+pass), while round-robin interleaving does not. A same-node GPU SRPF sweep confirms this at both regimes:
+<b>λ=3 p99 TTFT 5.9&nbsp;s</b> (p50 519&nbsp;ms) and <b>λ=5 p99 5.85&nbsp;s at 4.16&nbsp;req/s</b>, both below
+the 8&nbsp;s SLO — versus stock's λ=3 coin-flip (mean 8.1&nbsp;s) and λ=5 stable failure (17.4&nbsp;s). So
+<b>goodput@SLO rises from ≤3 (stock, λ=3-bound) to 4.16&nbsp;req/s</b> — the compute ceiling of §4 — purely
+by reordering prefills, with cache retention untouched. Scheduling moves the metric at both regimes; SRPF/SJF
+is a textbook policy, so the contribution here is the <em>diagnosis</em> that scheduling — not caching — is
+the lever.</li>
 </ul>
 <p>
 The unifying statement inverts the caching intuition: for long-document conversational serving, the

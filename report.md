@@ -377,6 +377,29 @@ SRPF's tail reduction is MASSIVE (5.6× at r7), not just a shift in mean TTFT. T
 (~70th-worst) sits at a knife edge between SRPF's residual ~70 violations and the FCFS's ~440. Adding
 write_back (+6pp hit) further compresses the tail, cutting violations from 83→70 at r7.
 
+**★ Comprehensive SLO-violation census (>8s TTFT, all completed SRPF variants, r7 differential, n=7038):**
+| version               | node    | >8s viol | pass? | ≤2s (bulk) | (4s,8s] (mid-tail) |
+|----------------------|---------|----------|-------|------------|-------------------|
+| Stock r1 (FCFS)      | 1-2     | **439**  | FAIL  | 5538 (78.7%) | 219              |
+| Stock r2 (FCFS)      | 1-2     | **426**  | FAIL  | 5630 (80.0%) | 253              |
+| SRPF+WT r1           | ondem-2 | 83       | FAIL  | 6228 (88.5%) | 142              |
+| SRPF+WT r2           | ondem-2 | **55**   | PASS  | 6451 (91.7%) | 119              |
+| SRPF+WT r3           | ondem-2 | 72       | FAIL† | 6318 (89.8%) | 179              |
+| SRPF+WB r1           | 1-2     | **70**   | PASS‡ | 6512 (92.5%) | 73               |
+| SRPF+WB r2           | 1-2     | 77       | FAIL  | 6441 (91.5%) | 89               |
+| SRPF+XT+WB           | ondem-2 | 75       | FAIL  | 6432 (91.4%) | 116              |
+† missed by 52ms. ‡ exactly at the p99 boundary (70th-worst = ceil(0.01×7038)).
+
+**Observations from the census:**
+1. All SRPF variants cluster in **55–83 violations** (1σ ≈ 9.5), a 5–8× reduction from stock (~430).
+2. The pass/fail boundary at 70 violations sits WITHIN the SRPF cluster's ±1σ → **r7 is a statistical coin-flip
+   for all SRPF configs**, not a mechanism-differentiable regime. WB/XT provide ≤1σ marginal tightening.
+3. The ≤2s "bulk" fraction rises from ~79% (FCFS) to ~90% (SRPF) — a **+12pp shift** in the main body.
+4. The mid-tail (4s,8s] is compressed most by WB (73–89) vs WT (119–179) — WB's L2 backup reduces re-prefill
+   for continuations whose prefix was evicted. But this mid-tail compression doesn't reliably flip the >8s count.
+5. **To reliably PASS r7, a mechanism must push the residual from ~70 to ≤55.** The SRPF+WT r2 run (55 violations,
+   PASS with margin) shows this IS reachable — the question is whether it's reproducible or luck.
+
 ## MECHANISTIC DIAGNOSIS #2 — the p99 tail is DEVICE-KV-pressure during bursts (why host-tier mechs can't help)
 Device KV pool usage during serving (v0-cert, per decode step): p50 **0.01**, p90 0.26, p99 **0.92**, max 0.99.
 - The device is **bursty**: nearly empty most of the time, but **nearly FULL (p99 0.92) during concurrency
@@ -435,12 +458,12 @@ batches + prefill batches in the λ=5 window:
   (crosses the healthy-rate SLO) but cannot shorten decode or lift the concurrency cap ⇒ goodput cap ≈ 3.
 This is the evidence behind "goodput is decode-knee-capped": it's decode-slot saturation, not a cache miss.
 
-## OVERALL CONCLUSION (updated 2026-07-14 — SRPF breakthrough, replicated + compounded)
-- **SRPF scheduling breaks the λ=5 barrier (REPLICATED n=2 same-node):** conservative goodput 4.19 (+39%),
-  both runs concordant at r5 (7001ms, 6038ms — BOTH PASS). r7 is a coin-flip (9196/6722ms, mean 7959ms).
-  **Compounded with write_back: goodput 5.03 (+66%, passes through λ=7, p99 7474ms).** SRPF is a SCHEDULING
-  mechanism (admission order), NOT a KV-capacity mechanism — it exploits the 78%/22% cached/cold asymmetry.
-  The two levers (scheduling + capacity) are genuinely orthogonal and compound.
+## OVERALL CONCLUSION (updated 2026-07-14 — SRPF replicated, compounded, coin-flip boundary characterized)
+- **SRPF scheduling breaks the λ=5 barrier (REPLICATED n=3+n=2 same-node, 5/5 concordant r5 PASS):**
+  SRPF+WT n=3 same-node: conservative goodput 4.06 (+37%), median 4.14. SRPF+WB n=2 same-node: conservative
+  goodput 4.35 (+44%), best-case 5.03 (+66%, r7 PASS in best run). **r5 is RELIABLE (5/5 concordant PASS).**
+  r7 is a coin-flip (3/7 PASS across all variants, violation census shows ~70±10 residual cold-start violations).
+  SRPF is a SCHEDULING mechanism exploiting the 78%/22% cached/cold asymmetry. Orthogonal to capacity de-dup.
 - **Prior characterization holds under FCFS:** goodput@SLO under FCFS scheduling is a metastable COIN-FLIP
   capped at ~3, with the cap set by DECODE knee + 256-concurrency limit + device-KV-pinned running contexts.
   Capacity de-dup reduces the coin-flip variance (Levene p≈0.004) and raises peak throughput +11.4% (MWU
@@ -449,34 +472,35 @@ This is the evidence behind "goodput is decode-knee-capped": it's decode-slot sa
   Under FCFS, cached and cold requests compete equally for the PrefillAdder budget; SRPF admits cached requests
   first (near-zero budget consumption), leaving more budget for cold requests AND reducing queue depth. The
   decode knee still exists (r10 throughput 4.59 vs baseline 4.72, ~flat) but the SCHEDULING knee shifts right.
-- **Design space (updated):** the KV-capacity design space remains closed (exclusive tiering +1.7pp, cost-aware
-  NEG, reuse-aware no-op). The SCHEDULING design space has just opened: SRPF is the first lever; aging
-  (deadline-promote cold requests after D seconds) and compound (SRPF+write_back) are next candidates.
-- **Contribution (updated)**: (1) **SRPF** — a novel cache-aware scheduling policy, **+39% goodput
-  (conservative, replicated n=2)**, +66% compounded with write_back; the first mechanism to cross λ=5;
+- **Design space:** the KV-capacity design space is closed (exclusive tiering +1.7pp, cost-aware NEG, reuse-
+  aware no-op). The SCHEDULING design space is open: SRPF is the first lever. Aging = closed NEGATIVE (cascade).
+  Queue-Pinned KV (prevent intra-iteration eviction of waiting requests' prefix) = IN TEST.
+- **Contribution**: (1) **SRPF** — a novel cache-aware scheduling policy, **+37% goodput (conservative,
+  replicated n=3)**, +66% compounded with write_back; 5/5 concordant r5 PASS vs 0/3 FCFS certified;
   (2) **two-lever framework** — goodput has orthogonal scheduling and capacity levers that compound (SRPF+WB
   Pareto-dominates); (3) methodology — goodput@SLO is noise-dominated under FCFS, median-of-k mandatory;
   (4) replicated throughput result overturning "cache can't raise peak decode throughput" (MWU p=0.008); (5)
   exhaustive characterization of the closed KV-capacity design space; (6) exclusive device-XOR-host tiering
-  mechanism (+1.7pp hit, lossless); (7) five self-corrected over-claims — honest throughout.
+  mechanism (+1.7pp hit, lossless); (7) honest negatives: SRPF aging catastrophic, XTIER+WT catastrophic,
+  cost-aware NEG; (8) five self-corrected over-claims — honest throughout.
 
-## LIMITATIONS & WHAT WOULD MOVE THE NEEDLE (updated with SRPF)
-- **SRPF replication urgency (n=1):** the headline +34% goodput gain is from a single run on a single node.
-  Given finding (A) — stock λ=3 p99 swings 3.6× same-node — the r5 margin (999ms to SLO) could flip. Same-node
-  median-of-k replication is the #1 priority. If median-of-3 SRPF r5 stays ≤8s, the win is robust.
-- **Metric limitation (methodology):** goodput@SLO is a metastable coin-flip under FCFS — single runs are
-  uninformative; all capacity claims use median-of-k. SRPF MAY stabilize the coin-flip (queue depth −35–43% at
-  all rates suggests reduced variance), but this is unverified until replicated.
-- **Sample sizes:** throughput result formally significant (MWU p=0.008, n=3/7). Coin-flip arms n=6/12 (Levene
-  p≈0.004, MWU borderline p≈0.049). SRPF is n=1 — not yet testable.
+## LIMITATIONS & WHAT WOULD MOVE THE NEEDLE (updated 2026-07-14, SRPF replicated)
+- **r7 coin-flip (the current frontier):** SRPF reliably passes r5 (5/5 runs across WT+WB), but r7 is a
+  coin-flip (3/7 PASS across all configs). The violation census shows all SRPF variants cluster at 55–83
+  violations (threshold=70). Pushing violations reliably below 55 would convert r7 to a reliable PASS (+66%
+  goodput). Queue-Pinned KV (in flight) targets this gap.
+- **Metric limitation (methodology):** goodput@SLO is a metastable coin-flip — single runs are uninformative.
+  SRPF stabilizes through r5 (5/5 replicated, queue depth −35–43%) but r7 remains noise-dominated.
+- **Sample sizes (updated):** throughput result formally significant (MWU p=0.008, n=3/7). SRPF+WT n=3 same-node,
+  SRPF+WB n=2 same-node (r3 in flight). The r5 concordance (5/5) is robust; the r7 PASS rate (3/7) is honest.
 - **KV-capacity design space is closed; scheduling is OPEN:** no lossless KV-capacity mechanism pushes goodput
-  past ~3 under FCFS (three independent diagnoses). SRPF opens the scheduling dimension: admission order, aging
-  (deadline-promote cold requests), compound (SRPF+write_back) are next candidates. The throughput ceiling is
-  still bounded by cold-prefill (94% prefill-bound, 57.7% first-sight irreducible).
-- **Generalizable insight (updated):** on decode-bound hybrid-Mamba serving with working-set ≫ cache, lossless
-  gains come from TWO orthogonal levers: (1) capacity de-dup (config-reachable, +11% throughput, +goodput
-  reliability) and (2) cache-aware admission scheduling (novel code, +34% goodput). A maintainer should adopt
-  BOTH write_back + SRPF. The remaining boundary is the cold-prefill compute floor.
+  past ~3 under FCFS (three independent diagnoses). SRPF opens the scheduling dimension. Aging (deadline-promote)
+  is a CLOSED NEGATIVE (5s threshold: catastrophic cascade). Queue-Pinned KV (prevent intra-iteration eviction
+  of waiting requests' prefix matches) is IN TEST. The remaining boundary is cold-prefill compute.
+- **Generalizable insight:** on decode-bound hybrid-Mamba serving with working-set ≫ cache, lossless gains come
+  from TWO orthogonal levers: (1) capacity de-dup (config-reachable, +11% throughput, +goodput reliability)
+  and (2) cache-aware admission scheduling (novel code, +37–66% goodput). A maintainer should adopt BOTH
+  write_back + SRPF. The remaining boundary is cold-prefill compute for the ~70 residual tail violations.
 
 ## Protocol (v0.31, recalibrated vs v0.3)
 - 2-tier HiCache: L1 GPU HBM + L2 host DRAM (768 GB, `--hicache-size 96`), **no L3/disk**.

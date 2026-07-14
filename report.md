@@ -107,10 +107,32 @@ Decode dynamics: 12.6% of decode batches stall (<50 tok/s), 70% of prefill batch
 coin-flip (baseline.json's p99=6326 PASSED; this same-config run FAILS at 11494 → confirms the
 coin-flip; single-run goodput@SLO is not a usable headline → I compare **hit_rate (robust)** + p99 values).
 
-**v2_flat2** (mechanism ON, `flat` gate_hits=2 == write_through_selective; tag `config` CONTROL) — RUNNING.
-Confirmed live: gate withholds ~76% of would-be L2 backups (gated_skips ≫ backups). Purpose: does
-reuse-gated admission move hit_rate on the real system? (Prediction from HiCache docs + my BW analysis:
-selective helps only when backup BW is scarce — it isn't here (~1 GB/s ≪ 64 GB/s) — so likely ≤ stock.)
+**v2_flat2** (mechanism ON, `flat` gate_hits=2 == write_through_selective; tag `config` CONTROL).
+Confirmed live: gate withholds ~76% of would-be L2 backups (gated_skips ≫ backups).
+
+| λ | req/s | ttft_p50 | ttft_p99 | hit_rate | Δhit vs stock |
+|---|---|---|---|---|---|
+| 3 | 2.91 | 1475 ms | 12060 ms | **0.4259** | **−25.0 pp** |
+
+**STRONG NEGATIVE — reuse-gated admission craters hit_rate (−25 pp).** Mechanism: at these loads the
+device (L1) is 84-100% full of running-request KV, so any prefix NOT eagerly backed up to L2 is evicted
+from L1 and **lost before its reuse** → its continuation misses. write_through's eager "back up everything"
+is *necessary* precisely because device is saturated. This (a) refutes my Direction-1 hit-rate hypothesis
+on the real system (my calibrated sim was optimistic — it modeled a single combined cache, not the
+device-saturated L1/L2 split), (b) kills the whole admission-gating family (size-gating loses gated
+content the same way), and (c) is a clean, counterintuitive result: the "obvious" I/O-saving optimization
+(write_through_selective) catastrophically backfires under device saturation. Backup BW is non-binding
+(~1 GB/s) so there is no compensating throughput gain. **Direction 1 = bounded negative.**
+
+### Verdict on Direction 1 & pivot
+The lossless *caching* lever is bounded on this workload: (i) miss floor 19.1% is unavoidable turn-0
+first-sight; (ii) avoidable 18.8pp (oracle 0.809 vs 0.675 stock — my node) is capacity-bound (L2 7.8M) +
+info-constrained; (iii) eviction is LRU≈Belady; (iv) admission craters (−25pp, above). The real goodput@SLO
+killer is the **prefill↔decode interference metastable tail** (p50 flat ~1s, p99 11→41s; 12.6% decode
+stalls; 70% giant prefills; queue≈0), which is a compute/scheduling phenomenon the cache cannot fix.
+→ **Direction 2: attack the metastable tail** (serving-machinery, not caching). Direction-1 evidence
+(bounded-negative + the effective-capacity-collapse + admission-crater anatomy) is itself a rigorous
+characterization contribution.
 
 ## Formal submissions
 _(none yet)_

@@ -244,6 +244,20 @@ unstable, and p99 diverges to 25&ndash;41&nbsp;s regardless of policy. Because t
 <b>goodput@SLO is pinned at 3</b> for both stock and write_back even though C differs (4.1 vs 5.1): the extra
 capacity from caching lands in the unstable &lambda;&ge;5 region where the SLO is already lost, so it never
 converts to goodput. This is the mechanical reason caching raises throughput but not goodput.</p>
+<div class="keyfinding">
+<b>The &lambda;=3 coin-flip is deterministic-workload nondeterminism, and it survives warmup.</b> The benchmark
+seeds both arrival times and prompt order (default <span class="mono">--seed 1</span>, <span class="mono">--disable-shuffle</span>),
+so the workload replayed at a given rate is <em>byte-identical</em> across runs; the eval also applies a warmup
+burst specifically to erase cold-start metastability. Yet two identical stock runs on the same node at &lambda;=3
+give p99 = 6.2&nbsp;s (pass) and 11.5&nbsp;s (fail)&mdash;a 1.9&times; swing straddling the SLO, with hit rate
+invariant to &lt;0.1&nbsp;pp. The coin-flip is therefore not workload variance and not cold start; it is
+<em>system-timing nondeterminism</em> (batch-formation and prefill&harr;decode interleaving races) amplified by
+the metastable queue when operating near the stability edge (margin C&minus;&lambda; &approx; 1 for stock). This
+is a frontier phenomenon: the same margin that bounds mean goodput also governs its <em>reliability</em>. Higher
+C (from caching: write_back's margin &approx; 2) appears to damp it&mdash;write_back passes 2/2 while stock passes
+1/2&mdash;but the effect is high-variance at n=2 (a size-admission run at C&approx;4.6 nonetheless landed 15.6&nbsp;s),
+so we report it as an open direction: <b>goodput@SLO must be read as a distribution, not a single number, and
+capacity margin is its likely damping variable.</b> A dedicated reliability-vs-margin study is future work.</div>
 
 <h2>6 The schedulable frontier</h2>
 <p>Putting &sect;3&ndash;5 together yields the operative frontier:</p>

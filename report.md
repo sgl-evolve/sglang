@@ -233,10 +233,10 @@ Paper 1 → flip draft→submitted.
   Evidence: 7 W&B versions (v0/v1_stock/v1b_stock/v2_flat2/v2b_flat2/v3_wb/v3b_wb), all numbers match runs/.
   2 figures. Node released.
 
-## Direction 2 (OPEN, free/offline) — analytical goodput@SLO model
-Turn the empirical anatomy into a PREDICTIVE THEORY: model goodput@SLO as a function of (doc-size tail
-distribution × SLO × effective prefill-rate × L1/L2 capacity × concurrency), validate against my 7 versions'
-data, and derive the FEASIBLE REGION (where caching helps vs where it's impossible). Novel (mine, not
-sibling/config/textbook), free (offline, no GPU), and extends Paper 1 from "here's the bound" to "here's the
-law." First step: fit the prefill-rate + tail model to the measured curves; predict goodput vs SLO; show the
-frozen eval sits in the infeasible region. Then a Paper 2 (or Paper 1 v2 §Model).
+## Direction 2 (DONE → folded into Paper 1 v2 §7) — analytical caching-invariant P99 bound
+Built `analysis/goodput_model.py`: TTFT(r) ≥ U(r)/R (own-prefill lower bound), U(r)=uncached tokens. For turn-0
+requests U = full doc (caching-invariant). ⇒ P99 TTFT ≥ q99(U)/R. Fit R≈4100 tok/s from measured λ=3 p50 TTFT.
+**Result: q99(U)≈36.7K tok is INVARIANT across hit 0.62→0.95 (turn-0 uncacheable) → P99 floor ≈8.9s > 8s SLO at
+EVERY hit rate** (largest doc alone 47s); measured λ=3 p99 11.5s = floor + queue (validates). Caching cuts E[U]
+mean 4× (14006→3287) but not the tail. This is the ANALYTICAL form of the Paper-1 impossibility + predicts the
+feasible region (caching matters iff q99(U) < R·SLO — false here). Folded into Paper 1 **v2 §7** (empirics+theory).

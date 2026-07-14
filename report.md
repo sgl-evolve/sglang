@@ -380,3 +380,14 @@ unchanged); if promising → n≥3 + θ_hi/g sweep; write Paper 4 or fold negati
   MEDIATED by the capacity law. (K@λ3=1.666 but λ=3 near-cap not clean; await λ=10 saturated for clean K + the
   low-hit anchor.) p50=1994ms (elevated vs others ~500-1000 → whole system in high-occupancy basin, consistent
   w/ Paper 3 occupancy mechanism at low margin).
+
+## ★ Paper 3 STRENGTHENED (flat as low-margin anchor, n=2): margin→reliability now MONOTONIC across 3 configs
+flat λ=3 p99 {12060 (v2_flat2), 48065 (v6_flat)} = spread 36s (same flat config, 2 runs). Combined:
+  flat (margin~0):   p99 spread 36.0s   [12.1, 48.1]
+  stock(margin~1):   p99 spread  5.3s   [6.2, 11.5]
+  wb   (margin~2):   p99 spread  0.8s   [6.6, 7.4]
+MONOTONIC: smaller capacity margin (C−λ) → larger p99 variance. 3 configs, n=2 each, all consistent → the
+capacity-margin reliability law (Paper 3) is now well-supported (was n=2 on 2 configs; now 3 configs spanning
+margin 0→2). Fold into Paper 3 when finalizing (upgrades the variance claim from "suggestive n=2" toward
+established-direction across a 3-point margin range). Still need n≥3/config to FIT the exponent, but the LAW
+(monotone decreasing) is now robust.

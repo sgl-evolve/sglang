@@ -48,7 +48,7 @@ write_back config lifts achieved req/s from 4.1 to 5.1), yet goodput does not mo
 puzzle with a single closed-form law and, in doing so, unifies the cache and scheduling axes into one frontier.
 (1)&nbsp;<b>A capacity law.</b> The serving system has a hard prefill-throughput ceiling
 <b>C = K/(1&minus;h)</b>, where <span class="mono">h</span> is the cache hit rate and <span class="mono">K =
-R·N/P<sub>total</sub></span> a prefill-rate scale. Sweeping four configs across a 1.9&times; hit range (0.39&ndash;0.72)
+R·N/P<sub>total</sub></span> a prefill-rate scale. Sweeping five configs across a 1.9&times; hit range (0.39&ndash;0.72)
 at saturation reveals <b>two orthogonal, anti-correlated levers</b>. For pure write-policy variants (stock, write_back)
 K is invariant&mdash;<b>K<sub>base</sub>&nbsp;=&nbsp;1.388&nbsp;±&nbsp;0.034 (CV&nbsp;2.5%)</b>, predicting the ceiling
 to 1&ndash;3%&mdash;so caching raises C purely by lowering the miss rate (the <em>hit lever</em>, via 1/(1&minus;h)).
@@ -90,8 +90,8 @@ achievable throughput. K<sub>base</sub> is invariant to 2.5% for pure write-poli
 <em>two anti-correlated levers</em>: the <em>hit lever</em> (lower 1&minus;h, strong) and the <em>K lever</em>
 (reduce backup I/O, linear)&mdash;with the hit lever dominating.</li>
 <li><b>The intrinsic-feasibility floor</b> (&sect;4): from the calibrated K, no single request&mdash;up to the
-191&nbsp;K-token maximum&mdash;is intrinsically SLO-infeasible. Hence the offline-optimal goodput <em>equals</em>
-the capacity ceiling, and all violations are contention.</li>
+191&nbsp;K-token maximum&mdash;is intrinsically SLO-infeasible. Hence the offline-optimal goodput is <em>bounded by</em>
+the capacity ceiling and the gap to it is contention, not service.</li>
 <li><b>The schedulable frontier</b> (&sect;5&ndash;6): a stability argument pins measured online goodput strictly
 below C. The [measured,&nbsp;C] gap&mdash;flat across hit rate&mdash;is a pure scheduling problem. This
 <em>unifies</em> the two axes: caching raises the ceiling, scheduling reaches it, and goodput requires both.</li>

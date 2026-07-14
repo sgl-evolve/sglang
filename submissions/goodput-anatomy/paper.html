@@ -258,10 +258,16 @@ sharegpt chat, 35% of conversations, all multi-turn), which are cheap to admit a
 size-conditioned gate keeps those and withholds backup only from the giant, mostly-one-shot documents (loogle,
 73% one-shot), so it drops pollution without losing the hot small entries. But the gain is modest and, crucially,
 it stays <em>below</em> the write_back / exclusive-tiering config ceiling (0.6976 &lt; 0.737) and does not rescue
-goodput (p99 = 15.6&nbsp;s at &lambda;=3, still a fail &mdash; the tail is the uncacheable giants, &sect;6). So the
-refined statement is: reuse-gated admission is catastrophic when it gates small hot content and mildly helpful when
-restricted to giant one-shot content, but no admission variant beats the exclusive-tiering configuration or moves
-goodput@SLO. (Tagged a <span class="mono">mechanism</span> version; it is our engine code, but it does not clear the
+goodput (p99 = 15.6&nbsp;s at &lambda;=3, still a fail &mdash; the tail is the uncacheable giants, &sect;6). In fact
+size-admission's p99 (15.6&nbsp;s) is <em>worse</em> than stock's (6&ndash;11.5&nbsp;s): a plausible mechanism is
+that it withholds backup from exactly the giant documents whose re-prefill <em>is</em> the p99 tail, so it buys
++2&nbsp;pp on the <em>mean</em> hit (small docs) at the cost of the <em>tail</em> (giants dropped from L2, then
+re-prefilled on miss). We flag this as a mean-vs-tail trade-off rather than prove it (n=1; it could also be the
+&lambda;=3 coin-flip of &sect;6), but it reinforces the axis conclusion: even the one admission variant that helps
+mean hit does not help&mdash;and may hurt&mdash;the tail-bound goodput metric. So the
+refined statement is: reuse-gated admission is catastrophic when it gates small hot content and at best neutral (mean
+up, tail flat-to-worse) when restricted to giant one-shot content, but no admission variant beats the
+exclusive-tiering configuration or moves goodput@SLO. (Tagged a <span class="mono">mechanism</span> version; it is our engine code, but it does not clear the
 config baseline, so it is not a contribution &mdash; it is the honest boundary of the admission axis.)
 </p>
 

@@ -278,11 +278,16 @@ give p99 = 6.2&nbsp;s (pass) and 11.5&nbsp;s (fail)&mdash;a 1.9&times; swing str
 invariant to &lt;0.1&nbsp;pp. The coin-flip is therefore not workload variance and not cold start; it is
 <em>system-timing nondeterminism</em> (batch-formation and prefill&harr;decode interleaving races) amplified by
 the metastable queue when operating near the stability edge (margin C&minus;&lambda; &approx; 1 for stock). This
-is a frontier phenomenon: the same margin that bounds mean goodput also governs its <em>reliability</em>. Higher
-C (from caching: write_back's margin &approx; 2) appears to damp it&mdash;write_back passes 2/2 while stock passes
-1/2&mdash;but the effect is high-variance at n=2 (a size-admission run at C&approx;4.6 nonetheless landed 15.6&nbsp;s),
-so we report it as an open direction: <b>goodput@SLO must be read as a distribution, not a single number, and
-capacity margin is its likely damping variable.</b> A dedicated reliability-vs-margin study is future work.</div>
+is a frontier phenomenon: the same margin that bounds mean goodput also governs its <em>reliability</em>. Across
+configs the pattern is consistent&mdash;flat-admission (margin &minus;0.6, over capacity) fails; stock (margin
+&approx;1) coin-flips 1/2; lpm (margin &approx;1.9) passes; write_back (margin &approx;2) passes 2/2&mdash;<em>with
+one instructive exception</em>: size-admission (average margin &approx;1.6) landed 15.6&nbsp;s. That exception
+sharpens the variable: size gates backup of exactly the <em>giant</em> documents whose re-prefill <em>is</em> the
+p99 tail (companion &sect;6), so it raises the <em>mean</em> margin while degrading the <em>tail</em>-effective
+capacity. The reliability variable is therefore tail-effective-capacity, not average margin&mdash;average margin
+mispredicts precisely the mechanism that trades mean for tail. We report this as an open direction (n is low; the
+size point could also be the coin-flip): <b>goodput@SLO must be read as a distribution, not a single number, and
+its damping variable is tail-effective capacity margin.</b> A dedicated reliability study is future work.</div>
 
 <h2>6 The schedulable frontier</h2>
 <p>Putting &sect;3&ndash;5 together yields the operative frontier:</p>

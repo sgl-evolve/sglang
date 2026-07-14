@@ -694,6 +694,52 @@ which is **capacity-bound** at host_util=1.0. Raising hit without more memory �
 efficiently ⇒ eliminate inclusive duplication ⇒ **exclusive (device-XOR-host) L1↔L2 placement**
 (explicitly in-charter scope: "L1↔L2 placement/layout"). NOT eviction-order tuning (LRU≈Belady dead end).
 
+## Workload Characterization (mooncake_mix_v1, 1553 conversations)
+First-turn input-token distribution (determines chunking and burst behavior):
+| range | count | % | chunking | note |
+|-------|-------|---|----------|------|
+| <500 tok | 538 | 34.6% | non-chunked (1 iter) | ShareGPT short-context QA |
+| 500–6144 tok | 204 | 13.2% | non-chunked (1 iter) | mixed context |
+| 6144–10K tok | 67 | 4.3% | 2 iterations | chunked prefill starts here |
+| 10K–20K tok | 360 | 23.2% | 2–4 iterations | LEval/LooGLE medium |
+| 20K–50K tok | 356 | 22.9% | 4–9 iterations | LEval/LooGLE long |
+| 50K+ tok | 28 | 1.8% | 9–32 iterations | max 190K tok (5.4s prefill) |
+
+**Key structural facts:**
+1. **Bimodal:** 48% non-chunked (≤6144 tok) vs 52% needing multi-iteration chunks. NO intermediate band.
+2. **Zero inherent compute violations:** even the longest doc (190K tokens ≈ 5.4s prefill) is under the
+   8s SLO in isolation. ALL violations at r7 are queue-wait-bound (Diagnosis #4).
+3. **Chunked docs create 3376 blocked iterations:** during each, the ongoing chunk consumes the entire
+   6144-token rem_chunk_tokens budget. With stock admission, ALL other requests — including cached
+   continuations — are blocked until the chunk finishes.
+4. **SRPF exploits the bimodality:** non-chunked docs (48%) are sorted first by ascending remaining prefill.
+   In the first iteration after a chunk finishes, ~12 short docs are admitted. But when a new chunk starts,
+   all remaining short docs are blocked again. Roughly 50% of scheduler iterations are "blocked."
+5. **IBAC mechanism opportunity:** the remaining rem_input_tokens (10240 of 16384 after chunk uses 6144) is
+   completely UNUSED during blocked iterations. IBAC allows non-chunked requests to use this budget.
+   Theoretical capacity: ~20 short docs or ~80 cached continuations per blocked iteration.
+
+## PrefillAdder budget mechanics (Diagnosis #5 — zero-sum constraint)
+The scheduler's PrefillAdder controls admission with TWO linked budgets:
+- `rem_input_tokens` (max_prefill_tokens=16384): hard GPU capacity limit on total extend per iteration
+- `rem_chunk_tokens` (chunked_prefill_size=6144): soft limit on total extend per iteration (controls
+  decode latency impact). When exhausted (≤0), `budget_state()` returns OTHER → waiting queue loop breaks.
+
+When a chunked request is continuing, it consumes BOTH budgets by 6144 tokens BEFORE the waiting queue
+loop runs. Result: rem_chunk_tokens=0 blocks ALL further admission, even though rem_input_tokens=10240
+remains. Only ONE chunked request is processed per iteration (`self.new_chunked_req = req` singleton).
+
+This creates a zero-sum GPU constraint at r7: any mechanism that diverts GPU cycles from cold-doc
+prefill (the binding bottleneck) to other work makes the cold docs take longer → worse p99 TTFT.
+SRPF's ordering is optimal for this budget: admits cached continuations (78% of turns, ~200 tok each)
+before cold docs, maximizing requests-served-per-iteration within the 6144-token chunk budget.
+
+**IBAC (Input Budget After Chunk)** breaks this zero-sum: when rem_chunk_tokens=0 but rem_input_tokens>0,
+admit small non-chunked requests alongside the chunk. The GPU processes 16384 tokens instead of 6144 per
+iteration. Each iteration takes longer (proportional to total extend), but MORE work is done per wall-second.
+The cold doc's per-iteration compute doesn't change (same 6144 tokens). Whether the net effect helps p99
+is empirical — pending eval (commit 83c6009b9).
+
 ## Version log
 
 ### v0 — stock baseline sweep (control)  [DONE, node 0-1, XTIER_EXCLUSIVE=0, commit 4079f06c1]

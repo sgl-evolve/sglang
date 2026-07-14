@@ -34,7 +34,7 @@
 <body>
 
 <h1>Effective-Capacity Collapse and the Admission Backfire:<br>
-Why Hierarchical KV Caching Does Not Improve goodput@SLO on Saturated Conversational Serving <span class="draft">v7 · submitted</span></h1>
+Why Hierarchical KV Caching Does Not Improve goodput@SLO on Saturated Conversational Serving <span class="draft">v8 · submitted</span></h1>
 <p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
 <p class="sub">Base commit <span class="mono">a334877e5</span> · mechanism/instrumentation <span class="mono">ce01c1c79</span></p>
 
@@ -248,6 +248,22 @@ sweep vs. 64+&nbsp;GB/s PCIe, so selective's I/O savings are worthless here. Thi
 most transferable lesson: <em>the obvious admission optimization is actively harmful in the saturated regime the
 hierarchy is built for.</em>
 </p>
+<p>
+<b>The crater is specific to gating <em>small</em> reused content &mdash; and a size-conditioned gate avoids it.</b>
+To pin down the mechanism we also tested a <em>size-conditioned</em> gate (our <span class="mono">size</span> mode:
+gate only prefixes larger than 16&nbsp;K tokens, admit everything smaller eagerly). It does <b>not</b> crater:
+hit rate is <b class="win">0.6976</b> at &lambda;=3, <em>+2.1&nbsp;pp above stock</em> (vs flat's &minus;24&nbsp;pp).
+The reason confirms the diagnosis: flat gating loses the abundant <em>small</em> reused continuations (e.g.
+sharegpt chat, 35% of conversations, all multi-turn), which are cheap to admit and certain to be reused; the
+size-conditioned gate keeps those and withholds backup only from the giant, mostly-one-shot documents (loogle,
+73% one-shot), so it drops pollution without losing the hot small entries. But the gain is modest and, crucially,
+it stays <em>below</em> the write_back / exclusive-tiering config ceiling (0.6976 &lt; 0.737) and does not rescue
+goodput (p99 = 15.6&nbsp;s at &lambda;=3, still a fail &mdash; the tail is the uncacheable giants, &sect;6). So the
+refined statement is: reuse-gated admission is catastrophic when it gates small hot content and mildly helpful when
+restricted to giant one-shot content, but no admission variant beats the exclusive-tiering configuration or moves
+goodput@SLO. (Tagged a <span class="mono">mechanism</span> version; it is our engine code, but it does not clear the
+config baseline, so it is not a contribution &mdash; it is the honest boundary of the admission axis.)
+</p>
 
 <h2>6 The bottleneck is outside the cache</h2>
 <p>Same-node stock rate sweep (node 0-3):</p>
@@ -437,7 +453,8 @@ lever the KV-cache / serving literature (and the sglang engine) offers on this r
 <table>
 <thead><tr><th>lever (design axis)</th><th>concrete form tested / argued</th><th>result on goodput@SLO</th><th>evidence</th></tr></thead>
 <tbody>
-<tr><td>Admission / reuse-gating</td><td>write_through_selective (hit-count gate)</td><td class="fail">craters hit &minus;24 pp</td><td>measured (n=2)</td></tr>
+<tr><td>Admission / reuse-gating (flat)</td><td>write_through_selective (gate all)</td><td class="fail">craters hit &minus;24 pp</td><td>measured (n=2)</td></tr>
+<tr><td>Admission / size-conditioned</td><td>gate only giant docs (&gt;16K), admit small</td><td>+2 pp hit, still &lt; config; goodput unchanged</td><td>measured (v5_size)</td></tr>
 <tr><td>Tiering / write policy</td><td>write_back = exclusive (device XOR host)</td><td>+6 pp hit (config ceiling), no goodput lift &ge;&lambda;5</td><td>measured (n=2)</td></tr>
 <tr><td>Eviction ordering</td><td>LRU (+ 6 other pluggable strategies; GreedyDual)</td><td>near-Belady; bounded</td><td>LRU&asymp;Belady + host-bound (&sect;4)</td></tr>
 <tr><td>Conversation co-residency</td><td>LPM (longest-prefix-match) scheduling</td><td>neutral (+0.3 pp hit; p99 in coin-flip band)</td><td>measured (v4_lpm)</td></tr>

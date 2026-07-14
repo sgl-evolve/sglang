@@ -38,8 +38,9 @@ policy can beat it — a partial LFU rate-sweep corroborated this, building a <e
 than LRU (degrading, not improving). The consequence is a control-invariance law: <b>goodput@SLO is a
 function of the corpus's unique-document set
 and the hardware's prefill throughput, not of the serving policy.</b> Together with our companion result that
-prefill <em>admission</em> control cannot help, and a scheduling analysis showing reordering is inert
-below the load knee and compute-capped above it, this closes the KV-cache control-policy design space
+prefill <em>admission</em> control cannot help, and a scheduling analysis showing reordering has little
+leverage below the load knee (the p99 is a per-request cold-prefill floor) and is compute-capped above it,
+this closes the KV-cache control-policy design space
 for this workload: the lever is corpus-side (dedup, compression, retrieval shaping) or hardware, never
 the cache.
 </div>
@@ -212,10 +213,12 @@ captured; the residual is an un-capturable benchmark artifact. Zero headroom.</l
 <li><b>Admission (companion result).</b> Deferring expensive prefills cannot help, because the SLO tail
 <em>is</em> the cold prefills — deferring them inflates p99 (catastrophically, ~7×), and cost-blind
 deferral crashes the server. Zero headroom.</li>
-<li><b>Scheduling / reordering.</b> Below the load knee the waiting queue is empty
-(<code>#queue-req≈0</code>), so order is inert and goodput is a cold-document collision coin-flip; above
-the knee the queue is deep but the GPU is compute- and KV-memory-saturated (<code>full token usage</code>
-0.97, ~39 k tok/s), so the best reordering (shortest-prefill-first) already reaches ~3% of the ceiling.
+<li><b>Scheduling / reordering.</b> Below the load knee the waiting queue is shallow (median depth ≈0,
+bursts to p90≈9) and, decisively, the p99 TTFT is the biggest cold documents' own prefill time — a
+per-request floor reordering cannot push below — so order has little leverage and goodput is a
+cold-document collision coin-flip; above the knee the queue is deep but the GPU is compute- and
+KV-memory-saturated (<code>full token usage</code> 0.97, ~39 k tok/s), so the best reordering
+(shortest-prefill-first) already reaches ~3% of the ceiling.
 Near-zero headroom.</li>
 </ul>
 <p>

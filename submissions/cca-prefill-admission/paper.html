@@ -54,8 +54,8 @@ reduction is not significant at feasible n (Levene p=0.15). We conclude that, at
 goodput@SLO is
 <b>cold-prefill-compute-bound</b>:
 prefill admission control cannot reliably clear it (and cost-blind deferral is dangerous), because the
-stock collapse is <b>not</b> retraction-driven (stock retracts <b>zero</b> times) and the queue is empty
-— capping a pool that was never the bottleneck cannot help. Along the way we report a sharp systems lesson: a
+stock collapse is <b>not</b> retraction-driven (stock retracts <b>zero</b> times) and the p99 tail is a
+per-request cold-prefill floor, not a queueing delay — capping a pool that was never the bottleneck cannot help. Along the way we report a sharp systems lesson: a
 per-rank wall-clock decision in the TP scheduler desynchronizes the ranks' prefill batches and
 deadlocks the NCCL collectives — admission decisions in tensor-parallel serving must be deterministic.
 </div>
@@ -175,10 +175,13 @@ full <code>#new-token: 6144</code> budget (the frozen <code>--chunked-prefill-si
 clock can stop. Two regimes then follow directly from the measured waiting-queue depth:
 </p>
 <ul>
-<li><b>Below the knee (λ=3): the queue is empty.</b> Steady-state <code>#queue-req≈0</code>; requests are
-served on arrival. With nothing to reorder or defer, admission <em>and</em> scheduling order are both
-inert — goodput is decided purely by whether heavy cold documents happen to collide in time (§2.2's
-coin-flip). This is why CCA is neutral here (§4) and why a reordering policy cannot help here either.</li>
+<li><b>Below the knee (λ=3): the queue is shallow and the p99 is a per-request prefill floor.</b> The
+waiting queue is mostly empty (median depth ≈0, ~half the steps) with only shallow bursts (p90≈9,
+max≈27); more importantly, the p99 TTFT is the <em>biggest cold documents' own prefill time</em>
+(5–11&nbsp;s, §2.3), a per-request floor that no reordering can push below. So admission and scheduling
+order have little leverage here — not because there is literally nothing queued, but because the tail is a
+compute floor, not a queueing delay — and goodput is decided by whether heavy cold documents happen to
+collide in time (§2.2's coin-flip). This is why CCA is neutral here (§4) and why reordering cannot help.</li>
 <li><b>Above the knee (λ≥5): the queue is deep but the GPU is saturated.</b> <code>#queue-req</code> runs
 20–183 while <code>full token usage</code> holds at 0.96–0.98 and per-step prefill input throughput sits
 at ~39k&nbsp;tok/s — the engine is <em>simultaneously compute- and KV-memory-bound</em>. Reordering the
@@ -252,17 +255,19 @@ Fligner p=0.16) on this heavy-tailed distribution. <span class="todo">[The sprea
 test is underpowered at feasible n (p≈0.11 at n=4/5) on this heavy-tailed coin-flip.]</span></li>
 </ul>
 <p><b>Why doesn't reordering rescue it at λ=3?</b> Because at λ=3 — where the goodput coin-flip lives —
-there is almost nothing to reorder: the server waiting queue has <b>median depth 0</b> (empty 56% of
-the time), so a request's TTFT is dominated by its own prefill compute, not by queueing behind others.
-Reordering an empty queue cannot help at λ=3; only <em>deferring</em> (artificially queueing) a cold
-prefill changes its TTFT — for the worse. (At higher rates a real queue forms, and shortest-first
-reordering (SJF/SRPF) becomes a genuine lever — but that raises the operating point, it does not fix
-the λ=3 coin-flip; it is orthogonal to the admission-control question studied here and we do not
-evaluate it.)</p>
+the waiting queue is shallow (median depth ≈0, empty about half the time, with only shallow bursts to
+p90≈9), and, decisively, a request's TTFT is dominated by <em>its own</em> prefill compute, not by
+queueing behind others: the p99 is the biggest cold documents' own 5–11&nbsp;s prefill (§2.3), a
+per-request floor. Reordering can at best shave the small queueing component; it cannot push a request
+below its own prefill time, so it cannot move the p99 tail at λ=3. Only <em>deferring</em> (artificially
+queueing) a cold prefill changes its TTFT — for the worse. (At higher rates a real queue forms, and
+shortest-first reordering (SJF/SRPF) becomes a genuine throughput lever — but that raises the operating
+point, it does not fix the λ=3 coin-flip; it is orthogonal to the admission-control question studied here
+and we do not evaluate it.)</p>
 <p><b>The scoped bound.</b> At the λ=3 coin-flip, goodput@SLO is <b>cold-prefill-compute-bound</b>:
 caching is near its ceiling (75% cold, LRU≈Belady), transfer is cheap, the stock system does not
-retract, and the queue is empty — so prefill <em>admission control</em> (the natural overload remedy)
-has no purchase and deferring only hurts. The one thing admission control <em>does</em> do —
+retract, and the p99 is a per-request cold-prefill floor (not a queueing delay) — so prefill
+<em>admission control</em> (the natural overload remedy) has no purchase and deferring only hurts. The one thing admission control <em>does</em> do —
 load-back-only gating (§4, below) — tightens the λ=3 p99 distribution ~5.7× (a predictable tail) but at
 the same mean and no higher pass-rate (it removes the lucky-lows with the unlucky-highs), so it does not
 cross the 8&nbsp;s line. The genuine goodput levers

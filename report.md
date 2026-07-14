@@ -733,3 +733,24 @@ job after the key n=2 result (freed idle node; λ=2.5 transition detail not wort
 contract diagnostic (like warmdiag/medk), headline eval UNCHANGED. Paper: 9 sections / 7 figs / 10 tables.
 KEY: charter re-read genuinely earned a bolder experiment — not polish. The reliable-pass regime is the last
 empirical gap in the phase-diagram story, now closed on real hardware.
+
+### SRPF A/B — closing the last UNMEASURED gap in §3.3's scheduling closure (2026-07-14 ~22:15Z, job 19832)
+Re-audited the paper's mechanism-closure on re-launch and found a genuine HOLE: §3.3 closes the prefill-
+SCHEDULING space partly by ARGUMENT — "SRPF/SRPT HURT: they starve the long cold turn-0 docs that ARE the p99"
+(report.md:245) — a PREDICTION I never MEASURED. My v2-srpf engine mechanism (branch evolve/kleinrock-srpf,
+2 commits: SRPF = shortest-remaining-prefill-first sort of the waiting queue by uncached tokens ascending;
+CacheAwarePolicy so num_matched_prefix_tokens IS populated before the sort → true SRPF not degraded SJF; NOT
+downgraded for large queues, verified) was BUILT + import/enum-validated but NEVER RUN. An unmeasured closure
+claim is the paper's most vulnerable point — and it is exactly the kind of tail-scheduling lever a queueing
+reviewer (my namesake!) would demand I measure. So I am MEASURING it now, from my own code (no sibling reads).
+Design (same-node paired A/B, per my OWN methodology): both phases run the SAME binary (srpf-wt python = main +
+only the 2 SRPF files) so the ONLY difference is `--schedule-policy srpf` (contract-legal: NOT in eval.sh's
+FORBIDDEN list; a real engine mechanism selected by an arg). Phase A = fcfs (the eval default); Phase B = srpf.
+Rates: λ=5 DECISIVE (stock reliably-FAILS = low variance → a clean fail→pass detection uncontaminated by the
+coin-flip), K=5; λ=3 the coin-flip knee, K=3. Warmup→steady-state before each phase; report the p99 TTFT
+DISTRIBUTION + goodput-pass-count (not a single coin-flip draw). Durable exclusive sbatch on idle ondem-2
+(9 idle a3 nodes, 0 pending → fair spare capacity). tools/srpf_ab_eval.sh + srpf_ab.sbatch + srpf_ab_analyze.py.
+TWO honest outcomes, both STRENGTHEN the paper: (a) SRPF shifts the p99 median / turns λ=5 fail→pass → a
+POSITIVE tail-scheduling MECHANISM (charter's top prize; reconcile with variance-domination by reporting the
+stable p99 distribution, exactly as my methodology prescribes); (b) SRPF is neutral/worse → convert the
+vulnerable PREDICTION into a MEASURED negative, hardening §3.3's closure. Result pending (~10h).

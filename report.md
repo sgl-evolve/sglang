@@ -76,6 +76,21 @@ is cold-prefill-compute-bound and no lossless KV mechanism shifts it beyond the 
   was functioning normally up to the freeze). Killed, not logged. **Re-run SERIALLY** (no
   concurrent floyd eval) on ondem-3 after v0-stock finishes → clean same-node A/B pair.
 
+### Live-scheduler findings (from baseline server.log, shape the interpretation)
+- **KV device pool ≈ 2.4M tokens.** Pool usage is **BIMODAL**: hundreds of samples at 0.00–0.03
+  (lulls) AND hundreds at 0.91–1.00 (near-saturation), incl. 18 events at exactly 1.00. This
+  oscillation is the direct signature of the metastable instability; CCA damps it (capped 0.70).
+- **λ=3:** KV pool spikes to 1.00 in bursts (bursty arrivals → server queue + pool saturation →
+  TTFT tail). This is CCA's clearest lever.
+- **λ=5:** system is **client-concurrency-capped** (running-req pinned at max-concurrency 256),
+  KV pool avg ~0.40 (still spikes to 1.00), **mamba usage 0.75**, server queue ~0. With an empty
+  server queue, CCA has little to defer at λ≥5 → CCA likely INERT at high rates; the binding
+  constraint there is concurrency/throughput/mamba, not the KV-pool.
+- **Implication:** CCA's expected contribution is **stabilizing the λ=3 goodput coin-flip**
+  (FAIL→reliable PASS by preventing transient pool saturation), NOT lifting goodput to higher
+  rates (concurrency-bound). An honest, still-publishable framing IF λ=3 reliably passes.
+  Must verify same-node, n≥2, vs the baseline coin-flip.
+
 ## Formal Submissions
 
 (none yet — awaiting complete same-node CCA curve to judge whether pool-control → p99/goodput win)

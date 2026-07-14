@@ -1314,6 +1314,14 @@ class ServerArgs:
         "what actually pressures the KV pool; ignoring load-back lets reuse-heavy "
         "load-backs saturate the pool (measured: 0->518 retracts + crash).",
     ] = False
+    cca_gate_loadback_only: A[
+        bool,
+        "Refined mechanism: gate ONLY large L2->L1 load-backs (reuse turns), never "
+        "cold prefills. Classifier = host_hit_length (load-back size); the watermark "
+        "projection still uses device footprint. Rationale: the p99 tail IS the cold "
+        "prefills, so they must NEVER be deferred; but load-back bursts (60% of hits "
+        "are L2) drive the pool-saturation stalls, so pacing them protects the tail.",
+    ] = False
     cca_max_defer_passes: A[
         int,
         "Safety valve: an expensive prefill deferred this many scheduler passes "

@@ -1087,6 +1087,9 @@ class Scheduler(
         self.cca_ignore_loadback = bool(
             getattr(self.server_args, "cca_ignore_loadback", False)
         )
+        self.cca_gate_loadback_only = bool(
+            getattr(self.server_args, "cca_gate_loadback_only", False)
+        )
         # DETERMINISTIC valve: force-admit after this many deferral passes. Must
         # NOT use wall-clock — a per-rank clock desyncs TP ranks' prefill batches
         # and hangs the NCCL collectives (root-caused: 4/4 CCA runs hung).
@@ -2983,11 +2986,19 @@ class Scheduler(
             # deferral COUNT (identical across TP ranks) — never wall-clock,
             # which would desync ranks' prefill batches and hang NCCL.
             if cca_active:
-                cca_cost = self._cca_prefill_cost(req)
+                cca_foot = self._cca_prefill_cost(req)  # device footprint (projection)
+                # Classifier for "is this expensive enough to gate": device
+                # footprint by default; in loadback-only mode, the L2->L1 load-back
+                # size (host_hit_length) so COLD PREFILLS (host_hit_length~0) are
+                # NEVER gated — only big reuse-turn load-backs are paced.
+                if self.cca_gate_loadback_only:
+                    cca_class = int(getattr(req, "host_hit_length", 0) or 0)
+                else:
+                    cca_class = cca_foot
                 if (
-                    cca_cost > self.cca_threshold
+                    cca_class > self.cca_threshold
                     and len(self.running_batch.reqs) > 0
-                    and (cca_base_used + cca_admitted + cca_cost) > cca_limit
+                    and (cca_base_used + cca_admitted + cca_foot) > cca_limit
                 ):
                     n_def = getattr(req, "_cca_defers", 0)
                     if n_def < self.cca_max_defer_passes:
@@ -3003,7 +3014,7 @@ class Scheduler(
                 truncation_align_size=self.truncation_align_size,
             )
             if cca_active and res == AddReqResult.CONTINUE:
-                cca_admitted += cca_cost
+                cca_admitted += cca_foot
 
             if self.enable_lora:
                 running_loras.add(req.lora_id)

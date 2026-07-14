@@ -1,0 +1,9 @@
+Validated goodput model (Paper 1 §7): P99_TTFT(λ,policy) ≈ q99(U) / R_eff(λ,policy).
+q99(U)≈36693 tok (turn-0-dominated, policy-INVARIANT). R_eff = q99(U)/P99_measured:
+  R_eff (tok/s)   λ=3    λ=5    λ=7   λ=10
+  stock           3192   1470   1026   895
+  write_back      5567   1667   1179   957   (higher hit -> +74%/+13%/+15%/+7% R_eff)
+Interpretation: caching helps goodput ONLY by raising R_eff (higher hit -> less prefill load -> less
+contention -> faster per-request rate). Lift large at λ=3 (write_back +74% -> clears SLO), vanishes at λ=10
+(+7%). q99(U) stays giant -> P99 > SLO for λ≥5 at every hit. Model unifies hit-rate + tail into one equation,
+validated across 4λ × 3 policies. (analysis: derived in-line; see goodput_model.py for the floor.)

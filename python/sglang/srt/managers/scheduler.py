@@ -2804,10 +2804,26 @@ class Scheduler(
         # Get priority queue
         self.policy.calc_priority(self.waiting_queue, self.running_batch)
 
+        # Queue-Pinned KV: pin all waiting requests' matched prefixes so that
+        # intra-iteration eviction (triggered by add_one_req for one request)
+        # cannot evict another waiting request's matched prefix.
+        queue_pins = []
+        if os.environ.get("QUEUE_PIN", "0") == "1":
+            for req in self.waiting_queue:
+                node = getattr(req, "last_node", None)
+                if node is not None and node is not self.tree_cache.root_node:
+                    try:
+                        result = self.tree_cache.inc_lock_ref(node)
+                        queue_pins.append((node, result.to_dec_params()))
+                    except Exception:
+                        pass
+
         if TEST_RETRACT and running_bs > TEST_RETRACT_NO_PREFILL_BS:
-            # If we are testing retraction and the running batch size exceeds
-            # TEST_RETRACT_NO_PREFILL_BS, we skip the prefill to keep the requests
-            # in the waiting queue.
+            for pin_node, pin_params in queue_pins:
+                try:
+                    self.tree_cache.dec_lock_ref(pin_node, pin_params)
+                except Exception:
+                    pass
             return None
 
         # Determine chunked_prefill_size for this batch
@@ -2929,10 +2945,22 @@ class Scheduler(
         # Update waiting queue
         can_run_list: List[Req] = adder.can_run_list
         if len(can_run_list) == 0:
+            for pin_node, pin_params in queue_pins:
+                try:
+                    self.tree_cache.dec_lock_ref(pin_node, pin_params)
+                except Exception:
+                    pass
             return None
 
         can_run_set = set(can_run_list)
         self.waiting_queue = [x for x in self.waiting_queue if x not in can_run_set]
+        # Release queue pins (both for served and remaining waiting requests)
+        for pin_node, pin_params in queue_pins:
+            try:
+                self.tree_cache.dec_lock_ref(pin_node, pin_params)
+            except Exception:
+                pass
+
         if adder.preempt_list:
             for req in adder.preempt_list:
                 self._add_request_to_queue(req)

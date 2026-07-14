@@ -269,3 +269,34 @@ below the knee + ≤3% of the compute ceiling above it (sibling SRPF already the
 could raise the 4.22 wall is reducing cold first-turn prefill COST (context/sequence parallelism,
 compression, quantization) — all either lossy or frozen by the contract (`--tp 8`, model, KV budget).
 Paper 1 deepened with §2.4 to make this the definitive characterization; no fragile/derivative paper 2.
+
+## ★★ PAPER 2 — `corpus-bound-goodput` — SUBMITTED v1 (caching axis; commit 3e3a36543)
+
+Opened a NEW direction (caching/document-reuse) and found a distinct, rigorous negative:
+**the document-reuse mirage.** The workload LOOKS like a caching goldmine (45% of conversations reuse a
+document another already prefilled; 2 documents serve 41% of conversations) but yields ZERO online
+caching headroom:
+- **Corpus structure** (`analysis/doc_reuse.py`): 888 unique docs / 1553 convs; DEGENERATE popularity —
+  858 docs (97%) used exactly once, only 2 hot (538×, 100×); hot-doc reuse distance median=2 convs.
+- **PROOF (trace replay @ CAP 10.7M):** single-pass **LRU = LFU = Belady = 0 avoidable re-prefill** →
+  LRU is Belady-OPTIMAL; every miss is a first-sight unique-doc prefill (cold floor 18.4M tok,
+  policy-invariant). Hot docs trivially resident; singletons have no reuse to capture.
+- **The 55M "avoidable" is a benchmark artifact** of the 4×-rate replay (same convs, no flush), and it is
+  online-UNCAPTURABLE (LFU 54M ≈ LRU 55M; only clairvoyant Belady 23M recovers it).
+- **Eviction knob DEAD on the active path:** `HiMambaRadixCache.evict()` hardcodes `last_access_time`
+  (LRU) and ignores `--radix-eviction-policy` (wired only into non-hier `RadixCache`) → no confounded
+  A/B needed; negative holds by proof AND construction.
+- **Corpus-bound model + control-invariance:** goodput ≤ C/mean-unique-work (~4.2); p99 ≥ max-unique-doc/C
+  (~5–11s); invariant across ALL 3 control axes (caching=here, admission=paper1, scheduling=oracle).
+
+## DIRECTION 3 (open): context-parallel prefill for the cold-doc tail
+
+The p99 floor = biggest cold docs' own prefill time is the one thing irreducible under serving POLICY.
+The only compute-side lever is parallelizing a single doc's prefill. My prior "CP blocked by fixed tp"
+note was WRONG: `--enable-prefill-cp` + `--attention-context-parallel-size` are legal (NOT in FORBIDDEN),
+run CP over the 8 TP ranks (attn_cp_size = tp_size//dp_size = 8), fa3 backend HAS a CP-extend path, and
+model_runner explicitly supports "MHA-arch prefill CP (Qwen3/Qwen2 MoE)". Open risk = hybrid MAMBA layers
+under CP. Plan: GPU smoke-test `--enable-prefill-cp --attention-context-parallel-size 8 --cp-strategy
+zigzag`; if it loads + is lossless + cuts big-doc TTFT → NOVEL mechanism = ADAPTIVE CP (invoke only for
+heavy-tail cold docs, since CP comms overhead hurts small prefills — ties to the bimodal-cost finding).
+If incompatible → bounded finding (the last lever unavailable; wall stands).

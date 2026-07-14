@@ -233,6 +233,16 @@ Paper 1 → flip draft→submitted.
   Evidence: 7 W&B versions (v0/v1_stock/v1b_stock/v2_flat2/v2b_flat2/v3_wb/v3b_wb), all numbers match runs/.
   2 figures. Node released.
 
+## ★ Direction 3: conversation co-residency = LPM scheduling (--schedule-policy lpm, NOT forbidden) — NEUTRAL
+Tested LPM (longest-prefix-match = prioritize continuations = conversation co-residency, the charter's listed
+target) directly on the real eval (v4_lpm, same node 0-3, schedule_policy='lpm' confirmed). @λ=3: hit **0.6792**
+vs stock fcfs 0.6753/0.6762 = **+0.3pp (NEUTRAL)**; p99 7801 (within coin-flip band). ⇒ co-residency scheduling
+does NOT move hit/goodput — consistent w/ the impossibility (reordering admission can't change the
+concurrency-capped working set or the uncacheable giant-turn-0 tail; matches siblings' "lpm NEUTRAL"). This
+CLOSES the last cheaply-testable axis with my own direct evidence → Paper 1 becomes a DEFINITIVE design-space
+impossibility (admission=crater, write-policy=config-ceiling, eviction=LRU≈Belady+zoo, co-residency=LPM-neutral,
+transfer=1.65ms-nonbinding, compute=O(D²)-irreducible). (Full LPM sweep λ=5-10 running for multi-λ picture.)
+
 ## ★ Two-metric split (Paper 1 v3, integrity correction + genuine finding)
 Peak throughput is NOT the "decode-bound ~flat" control the protocol assumes: write_back reaches peak **5.11
 req/s / 653 tok/s vs stock 4.14 / 530 = +23%** → the workload is **PREFILL-bound** at saturation (giant

@@ -149,14 +149,18 @@ metastable. But stock retracts 0 times: saturation is handled by prefill-admissi
 <p>
 Two assumption-light, trace-driven bounds make "cold-prefill-compute-bound" quantitative.
 <b>(1) Goodput ceiling (work-conservation).</b> No scheduler can sustain a request rate whose prefill
-work exceeds the GPU's prefill throughput: goodput@SLO ≤ peak&nbsp;req/s = C&nbsp;/&nbsp;mean-work. The
-measured peak is ~4.2&nbsp;req/s, implying an effective prefill capacity C&nbsp;≈&nbsp;4.2&nbsp;×&nbsp;3594
-≈&nbsp;15k&nbsp;tok/s (decode shares the GPU, pulling C well below the 40k&nbsp;tok/s batched-prefill
-peak). Any lossless mechanism — caching, admission, or reordering — is capped here; the best reported
-scheduler (shortest-prefill-first) reaches ~4.1&nbsp;req/s, i.e. it is already at the ceiling.
+work exceeds the GPU's prefill throughput: goodput@SLO ≤ peak&nbsp;req/s = C&nbsp;/&nbsp;mean-work. At the
+LRU capacity that reproduces the <em>measured</em> hit rate (0.677), the mean cache-adjusted work is
+≈&nbsp;4.3k&nbsp;tok, so the measured peak of ~4.2&nbsp;req/s implies an effective prefill capacity
+C&nbsp;≈&nbsp;4.2&nbsp;×&nbsp;4.3k&nbsp;≈&nbsp;<b>18k&nbsp;tok/s</b>. This agrees, independently, with the
+throughput read straight off the saturated run — input&nbsp;throughput&nbsp;×&nbsp;(1−hit)&nbsp;≈&nbsp;
+59.9k&nbsp;×&nbsp;0.33&nbsp;≈&nbsp;<b>19k&nbsp;tok/s</b> of new-token prefill (decode shares the GPU,
+pulling C well below the ~39k&nbsp;tok/s <em>instantaneous</em> prefill-step rate). Any lossless
+mechanism — caching, admission, or reordering — is capped here; the best reported scheduler
+(shortest-prefill-first) reaches ~4.1&nbsp;req/s, i.e. it is already at the ceiling.
 <b>(2) p99-TTFT floor.</b> A request's TTFT cannot be smaller than its own prefill time. The p99
-cache-adjusted work is 40.6k&nbsp;tok and the max is 190.9k&nbsp;tok; at the effective single-doc prefill
-rate (~15–40k&nbsp;tok/s under chunking) the largest cold documents cost <b>~5–13&nbsp;s of prefill by
+cache-adjusted work is ~41k&nbsp;tok and the max is 190.9k&nbsp;tok; at the effective single-doc prefill
+rate (~18–39k&nbsp;tok/s under chunking) the largest cold documents cost <b>~5–11&nbsp;s of prefill by
 themselves</b> — straddling the 8&nbsp;s SLO. So the metric is <em>fragile by construction</em>: whether
 a run passes depends on whether its heaviest cold documents land just under or just over the floor —
 exactly the coin-flip of §2.2, and exactly what no admission/residency mechanism can move.</p>

@@ -55,8 +55,9 @@ change (LPM co-residency) <em>appears</em> to raise C by lifting K ~11% at fixed
 <em>orthogonal</em> levers on the <em>same</em> ceiling. (2)&nbsp;<b>An intrinsic-feasibility floor.</b> Using the calibrated K we show every
 request is <em>solo-feasible</em>: even the largest document (191&nbsp;K tokens) prefills alone in 6.95&nbsp;s,
 under the 8&nbsp;s SLO; the p99 request needs only 1.3&nbsp;s. Therefore <b>every SLO violation is contention/
-queueing, never irreducible service time</b>, and the offline-optimal goodput equals the capacity ceiling:
-<b>goodput@SLO<sub>offline</sub> = C(h,K)</b>. (3)&nbsp;<b>The frontier.</b> Combining the law with a stability
+queueing, never irreducible service time</b>&mdash;so the capacity ceiling bounds the offline-optimal goodput
+(<b>goodput@SLO<sub>offline</sub> &le; C(h,K)</b>) and, crucially, the gap up to C is <em>contention, not service</em>,
+so an ideal scheduler approaches C. (3)&nbsp;<b>The frontier.</b> Combining the law with a stability
 argument (offered&nbsp;&gt;&nbsp;C &rArr; unbounded queue &rArr; p99 diverges), we show the SLO binds strictly
 <em>below</em> C: measured online goodput sits at ~3 req/s&mdash;<em>flat across hit rate</em>&mdash;while C rises
 from 2.4 to 5.1. The whole <b>[3,&nbsp;C] gap is a contention/scheduling problem</b>, which is exactly why
@@ -226,11 +227,15 @@ the "solo TTFT" (isolation makes it strictly faster):</p>
 <div class="keyfinding">
 <b>Every request is solo-feasible.</b> The p99 request needs &le;1.3&nbsp;s; even the single largest document
 (191&nbsp;K tokens) prefills in &le;6.95&nbsp;s&mdash;<em>under</em> the 8&nbsp;s SLO (and faster still with isolation). Therefore <b>no SLO violation is
-irreducible service time; every violation is contention or queueing delay.</b> A clairvoyant, work-conserving
-scheduler operating below the capacity C could meet the SLO for every request, so:
-<div class="eq"><b>goodput@SLO<sub>offline</sub> = C(h,K).</b></div>
-The offline-optimal goodput <em>equals</em> the capacity ceiling. This is the tightest possible upper bound on
-the entire scheduling axis, and it is reached, in principle, by contention management alone.</div>
+irreducible service time; every violation is contention or queueing delay.</b> Two consequences follow:
+<div class="eq"><b>goodput@SLO<sub>offline</sub> &le; C(h,K)</b> &nbsp;(stability), &nbsp;&nbsp; and the gap to C is
+<b>contention, not service</b> (feasibility floor).</div>
+The capacity ceiling C is the supremum of the scheduling axis (stability bound); the feasibility floor shows the
+distance from the measured online goodput up to C is entirely queueing/contention&mdash;so an ideal
+contention-managing scheduler <em>approaches</em> C, limited only by near-capacity queueing (p99 wait grows as
+&lambda;&rarr;C). Because the p99 request carries 6&times; service-time slack (1.3&nbsp;s vs 8&nbsp;s), that slack
+absorbs substantial queueing, so the reachable offline goodput sits close to C rather than far below it. The key
+qualitative claim is exact: <em>the tail is not the binding constraint&mdash;contention is.</em></div>
 <p class="note">Caveat: at the very tail (p99.9&nbsp;&rarr;&nbsp;max) solo time approaches the SLO, so if K were
 ~15% lower the single largest document would become intrinsically infeasible. But goodput@SLO is defined at the
 p99, where the margin is 6&times; (1.3&nbsp;s vs 8&nbsp;s); the conclusion is robust at the metric's percentile.</p>
@@ -374,7 +379,8 @@ hierarchy&mdash;the cache lever, which in our law moves (1&minus;h). Each propos
 Our contribution is orthogonal and unifying: not a mechanism but a <em>bound and a law</em>. We (i) give a
 closed-form capacity ceiling C=K/(1&minus;h) that <em>separates</em> the cache term (1&minus;h) from the
 scheduling/hardware term (K) and shows they act on one ceiling; (ii) prove, via the intrinsic-feasibility floor,
-that offline goodput <em>equals</em> that ceiling; and (iii) use the two together to explain the otherwise-puzzling
+that offline goodput is <em>bounded by</em> that ceiling and that the gap to it is contention (not service), so an
+ideal scheduler approaches C; and (iii) use the two together to explain the otherwise-puzzling
 fact that a cache-driven throughput gain (+23%) does not become a goodput gain. The scalar identity C=R/E[U] is
 roofline folklore; what is new is the <b>invariant-K/(1&minus;h) decomposition</b>, the <b>solo-feasibility proof
 that the offline goodput bound is exactly C</b>, and the resulting <b>design principle</b> that caching and

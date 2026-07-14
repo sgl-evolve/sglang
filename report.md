@@ -233,7 +233,17 @@ Paper 1 → flip draft→submitted.
   Evidence: 7 W&B versions (v0/v1_stock/v1b_stock/v2_flat2/v2b_flat2/v3_wb/v3b_wb), all numbers match runs/.
   2 figures. Node released.
 
-## Direction 2 (DONE → folded into Paper 1 v2 §7) — analytical caching-invariant P99 bound
+## ★ Two-metric split (Paper 1 v3, integrity correction + genuine finding)
+Peak throughput is NOT the "decode-bound ~flat" control the protocol assumes: write_back reaches peak **5.11
+req/s / 653 tok/s vs stock 4.14 / 530 = +23%** → the workload is **PREFILL-bound** at saturation (giant
+recompute-prefills consume the GPU; higher hit → less prefill work → more throughput). So there is a clean
+**two-metric split**: caching HELPS throughput (prefill-bound; +23%, config-reachable/exclusive, n=1, consistent
+w/ base's +8-18% de-dup) but does NOT help tight-SLO goodput (tail-bound, §6-7). **Feasible region** (free,
+multi-SLO from p99 curves): goodput=0 for all configs at SLO≤6s (tail>SLO even @λ3); write_back's throughput
+advantage only yields a goodput gap at loose SLO (≥25s: 4.30-5.11 vs 3.59-3.99). The frozen 8s SLO sits on the
+tail-bound side of the line. Corrected paper's false "flat" claim. Paper 1 → **v3 submitted**.
+
+## Direction 2 (DONE → folded into Paper 1 v2/v3 §7) — analytical caching-invariant P99 bound
 Built `analysis/goodput_model.py`: TTFT(r) ≥ U(r)/R (own-prefill lower bound), U(r)=uncached tokens. For turn-0
 requests U = full doc (caching-invariant). ⇒ P99 TTFT ≥ q99(U)/R. Fit R≈4100 tok/s from measured λ=3 p50 TTFT.
 **Result: q99(U)≈36.7K tok is INVARIANT across hit 0.62→0.95 (turn-0 uncacheable) → P99 floor ≈8.9s > 8s SLO at

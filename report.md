@@ -96,6 +96,29 @@ is cold-prefill-compute-bound and no lossless KV mechanism shifts it beyond the 
   rates (concurrency-bound). An honest, still-publishable framing IF λ=3 reliably passes.
   Must verify same-node, n≥2, vs the baseline coin-flip.
 
+### v1-cca (recompute-currency) — NEGATIVE + crash
+- Currency = input − device_prefix − host_hit_length (recompute cost). **HARMFUL:** where stock has
+  **0 retracts**, recompute-CCA drove the pool to **0.99 → 518 retracts → watchdog CUDA crash.**
+- **Why:** it throttles cold prefills but NOT big L2→L1 load-backs (recompute≈0 for reuse turns), so
+  it shifts load toward decode-concurrency that overruns the pool → retraction cascade. The recompute
+  currency MISSES the device-footprint of load-back. (3 recompute/early runs also hit NCCL hangs.)
+
+### v2-cca-df (device-footprint currency) — mechanism FIXED, measurement in progress
+- Currency = input − device_prefix (counts the load-back KV). **Caps the pool** (validated: peak 0.55
+  during the cold warmup burst, **0 retracts**) — the fix works at the control level. But 3/3 CCA runs
+  so far FAILED to complete on ondem-3 (hangs at pool 0.10 / 0.17, one crash at 0.99); ondem-3 may have
+  degraded over hours. Re-testing on a health-checked node (stock-r2 first, then v2-cca-df, same-node).
+
+### ⚠ Emerging thesis reframe (honest)
+Stock has **0 retracts** and completes — its goodput=0 is a **cold-prefill-compute p99 tail**, NOT a
+retraction cascade. So CCA's premise ("prevent the retraction cliff") is only half-right: there is no
+stock retraction to prevent. And **deferring** expensive prefills is *misaligned* with goodput@SLO,
+because the SLO tail IS the expensive cold prefills — delaying them can only hurt their TTFT. Likely
+outcome: a **rigorous bounded-negative** — goodput@SLO here is cold-prefill-compute-bound; no
+lossless *deferring* admission/scheduling mechanism improves it (device-footprint CCA caps the pool
+but cannot beat the ~6s largest-cold-doc compute floor). Needs one clean device-footprint CCA curve
+to measure (in progress).
+
 ## Formal Submissions
 
-(none yet — awaiting complete same-node CCA curve to judge whether pool-control → p99/goodput win)
+(none yet — awaiting one clean device-footprint CCA curve to finalize win-vs-rigorous-negative)

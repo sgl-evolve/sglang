@@ -1,0 +1,3 @@
+# Diagnostic: stock health-check/replicate, then device-footprint CCA (decisive), same-node ondem-3
+v0-stock-r2:
+v2-cca-df:--enable-cca-prefill --cca-watermark 0.85 --cca-threshold 4096 --cca-max-defer-ms 4000

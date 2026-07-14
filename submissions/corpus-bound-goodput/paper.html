@@ -121,6 +121,11 @@ conversations, so LRU never evicts it before its next use. There is no third cas
 help: the workload contains no document that is re-used <em>far</em> enough in the future to be evicted
 by LRU yet <em>often</em> enough to be worth keeping. Every cache miss is therefore a first-sight
 prefill of one of the 888 unique documents. <b>The cold floor is 18.4M tokens and is policy-invariant.</b>
+(A coarser conversation-prefix model that treats all 1553 conversations as simultaneously active —
+a round-robin over the full set — reports up to ~24% "avoidable" recompute; that is an upper bound
+induced by the all-active assumption. The document-keyed, arrival-ordered analysis here shows the
+<em>realizable</em> avoidable work is ≈0 at the actual concurrency and reuse distances, consistent with the
+measured hit rate sitting at the online optimum.)
 </p>
 <h3>3.2 The only "avoidable" work is a benchmark artifact — and un-capturable online</h3>
 <p>

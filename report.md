@@ -57,13 +57,18 @@ is cold-prefill-compute-bound and no lossless KV mechanism shifts it beyond the 
 ### v0_official (supervisor baseline, λ=3 only)
 - hit_rate=0.6217, TTFT p50=750ms, p99=6326ms, req/s=2.78, tok/s=355; load_back 1.6ms (NOT bottleneck).
 
-### v0-stock (my baseline, ondem-3, job 19730) — IN PROGRESS
-- **λ=3:** req/s=2.87, tok/s=367.5, p50=1056ms, **p99=11787ms → FAILS 8s SLO.** hit=0.6777.
-- **Key live observation:** stock hit **full KV-pool usage = 1.00 ten times** during λ=3
-  (pool saturates in bursts → prefill admission stalls → TTFT tail spikes). p50 is fine
-  (1s) but p99 is 11.8s — confirms the tail is a few pool-saturation/large-cold-prefill events,
-  not steady-state. This run landed on the FAIL side of the known λ=3 coin-flip.
-- λ=5/7/10 pending.
+### v0-stock (my baseline, ondem-3, job 19730)
+- **Curve (all p50 fine ~1s; all p99 FAIL 8s SLO):**
+  | λ | req/s | tok/s | p50 | **p99** | hit |
+  |---|---|---|---|---|---|
+  | 3 | 2.87 | 368 | 1056 | **11787 FAIL** | 0.678 |
+  | 5 | 3.66 | 468 | 984 | **17372 FAIL** | 0.667 |
+  | 7 | 4.00 | 512 | 1020 | **33961 FAIL** | 0.662 |
+  | 10 | (pending, saturated ~1h) | | | | |
+- **goodput@SLO = 0** this run (no rate passes). Peak req/s ~4.0 (system capacity), peak tok/s ~512.
+- **Key observation:** stock hit **full KV-pool usage 1.00 (18 events)**; pool usage BIMODAL
+  (22% ≥0.90 ↔ 18% ≤0.05). p50 fine, p99 blown — tail = a few pool-saturation/large-cold-prefill
+  events. This run is on the FAIL side of the λ=3 coin-flip (base sibling saw λ=3 p99 range 6.5↔23.7s).
 
 ### v1-cca (first-look screen, node1-2) — WEDGED (JIT race), re-running serially
 - **Mechanism-level evidence (node-independent, valid):** with CCA on, KV-pool usage was

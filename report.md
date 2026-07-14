@@ -350,3 +350,14 @@ Coin-flip MECHANISM (queueing-grounded, novel application to goodput reliability
 - UNIFIES with frontier: the SAME C=K/(1−h) that sets the mean ceiling (Paper 2) sets the reliability via margin.
 - TESTABLE (needs n≥4-5/config, accumulating): fit p99-std vs margin; expect monotone ~1/(C−λ)^p.
 Paper 3 = "Goodput reliability is capacity-margin-governed" — theory DONE, needs replicate data to fit the exponent.
+
+## v5_size λ=10 LANDED (17:57): C=4.67, hit=0.6616 → K=1.580 (+10% vs stock/wb baseline ~1.40) — SUBTLETY
+size (gate giant-doc backup) K=1.444(λ7)/1.580(λ10), RISING with λ, like lpm (K 1.50/1.59) — NOT a pure cache-
+(1-h) point; it appears to ALSO raise K. Hypothesis: gating giant backup cuts host↔device backup I/O (more at
+higher λ) → higher effective prefill throughput R → higher K. So the clean "cache→(1-h), schedule→K" separation
+needs qualification: PURE write-policy variants (stock, wb) define cache-K baseline (CV 2.7%, tight); backup-
+TARGETING (size) and scheduling (lpm) both RAISE K. **★v6_flat (gate ALL backup = max I/O saved) is the decisive
+test:** if backup-gating raises K, flat should show the HIGHEST K; if flat is baseline K, size's high-K is
+noise/other. HOLD Paper 2 Fig 1 fold until v6_flat resolves this (don't overclaim the separation). Cache-K now
+mean 1.430±0.076 CV 5.3% n=6 (widened by size). Honest: present stock/wb/flat as the (1-h) line; size/lpm as
+K-raisers IF v6_flat confirms.

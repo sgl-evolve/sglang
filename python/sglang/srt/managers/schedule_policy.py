@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 import os
 import random
+import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 from enum import Enum, auto
@@ -315,14 +316,29 @@ class SchedulePolicy:
     def _sort_by_shortest_remaining_prefill(
         waiting_queue: List[Req], temporary_deprioritized: Set[int]
     ) -> None:
-        """Sorts the waiting queue by shortest remaining (uncached) prefill first."""
-        waiting_queue.sort(
-            key=lambda r: (
-                (len(r.origin_input_ids) + len(r.output_ids) - r.num_matched_prefix_tokens)
-                if r.rid not in temporary_deprioritized
-                else float("inf")
+        """Sorts the waiting queue by shortest remaining (uncached) prefill first.
+        With SRPF_AGING_S set, requests waiting longer than the threshold get
+        priority over all un-aged requests (FIFO among aged)."""
+        aging_s = float(os.environ.get("SRPF_AGING_S", "0"))
+        if aging_s > 0:
+            now = time.time()
+            def _key(r):
+                if r.rid in temporary_deprioritized:
+                    return (2, 0.0)
+                wait = now - r.time_stats.wait_queue_entry_time
+                if wait > aging_s:
+                    return (0, r.time_stats.wait_queue_entry_time)
+                remaining = len(r.origin_input_ids) + len(r.output_ids) - r.num_matched_prefix_tokens
+                return (1, remaining)
+            waiting_queue.sort(key=_key)
+        else:
+            waiting_queue.sort(
+                key=lambda r: (
+                    (len(r.origin_input_ids) + len(r.output_ids) - r.num_matched_prefix_tokens)
+                    if r.rid not in temporary_deprioritized
+                    else float("inf")
+                )
             )
-        )
 
     @staticmethod
     def _sort_by_dfs_weight(

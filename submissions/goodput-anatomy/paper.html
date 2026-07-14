@@ -203,6 +203,35 @@ hierarchy is built for.</em>
 <tr><td>10</td><td>4.14</td><td>1055</td><td class="fail">41015</td><td>0.6537</td></tr>
 </tbody>
 </table>
+<figure>
+<svg viewBox="0 0 560 300" width="100%" style="max-width:560px" font-family="sans-serif" font-size="12">
+  <line x1="60" y1="250" x2="530" y2="250" stroke="#333"/>
+  <line x1="60" y1="30" x2="60" y2="250" stroke="#333"/>
+  <text x="295" y="285" text-anchor="middle" fill="#333">request rate &lambda; (req/s Poisson)</text>
+  <text x="18" y="140" text-anchor="middle" fill="#333" transform="rotate(-90 18 140)">TTFT (ms, log)</text>
+  <line x1="60" y1="184" x2="530" y2="184" stroke="#eee"/><text x="55" y="188" text-anchor="end" fill="#999">1k</text>
+  <line x1="60" y1="103" x2="530" y2="103" stroke="#8a1c1c" stroke-dasharray="5 3"/><text x="533" y="107" fill="#8a1c1c">8s SLO</text>
+  <line x1="60" y1="94" x2="530" y2="94" stroke="#eee"/><text x="55" y="98" text-anchor="end" fill="#999">10k</text>
+  <line x1="60" y1="35" x2="530" y2="35" stroke="#eee"/><text x="55" y="39" text-anchor="end" fill="#999">40k</text>
+  <text x="60" y="265" text-anchor="middle" fill="#333">3</text>
+  <text x="194" y="265" text-anchor="middle" fill="#333">5</text>
+  <text x="329" y="265" text-anchor="middle" fill="#333">7</text>
+  <text x="530" y="265" text-anchor="middle" fill="#333">10</text>
+  <polyline fill="none" stroke="#8a1c1c" stroke-width="2.5" points="60,100 194,49 329,26 530,20"/>
+  <circle cx="60" cy="100" r="4" fill="#8a1c1c"/><circle cx="194" cy="49" r="4" fill="#8a1c1c"/>
+  <circle cx="329" cy="26" r="4" fill="#8a1c1c"/><circle cx="530" cy="20" r="4" fill="#8a1c1c"/>
+  <text x="200" y="45" fill="#8a1c1c">p99 TTFT</text>
+  <polyline fill="none" stroke="#1a6a1a" stroke-width="2.5" points="60,216 194,216 329,214 530,214"/>
+  <circle cx="60" cy="216" r="4" fill="#1a6a1a"/><circle cx="194" cy="216" r="4" fill="#1a6a1a"/>
+  <circle cx="329" cy="214" r="4" fill="#1a6a1a"/><circle cx="530" cy="214" r="4" fill="#1a6a1a"/>
+  <text x="330" y="232" fill="#1a6a1a">p50 TTFT (flat ~1s)</text>
+  <circle cx="60" cy="130" r="4" fill="#c88" stroke="#8a1c1c"/><text x="66" y="127" fill="#8a1c1c">6.2k replicate — PASSES (coin-flip)</text>
+</svg>
+<figcaption><b>Fig. 2.</b> Stock rate sweep (same node 0-3). p50 TTFT (green) stays flat at ~1&nbsp;s across the
+sweep while p99 (red) explodes 11.5&rarr;41&nbsp;s, all above the 8&nbsp;s SLO &rArr; goodput@SLO&nbsp;=&nbsp;0. The
+pink point is a same-config &lambda;=3 replicate whose p99 is 6.2&nbsp;s (passes) &mdash; the coin-flip. The median
+request is healthy; the goodput failure is entirely a tail phenomenon.</figcaption>
+</figure>
 <p>
 <b>goodput@SLO = 0</b> on this run: every rate violates the 8&nbsp;s p99 SLO. The shape is diagnostic:
 <b>p50 stays ~1&nbsp;s</b> while <b>p99 explodes 11&rarr;41&nbsp;s</b>. The median request is healthy; a small

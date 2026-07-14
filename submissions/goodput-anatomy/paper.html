@@ -166,17 +166,19 @@ threshold ... backs up only hot data, reducing I/O overhead"). We implement the 
 must be re-matched once to earn an L2 copy) and verify it is live: it withholds ~76% of would-be backups.
 </p>
 <div class="keyfinding">
-<b>Result (same-node A/B, &lambda;=3):</b> reuse-gated admission drops hit rate from <b>0.675</b> to
-<b class="fail">0.426</b> (&minus;25&nbsp;pp) and raises p50 TTFT 1017&rarr;1475&nbsp;ms.
-It is a strong <b>negative</b>. <span class="note">(n=1; replicate and multi-&lambda; curve pending; a
-<span class="mono">write_back</span> control&mdash;lazy but never-lost backup&mdash;is queued to isolate that the
-crater is from content <em>loss</em>, not from delayed-backup timing.)</span>
+<b>Result (same-node A/B, &lambda;=3, replicated n=2):</b> reuse-gated admission drops hit rate from stock
+<b>0.6753</b> to <b class="fail">0.4259</b> and <b class="fail">0.4445</b> in two independent runs
+(&minus;23 to &minus;25&nbsp;pp). Because stock hit rate is invariant across runs (&Delta;&lt;0.1&nbsp;pp, &sect;6),
+this &minus;24&nbsp;pp crater is real signal, not coin-flip noise. It is a strong <b>negative</b>.
+<span class="note">(A <span class="mono">write_back</span> control&mdash;lazy but never-lost backup&mdash;is
+queued to further isolate that the crater is from content <em>loss</em>, not delayed-backup timing.)</span>
 </div>
 <table>
 <thead><tr><th>&lambda;=3, same node 0-3</th><th>req/s</th><th>ttft p50</th><th>ttft p99</th><th>hit rate</th></tr></thead>
 <tbody>
 <tr><td>stock (eager write_through)</td><td>2.83</td><td>1017</td><td>11494</td><td>0.6753</td></tr>
-<tr><td>reuse-gated admission (=selective)</td><td>2.91</td><td>1475</td><td>12060</td><td class="fail">0.4259</td></tr>
+<tr><td>reuse-gated admission (=selective), run 1</td><td>2.91</td><td>1475</td><td>12060</td><td class="fail">0.4259</td></tr>
+<tr><td>reuse-gated admission (=selective), run 2</td><td>3.02</td><td>1349</td><td>8182</td><td class="fail">0.4445</td></tr>
 </tbody>
 </table>
 <p>
@@ -288,8 +290,9 @@ scheduling (SRPF/SJF) are the known levers for the &sect;6 tail; we position the
 <li><b>One model/workload/SLO.</b> The bound is specific to a saturated, heavy-tailed, first-sight-dominated
 regime. Under a smaller working set (cache not binding), a looser SLO, or a workload with heavy cross-conversation
 prefix sharing, the cache regains leverage.</li>
-<li><b>Pending evidence.</b> The admission crater is n=1 at &lambda;=3; a replicate, the full multi-&lambda; crater
-curve, and a <span class="mono">write_back</span> control are queued (&sect;5).</li>
+<li><b>Pending evidence.</b> The admission crater is replicated n=2 at &lambda;=3 (&minus;23 to &minus;25&nbsp;pp);
+the full multi-&lambda; crater curve and a <span class="mono">write_back</span> control are queued to complete
+the write-policy space (&sect;5).</li>
 <li><b>Effective prefill rate.</b> The &sect;6 heavy-tail bound depends on the per-request prefill rate under
 concurrency; we report it as a range and will pin it with a controlled single-giant-doc measurement.</li>
 </ul>

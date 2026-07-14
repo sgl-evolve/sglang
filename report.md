@@ -114,6 +114,10 @@ Confirmed live: gate withholds ~76% of would-be L2 backups (gated_skips ≫ back
 |---|---|---|---|---|---|
 | 3 | 2.91 | 1475 ms | 12060 ms | **0.4259** | **−25.0 pp** |
 
+**★ REPLICATED n=2 (same node 0-3, λ=3):** stock 0.6753 vs flat {v2_flat2 0.4259, v2b_flat2 0.4445}
+= **−23 to −25pp crater** (mean flat ≈0.435). Firmly established; hit_rate is invariant across stock runs
+(<0.1pp) so the crater is real signal, not coin-flip noise.
+
 **STRONG NEGATIVE — reuse-gated admission craters hit_rate (−25 pp).** Mechanism: at these loads the
 device (L1) is 84-100% full of running-request KV, so any prefix NOT eagerly backed up to L2 is evicted
 from L1 and **lost before its reuse** → its continuation misses. write_through's eager "back up everything"

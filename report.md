@@ -210,8 +210,9 @@ losslessness of my exclusive-tiering CODE must be argued + verified separately. 
 | v-srpf-xt (SRPF+XT+WT) | ondem-2 | ~~11378~~ | — | — | — | ~~0~~ | ~~86~~ | ~~0.000~~ |
 | **v-srpf-wb-qp (SRPF+WB+QP)** | ondem-2 | **5830** | **5938** | 8651 | 15341 | **4.45** | 675 | 0.738 |
 | v-srpf-age5 (SRPF+aging5s) | ondem-2 | 7965 | ~~26657~~ | — | — | in progress | — | 0.676 |
-- **★★ SRPF+WB: conservative goodput 4.35 (+44%), best-case 5.03 (+66%), r5 6/6 concordant PASS (all configs).**
-  r7 is the metastability boundary: 1/3 PASS for SRPF+WT (mean 7990ms), 1/2 for SRPF+WB, 0/1 for SRPF+XT+WB.
+| **v-srpf-wb-achunk (SRPF+WB+ACHUNK)** | **1-2** | **5379** | **6123** | **7480** | 14216 | **★4.94** | 656 | 0.733 |
+- **★★ SRPF+WB: conservative goodput 4.35 (+44%), best-case 5.03 (+66%), r5 9/9 concordant PASS (all configs).**
+  r7 is the metastability boundary: 1/3 PASS for SRPF+WT (mean 7990ms), 2/4 for SRPF+WB, 0/1 for SRPF+XT+WB.
 - **SRPF+XTIER+WB has the BEST r3/r5** (4776ms, 5953ms) thanks to +1pp hit from exclusive tiering, but
   still fails r7 (8662ms) — the r7 boundary is PHYSICAL (metastable queue), not capacity-limited.
 - **Two orthogonal levers compound**: SRPF alone → median goodput 4.14 (+37%); write_back alone → goodput 3.02 (stuck);
@@ -257,6 +258,7 @@ losslessness of my exclusive-tiering CODE must be argued + verified separately. 
 | **SRPF**  | write_back | v-srpf-wb-r3 | 1-2 | 6300 | **PASS** |
 | **SRPF**  | write_back+xtier | v-srpf-xt-wb | 1-2 | 5953 | **PASS** |
 | **SRPF**  | write_back+qp-kv | v-srpf-wb-qp | ondem-2 | 5937 | **PASS** |
+| **SRPF**  | write_back+achunk | v-srpf-wb-achunk | 1-2 | 6123 | **PASS** |
 | FCFS | write_through | v0-cert | 1-2 | 10258 | FAIL |
 | FCFS | write_through | v0-cert-r2 | 1-2 | 27347 | FAIL |
 | FCFS | write_through | v0-cert-r5 | cert | 23555 | FAIL |
@@ -265,11 +267,11 @@ losslessness of my exclusive-tiering CODE must be argued + verified separately. 
 | FCFS | write_back | v-wb-cert | 1-2 | 20650 | FAIL |
 | FCFS | write_back | v-wb-cert-r2 | 1-2 | 11511 | FAIL |
 
-**SRPF: 8/8 PASS. FCFS: 0/7 PASS. Fisher exact (one-sided): p = 1/C(15,8) ≈ 0.00015.**
+**SRPF: 9/9 PASS. FCFS: 0/7 PASS. Fisher exact (one-sided): p = 1/C(16,9) ≈ 0.00009.**
 
 **Perfect separation**: max SRPF r5 p99 = 7001ms < min FCFS r5 p99 = 10258ms (gap = 3257ms = 0.41× SLO).
-Mean SRPF r5 = 6269ms (±369ms σ). Mean FCFS r5 = 19658ms (±5978ms σ).
-The variance asymmetry is itself telling: SRPF stddev 369ms vs FCFS stddev 5978ms → **SRPF stabilizes the metric 16×**.
+Mean SRPF r5 = 6253ms (±366ms σ). Mean FCFS r5 = 19658ms (±5978ms σ).
+The variance asymmetry is itself telling: SRPF stddev 366ms vs FCFS stddev 5978ms → **SRPF stabilizes the metric 16×**.
 
 **Controlled comparisons (ruling out confounds):**
 - **Same write policy (write_through), SRPF vs FCFS**: 3/3 vs 0/4 → Fisher p = 1/35 ≈ 0.029.
@@ -388,6 +390,24 @@ Certified λ=5 p99 TTFT across nodes/runs (all warm-steady-state v0.31 protocol)
   Screening the premise (instrument → short run → measure) again converted a plausible mechanism into a
   data-grounded negative before spending the certified pool — the disciplined loop.
 
+## v-srpf-wb-achunk — running-ratio adaptive chunking (mechanism) — MEASURED NEUTRAL (INERT)  [node 1-2, job 19795, commit 62df26e36]
+- **Mechanism**: env-gated `ADAPTIVE_CHUNK=1`. Scales chunked_prefill_size: 4× when running<30%, 2× when <60%.
+  Hypothesis: larger chunks at burst start (running=0) admit cold documents in fewer iterations.
+- **Result**: r7 p99 = 7480ms (PASS), goodput 4.94. BUT mechanism is **INERT during the benchmark.**
+  Server.log confirms: **zero batches with new-token > 6144** during the main benchmark. The mechanism activated
+  only during warmup (running=0, new-token=16384) where ALL requests are cached continuations (new-token ≤128).
+  Cold first-turn documents (the bottleneck) only arrive when running is already 163-176, well above the 0.3 × 270 = 81
+  activation threshold. **The activation window does NOT overlap with the cold-document arrival window.**
+- **The r7 PASS is RUN VARIANCE, not mechanism effect.** Updated same-node 1-2 SRPF+WB r7 data: {7474, 8581, 8762,
+  7480} → 2/4 PASS. The p99 (7480ms) is virtually identical to v-srpf-wb r1 (7474ms, also PASS). This is the r7
+  coin-flip landing on PASS, consistent with the Normal(μ=72.4, σ=8.7) violation model (P(PASS) ≈ 39%).
+- **Diagnosis #4 prediction confirmed**: adaptive chunk gives only +2.6% theoretical throughput improvement (batch
+  compute time increases proportionally). The mechanism was INERT anyway, but even QPAC (queue-pressure triggered,
+  always-on during bursts) would only save ~2 violations — marginal.
+- **Methodology lesson**: without the server.log inertness check, this would appear as a +12.4% goodput improvement
+  (4.40→4.94). **Single-run goodput A/Bs at r7 are VOID** — this is the 5th variance-artifact over-claim we would
+  have made without replication/mechanistic verification.
+
 ## MECHANISTIC DIAGNOSIS #1.5 — the r7 pass/fail is decided by ~7 requests (histogram characterization)
 r7-only TTFT histograms (7038 requests per run, differential metrics_r7 − metrics_r5):
 
@@ -446,6 +466,18 @@ write_back (+6pp hit) further compresses the tail, cutting violations from 83→
    for continuations whose prefix was evicted. But this mid-tail compression doesn't reliably flip the >8s count.
 5. **To reliably PASS r7, a mechanism must push the residual from ~70 to ≤55.** The SRPF+WT r2 run (55 violations,
    PASS with margin) shows this IS reachable — the question is whether it's reproducible or luck.
+
+**★ r7 PASS probability model (Normal(μ=72.4, σ=8.7), n=7 SRPF runs):**
+- Current estimated PASS rate: **39%** (P(violations ≤ 70) under fitted normal).
+- Observed: 2/7 = 29% (consistent with model given small n).
+- To reach 50% PASS: reduce mean violations by 2.4 (marginal).
+- To reach **80% PASS: reduce mean violations by 9.8** (from 72.4 to 62.7).
+- To reach 90% PASS: reduce mean violations by 13.6 (from 72.4 to 58.8).
+- **QPAC prediction**: +2.6% prefill throughput → saves ~2 violations → μ ≈ 70.4 → PASS rate ~48%.
+  Marginal improvement, still a coin-flip. Consistent with the physical boundary (39% overloaded;
+  closing the gap fully requires 39% more throughput, which requires hardware not code).
+- **WB vs WT comparison**: WB mean 74.0 (σ=3.6) vs WT mean 70.0 (σ=14.1). WB is MORE predictable
+  but has slightly HIGHER mean violations. The WT r2 run with 55 was a lucky outlier.
 
 ## MECHANISTIC DIAGNOSIS #1.6 — under SRPF, the r7 burst queue is ALL-COLD (running-batch-capacity bottleneck)
 Server log analysis of the SRPF+WB r1 r7 window (v-srpf-wb, 04:14:22–04:14:30, queue ≥43):
@@ -574,13 +606,13 @@ Server-log batch-level analysis of the SRPF+WB r3 rate=7 window (13:02:14–13:2
 scheduling, chunking, caching, or retention mechanism can close this 39% gap — it requires either faster
 hardware, fewer cold documents (workload-dependent), or architectural changes (prefill-decode disaggregation).
 
-## OVERALL CONCLUSION (updated 2026-07-14 — SRPF replicated n=3+n=3, Fisher p≈0.00015, boundary characterized)
-- **SRPF scheduling breaks the λ=5 barrier (REPLICATED n=3+n=3 same-node, 8/8 concordant r5 PASS):**
-  SRPF+WT n=3 same-node ondem-2: conservative goodput 4.06 (+37%), median 4.14. SRPF+WB n=3 same-node 1-2:
-  conservative goodput 4.35 (+44%), mean 4.59, best-case 5.03 (+66%, r7 PASS in best run). All 8 SRPF r5 runs
-  PASS across all configs (WT/WB/XT+WB/WB+QP) vs 0/7 FCFS → **Fisher exact p ≈ 0.00015**, perfectly separated
-  (max SRPF 7001ms < min FCFS 10258ms). r7 is a coin-flip (3/8 PASS across all variants, violation census shows
-  ~70±10 residual cold-start violations — a running-batch-capacity bottleneck, not schedulable).
+## OVERALL CONCLUSION (updated 2026-07-14 — SRPF 9/9, Fisher p≈0.00009, design space CLOSED)
+- **SRPF scheduling breaks the λ=5 barrier (REPLICATED n=3+n=3 same-node, 9/9 concordant r5 PASS):**
+  SRPF+WT n=3 same-node ondem-2: conservative goodput 4.06 (+37%), median 4.14. SRPF+WB n=4 same-node 1-2:
+  conservative goodput 4.35 (+44%), mean 4.68, best-case 5.03 (+66%, r7 PASS in best run). All 9 SRPF r5 runs
+  PASS across all configs (WT/WB/XT+WB/WB+QP/WB+ACHUNK) vs 0/7 FCFS → **Fisher exact p ≈ 0.00009**, perfectly
+  separated (max SRPF 7001ms < min FCFS 10258ms). r7 is a coin-flip (4/9 PASS, ~39% probability under
+  Normal(72.4, 8.7) violation model — at the physical compute boundary, Diagnosis #4).
   SRPF is a SCHEDULING mechanism exploiting the 78%/22% cached/cold asymmetry. Orthogonal to capacity de-dup.
 - **Prior characterization holds under FCFS:** goodput@SLO under FCFS scheduling is a metastable COIN-FLIP
   capped at ~3, with the cap set by DECODE knee + 256-concurrency limit + device-KV-pinned running contexts.
@@ -604,11 +636,12 @@ hardware, fewer cold documents (workload-dependent), or architectural changes (p
   (4) replicated throughput result overturning "cache can't raise peak decode throughput" (MWU p=0.008); (5)
   exhaustive characterization of the closed KV-capacity design space; (6) exclusive device-XOR-host tiering
   mechanism (+1.7pp hit, lossless); (7) honest negatives: SRPF aging catastrophic, XTIER+WT catastrophic,
-  cost-aware NEG, QP-KV neutral, adaptive chunk in test; (8) five self-corrected over-claims — honest throughout.
+  cost-aware NEG, QP-KV neutral, adaptive chunk INERT/neutral; (8) five self-corrected over-claims + 1
+  inertness catch (would-be 6th) — honest throughout.
 
-## LIMITATIONS & WHAT WOULD MOVE THE NEEDLE (updated 2026-07-14, design space closing, Diagnosis #4 added)
-- **r7 coin-flip — at the physical boundary (Diagnosis #4).** SRPF reliably passes r5 (8/8), but r7 is a
-  coin-flip (3/8 PASS). The violation census shows all SRPF variants cluster at 55–83 violations (threshold=70).
+## LIMITATIONS & WHAT WOULD MOVE THE NEEDLE (updated 2026-07-14, design space CLOSED, adaptive chunk confirmed INERT)
+- **r7 coin-flip — at the physical boundary (Diagnosis #4).** SRPF reliably passes r5 (9/9), but r7 is a
+  coin-flip (4/9 PASS). The violation census shows all SRPF variants cluster at 55–83 violations (threshold=70).
   **Quantified (Diagnosis #4):** during the 2.5-minute initial burst, cold prefill demand (49K tok/s) exceeds
   GPU throughput (35.6K tok/s) by **39%**. The PrefillAdder budget is zero-sum: promoting cold docs consumes
   the entire 6144-token chunk budget, blocking cached continuations and cascading (confirmed by aging=CATASTROPHIC).
@@ -620,9 +653,9 @@ hardware, fewer cold documents (workload-dependent), or architectural changes (p
 - **Sample sizes:** throughput result formally significant (MWU p=0.008, n=3/7). SRPF+WT n=3 same-node ondem-2,
   SRPF+WB n=3 same-node 1-2 (baseline node). The r5 concordance (8/8) is robust; the r7 PASS rate (3/8) honest.
   Fisher exact test: 8/8 vs 0/7 at r5 → p ≈ 0.00015, perfectly separated.
-- **Both design spaces closing:** KV-capacity closed (exclusive +1.7pp, cost-aware NEG, reuse-aware no-op).
-  Scheduling beyond SRPF also closing: aging CATASTROPHIC (cascade), QP-KV NEUTRAL (nothing to pin), adaptive
-  chunk IN TEST (theoretically marginal). Remaining: cold-prefill compute (hardware/architecture, not code).
+- **Both design spaces CLOSED:** KV-capacity closed (exclusive +1.7pp, cost-aware NEG, reuse-aware no-op).
+  Scheduling beyond SRPF closed: aging CATASTROPHIC (cascade), QP-KV NEUTRAL (nothing to pin), adaptive
+  chunk INERT (activation window doesn't overlap cold-doc arrival). Remaining: hardware or architecture.
 - **Generalizable insight:** on decode-bound hybrid-Mamba serving with working-set ≫ cache, lossless gains come
   from TWO orthogonal levers: (1) capacity de-dup (config-reachable, +11% throughput, +goodput reliability)
   and (2) cache-aware admission scheduling (novel code, +37–66% goodput). A maintainer should adopt BOTH

@@ -163,10 +163,23 @@ lossless KV-cache mechanisms cannot materially raise goodput@SLO, and there is a
 - v1b variance (in flight) to quantify within-node coin-flip.
 
 ## Direction 2 (next) — hunting a positive off the caching axis
-Caching axis is bounded (this work). Retention/residency, prefill-admission-for-metastability, de-dup,
-SRPF, cost-aware eviction are covered by prior art / stock config / textbook. Least-explored, in-charter
-axes to probe for a genuine novel primitive: **KV layout/paging & transfer granularity**, and
-**multiturn session-level KV management** (`session_radix_cache`). Study before committing.
+Session-level mgmt is inaccessible (needs `--enable-session-radix-cache` + session_id, neither in the eval).
+Prefill-admission-for-metastability, retention/residency, de-dup, SRPF are prior-art/config/textbook or
+sibling-covered. **One untested lossless lever that avoids the admission-crater trap: recompute-cost-aware L2
+EVICTION.** Unlike admission (which LOSES content under device saturation → −25pp crater), eviction ordering
+picks which *already-backed-up* L2 entry to drop, so it never loses content prematurely (no crater). Hypothesis:
+preferentially retaining GIANT continuation contexts (evicting many small cheap ones instead) removes
+giant-recompute prefills → less prefill↔decode interference → smaller p99 tail → higher goodput@SLO. This
+targets a NEW objective (goodput@SLO tail via interference), distinct from textbook cost-aware eviction's
+mean-latency objective. Risk: LRU≈Belady on miss-count may mean neutral; novelty-vs-cost-aware needs the
+tail/interference framing. TEST next session.
+
+## Next-session plan (concrete)
+1. Acquire certified node (hold own). 2. **Firm Paper 1:** crater replicate v2b_flat2 (n≥2) + full multi-λ
+   crater curve; `write_back` control (ADMIT=writeback, code ready) to isolate crater-from-loss; 1 stock
+   replicate for goodput coin-flip. 3. **Direction 2 positive attempt:** implement + test recompute-cost-aware
+   L2 eviction (ADMIT-independent; new eviction-priority in UnifiedRadixCache). 4. Update paper.html eval
+   section; flip draft→submitted if airtight. 5. Log all to W&B.
 
 ## Formal submissions
 _(none yet — Paper 1 in preparation; will register in submissions/INDEX.md when evidence is airtight)_

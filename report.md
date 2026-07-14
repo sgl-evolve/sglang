@@ -1088,7 +1088,7 @@ is empirical — pending eval (commit 83c6009b9).
   | 3 | 6188ms  | 494ms   | 3.02  | 387   | 0.739 | PASS |
   | 5 | 7066ms  | 578ms   | 4.23  | 542   | 0.731 | PASS |
   | 7 | 10200ms | 658ms   | 4.82  | 617   | 0.728 | FAIL |
-  | 10| *(pending)* | | | | | |
+  | 10| 18295ms | 754ms   | 5.03  | 643   | 0.726 | FAIL |
 - **goodput@SLO = 4.23** — r5 PASS (7066ms), r7 FAIL (10200ms). On ondem-2, which is a SLOWER node
   than the 1-2 baselines. Cross-node comparison unreliable; however, the throughput (542 tok/s at r5)
   and hit rate (0.731) are within normal ranges for ondem-2.
@@ -1100,7 +1100,7 @@ is empirical — pending eval (commit 83c6009b9).
 - **Verdict**: IBAC is NEUTRAL. The mechanism bypasses too few tokens to affect goodput@SLO. The
   fundamental constraint is the rem_chunk_tokens gate design, which IBAC partially circumvents but
   the bypass volume is architecturally limited.
-- W&B: *(logged after r10 completes)*.
+- W&B: logged as `v-srpf-wb-ibac` [mechanism].
 
 ## Ops notes
 - eval.sh has a path bug (computes `workspace/sgl/v0.3_ablations/base`); fixed by symlink

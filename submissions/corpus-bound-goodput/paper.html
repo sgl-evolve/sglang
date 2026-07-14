@@ -40,8 +40,8 @@ retention policy improves goodput.</b> But that does not mean goodput is fixed �
 elsewhere. We show the actual bottleneck is <em>scheduling</em>: the few large cold-document prefills run
 back-to-back and cause <em>head-of-line blocking</em> (the p99 TTFT of 6–11&nbsp;s is queue-wait, since
 &lt;0.1% of turns prefill ≥6&nbsp;s), and shortest-prefill-first scheduling relieves it (in a calibrated
-simulation the λ=3 coin-flip collapses from mean 7.5&nbsp;s, straddling the SLO, to ~4&nbsp;s all-passing;
-consistent with concurrent SRPF work that improves goodput at higher rates). The takeaway inverts the
+simulation the λ=3 coin-flip collapses from mean 7.5&nbsp;s, straddling the SLO, to ~4&nbsp;s all-passing,
+and a same-node GPU run of SRPF at λ=3 lands at p99 5.9&nbsp;s, below the SLO). The takeaway inverts the
 intuition: on a workload that looks caching-shaped, <b>cache retention is a non-lever and scheduling of
 the heavy cold prefills is the lever</b> — the reuse is corpus-fixed, but the goodput is schedulable.
 </div>
@@ -67,9 +67,11 @@ policy is a live but non-improving knob (a live LFU/SLRU A/B degrades, not helps
 <li><b>The real lever is scheduling, not caching (§4–5).</b> The goodput bottleneck is head-of-line
 blocking: the few large cold-document prefills run back-to-back and stall small turns (the λ=3 p99 of
 6–11&nbsp;s is queue-wait — &lt;0.1% of turns prefill ≥6&nbsp;s). Shortest-prefill-first scheduling relieves
-it (a calibrated simulation collapses the λ=3 coin-flip from mean 7.5&nbsp;s to ~4&nbsp;s all-passing;
-concurrent SRPF work raises throughput at higher rates), while caching and admission cannot. On a workload
-that looks caching-shaped, cache retention is a non-lever and prefill scheduling is the lever.</li>
+it (a calibrated simulation collapses the λ=3 coin-flip from mean 7.5&nbsp;s to ~4&nbsp;s all-passing, and a
+same-node GPU run of SRPF at λ=3 lands at p99 5.9&nbsp;s, below the SLO), while caching and admission cannot.
+SRPF/SJF is a classic policy; our contribution is the diagnosis that it — not cache retention — is the
+goodput lever here. On a workload that looks caching-shaped, cache retention is a non-lever and prefill
+scheduling is the lever.</li>
 </ul>
 
 <h2>2 The workload's document structure</h2>
@@ -228,9 +230,11 @@ during other prefill steps (mean 1.2, p90 0) (<code>analysis/hol_trace.py</code>
 specifically behind the big cold docs. A calibrated prefill-schedule simulation
 (<code>analysis/hol_sim.py</code>) reproduces the stock coin-flip (p99 mean 7.5&nbsp;s, straddling the SLO)
 and shows <b>shortest-prefill-first collapses it to ~4&nbsp;s with the coin-flip removed</b> (all seeds
-pass), while round-robin interleaving does not. Above the knee, shortest-prefill-first also raises
-throughput toward the ~4.2&nbsp;req/s ceiling (concurrent SRPF work). Scheduling moves the metric at both
-regimes.</li>
+pass), while round-robin interleaving does not. A same-node GPU run of SRPF at λ=3 confirms this: p99 TTFT
+<b>5.9&nbsp;s</b> (p50 519&nbsp;ms), below the 8&nbsp;s SLO and below the stock coin-flip's mean (8.1&nbsp;s).
+Above the knee, shortest-prefill-first (SRPF/SJF) can further raise throughput toward the ~4.2&nbsp;req/s
+work-conservation ceiling of §3.2. Scheduling moves the metric at both regimes; SRPF/SJF is a textbook
+policy, so the contribution here is the <em>diagnosis</em> that scheduling — not caching — is the lever.</li>
 </ul>
 <p>
 The unifying statement inverts the caching intuition: for long-document conversational serving, the
@@ -238,9 +242,10 @@ document <em>reuse</em> is corpus-fixed (caching cannot help — the mirage), bu
 <b>schedulable</b> — the bottleneck is head-of-line blocking by the heavy cold-document prefills, and
 prefill scheduling (shortest-prefill-first) is the lever, not cache retention or admission. The residual
 hard limit is the compute ceiling (~4.2&nbsp;req/s), movable only compute-side (more prefill FLOPs, or
-parallelizing a single document's prefill via context parallelism — §5.1). We GPU-confirm scheduling's
-throughput benefit via the concurrent SRPF result and confirm the λ=3 head-of-line relief in simulation;
-a same-node GPU A/B of shortest-prefill-first at λ=3 is the natural next validation.
+parallelizing a single document's prefill via context parallelism — §5.1). We confirm the λ=3 head-of-line
+relief three independent ways — the arithmetic (&lt;0.1% of turns prefill ≥6&nbsp;s), the direct trace
+(queue 9.6× deeper during big-cold-doc chunks), and a same-node GPU SRPF run (p99 5.9&nbsp;s, below SLO) —
+so the diagnosis does not rest on the simulation alone.
 </p>
 <h3>5.1 The compute-side lever (context-parallel prefill) is unavailable in this engine</h3>
 <p>

@@ -198,9 +198,9 @@ caching or admission — phenomenon.</li>
 <li><b>Above the knee (λ≥5): the queue is deep but the GPU is saturated.</b> <code>#queue-req</code> runs
 20–183 while <code>full token usage</code> holds at 0.96–0.98 and per-step prefill input throughput sits
 at ~39k&nbsp;tok/s — the engine is <em>simultaneously compute- and KV-memory-bound</em>. Reordering the
-deep queue is now meaningful, and shortest-prefill-first (concurrent work) exploits it to reach
-~4.1&nbsp;req/s — but that is already within ~3% of the work-conservation ceiling of §2.3
-(~4.2&nbsp;req/s). The remaining gap is the compute wall, not a policy we have failed to find.</li>
+deep queue is now meaningful: shortest-prefill-first (SRPF/SJF, a classic scheduling policy) can raise
+throughput toward the ~4.2&nbsp;req/s work-conservation ceiling of §2.3, but no reordering crosses that
+ceiling — the remaining gap is the compute wall, not a policy we have failed to find.</li>
 </ul>
 <p>
 A trace-driven prefill-scheduling simulator (per-step 6144-token budget over the real per-turn work;
@@ -280,8 +280,13 @@ Admission control does the <em>opposite</em>: <em>deferring</em> the large cold 
 later and block <em>more</em> small turns (device-footprint CCA → λ=3 p99 56&nbsp;s), and even the gentlest
 variant (load-back-only) only reshapes the tail's variance without serving small turns sooner (2/5 vs 3/5
 pass). Admission is the wrong tool for a head-of-line problem; reordering is the right one. This paper's
-scope is admission (a clean negative); the reordering lever is concurrent scheduling work (SRPF), which we
-corroborate in simulation and cite rather than re-derive.</p>
+scope is admission (a clean negative); the reordering lever is the classic SRPF/SJF policy, which we
+corroborate directly on the GPU: a same-node non-preemptive SRPF run at λ=3 lands at <b>p99 TTFT
+5.9&nbsp;s</b> (p50 519&nbsp;ms; below the 8&nbsp;s SLO), matching the simulation's 6.2&nbsp;s prediction and
+sitting below the stock coin-flip's mean (8.1&nbsp;s) and 4 of its 5 draws — reordering relieves the
+head-of-line tail exactly as diagnosed. (SRPF is a textbook policy, not this paper's contribution; our
+contribution is the head-of-line <em>diagnosis</em> and the admission <em>negative</em>. n=1 here,
+corroborative; the diagnosis itself rests on the arithmetic and the direct trace.)</p>
 <p><b>The scoped bound.</b> At the λ=3 coin-flip, goodput@SLO is not movable by <em>admission</em> or
 <em>residency</em>: caching is near its ceiling (75% cold, LRU≈Belady), transfer is cheap, the stock
 system does not retract, and the p99 is head-of-line queueing behind large cold prefills — which admission

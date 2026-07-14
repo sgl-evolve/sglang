@@ -233,7 +233,7 @@ and shows <b>shortest-prefill-first collapses it to ~4&nbsp;s with the coin-flip
 pass), while round-robin interleaving does not. A same-node GPU run of SRPF at λ=3 confirms this: p99 TTFT
 <b>5.9&nbsp;s</b> (p50 519&nbsp;ms), below the 8&nbsp;s SLO and below the stock coin-flip's mean (8.1&nbsp;s).
 Above the knee, shortest-prefill-first (SRPF/SJF) can further raise throughput toward the ~4.2&nbsp;req/s
-work-conservation ceiling of §3.2. Scheduling moves the metric at both regimes; SRPF/SJF is a textbook
+throughput ceiling of §4. Scheduling moves the metric at both regimes; SRPF/SJF is a textbook
 policy, so the contribution here is the <em>diagnosis</em> that scheduling — not caching — is the lever.</li>
 </ul>
 <p>

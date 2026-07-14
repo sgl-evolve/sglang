@@ -1,0 +1,2 @@
+# Direction 3: context-parallel prefill. Screen (lambda 3,5) on ondem-2. Fails fast if incompatible.
+v-cp8-zigzag:--enable-prefill-cp --cp-strategy zigzag

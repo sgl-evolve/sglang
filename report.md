@@ -340,3 +340,25 @@ long reuse distance). `analysis/reuse_distance.py`.
   after this clear signal to conserve the shared node (LRU=Belady proof is dispositive anyway). §3.3
   now rests on proof+phase-boundary, corroborated by the partial LFU observation. Did NOT run stock-ctl/SLRU.
 - This gives paper 2 its rate-sweep empirical leg (program paper §5 spec).
+
+## ★★ PIVOTAL CORRECTION (head-of-line): scheduling IS the lever, not caching/admission
+
+Hands-on re-examination (arithmetic + calibrated sim) overturned my earlier "λ3 p99 = prefill floor /
+cold-prefill-compute-bound / control-invariance" claims in BOTH papers.
+- **Arithmetic (robust):** λ3 p99 (6–11s) is NOT a per-request prefill floor — only <0.1% of turns
+  prefill ≥6s (p99-work ~1–2.5s; max-doc ~5s @39k tok/s). So the 6–11s p99 is QUEUE-WAIT.
+- **Mechanism:** HEAD-OF-LINE blocking — small turns stuck behind the back-to-back chunked prefill of a
+  few large cold docs (scheduler runs chunked_req without yielding, verified scheduler.py:2838-2841).
+- **Sim (`analysis/hol_sim.py`, per-step 6144-tok greedy-fill):** reproduces the stock λ3 coin-flip (p99
+  mean 7507ms, runs 5.6–11.0s, straddles SLO) and shows **shortest-prefill-first collapses it to ~4031ms,
+  all 5 seeds pass (−46%, coin-flip removed)**; round-robin interleave is WORSE (my idea inferior).
+- **Consequence:** CACHING (paper 2 mirage) and ADMISSION (paper 1 negative) cores STAND, but the
+  "no-lever/compute-bound/control-invariance" framing was WRONG — **SCHEDULING (shortest-prefill-first)
+  IS the goodput lever** (relieves λ3 head-of-line + λ5 throughput=concurrent SRPF). Both papers reframed:
+  P1 = "admission is the wrong tool, scheduling the right"; P2 retitled "cache retention is the non-lever,
+  prefill scheduling is the lever." Commits cf6c60f94 (P1), 297bde123 (P2), 62bd9c28d (INDEX).
+- **Honesty note:** SRPF is concurrent work's mechanism; my contribution is the head-of-line DIAGNOSIS +
+  correcting the record. λ3-SRPF GPU A/B is the next validation (base GPU-confirmed SRPF@λ5).
+- **Lesson:** my earlier oracle.py over-serialized (1-turn-per-step), wrongly suggesting small-first
+  "pushes the tail out"; hol_sim.py (correct 6144-packing) shows the opposite. Verify sim fidelity before
+  drawing scheduling conclusions.

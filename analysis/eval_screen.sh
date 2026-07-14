@@ -5,7 +5,11 @@
 set -uo pipefail
 ROOT="${AUTORESEARCH_ROOT:-/home/junyanch_google_com/autoresearch}"
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
-SGL_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../.." && pwd 2>/dev/null || echo "$ROOT/programs/sgl/v0.3")"
+# floyd FIX: this is a COPY of the skill eval.sh living under analysis/, so the
+# BASH_SOURCE self-location is WRONG (resolves to .../workspace/sgl -> basename
+# 'sgl'). Hardcode SGL_HOME to the real cell; SGL_WORKSPACE then resolves via the
+# v0.3_ablations/research -> v0.31/research symlink exactly like the real eval.sh.
+SGL_HOME="/home/junyanch_google_com/autoresearch/programs/sgl/v0.31/research"
 SGL_WORKSPACE="$ROOT/workspace/sgl/v0.3_ablations/$(basename "$SGL_HOME" 2>/dev/null || echo v0.3)"
 NAME="${1:?usage: eval.sh <name> <version> [extra]}"; VER="${2:?usage}"; shift 2 || true; EXTRA=("$@")
 WORK=$SGL_WORKSPACE/researchers/$NAME; PORT=${PORT:-30000}; OUT="$WORK/runs/$VER"; mkdir -p "$OUT"

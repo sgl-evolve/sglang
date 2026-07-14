@@ -276,9 +276,14 @@ so the workload replayed at a given rate is <em>byte-identical</em> across runs;
 burst specifically to erase cold-start metastability. Yet two identical stock runs on the same node at &lambda;=3
 give p99 = 6.2&nbsp;s (pass) and 11.5&nbsp;s (fail)&mdash;a 1.9&times; swing straddling the SLO, with hit rate
 invariant to &lt;0.1&nbsp;pp. The coin-flip is therefore not workload variance and not cold start; it is
-<em>system-timing nondeterminism</em> (batch-formation and prefill&harr;decode interleaving races) amplified by
-the metastable queue when operating near the stability edge (margin C&minus;&lambda; &approx; 1 for stock). This
-is a frontier phenomenon: the same margin that bounds mean goodput also governs its <em>reliability</em>. Across
+<em>system-timing nondeterminism</em> selecting between metastable <em>occupancy basins</em>. We confirm the
+mechanism directly from the two runs' own telemetry: the failing run sat at <b>+34% mean concurrency</b> (166 vs
+124 in-flight), <b>+19% decode time-per-token</b> (468 vs 392&nbsp;ms), and +43% mean E2E&mdash;i.e. it settled
+into a <em>higher-occupancy</em> state, where giant prefills meet a fuller queue and slower decode (the
+prefill&harr;decode interference feedback) keeps it there. The passing run stayed in the low-occupancy basin. This
+is a frontier phenomenon: the same margin that bounds mean goodput also governs its <em>reliability</em>&mdash;a
+larger margin (C&minus;&lambda;) means a lower, less-variable baseline occupancy, so the bad basin is entered less
+often. Across
 configs the pattern is consistent&mdash;flat-admission (margin &minus;0.6, over capacity) fails; stock (margin
 &approx;1) coin-flips 1/2; lpm (margin &approx;1.9) passes; write_back (margin &approx;2) passes 2/2&mdash;<em>with
 one instructive exception</em>: size-admission (average margin &approx;1.6) landed 15.6&nbsp;s. That exception

@@ -637,7 +637,8 @@ class PrefillAdder:
                 return AddReqResult.OTHER
         else:
             if self.rem_chunk_tokens is not None and self.rem_chunk_tokens <= 0:
-                return AddReqResult.OTHER
+                if os.environ.get("IBAC", "0") != "1" or self.rem_input_tokens <= 0:
+                    return AddReqResult.OTHER
 
         return AddReqResult.CONTINUE
 
@@ -1010,7 +1011,12 @@ class PrefillAdder:
 
                 self._add_dllm_req(req, prefix_len)
                 self._req_inc_lock_ref(req)
-            elif self.rem_chunk_tokens is None or input_tokens <= self.rem_chunk_tokens:
+            elif self.rem_chunk_tokens is None or input_tokens <= self.rem_chunk_tokens or (
+                os.environ.get("IBAC", "0") == "1"
+                and self.rem_chunk_tokens is not None
+                and self.rem_chunk_tokens <= 0
+                and input_tokens <= self.rem_input_tokens
+            ):
                 # Non-chunked prefill — the whole sequence is committed this iter.
                 req.set_extend_range(
                     len(req.prefix_indices), len(req.full_untruncated_fill_ids)

@@ -2843,6 +2843,10 @@ class Scheduler(
             elif ratio < 0.6:
                 chunked_prefill_size = min(chunked_prefill_size * 2, self.max_prefill_tokens)
 
+        if os.environ.get("QPAC", "0") == "1" and chunked_prefill_size is not None:
+            if len(self.waiting_queue) > 15:
+                chunked_prefill_size = min(chunked_prefill_size * 4, self.max_prefill_tokens)
+
         # Prefill policy
         adder = PrefillAdder(
             self.page_size,

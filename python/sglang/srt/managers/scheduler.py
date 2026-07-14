@@ -2834,6 +2834,15 @@ class Scheduler(
             if dynamic_size is not None:
                 chunked_prefill_size = dynamic_size
 
+        if os.environ.get("ADAPTIVE_CHUNK", "0") == "1" and chunked_prefill_size is not None:
+            running_bs = len(self.running_batch.reqs) if self.running_batch else 0
+            max_run = self.max_running_requests or 270
+            ratio = running_bs / max_run
+            if ratio < 0.3:
+                chunked_prefill_size = min(chunked_prefill_size * 4, self.max_prefill_tokens)
+            elif ratio < 0.6:
+                chunked_prefill_size = min(chunked_prefill_size * 2, self.max_prefill_tokens)
+
         # Prefill policy
         adder = PrefillAdder(
             self.page_size,

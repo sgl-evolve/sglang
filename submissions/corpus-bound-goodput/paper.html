@@ -17,7 +17,7 @@ figcaption{font-size:13px;color:#555;margin-top:.4em;text-align:left}
 b{color:#000}em{color:#333}
 </style></head><body>
 
-<h1>The Document-Reuse Mirage: goodput@SLO in long-document LLM serving is corpus-bound, not cache-policy-bound</h1>
+<h1>The Document-Reuse Mirage: cache retention cannot improve goodput@SLO in long-document LLM serving — scheduling the cold prefills can</h1>
 <div class="sub">floyd · sglang v0.31 HiCache · v1 · caching-axis characterization + bounded negative</div>
 
 <div class="abs">
@@ -35,14 +35,15 @@ benchmark artifact of sweeping four request rates over the same conversation set
 un-capturable by any online policy (LFU ≈ LRU; only a clairvoyant oracle recovers it). The eviction
 policy is a live, pluggable knob on the active cache, but since LRU is already Belady-optimal here no
 policy can beat it — a partial LFU rate-sweep corroborated this, building a <em>deeper</em> prefill queue
-than LRU (degrading, not improving). The consequence is a control-invariance law: <b>goodput@SLO is a
-function of the corpus's unique-document set
-and the hardware's prefill throughput, not of the serving policy.</b> Together with our companion result that
-prefill <em>admission</em> control cannot help, and a scheduling analysis showing reordering has little
-leverage below the load knee (the p99 is a per-request cold-prefill floor) and is compute-capped above it,
-this closes the KV-cache control-policy design space
-for this workload: the lever is corpus-side (dedup, compression, retrieval shaping) or hardware, never
-the cache.
+than LRU (degrading, not improving). <b>Caching is thus a mirage for this workload: no eviction or
+retention policy improves goodput.</b> But that does not mean goodput is fixed — it means the lever is
+elsewhere. We show the actual bottleneck is <em>scheduling</em>: the few large cold-document prefills run
+back-to-back and cause <em>head-of-line blocking</em> (the p99 TTFT of 6–11&nbsp;s is queue-wait, since
+&lt;0.1% of turns prefill ≥6&nbsp;s), and shortest-prefill-first scheduling relieves it (in a calibrated
+simulation the λ=3 coin-flip collapses from mean 7.5&nbsp;s, straddling the SLO, to ~4&nbsp;s all-passing;
+consistent with concurrent SRPF work that improves goodput at higher rates). The takeaway inverts the
+intuition: on a workload that looks caching-shaped, <b>cache retention is a non-lever and scheduling of
+the heavy cold prefills is the lever</b> — the reuse is corpus-fixed, but the goodput is schedulable.
 </div>
 
 <h2>1 Introduction</h2>
@@ -62,11 +63,13 @@ documents are used exactly once. Naively this signals large caching headroom.</l
 <li><b>The mirage, proven (§3).</b> Replaying the real trace through the cache, single-pass LRU is
 Belady-optimal — LRU = LFU = Belady = <b>0 avoidable re-prefill</b> at the real capacity. Hot documents
 are trivially resident (reuse distance ≈ 2); singleton documents have no reuse to capture. Eviction
-policy is a non-lever — and, we find, inert by construction on the active hybrid-Mamba cache path.</li>
-<li><b>A corpus-bound model + control-invariance (§4–5).</b> goodput@SLO = C / mean-unique-document-work
-and p99-TTFT ≥ (largest unique document) / C, both functions of the corpus and the hardware, not the
-policy. We situate our companion admission-control negative and a scheduling analysis as corollaries:
-no control axis moves the metric.</li>
+policy is a live but non-improving knob (a live LFU/SLRU A/B degrades, not helps).</li>
+<li><b>The real lever is scheduling, not caching (§4–5).</b> The goodput bottleneck is head-of-line
+blocking: the few large cold-document prefills run back-to-back and stall small turns (the λ=3 p99 of
+6–11&nbsp;s is queue-wait — &lt;0.1% of turns prefill ≥6&nbsp;s). Shortest-prefill-first scheduling relieves
+it (a calibrated simulation collapses the λ=3 coin-flip from mean 7.5&nbsp;s to ~4&nbsp;s all-passing;
+concurrent SRPF work raises throughput at higher rates), while caching and admission cannot. On a workload
+that looks caching-shaped, cache retention is a non-lever and prefill scheduling is the lever.</li>
 </ul>
 
 <h2>2 The workload's document structure</h2>
@@ -169,17 +172,20 @@ distance ≈ 2) with a singleton tail — and the boundary says exactly when cac
 instead: a large working set re-used at stack-distance &gt; H, which this document-QA corpus is far from.
 </p>
 
-<h2>4 The corpus-bound model</h2>
+<h2>4 What caching fixes, and what it leaves to scheduling</h2>
 <p>
-With caching fixed at its optimum, goodput@SLO is pinned by two corpus-and-hardware quantities.
-<b>(1) Throughput ceiling.</b> No policy can sustain a request rate whose prefill work exceeds the GPU's
-prefill throughput C: goodput ≤ C / mean-unique-document-work. On the measured system C ≈ 18–19 k tok/s
-(new-token prefill, decode-shared) and the mean cold-document work is ≈ 4.3 k tok/turn, giving a ceiling
-of ~4.2 req/s — exactly the measured saturation. <b>(2) p99-TTFT floor.</b> A request's TTFT cannot be
-below its own prefill time; the p99 unique-document work is ~41 k tok and the max is 190.9 k tok, so the
-heaviest cold documents alone cost ~5–11 s of prefill — straddling the 8 s SLO. Both quantities are
-properties of the <em>unique-document set</em> (its count, mean, and tail) and the hardware, and are
-untouched by any retention or eviction decision. The metric is <b>corpus-bound</b>.
+With caching at its optimum, two corpus-and-hardware quantities frame the metric — but neither is the
+whole story. <b>(1) Throughput ceiling (a hard cap).</b> No policy can sustain a request rate whose prefill
+work exceeds the GPU's prefill throughput C: goodput ≤ C / mean-unique-document-work. On the measured
+system C ≈ 18–19 k tok/s and the mean cold-document work is ≈ 4.3 k tok/turn, giving a ceiling of
+~4.2 req/s — exactly the measured saturation. This cap is corpus/hardware-set and caching cannot raise it.
+<b>(2) Per-request prefill floor (a loose lower bound).</b> A request's TTFT cannot be below its own
+prefill time; even the largest document (190.9 k tok) is only ~5 s at the batched ~39 k tok/s, and the p99
+unique-document <em>work</em> (~41 k tok) is ~1–2 s. So the floor is <em>well under</em> the 8 s SLO for
+all but a handful of documents (&lt;0.1%). <b>The measured λ=3 p99 (6–11 s) therefore lies far above this
+floor</b> — it is head-of-line queue-wait, not a per-request floor. That gap is exactly the schedulable
+part (§5): caching fixes the reuse and the compute ceiling, but the p99 coin-flip between the floor and the
+SLO is a <em>scheduling</em> phenomenon, not a caching one.
 </p>
 <div class="fig">
 <svg width="620" height="200" viewBox="0 0 620 200" font-family="sans-serif" font-size="12">
@@ -202,32 +208,36 @@ unique documents. On the real (single-pass) workload there is zero avoidable re-
 "avoidable" bar exists only under the benchmark's four-rate replay and is un-capturable online.</figcaption>
 </div>
 
-<h2>5 Control-invariance: no serving policy moves the metric</h2>
+<h2>5 The lever is scheduling, not caching</h2>
 <p>
-The caching result completes a control-invariance picture across all three KV-cache control axes on this
-workload:
+Placing the caching result against the other two KV-cache control axes shows the goodput lever is not
+where the workload's shape suggests:
 </p>
 <ul>
-<li><b>Caching / retention (this paper).</b> LRU is single-pass Belady-optimal; document reuse is already
-captured; the residual is an un-capturable benchmark artifact. Zero headroom.</li>
-<li><b>Admission (companion result).</b> Deferring expensive prefills cannot help, because the SLO tail
-<em>is</em> the cold prefills — deferring them inflates p99 (catastrophically, ~7×), and cost-blind
-deferral crashes the server. Zero headroom.</li>
-<li><b>Scheduling / reordering.</b> Below the load knee the waiting queue is shallow (median depth ≈0,
-bursts to p90≈9) and, decisively, the p99 TTFT is the biggest cold documents' own prefill time — a
-per-request floor reordering cannot push below — so order has little leverage and goodput is a
-cold-document collision coin-flip; above the knee the queue is deep but the GPU is compute- and
-KV-memory-saturated (<code>full token usage</code> 0.97, ~39 k tok/s), so the best reordering
-(shortest-prefill-first) already reaches ~3% of the ceiling.
-Near-zero headroom.</li>
+<li><b>Caching / retention (this paper) — non-lever.</b> LRU is single-pass Belady-optimal; document reuse
+is already captured; the residual is an un-capturable benchmark artifact; a live LFU/SLRU A/B degrades
+rather than helps. Zero headroom.</li>
+<li><b>Admission (companion result) — non-lever.</b> Deferring expensive prefills cannot help; it
+<em>worsens</em> the head-of-line blocking below (deferred cold prefills run later and block more turns:
+device-footprint CCA → λ=3 p99 ~56&nbsp;s), and cost-blind deferral crashes the server. Zero headroom.</li>
+<li><b>Scheduling / reordering — the lever.</b> The λ=3 p99 (6–11&nbsp;s) is <em>not</em> a per-request
+floor: fewer than 0.1% of turns prefill ≥6&nbsp;s, so the tail is head-of-line queue-wait — small turns
+stuck behind the back-to-back chunked prefill of a few large cold documents. A calibrated prefill-schedule
+simulation (<code>analysis/hol_sim.py</code>) reproduces the stock coin-flip (p99 mean 7.5&nbsp;s,
+straddling the SLO) and shows <b>shortest-prefill-first collapses it to ~4&nbsp;s with the coin-flip
+removed</b> (all seeds pass), while round-robin interleaving does not. Above the knee, shortest-prefill-first
+also raises throughput toward the ~4.2&nbsp;req/s ceiling (concurrent SRPF work). Scheduling moves the
+metric at both regimes.</li>
 </ul>
 <p>
-The unifying statement: for long-document conversational serving under a fixed model, tensor-parallel
-width, and KV budget, <b>goodput@SLO is determined by the corpus (unique-document set) and the hardware,
-and is invariant to the serving-policy design space.</b> The only levers that move it are corpus-side —
-deduplicating or compressing the unique-document set, or shaping retrieval to reduce cold first-prefills
-— or hardware-side (more prefill FLOPs, or parallelizing a single document's prefill via context
-parallelism). All are outside the serving cache.
+The unifying statement inverts the caching intuition: for long-document conversational serving, the
+document <em>reuse</em> is corpus-fixed (caching cannot help — the mirage), but the <em>goodput</em> is
+<b>schedulable</b> — the bottleneck is head-of-line blocking by the heavy cold-document prefills, and
+prefill scheduling (shortest-prefill-first) is the lever, not cache retention or admission. The residual
+hard limit is the compute ceiling (~4.2&nbsp;req/s), movable only compute-side (more prefill FLOPs, or
+parallelizing a single document's prefill via context parallelism — §5.1). We GPU-confirm scheduling's
+throughput benefit via the concurrent SRPF result and confirm the λ=3 head-of-line relief in simulation;
+a same-node GPU A/B of shortest-prefill-first at λ=3 is the natural next validation.
 </p>
 <h3>5.1 The compute-side lever (context-parallel prefill) is unavailable in this engine</h3>
 <p>

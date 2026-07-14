@@ -151,6 +151,15 @@ Raising the margin 1.3&rarr;2.0 <b>lowers mean occupancy 145&rarr;90</b> and <b>
 2/2 pass. <b>Reliability is capacity-margin-governed</b>: the same margin that bounds mean goodput (frontier study)
 bounds its variance. Both caching (raises C via 1&minus;h) and scheduling (raises K) therefore buy <em>reliability</em>,
 not just mean throughput.</div>
+<p class="note"><b>The trend extends to a third, over-capacity config.</b> A flat-admission config (hit crated to
+0.39, so C&approx;2.95&nbsp;&lt;&nbsp;&lambda;=3 &rArr; margin &approx;0) gives p99 = {12&nbsp;s, 48&nbsp;s}
+&mdash; a <b>36&nbsp;s spread</b>, extending the monotone ordering <em>write_back 0.8&nbsp;s &lt; stock 5.3&nbsp;s
+&lt; flat 36&nbsp;s</em> across margin 2&rarr;1&rarr;0. Note the <em>mechanism differs at the endpoint</em>: flat is
+<em>over</em> capacity, so its variance is unbounded-queue instability rather than near-edge basin selection (indeed
+its occupancy&harr;p99 relation inverts&mdash;the higher-occupancy run had the <em>lower</em> p99&mdash;because in
+the unstable regime p99 is set by queue growth, not the ambient basin). So margin&rarr;variance is monotone across
+the whole range, but the clean occupancy-basin mechanism (&sect;3) is the &lambda;&nbsp;&lt;&nbsp;C, near-edge story;
+at &lambda;&nbsp;&ge;&nbsp;C it degenerates into ordinary overload.</p>
 <h3>4.1 Metastable amplification beyond M/G/1</h3>
 <p>
 Plain M/G/1 predicts the occupancy-variance ratio between the two margins as

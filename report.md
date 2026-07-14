@@ -381,8 +381,12 @@ cold-prefill-compute-bound / control-invariance" claims in BOTH papers.
   below the stock coin-flip mean (8079) and 4/5 of its draws {6327,6391,7765,8124,11786}. Matches the sim
   prediction (srpf_np 6205ms). ⇒ reordering (serve-small-first) relieves the λ3 head-of-line tail, exactly
   as diagnosed. n=1 (corroborative; diagnosis rests on arithmetic + trace, not this one run).
-- **λ5:** in flight (~40min out). Will add the throughput-regime point (my own, not cited).
-- Integrated into BOTH papers (commit above); SRPF cited as textbook, my GPU run as the corroboration.
+- **v-srpf-r1 λ5:** p99 TTFT **5850ms at 4.16 req/s** — BELOW SLO. Stock λ5 = 17372ms (stable fail,
+  ≤1.08× var). ⇒ **goodput@SLO 0/≤3 (stock coin-flip) → 4.16 (srpf) = the compute ceiling**, purely by
+  reordering prefills (cache untouched). n=1 but λ5 stock is stable-fail so the 3× gap is robust. This is
+  my OWN full GPU sweep confirming scheduling is the lever at BOTH regimes — no sibling citation needed.
+- **Logged to W&B** (`sgl-evolve/floyd`, v-srpf-r1, tag=mechanism, churn py+206, goodput 4.16).
+- Integrated into BOTH papers (commits above); SRPF cited as textbook, my GPU sweep as the confirmation.
 - **Other axes bounded this session:** Mamba-state pool NEVER binding (max usage 0.77 vs attn-KV 1.0,
   `analysis/mamba_pressure.py`) ⇒ hybrid-asymmetry is a non-lever too. Design space for KV-cache goodput
   levers is closing hard: residency=mirage, admission=neg, transfer=cheap, Mamba=non-binding; only

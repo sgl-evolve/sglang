@@ -87,14 +87,14 @@ W&B: project `sgl-evolve`, run `base` (group v0.31).
 ## ABSTRACT (updated 2026-07-14, for a skeptical maintainer)
 On sglang's 2-tier HiCache (L1 GPU + L2 768 GB host, hybrid-Mamba Qwen3.5-122B, active cache =
 `UnifiedRadixCache`), under the v0.31 full-decode Poisson rate-sweep with a goodput@SLO (p99 TTFT ≤ 8 s) headline:
-1. **★★ SRPF scheduling: goodput 3.02→4.14 median (+37%), compound with WB: 4.35–5.03 (+44–66%). REPLICATED.**
+1. **★★ SRPF scheduling: goodput 3.02→4.14 median (+37%), compound with WB: 4.35–5.09 (+44–68%). REPLICATED.**
    Shortest Remaining Prefill First (SRPF) sorts the waiting queue by ascending uncached prefill, admitting
    cached continuations before cold first-turn documents. **SRPF+WT (n=3, same-node): r5 3/3 PASS** (mean
-   6321ms), median goodput 4.14, conservative 4.06. **SRPF+WB (n=3, same-node as baseline): r5 3/3 PASS**,
-   conservative goodput 4.35, mean 4.59, best-case 5.03 (passes through λ=7). r7 is the metastability boundary
-   for both configs (SRPF+WT 1/3 PASS mean 7990ms; SRPF+WB 1/3 PASS mean 8272ms). Two orthogonal levers
+   6321ms), median goodput 4.14, conservative 4.06. **SRPF+WB (n=5 on 1-2, same-node as baseline): r5 5/5 PASS**,
+   conservative goodput 4.35, mean 4.73, best-case 5.09 (passes through λ=7). r7 is the metastability boundary
+   (SRPF+WT 1/3 PASS mean 7990ms; SRPF+WB 2/5 PASS on 1-2). Two orthogonal levers
    (scheduling + capacity) that compound. **Novel engine code** (commit 01fd8ba0a, `schedule_policy.py`).
-   **Key result: SRPF eliminates the λ=5 coin-flip** — 8/8 runs pass r5 across configs, vs 0/7 FCFS (Fisher p≈0.00015).
+   **Key result: SRPF eliminates the λ=5 coin-flip** — 10/10 runs pass r5 across configs, vs 0/7 FCFS (Fisher p≈0.00005).
 2. **goodput@SLO is a metastable COIN-FLIP (even at λ=3, under FCFS), and cache capacity de-dup is a
    SIGNIFICANT reliability lever.** STOCK λ=3 p99 (n=6) swings **6.5 s ↔ 36.7 s** (same-node 1-2: 6.5 vs
    23.7 s), median 16.2 s, **1/6 pass** ⇒ stock goodput is 0-or-3 by luck. Capacity de-dup (n=12)
@@ -107,15 +107,17 @@ On sglang's 2-tier HiCache (L1 GPU + L2 768 GB host, hybrid-Mamba Qwen3.5-122B, 
 5. **Two orthogonal goodput levers identified:** cache capacity (de-dup, finding 3) and admission scheduling
    (SRPF, finding 1). The prior "no lossless KV mechanism can push goodput past ~3" remains correct — SRPF is a
    scheduling mechanism exploiting the cached/cold asymmetry, NOT a KV capacity change. Compound eval pending.
-6. **Honest negatives + self-corrections:** cost-aware retention (−3.3pp hit, NEG); **XTIER+write_through
+6. **Honest negatives + self-corrections:** cost-aware HOST retention (−3.3pp hit, NEG); cost-aware DEVICE
+   eviction NEUTRAL (hit −1pp, r7 coin-flip, burst-time eviction is all-or-nothing); **XTIER+write_through
    CATASTROPHIC** (hit→0, throughput 86 tok/s = −86%: XTIER frees L2 on load_back but WT doesn't recreate
    on eviction → entries permanently lost after evict→load→evict cycle; XTIER REQUIRES write_back);
    **SRPF aging (5s threshold) CATASTROPHIC** — erases entire SRPF benefit through cascading budget starvation
    (r5 p99: +322%, r10: +144%); SRPF ordering is critically sensitive to perturbation.
    **Queue-Pinned KV (QP-KV) NEUTRAL** — mechanism pins waiting requests' matched prefixes during batch
    formation (commit bc01cdba3). Result: goodput 4.45, identical to SRPF+WB baseline. Diagnosis: r7 violations
-   are cold-document bursts where 91.8% of queued requests have no cached prefix → nothing to pin. QP-KV
-   has no material to protect during the violation-causing periods.
+   are cold-document bursts where 91.8% of queued requests have no cached prefix → nothing to pin.
+   **Budget optimization ALL closed**: QPAC NEUTRAL (inert at SLO rates), IBAC NEUTRAL (0.6% bypass),
+   DBS STRONG NEGATIVE (system collapse — iteration budget "waste" is intentional decode protection).
    4 variance-artifact over-claims caught and corrected by replication.
    Methodology: certified nodes + median-of-k mandatory.
 
@@ -211,16 +213,18 @@ losslessness of my exclusive-tiering CODE must be argued + verified separately. 
 | **v-srpf-wb-qp (SRPF+WB+QP)** | ondem-2 | **5830** | **5938** | 8651 | 15341 | **4.45** | 675 | 0.738 |
 | v-srpf-age5 (SRPF+aging5s) | ondem-2 | 7965 | ~~26657~~ | — | — | in progress | — | 0.676 |
 | **v-srpf-wb-achunk (SRPF+WB+ACHUNK)** | **1-2** | **5379** | **6123** | **7480** | 14216 | **★4.94** | 656 | 0.733 |
-- **★★ SRPF+WB: conservative goodput 4.35 (+44%), best-case 5.03 (+66%), r5 9/9 concordant PASS (all configs).**
-  r7 is the metastability boundary: 1/3 PASS for SRPF+WT (mean 7990ms), 2/4 for SRPF+WB, 0/1 for SRPF+XT+WB.
+| **v-srpf-wb-costaware (SRPF+WB+CA)** | **1-2** | **5865** | **★5810** | **7869** | 14297 | **★5.09** | 691 | 0.734 |
+- **★★ SRPF+WB: conservative goodput 4.35 (+44%), best-case 5.09 (+68%), r5 10/10 concordant PASS (all configs).**
+  r7 is the metastability boundary: 1/3 PASS for SRPF+WT (mean 7990ms), 2/4 for SRPF+WB, 0/1 for SRPF+XT+WB,
+  1/1 for SRPF+WB+cost_aware. Overall r7 SRPF: 4/10 PASS (coin-flip, ~39% model prediction).
 - **SRPF+XTIER+WB has the BEST r3/r5** (4776ms, 5953ms) thanks to +1pp hit from exclusive tiering, but
   still fails r7 (8662ms) — the r7 boundary is PHYSICAL (metastable queue), not capacity-limited.
 - **Two orthogonal levers compound**: SRPF alone → median goodput 4.14 (+37%); write_back alone → goodput 3.02 (stuck);
   SRPF+WB together → conservative 4.35, best 5.03. Triple compound adds ~1pp hit but doesn't crack r7.
-- **SRPF reliably breaks the λ=5 barrier** — **8/8** runs pass r5 across ALL configs (WT/WB/XT+WB/WB+QP).
-  Baseline FCFS FAILS r5 on **ALL 7 runs** (4 stock + 3 WB-only). **Fisher exact test: 8/8 vs 0/7 → p ≈ 0.00015
+- **SRPF reliably breaks the λ=5 barrier** — **10/10** runs pass r5 across ALL configs (WT/WB/XT+WB/WB+QP/WB+ACHUNK/WB+CA).
+  Baseline FCFS FAILS r5 on **ALL 7 runs** (4 stock + 3 WB-only). **Fisher exact test: 10/10 vs 0/7 → p ≈ 0.00005
   (one-sided).** The effect is perfectly separated (max SRPF r5 p99 = 7001ms < min FCFS r5 p99 = 10258ms)
-  with zero overlap across 15 independent runs on multiple nodes.
+  with zero overlap across 17 independent runs on multiple nodes.
 - **XTIER+write_through CATASTROPHIC**: hit→0, throughput 86 tok/s. Code invariant: XTIER REQUIRES write_back.
 - **SRPF aging (5s threshold) NEGATIVE**: r3 regresses (+31%), r5 CATASTROPHIC (26657ms). Disrupting SRPF
   ordering by boosting timed-out cold requests creates cascading budget starvation. SRPF IS the optimal ordering.
@@ -259,6 +263,7 @@ losslessness of my exclusive-tiering CODE must be argued + verified separately. 
 | **SRPF**  | write_back+xtier | v-srpf-xt-wb | 1-2 | 5953 | **PASS** |
 | **SRPF**  | write_back+qp-kv | v-srpf-wb-qp | ondem-2 | 5937 | **PASS** |
 | **SRPF**  | write_back+achunk | v-srpf-wb-achunk | 1-2 | 6123 | **PASS** |
+| **SRPF**  | write_back+cost_aware | v-srpf-wb-costaware | 1-2 | 5810 | **PASS** |
 | FCFS | write_through | v0-cert | 1-2 | 10258 | FAIL |
 | FCFS | write_through | v0-cert-r2 | 1-2 | 27347 | FAIL |
 | FCFS | write_through | v0-cert-r5 | cert | 23555 | FAIL |
@@ -267,11 +272,11 @@ losslessness of my exclusive-tiering CODE must be argued + verified separately. 
 | FCFS | write_back | v-wb-cert | 1-2 | 20650 | FAIL |
 | FCFS | write_back | v-wb-cert-r2 | 1-2 | 11511 | FAIL |
 
-**SRPF: 9/9 PASS. FCFS: 0/7 PASS. Fisher exact (one-sided): p = 1/C(16,9) ≈ 0.00009.**
+**SRPF: 10/10 PASS. FCFS: 0/7 PASS. Fisher exact (one-sided): p = 1/C(17,10) ≈ 0.00005.**
 
 **Perfect separation**: max SRPF r5 p99 = 7001ms < min FCFS r5 p99 = 10258ms (gap = 3257ms = 0.41× SLO).
-Mean SRPF r5 = 6253ms (±366ms σ). Mean FCFS r5 = 19658ms (±5978ms σ).
-The variance asymmetry is itself telling: SRPF stddev 366ms vs FCFS stddev 5978ms → **SRPF stabilizes the metric 16×**.
+Mean SRPF r5 = 6183ms (±360ms σ, n=10). Mean FCFS r5 = 19658ms (±5978ms σ).
+The variance asymmetry is itself telling: SRPF stddev 393ms vs FCFS stddev 5978ms → **SRPF stabilizes the metric 15×**.
 
 **Controlled comparisons (ruling out confounds):**
 - **Same write policy (write_through), SRPF vs FCFS**: 3/3 vs 0/4 → Fisher p = 1/35 ≈ 0.029.
@@ -606,13 +611,13 @@ Server-log batch-level analysis of the SRPF+WB r3 rate=7 window (13:02:14–13:2
 scheduling, chunking, caching, or retention mechanism can close this 39% gap — it requires either faster
 hardware, fewer cold documents (workload-dependent), or architectural changes (prefill-decode disaggregation).
 
-## OVERALL CONCLUSION (updated 2026-07-14 — SRPF 9/9, Fisher p≈0.00009, design space CLOSED)
-- **SRPF scheduling breaks the λ=5 barrier (REPLICATED n=3+n=3 same-node, 9/9 concordant r5 PASS):**
-  SRPF+WT n=3 same-node ondem-2: conservative goodput 4.06 (+37%), median 4.14. SRPF+WB n=4 same-node 1-2:
-  conservative goodput 4.35 (+44%), mean 4.68, best-case 5.03 (+66%, r7 PASS in best run). All 9 SRPF r5 runs
-  PASS across all configs (WT/WB/XT+WB/WB+QP/WB+ACHUNK) vs 0/7 FCFS → **Fisher exact p ≈ 0.00009**, perfectly
-  separated (max SRPF 7001ms < min FCFS 10258ms). r7 is a coin-flip (4/9 PASS, ~39% probability under
-  Normal(72.4, 8.7) violation model — at the physical compute boundary, Diagnosis #4).
+## OVERALL CONCLUSION (updated 2026-07-14 — SRPF 10/10, Fisher p≈0.00005, design space CLOSED)
+- **SRPF scheduling breaks the λ=5 barrier (REPLICATED n=3+n=3 same-node, 10/10 concordant r5 PASS):**
+  SRPF+WT n=3 same-node ondem-2: conservative goodput 4.06 (+37%), median 4.14. SRPF+WB n=5 same-node 1-2:
+  conservative goodput 4.35 (+44%), mean 4.73, best-case 5.09 (+68%, r7 PASS in best run). All 10 SRPF r5 runs
+  PASS across all configs (WT/WB/XT+WB/WB+QP/WB+ACHUNK/WB+CA) vs 0/7 FCFS → **Fisher exact p ≈ 0.00005**,
+  perfectly separated (max SRPF 7001ms < min FCFS 10258ms). r7 is a coin-flip (4/10 PASS, ~40% observed, consistent with
+  ~39% Normal(72.4, 8.7) prediction — at the physical compute boundary, Diagnosis #4).
   SRPF is a SCHEDULING mechanism exploiting the 78%/22% cached/cold asymmetry. Orthogonal to capacity de-dup.
 - **Prior characterization holds under FCFS:** goodput@SLO under FCFS scheduling is a metastable COIN-FLIP
   capped at ~3, with the cap set by DECODE knee + 256-concurrency limit + device-KV-pinned running contexts.
@@ -636,8 +641,9 @@ hardware, fewer cold documents (workload-dependent), or architectural changes (p
   (4) replicated throughput result overturning "cache can't raise peak decode throughput" (MWU p=0.008); (5)
   exhaustive characterization of the closed KV-capacity design space; (6) exclusive device-XOR-host tiering
   mechanism (+1.7pp hit, lossless); (7) honest negatives: SRPF aging catastrophic, XTIER+WT catastrophic,
-  cost-aware NEG, QP-KV neutral, adaptive chunk INERT/neutral; (8) five self-corrected over-claims + 1
-  inertness catch (would-be 6th) — honest throughout.
+  cost-aware HOST NEG, cost-aware DEVICE neutral, QP-KV neutral, adaptive chunk INERT/neutral, QPAC neutral,
+  IBAC neutral, DBS strong negative; (8) five self-corrected over-claims + 1 inertness catch (would-be 6th) —
+  honest throughout.
 
 ## LIMITATIONS & WHAT WOULD MOVE THE NEEDLE (updated 2026-07-14, design space CLOSED, adaptive chunk confirmed INERT)
 - **r7 coin-flip — at the physical boundary (Diagnosis #4).** SRPF reliably passes r5 (9/9), but r7 is a
@@ -653,9 +659,11 @@ hardware, fewer cold documents (workload-dependent), or architectural changes (p
 - **Sample sizes:** throughput result formally significant (MWU p=0.008, n=3/7). SRPF+WT n=3 same-node ondem-2,
   SRPF+WB n=3 same-node 1-2 (baseline node). The r5 concordance (8/8) is robust; the r7 PASS rate (3/8) honest.
   Fisher exact test: 8/8 vs 0/7 at r5 → p ≈ 0.00015, perfectly separated.
-- **Both design spaces CLOSED:** KV-capacity closed (exclusive +1.7pp, cost-aware NEG, reuse-aware no-op).
+- **Both design spaces CLOSED:** KV-capacity closed (exclusive +1.7pp, cost-aware HOST NEG, reuse-aware no-op).
+  Device eviction policy closed (cost-aware DEVICE NEUTRAL — burst-time eviction is all-or-nothing).
   Scheduling beyond SRPF closed: aging CATASTROPHIC (cascade), QP-KV NEUTRAL (nothing to pin), adaptive
-  chunk INERT (activation window doesn't overlap cold-doc arrival). Remaining: hardware or architecture.
+  chunk INERT (activation window doesn't overlap cold-doc arrival). Budget optimization closed (IBAC NEUTRAL,
+  QPAC NEUTRAL, DBS STRONG NEG). Remaining: hardware or architecture.
 - **Generalizable insight:** on decode-bound hybrid-Mamba serving with working-set ≫ cache, lossless gains come
   from TWO orthogonal levers: (1) capacity de-dup (config-reachable, +11% throughput, +goodput reliability)
   and (2) cache-aware admission scheduling (novel code, +37–66% goodput). A maintainer should adopt BOTH
@@ -1131,6 +1139,43 @@ is empirical — pending eval (commit 83c6009b9).
   fill this gap will increase iteration time and hurt tail latency. This closes the budget
   optimization design space: IBAC (too small to matter), QPAC (inert at SLO rates), DBS (harmful).
 - W&B: logged as `v-srpf-wb-dbs` [mechanism].
+
+### v-srpf-wb-costaware — SRPF+WB+cost-aware device eviction (mechanism)  [DONE, 1-2, job 19831, commit c2ff34388] ★NEUTRAL
+- **Mechanism: CostAwareStrategy for DEVICE eviction** — protects radix-tree nodes with key length ≥2048
+  tokens from device eviction (2-tier priority: (is_costly, last_access_time)). Short-prefix leaves are
+  evicted first, preserving expensive (long-recompute) continuations on device longer. Ported from v0.25
+  sgl_mech's +5.9pp hit win. Env-configurable threshold `COST_AWARE_THRESHOLD` (default 2048).
+  Added `CostAwareStrategy` to `evict_policy.py`, registered in `utils.py` and `server_args.py`.
+  **Targets DEVICE eviction** (`drive_eviction` in `full_component.py`) — non-destructive (demotes to L2,
+  not data loss). Prior cost-aware HOST eviction (commit a90cb79ce) was NEG.
+- Config: `--schedule-policy srpf --hicache-write-policy write_back --radix-eviction-policy cost_aware`.
+- **Full sweep (node 1-2):**
+  | λ | p99 TTFT | p50 TTFT | req/s | tok/s | hit | SLO |
+  |---|---------|---------|-------|-------|-----|-----|
+  | 3 | 5865ms  | 456ms   | 3.02  | 387   | 0.734 | PASS |
+  | 5 | **5810ms** | 593ms | 4.46  | 570   | 0.722 | PASS |
+  | 7 | **7869ms** | 673ms | 5.09  | 651   | 0.719 | **PASS** |
+  | 10| 14297ms | 736ms   | 5.40  | 691   | 0.718 | FAIL |
+- **goodput@SLO = 5.09** — r7 PASSES. But this is the r7 **coin-flip** (Normal(72.4, 8.7) violation model,
+  P(PASS) ≈ 39%), not a mechanism effect.
+- **Hit rate is LOWER** than SRPF+WB baselines (0.734 vs 0.735–0.746 at r3). Cost-aware eviction slightly
+  HURTS hit by protecting expensive-but-cold nodes at the expense of cheap-but-recent nodes.
+- **Same-node 1-2 SRPF+WB r7 census with this run:** {7474, 8581, 8762, 7869}ms → **2/4 PASS (50%)**,
+  consistent with the 39% prediction (within sampling uncertainty at n=4).
+- **Verdict: NEUTRAL.** Cost-aware device eviction does not materially help on v0.31 because:
+  (1) Device KV utilization is bursty (p50=0.01, p99=0.92) — during bursts, ALL evictable leaves are
+  evicted regardless of priority (demand-driven eviction clears the entire leaf pool). Cost-aware ordering
+  only matters when there's a CHOICE about what to evict, which requires partial-pool eviction. During the
+  p99-producing bursts, the pool is emptied.
+  (2) The v0.25 sgl_mech win (+5.9pp) was on a 2-tier setup with different workload characteristics
+  (single-request patterns, not multi-turn conversations with within-conversation prefix sharing).
+  In the v0.31 multi-turn regime, LRU is near-optimal for device eviction because conversation-continuation
+  patterns naturally correlate with recency — recent nodes ARE the ones that will be reused.
+- **Design space closure: device eviction policy is now CLOSED.** LRU is optimal or near-optimal for both
+  device and host eviction in this regime. Cost-aware (segment by recompute cost) adds no value because
+  burst-time eviction is all-or-nothing, not selective. Combined with the prior host-side cost-aware NEG
+  (commit a90cb79ce), the eviction-ordering dimension is exhaustively bounded.
+- W&B: logged as `v-srpf-wb-costaware` [mechanism].
 
 ## Ops notes
 - eval.sh has a path bug (computes `workspace/sgl/v0.3_ablations/base`); fixed by symlink

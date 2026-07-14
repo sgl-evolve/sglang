@@ -109,9 +109,10 @@ is cold-prefill-compute-bound and no lossless KV mechanism shifts it beyond the 
   so far FAILED to complete on ondem-3 (hangs at pool 0.10 / 0.17, one crash at 0.99); ondem-3 may have
   degraded over hours. Re-testing on a health-checked node (stock-r2 first, then v2-cca-df, same-node).
 
-### ★ Same-node coin-flip CONFIRMED (my data)
-Two STOCK runs on the SAME node (ondem-3): **λ=3 p99 = 11787ms (FAIL) [v0-stock] vs 6327ms (PASS)
-[v0-stock-r2]** — 1.86× run-to-run variance straddling the 8s SLO. goodput@SLO is a metastable
+### ★ Same-node coin-flip CONFIRMED (my data, n=3)
+STOCK λ=3 p99 same-node (ondem-3): **{11787 FAIL, 6327 PASS, 8124 FAIL}** — n=3, **1/3 pass**,
+mean ~8746ms, range 6.3–11.8s straddling the 8s SLO (1.86× spread). goodput {0, 3.02, 0}.
+v4-lb λ=3 (8556) sits at the stock MEAN ⇒ neutral. (v4 replicates firming the variance.) goodput@SLO is a metastable
 coin-flip even same-node ⇒ single-run A/Bs are VOID; any CCA claim needs n≥3–6 replicates per arm
 (compare p99 DISTRIBUTIONS, Levene/MWU). stock-r2 also: pool peak 1.00, **0 retracts** (confirms
 stock handles saturation via prefill-stall, no cascade). ondem-3 is HEALTHY (stock ran clean) ⇒ the

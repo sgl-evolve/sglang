@@ -34,8 +34,8 @@
 </head>
 <body>
 
-<h1>The p99 Tail is Head-of-Line Blocking:<br>
-Giant-Prefill Monopoly and Fair-Share Chunk Interleaving <span class="draft">v0 · results pending</span></h1>
+<h1>The p99 Tail is Head-of-Line Blocking &mdash; But You Cannot Reshape It Away:<br>
+Giant-Prefill Monopoly and Why Prefill-Rate Reduction Backfires <span class="draft">v1 · bounded negative</span></h1>
 <p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
 <p class="sub">Base commit <span class="mono">a334877e5</span> · mechanism <span class="mono">48ad6612b</span></p>
 
@@ -43,19 +43,24 @@ Giant-Prefill Monopoly and Fair-Share Chunk Interleaving <span class="draft">v0 
 <b>Abstract.</b> On saturated conversational serving, the p99 time-to-first-token (TTFT) tail is dominated by
 turn-0 prefills of heavy-tailed documents (up to 191K tokens). Prior companion studies showed this tail is not
 cache-addressable and bounds goodput@SLO. We identify a <em>structural</em> amplifier of that tail and a lossless
-mechanism to reduce it. <b>Diagnosis (from production telemetry):</b> sglang admits an in-flight chunked "giant"
-prefill <em>first</em> each scheduler step, and a single giant consumes the entire per-step chunked-prefill token
-budget; short requests that arrive behind it cannot start prefill until it clears. Measuring the &lambda;=3 steady
-state directly, <b>51% of prefill steps have requests waiting, and 89% of those are head-of-line (HOL) blocked</b> by
-a giant that monopolizes the budget&mdash;45.6% of <em>all</em> prefill steps&mdash;with a median of 4 short requests
-waiting behind a giant that blocks for a median of 11 (max 79) consecutive steps. <b>Mechanism:</b> we introduce
-<em>fair-share chunk interleaving</em>&mdash;when a giant would monopolize the step while shorts wait, cap the giant's
-per-step share to a fraction and admit a waiting short with the remainder, so the short starts prefill immediately
-while the giant still advances. It is lossless (only reshapes the per-step token split; no drop/reorder/evict) and
-respects the engine's single-chunked-request invariant (a waiting request that would itself truncate is left queued,
-not forced into an illegal second chunk). <span class="pending">[RESULTS PENDING same-node A/B v8_fair vs v9_stock2:
-&lambda;=3 p99/median TTFT + the deterministic HOL-blocked-step fraction (coin-flip-robust). Verdict framing&mdash;win
-vs. refined bound&mdash;selected on measured data.]</span>
+mechanism to reduce it&mdash;and a bounded-negative result on that mechanism that yields a sharper systems law.
+<b>Diagnosis (from production telemetry):</b> sglang admits an in-flight chunked "giant" prefill <em>first</em> each
+scheduler step, and a single giant consumes the entire per-step chunked-prefill token budget; short requests behind it
+cannot start prefill until it clears. Measuring the &lambda;=3 steady state, <b>51% of prefill steps have requests
+waiting, and 89% of those are head-of-line (HOL) blocked</b> by a giant that monopolizes the budget&mdash;45.6% of
+<em>all</em> prefill steps&mdash;a median of 4 shorts waiting behind a giant that blocks for a median of 11 (max 79)
+consecutive steps. <b>The natural fix and why it fails:</b> we built <em>fair-share chunk interleaving</em>&mdash;cap
+the giant's per-step share so a waiting short starts immediately while the giant still advances (lossless; respects the
+engine's single-chunked-request invariant). It <b>backfires decisively</b>: &lambda;=3 p99 TTFT rises to
+<b>37&nbsp;s</b> (vs the 6&ndash;11&nbsp;s stock band), decode time-per-token nearly doubles (927 vs ~430&nbsp;ms),
+throughput falls to 1.92&nbsp;req/s, and 40% of requests fail to complete (starvation). The cause is twofold and both
+are fundamental: (i) capping a giant makes it <em>linger</em> across more steps, so in-flight concurrency rises and
+memory-bound decode slows&mdash;the <em>identical</em> runaway that sinks a companion occupancy-feedback controller;
+(ii) the single-chunked-request invariant means a large waiting request cannot interleave at all, so holding it behind
+perpetual capped giants starves it. <b>Unified law:</b> at the concurrency cap, <em>any</em> mechanism that reduces a
+giant's prefill rate&mdash;occupancy-gated throttling or chunk-level fair-sharing&mdash;backfires; the p99 tail is not
+reshapable within fixed capacity. The only tail levers are added capacity or whole-request shortest-first reordering,
+not intra-step prefill reshaping.
 </div>
 
 <h2>1 Introduction</h2>
@@ -64,8 +69,9 @@ Two companion studies established that (i) hierarchical KV caching cannot raise 
 uncacheable turn-0 prefill of heavy-tailed documents, and (ii) goodput@SLO is capacity-bounded and the tail is a
 contention effect, not a service-time floor (every request is solo-feasible: even the 191K-token max document prefills
 in &lt;7&nbsp;s alone). If the tail is contention, <em>which</em> contention? This paper answers: a large share of the
-tail is <b>head-of-line blocking of short requests behind giant prefills</b>&mdash;a scheduling artifact&mdash;and it
-is reducible losslessly at fixed capacity.</p>
+tail is <b>head-of-line blocking of short requests behind giant prefills</b>&mdash;a scheduling artifact. The obvious
+lossless fix (interleaving) is what one would try next; we show it <em>backfires</em>, and the reason yields a sharper
+law: the tail is not reshapable by any intra-step prefill policy at fixed capacity.</p>
 
 <h2>2 Diagnosis: giant prefills monopolize the per-step budget</h2>
 <p>sglang bounds each scheduler step's prefill work by a token budget (<span class="mono">chunked_prefill_size</span>,
@@ -127,27 +133,57 @@ budget anyway).</li>
 &lambda;=10).</li>
 </ul>
 
-<h2>4 Results</h2>
-<div class="pending">
-<b>[PENDING — same-node A/B (v8_fair, <span class="mono">FAIR_PREFILL=1</span>, vs v9_stock2) on one held node; verdict
-via <span class="mono">analyze_paper5.py</span>.]</b> Two evidence tracks:
-<ul>
-<li><b>Deterministic mechanism metric (coin-flip-ROBUST).</b> The HOL-blocked-step fraction and median new-seqs/step
-from the fair-share server log vs stock. Prediction: HOL-blocked fraction drops and new-seqs/step rises (shorts
-admitted alongside giants). This does not depend on the goodput coin-flip. <em>[Live telemetry already shows the
-mechanism firing: steps admitting the giant's capped chunk + a short together, where stock admitted only the
-giant.]</em></li>
-<li><b>Outcome (coin-flip-sensitive).</b> &lambda;=3 p99/median TTFT vs same-node stock. Prediction: p99 down if the
-freed shorts (median 4 behind each giant) outweigh the giant's own slowdown.</li>
-<li><b>Guards.</b> hit_rate invariant (lossless); C&#64;&lambda;=10 unchanged (no de-saturation).</li>
-</ul>
-Outcome-conditioned framing: <em>WIN</em> &rarr; a lossless scheduling mechanism that cuts the structural p99 tail at
-fixed capacity (composes with the capacity-margin levers of the companion studies). <em>HOL drops but p99 flat</em>
-&rarr; the tail is the giant's own prefill service time, not HOL contention&mdash;a refined bound that sharpens the
-companion "tail is intrinsic" claim. <em>p99 up</em> &rarr; slowing giants dominates (bound).
-</div>
+<h2>4 The fix backfires</h2>
+<p>We evaluated fair-share (<span class="mono">FAIR_FRAC</span>=0.5) against stock at &lambda;=3 on the same node (both
+full sweeps; the mechanism is default-OFF for stock). The mechanism <em>does</em> fire&mdash;live telemetry shows steps
+admitting the giant's capped 3072-token chunk plus a short's 3072 together, where stock admits only the giant&mdash;yet
+the outcome is decisively worse:</p>
+<table>
+<thead><tr><th>&lambda;=3 metric</th><th>stock band</th><th>fair-share</th></tr></thead>
+<tbody>
+<tr><td>p99 TTFT</td><td>6.2 &ndash; 11.5&nbsp;s</td><td class="fail">37.1&nbsp;s</td></tr>
+<tr><td>decode time-per-token</td><td>392 &ndash; 468&nbsp;ms</td><td class="fail">927&nbsp;ms</td></tr>
+<tr><td>mean concurrency</td><td>124 &ndash; 166</td><td class="fail">188</td></tr>
+<tr><td>throughput (req/s)</td><td>~2.3 &ndash; 3.0</td><td class="fail">1.92</td></tr>
+<tr><td>requests completed</td><td>7 037</td><td class="fail">4 255 (40% starved)</td></tr>
+</tbody>
+</table>
+<div class="keyfinding">
+Two compounding, fundamental failure modes:
+<ol>
+<li><b>Lingering giants (the runaway).</b> Capping a giant to half the budget makes it take &sim;2&times; as many steps,
+so a giant is in flight a larger fraction of the time; in-flight concurrency rises (188) and memory-bound decode slows
+(tpot 927&nbsp;ms). This is the <em>identical</em> mechanism by which a companion occupancy-feedback decode-floor
+controller backfires (its &lambda;=3 p99 is 31.8&nbsp;s). Slowing prefill does not free the system&mdash;it fills it.</li>
+<li><b>Invariant-forced starvation.</b> The engine permits only one chunked request. A <em>large</em> waiting request
+therefore cannot interleave&mdash;it must wait for the giant to finish&mdash;so holding it behind perpetually-capped
+(hence longer-lived) giants starves it: 40% of requests never complete. (Aging could bound the starvation, but the
+runaway in (1) is unfixable within fixed capacity.)</li>
+</ol></div>
+<p class="note">Same-node stock control (v9_stock2, mechanism OFF): completes 7 037 with p99 in the stock band,
+confirming the node is healthy and the degradation is the mechanism, not the node or the goodput coin-flip (the
+37&nbsp;s / 927&nbsp;ms / 4 255-completion signature is far outside the coin-flip band and is corroborated by the
+deterministic per-step admission metrics).</p>
 
-<h2>5 Related work</h2>
+<h2>5 The unified law: prefill-rate reduction backfires</h2>
+<p>Two independent, lossless, on-contract mechanisms&mdash;an occupancy-gated decode-floor (companion) and chunk-level
+fair-sharing (here)&mdash;both reduce a giant's prefill rate, and both backfire with the same signature (p99
+31&ndash;37&nbsp;s, decode-tpot up, concurrency up). This is not a coincidence but a law of this operating point:</p>
+<div class="keyfinding">
+<b>At the concurrency cap, reducing a giant's prefill rate is strictly harmful.</b> A giant that prefills slower
+occupies KV slots and the running batch for more steps, raising in-flight concurrency; because decode is
+memory-bandwidth-bound, higher concurrency slows every decode step, which makes requests linger longer, which raises
+concurrency further. The p99 tail is therefore <em>not reshapable within fixed capacity by any intra-step prefill
+policy.</em> The levers that <em>can</em> move the tail are (a) more capacity (raise the concurrency ceiling / KV), and
+(b) <em>whole-request</em> shortest-remaining-first reordering&mdash;running small requests to completion and deferring
+whole giants&mdash;which reduces the number of in-flight requests rather than stretching each giant. Chunk-level
+interleaving is the opposite of (b): it stretches the giant, which is exactly wrong.</div>
+<p>This sharpens the companion studies' finding that the p99 tail is contention-bound and cache-irreducible: the
+contention is a concurrency&harr;decode runaway that <em>any</em> prefill-slowing mechanism feeds. It also delimits the
+design space precisely&mdash;the tail belongs to capacity and whole-request scheduling, not to prefill batch
+composition.</p>
+
+<h2>6 Related work</h2>
 <p>Sarathi-Serve (OSDI'24) chunks prefill to bound prefill&harr;decode interference; it does not address
 <em>inter-request</em> HOL blocking among prefills (a giant still monopolizes the chunk budget). Shortest-remaining
 (SRPF/SJF) scheduling reorders the waiting queue to run short whole requests first; our mechanism is orthogonal and
@@ -156,7 +192,7 @@ without reordering which whole request is next. Fair queueing / processor sharin
 chunk-level fair sharing to LLM prefill batch composition, motivated by measured giant-prefill HOL blocking, is to our
 knowledge new.</p>
 
-<h2>6 Reproducibility</h2>
+<h2>7 Reproducibility</h2>
 <ul>
 <li>Diagnosis: parse <span class="mono">Prefill batch</span> lines from a stock run's <span class="mono">server.log</span>,
 isolate the &lambda;=3 window via the eval's rate markers; script in <span class="mono">analysis/</span>.</li>

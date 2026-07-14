@@ -485,3 +485,63 @@ Diagnostic script inline (analysis/); reproducible from committed server.log.
   3072 admitted TOGETHER) when a giant (pending 940K) + 77 waiting present, vs stock's new-seq:1. Big waiting reqs
   correctly held by the guard (new-seq:1 new-token:3072 = giant only). Cap to 3072 (=6144×0.5) confirmed.
 - Next: λ=3 completes ~23:45 → analyze_paper5.py verdict (deterministic HOL-frac drop + p99 vs same-node v9_stock2).
+
+## ★ PAPER 5 EARLY SIGNAL (v8_fair λ=3 first ~8min, 2790 steps) — NUANCED, watch p99
+- Mechanism IS interleaving: 19.4% of waiting-steps admit ≥2 new-seq (short alongside giant) vs stock ~0%. ✓ fires.
+- BUT concern: my "HOL-blocked" metric (chunk≥50%budget & new-seq≤2) is CONTAMINATED for fair-share — a capped-giant-
+  only step has new-token=3072=exactly 50% budget → counted as HOL even though giant is at half. And mean new-seq when
+  waiting = 1.26 (< stock 1.39). wait_frac 85.7% (>stock 51%) but NOT comparable (v8 sample=first 8min of λ=3 ramp
+  from warmup; stock=full 42min λ=3).
+- ★DESIGN FLAW EXPOSED: when only BIG reqs wait (held by the invariant guard to preserve single-chunk), the giant is
+  capped to 3072 but the freed 3072 goes UNUSED → giant runs at half-rate for NO benefit → wastes prefill throughput.
+  Interleave only helps the 19.4% of steps where a SHORT fits. Net p99 = the real question (p99 @ λ=3 ~23:45).
+- CLEAN mechanism metric = interleave-firing rate (short admitted w/ giant), NOT my contaminated HOL-frac. If p99 is
+  neutral/up, the fix is a v2: cap the giant ONLY when a short is actually waiting that fits (don't waste budget when
+  only big reqs wait). This early signal leans toward "partial/limited win or neutral" — await p99 ground truth.
+
+## ★ PAPER 5 DETERMINISTIC METRIC (v8_fair λ=3, ~19min, 7062 steps) — LEANS NEGATIVE for the mechanism
+Clean interleave metric (of giant+wait steps, frac admitting ≥2 new-seq):
+  stock(v1) λ=3: giant+wait 49.4%, INTERLEAVE 23.5%, mean_newseq(gw)=1.37
+  fair(v8) λ=3:  giant+wait 77.9%, INTERLEAVE 18.3%, mean_newseq(gw)=1.23  ← LOWER interleave & mean, not higher
+INTERPRETATION: the mechanism is NET-COUNTERPRODUCTIVE on admission throughput. Root cause = the single-chunked-req
+invariant: only ONE req can be mid-prefill, so a waiting req can interleave ONLY if it COMPLETES in the leftover
+(≤3072 tok). When only BIG reqs wait (the majority — my guard holds them to preserve the invariant), capping the giant
+to 3072 wastes the other 3072 AND makes the giant take ~2× steps → many extra giant-only (new-seq=1) steps that dilute
+interleave below stock's natural rate (stock's giant finishes faster w/ full budget, then admits a burst of shorts).
+⇒ chunk-level fair-share CANNOT beat HOL here: the invariant limits interleaving to small completers, and capping
+wastes budget on the common big-waiter case. NOTE metric is muddy (#pending>budget ≠ clean "chunked-giant present").
+p99 (same-node A/B, ~23:45) = ground truth. LIKELY OUTCOME: neutral/negative p99 → Paper 5 becomes a BOUNDED NEGATIVE:
+"the p99 tail is giants-queued-behind-giants; sglang's single-chunked-req invariant forbids interleaving two large
+prefills, so the tail is architecturally irreducible without concurrent chunked prefill (a deeper engine change than
+on-contract)." This SHARPENS Papers 1/2 (why the tail is stubborn) — publishable as a bound. If p99 WIN → mechanism.
+v2 idea (cap only when a fitting SHORT waits) would remove the waste but STILL can't interleave big-behind-big → same
+architectural ceiling. Await p99.
+
+## ★★ PAPER 5 v8_fair λ=3 LANDED (23:37) — DECISIVE NEGATIVE (fair-share chunk interleaving BACKFIRES)
+v8_fair (FAIR_PREFILL=1 FRAC=0.5) λ=3: p99=**37058ms (37.1s)** | p50=1159 | conc=**187.5** | tpot=**927ms** |
+throughput=**1.92** req/s | dur=2214s. vs stock band {p99 6.2/11.5s, conc 124/166, tpot 392/468, thr ~2.35+}.
+- p99 37s = 3-6× stock; tpot 927 = ~2× (decode crippled); throughput 1.92 = degraded; conc 187 = high. ALL consistent,
+  large, mechanistically coherent → NOT a coin-flip bad draw (magnitude ≫ coin-flip band; same-node v9_stock2 control
+  running next to confirm).
+- ★SAME SIGNATURE AS PAPER 4 (decode-floor 31.8s): both THROTTLE/SPLIT giant prefill → giant takes ~2× steps →
+  LINGERS → concurrency ↑ (187) → decode contention ↑ → tpot ↑ (927, memory-bound) → p99 EXPLODES. Two INDEPENDENT
+  prefill-reshaping mechanisms backfire IDENTICALLY.
+- ★★UNIFIED BOUND (Paper 4 + Paper 5): "PREFILL-RATE REDUCTION BACKFIRES." At λ=3 the system is at the concurrency cap
+  (256); ANY mechanism that slows a giant's prefill (occupancy-gated decode-floor OR chunk-level fair-share) makes the
+  giant linger more steps → concurrency rises → decode slows → p99 explodes. The p99 tail is NOT reducible by reshaping
+  prefill within fixed capacity. The ONLY tail levers are (a) more capacity, or (b) SRPF-class WHOLE-REQUEST reordering
+  (run smalls first / giants last — base/sibling finding + my Paper 2 K-lever), NOT chunk-level interleaving.
+- Paper 5 = BOUNDED NEGATIVE: HOL blocking is real+pervasive (diagnosis, 45.6%), but the obvious lossless fix backfires
+  because (i) single-chunk invariant limits interleave to small completers, (ii) capping giants makes them linger →
+  the Paper-4 runaway. SHARPENS Papers 1/2 (why the tail is stubborn) + unifies with Paper 4. Await v9_stock2 control.
+
+## ★ PAPER 5 CRITICAL: v8_fair completed=4255 vs stock 7037 (~40% did NOT complete) = STARVATION
+The mechanism prevented ~2782/7037 requests from completing. Mechanism: my single-chunk invariant guard holds BIG
+waiting reqs whenever a giant is in flight; capping makes giants linger MORE steps → a giant is in flight a larger
+fraction of the time → big waiting reqs wait longer → many never complete in the run window. So fair-share backfires
+TWO ways that COMPOUND: (1) Paper-4 runaway (capped giants linger → conc↑ → decode↓ → p99 37s), (2) STARVATION of big
+reqs behind perpetual capped-giants (completed 4255/7037). Decisively negative + not even a clean p99 comparison
+(fewer completions). NOTE: outputs of COMPLETED reqs still match (per-step split only) but liveness is violated —
+worse than a latency regression. v9_stock2 (same node, mechanism OFF) will confirm stock completes ~7037.
+⇒ Paper 5 = DECISIVE BOUNDED NEGATIVE. No v2 worth building (starvation fixable via aging, but the giant-lingering
+backfire is fundamental). Finalize Paper 5 paper.html as the bound once v9_stock2 lands.

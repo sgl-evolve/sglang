@@ -52,12 +52,16 @@ def hol_stats(v):
     if not rows: return None
     budget = max(r[1] for r in rows)
     qpos = [r for r in rows if r[3] > 0]
-    hol = [r for r in qpos if r[1] >= 0.5 * budget and r[0] <= 2]
+    # steps where a giant is in flight AND shorts are waiting (the HOL opportunity)
+    giant_wait = [r for r in qpos if r[4] > budget]
+    # CLEAN mechanism metric: of those, how often is a short admitted alongside the giant (new-seq>=2)?
+    # Stock ~0% (giant hogs budget); fair-share >0% (interleave). NOT contaminated by the giant's chunk size.
+    interleave = [r for r in giant_wait if r[0] >= 2]
     return dict(steps=len(rows), budget=budget,
                 wait_frac=len(qpos) / len(rows),
-                hol_frac_of_wait=(len(hol) / len(qpos)) if qpos else 0,
-                hol_frac_all=len(hol) / len(rows),
-                med_newseq_when_wait=statistics.median([r[0] for r in qpos]) if qpos else 0,
+                giant_wait_frac=len(giant_wait) / len(rows),
+                interleave_of_giantwait=(len(interleave) / len(giant_wait)) if giant_wait else 0,
+                mean_newseq_when_giantwait=statistics.mean([r[0] for r in giant_wait]) if giant_wait else 0,
                 med_queue_when_wait=statistics.median([r[3] for r in qpos]) if qpos else 0)
 
 FAIR, STOCK = "v8_fair", "v9_stock2"
@@ -66,19 +70,19 @@ print("=== Paper 5 A/B: fair-share chunk interleaving vs same-node stock ===")
 if not cf:
     print(f"{FAIR} not landed yet."); raise SystemExit(0)
 
-print("\n(1) DETERMINISTIC mechanism metric — HOL-blocked-step fraction (lam=3, coin-flip-ROBUST):")
-hf, hs = hol_stats(FAIR), hol_stats(STOCK) or hol_stats("v1_stock")
+print("\n(1) DETERMINISTIC mechanism metric — INTERLEAVE-FIRING rate (lam=3, coin-flip-ROBUST):")
+print("    = of steps with a giant in flight AND shorts waiting, fraction admitting >=2 new-seq")
+print("    (stock ~0%: giant hogs budget; fair-share >0%: short interleaved). Uncontaminated by chunk size.")
+hf, hs = hol_stats(FAIR), (hol_stats(STOCK) or hol_stats("v1_stock"))
 for nm, h in (("fair(v8)", hf), ("stock", hs)):
     if h:
-        print(f"  {nm:10} budget={h['budget']} wait_frac={h['wait_frac']:.1%} "
-              f"HOL/wait={h['hol_frac_of_wait']:.1%} HOL/all={h['hol_frac_all']:.1%} "
-              f"med_newseq={h['med_newseq_when_wait']:.0f} med_queue={h['med_queue_when_wait']:.0f}")
+        print(f"  {nm:10} budget={h['budget']} giant_wait_frac={h['giant_wait_frac']:.1%} "
+              f"INTERLEAVE={h['interleave_of_giantwait']:.1%} "
+              f"mean_newseq(giant+wait)={h['mean_newseq_when_giantwait']:.2f}")
 if hf and hs:
-    d = hs['hol_frac_all'] - hf['hol_frac_all']
-    print(f"  -> HOL/all {hs['hol_frac_all']:.1%} (stock) -> {hf['hol_frac_all']:.1%} (fair): "
-          f"{'DROP '+format(d,'+.1%')+' = MECHANISM WORKS' if d>0.03 else 'no meaningful drop'}")
-    print(f"  -> med new-seq/step when waiting: stock {hs['med_newseq_when_wait']:.0f} -> fair "
-          f"{hf['med_newseq_when_wait']:.0f} ({'more shorts admitted = interleave works' if hf['med_newseq_when_wait']>hs['med_newseq_when_wait'] else 'unchanged'})")
+    print(f"  -> interleave rate: stock {hs['interleave_of_giantwait']:.1%} -> fair "
+          f"{hf['interleave_of_giantwait']:.1%} "
+          f"({'MECHANISM FIRES (shorts interleaved)' if hf['interleave_of_giantwait']>hs['interleave_of_giantwait']+0.05 else 'no meaningful interleave'})")
 
 print("\n(2) OUTCOME — lam=3 TTFT (coin-flip-sensitive; same-node A/B):")
 for nm, c in (("fair(v8)", cf), ("stock(v9)", cs)):

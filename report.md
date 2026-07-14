@@ -298,14 +298,19 @@ architecturally UNAVAILABLE for the Qwen3.5 hybrid GatedDeltaNet model.**
 - Code: the CP auto-enable (`attn_cp_size = tp//dp`) is gated to `is_deepseek_dsa(hf_config)`
   (DeepSeek 3.2 / GLM-5 DSA) in `server_args.py`; qwen3_5 is not in the arch list. `qwen3_5.py` has ZERO
   CP code — only `qwen3_moe.py` (pure-attention MoE) and the DSA backends implement prefill-CP.
-- Root reason (novel, generalizable): CP splits the sequence across ranks; attention softmax decomposes
-  (ring/flash CP), but the GatedDeltaNet/Mamba layers are a SEQUENTIAL RECURRENCE (state carried
-  token-by-token) → CP would need a cross-rank serial scan → negates the parallelism → so it is not
-  implemented for hybrid linear-attention models. Hybrid models inherit an irreducible single-document
-  prefill-latency floor that pure-attention models amortize with CP.
-- My earlier "CP blocked by fixed tp" note was WRONG (CP runs over the 8 TP ranks; the flags are legal);
-  the true reason is the hybrid architecture.
+- ★INTEGRITY CORRECTION (commit f482245e9): CP is an IMPLEMENTATION GAP, not a fundamental barrier.
+  I briefly overclaimed "linear-recurrence can't be context-parallelized." That is WRONG: CP splits the
+  SEQUENCE, so O(n) per-token work (proj/MoE/linear-attn) parallelizes across ranks, and the GatedDeltaNet
+  recurrence admits a chunked cross-device state scan (O(cp) serial combine, as in sequence-parallel
+  Mamba). Prefill would parallelize near-linearly.
+- FLOP breakdown (`analysis/prefill_flops.py`, config: 36 GDN + 12 full-attn layers): O(n²) attention is
+  21% / 49% / 73% of prefill FLOPs at the median / p99 / max document → the biggest cold docs (the p99
+  floor) are ATTENTION-DOMINATED, so parallelizing their prefill would cut the tail materially.
+- So CP WOULD help — it is just NOT WIRED for the qwen3_5 hybrid model in sglang v0.31 (attn_cp_size stays
+  1; auto-enable gated to `is_deepseek_dsa` + pure-attention Qwen3-MoE). A hybrid-model prefill-CP
+  implementation is a plausible FUTURE lever against the p99 floor (large engineering effort; not this work).
 
-This COMPLETES the impossibility: no serving-policy lever (papers 1, 2) AND no compute-side lever moves
-the p99 cold-doc floor under the frozen contract. goodput@SLO is corpus- and hardware-bound for this
-hybrid model. Design space exhaustively closed across admission, scheduling, caching, and CP.
+Under the current engine + frozen contract, the p99 cold-doc floor stands: no serving-policy lever moves
+it (papers 1, 2), and the one compute-side lever that could (CP) is unavailable for this hybrid model.
+goodput@SLO is corpus- and hardware-bound in this system. Both "CP blocked by fixed tp" and
+"linear-recurrence can't be CP'd" were wrong framings — corrected.

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>The Document-Reuse Mirage — floyd</title>
+<style>
+body{max-width:52em;margin:2.2em auto;padding:0 1.2em;font:16px/1.55 Georgia,serif;color:#161616}
+h1{font-size:1.7em;line-height:1.25;margin:0 0 .1em}
+h2{font-size:1.22em;margin:1.7em 0 .4em;border-bottom:1px solid #ddd;padding-bottom:.15em}
+h3{font-size:1.05em;margin:1.15em 0 .3em}
+.sub{color:#555;font-style:italic;margin:.2em 0 1.2em}
+code{background:#f4f4f4;padding:.05em .35em;border-radius:3px;font:13.5px/1.4 Menlo,monospace}
+table{border-collapse:collapse;margin:1em 0;font-size:14px;width:100%}
+th,td{border:1px solid #ccc;padding:.32em .55em;text-align:left;vertical-align:top}
+th{background:#f0f0f0}
+td.b{background:#fff3f3}
+.fig{margin:1.2em 0;padding:.6em;background:#fafafa;border:1px solid #eee;border-radius:5px;text-align:center}
+figcaption{font-size:13px;color:#555;margin-top:.4em;text-align:left}
+.abs{background:#f7f7f7;border-left:3px solid #888;padding:.7em 1em;margin:1em 0}
+b{color:#000}em{color:#333}
+</style></head><body>
+
+<h1>The Document-Reuse Mirage: goodput@SLO in long-document LLM serving is corpus-bound, not cache-policy-bound</h1>
+<div class="sub">floyd · sglang v0.31 HiCache · v1 · caching-axis characterization + bounded negative</div>
+
+<div class="abs">
+<b>Abstract.</b> Long-document conversational serving looks like an ideal target for KV-cache retention:
+in the fixed Mooncake-mix workload, <b>41% of conversations are served by just two documents</b>, and
+45% of conversations re-use a document that some other conversation already prefilled. We show this
+apparent caching goldmine is a <em>mirage</em>. The reuse concentration is degenerate — <b>97% of the
+888 unique documents are used exactly once</b>, and the two hot documents have a median reuse distance
+of two conversations, so the stock content-keyed radix cache holds them resident with a trivial
+footprint and captures <em>all</em> of their reuse for free. We prove, by replaying the real trace
+through the KV cache, that single-pass LRU is <b>Belady-optimal</b> (LRU = LFU = Belady = 0 avoidable
+re-prefill at the real two-tier capacity): every miss is the first-sight prefill of a unique document,
+which no eviction or retention policy can remove. The only "avoidable" re-prefill we can find is a
+benchmark artifact of sweeping four request rates over the same conversation set, and even that is
+un-capturable by any online policy (LFU ≈ LRU; only a clairvoyant oracle recovers it). We further find
+the eviction-policy knob is inert on the hybrid-Mamba HiCache path (the active cache hardcodes
+last-access LRU), so the result holds by construction as well as by proof. The consequence is a
+control-invariance law: <b>goodput@SLO is a function of the corpus's unique-document set and the
+hardware's prefill throughput, not of the serving policy.</b> Together with our companion result that
+prefill <em>admission</em> control cannot help, and a scheduling analysis showing reordering is inert
+below the load knee and compute-capped above it, this closes the KV-cache control-policy design space
+for this workload: the lever is corpus-side (dedup, compression, retrieval shaping) or hardware, never
+the cache.
+</div>
+
+<h2>1 Introduction</h2>
+<p>
+KV-cache retention is the canonical lever for long-context serving: prefixes are expensive to compute,
+cheap to keep, and often re-used, so a good eviction/retention policy should convert re-prefills into
+hits. Document-QA and RAG workloads seem tailor-made for it — many requests share a corpus of documents.
+This paper asks whether that intuition survives contact with the data, on a fixed, realistic workload
+(1553 multi-turn conversations over long documents, served by a 122B hybrid-Mamba model on 8×H100 with a
+two-tier HiCache), evaluated by <b>goodput@SLO</b> (max Poisson request rate with p99 TTFT ≤ 8 s).
+</p>
+<p>It does not. Our contributions:</p>
+<ul>
+<li><b>A characterization of the reuse structure (§2).</b> The workload is 888 unique documents across
+1553 conversations, with degenerate popularity: two documents serve 41% of conversations, while 97% of
+documents are used exactly once. Naively this signals large caching headroom.</li>
+<li><b>The mirage, proven (§3).</b> Replaying the real trace through the cache, single-pass LRU is
+Belady-optimal — LRU = LFU = Belady = <b>0 avoidable re-prefill</b> at the real capacity. Hot documents
+are trivially resident (reuse distance ≈ 2); singleton documents have no reuse to capture. Eviction
+policy is a non-lever — and, we find, inert by construction on the active hybrid-Mamba cache path.</li>
+<li><b>A corpus-bound model + control-invariance (§4–5).</b> goodput@SLO = C / mean-unique-document-work
+and p99-TTFT ≥ (largest unique document) / C, both functions of the corpus and the hardware, not the
+policy. We situate our companion admission-control negative and a scheduling analysis as corollaries:
+no control axis moves the metric.</li>
+</ul>
+
+<h2>2 The workload's document structure</h2>
+<p>
+Each conversation's turn-0 embeds an entire document plus a question; turns 1..N re-use it. We hash each
+document's text and tabulate popularity and size (tokens ≈ chars/4). The picture is not Zipfian; it is
+<b>two hot documents plus a long tail of singletons</b>:
+</p>
+<table>
+<caption>Document popularity and size across 1553 conversations (888 unique documents).</caption>
+<tr><th>quantity</th><th>value</th></tr>
+<tr><td>unique documents</td><td>888 (of 1553 conversations)</td></tr>
+<tr><td>documents used exactly once</td><td><b>858 (97%)</b></td></tr>
+<tr><td>documents used 2–3×</td><td>28</td></tr>
+<tr><td>documents used &gt;10×</td><td><b>2</b> (538× and 100×)</td></tr>
+<tr><td>conversations served by the top-2 documents</td><td><b>638 / 1553 (41%)</b></td></tr>
+<tr><td>hot-doc (538×) reuse distance (conversations)</td><td>min 1, <b>median 2</b>, max 15</td></tr>
+<tr><td>unique-document size (tokens)</td><td>p50 18.7k · p90 33.2k · p99 67.2k · max <b>190.9k</b> · mean 20.7k</td></tr>
+</table>
+<p>
+Two facts about this structure drive everything below. First, the <em>hot</em> documents are re-used
+almost immediately (median gap of two conversations), so any reasonable cache keeps them resident — and
+their footprint is negligible relative to the 10.7M-token two-tier capacity. Second, the <em>bulk</em> of
+distinct documents (97%) are used once; their prefill is irreducibly cold, and there is simply no reuse
+for a cache to exploit. The 41% "reuse concentration" is real but is carried entirely by the two hot
+documents, which are already free to serve from cache.
+</p>
+
+<h2>3 Why the reuse is a mirage</h2>
+<p>
+We replay the real trace through a content-keyed document cache at the actual two-tier capacity (10.7M
+tokens) and measure, for LRU, LFU, and the clairvoyant Belady optimum, the work split into <b>cold</b>
+(first-ever sight of a document — irreducible) and <b>avoidable</b> (a document evicted and later
+re-prefilled — the only work a better policy could remove). The stock radix cache keys on token content,
+so an identical document re-used by another conversation is a hit whenever it is resident.
+</p>
+<table>
+<caption>Trace-driven document-cache replay at CAP = 10.7M tokens. Single-pass = one traversal of the
+1553-conversation workload; 4-pass = the eval's four-rate sweep over the same set (no flush).</caption>
+<tr><th>scenario</th><th>policy</th><th>doc-hit</th><th>cold (irreducible)</th><th>avoidable</th></tr>
+<tr><td rowspan="3">single pass (the real workload)</td><td>LRU</td><td>43%</td><td>18.4M tok</td><td class="b"><b>0.0M</b></td></tr>
+<tr><td>LFU</td><td>43%</td><td>18.4M tok</td><td class="b"><b>0.0M</b></td></tr>
+<tr><td>Belady (optimal)</td><td>43%</td><td>18.4M tok</td><td class="b"><b>0.0M</b></td></tr>
+<tr><td rowspan="3">4× rate-sweep replay (benchmark artifact)</td><td>LRU</td><td>43%</td><td>18.4M</td><td>55.1M</td></tr>
+<tr><td>LFU</td><td>44%</td><td>18.4M</td><td>54.0M</td></tr>
+<tr><td>Belady (optimal)</td><td>68%</td><td>18.4M</td><td>23.1M</td></tr>
+</table>
+<h3>3.1 Single-pass LRU is Belady-optimal</h3>
+<p>
+On the real workload (one pass), <b>LRU = LFU = Belady = 0 avoidable re-prefill</b>. This is not a
+coincidence of capacity; it is structural. A document is either (i) a singleton — first-sight, cold, and
+never re-used, so caching it or not is irrelevant to hits — or (ii) hot, re-used within a median of two
+conversations, so LRU never evicts it before its next use. There is no third case in which a policy could
+help: the workload contains no document that is re-used <em>far</em> enough in the future to be evicted
+by LRU yet <em>often</em> enough to be worth keeping. Every cache miss is therefore a first-sight
+prefill of one of the 888 unique documents. <b>The cold floor is 18.4M tokens and is policy-invariant.</b>
+</p>
+<h3>3.2 The only "avoidable" work is a benchmark artifact — and un-capturable online</h3>
+<p>
+Avoidable re-prefill (55.1M tokens under LRU) appears <em>only</em> under the eval's four-rate sweep,
+which replays the identical conversation set four times with no flush; since the unique working set
+(18.4M) exceeds the cache (10.7M), documents from one pass are evicted before the next pass re-uses them.
+This is an artifact of benchmarking four points on one workload, not a property of the workload. And it
+is <b>un-capturable by any online policy</b>: the reuse distance is one full pass (~1553 conversations)
+≫ cache, and each document's frequency is ~uniform across passes (once per pass), so LFU cannot rank
+them — LFU (54.0M) ≈ LRU (55.1M). Only the clairvoyant Belady optimum (23.1M), which knows the future
+sweep, recovers any of it. No deployable cache policy closes this gap.
+</p>
+<h3>3.3 The knob is inert by construction, too</h3>
+<p>
+Independently of the above, the <code>--radix-eviction-policy {lru,lfu,slru,priority}</code> flag does
+not reach the cache this model uses. The server initializes a <code>Unified RadixTree (FULL, MAMBA)</code>
+— <code>HiMambaRadixCache</code> — whose <code>evict()</code> heapifies tree nodes by
+<code>last_access_time</code> (hardcoded LRU) and never consults the configured eviction strategy (which
+is wired only into the non-hierarchical <code>RadixCache</code>). So on the hybrid-Mamba HiCache path the
+eviction policy is fixed to LRU regardless of the flag — which §3.1 shows is already optimal. Eviction
+policy is a non-lever both by proof and by construction; an A/B on the flag would be a confounded no-op,
+so we do not run one.
+</p>
+
+<h2>4 The corpus-bound model</h2>
+<p>
+With caching fixed at its optimum, goodput@SLO is pinned by two corpus-and-hardware quantities.
+<b>(1) Throughput ceiling.</b> No policy can sustain a request rate whose prefill work exceeds the GPU's
+prefill throughput C: goodput ≤ C / mean-unique-document-work. On the measured system C ≈ 18–19 k tok/s
+(new-token prefill, decode-shared) and the mean cold-document work is ≈ 4.3 k tok/turn, giving a ceiling
+of ~4.2 req/s — exactly the measured saturation. <b>(2) p99-TTFT floor.</b> A request's TTFT cannot be
+below its own prefill time; the p99 unique-document work is ~41 k tok and the max is 190.9 k tok, so the
+heaviest cold documents alone cost ~5–11 s of prefill — straddling the 8 s SLO. Both quantities are
+properties of the <em>unique-document set</em> (its count, mean, and tail) and the hardware, and are
+untouched by any retention or eviction decision. The metric is <b>corpus-bound</b>.
+</p>
+<div class="fig">
+<svg width="620" height="200" viewBox="0 0 620 200" font-family="sans-serif" font-size="12">
+  <text x="10" y="16" fill="#333">Prefill work (tokens) — where goodput's budget goes</text>
+  <!-- irreducible cold -->
+  <rect x="60" y="40" width="360" height="34" fill="#e46" opacity="0.8"/>
+  <text x="240" y="62" text-anchor="middle" fill="#fff">cold: 888 unique first-prefills = 18.4M (irreducible)</text>
+  <!-- avoidable single pass -->
+  <rect x="420" y="40" width="4" height="34" fill="#2a2"/>
+  <text x="430" y="62" fill="#2a2">avoidable (single-pass) = 0</text>
+  <!-- 4-pass artifact -->
+  <text x="60" y="110" fill="#333">Under the 4× rate-sweep (benchmark artifact):</text>
+  <rect x="60" y="120" width="150" height="26" fill="#e46" opacity="0.8"/><text x="135" y="138" text-anchor="middle" fill="#fff">cold 18.4M</text>
+  <rect x="210" y="120" width="300" height="26" fill="#c93" opacity="0.7"/><text x="360" y="138" text-anchor="middle" fill="#fff">LRU avoidable 55.1M (LFU≈same)</text>
+  <rect x="210" y="120" width="126" height="26" fill="none" stroke="#060" stroke-width="2" stroke-dasharray="4 3"/>
+  <text x="215" y="164" fill="#060">dashed = only a clairvoyant oracle recovers ~32M; no online policy does</text>
+</svg>
+<figcaption><b>Figure 1.</b> The prefill budget is dominated by irreducibly-cold first-sight prefills of
+unique documents. On the real (single-pass) workload there is zero avoidable re-prefill; the large
+"avoidable" bar exists only under the benchmark's four-rate replay and is un-capturable online.</figcaption>
+</div>
+
+<h2>5 Control-invariance: no serving policy moves the metric</h2>
+<p>
+The caching result completes a control-invariance picture across all three KV-cache control axes on this
+workload:
+</p>
+<ul>
+<li><b>Caching / retention (this paper).</b> LRU is single-pass Belady-optimal; document reuse is already
+captured; the residual is an un-capturable benchmark artifact. Zero headroom.</li>
+<li><b>Admission (companion result).</b> Deferring expensive prefills cannot help, because the SLO tail
+<em>is</em> the cold prefills — deferring them inflates p99 (catastrophically, ~7×), and cost-blind
+deferral crashes the server. Zero headroom.</li>
+<li><b>Scheduling / reordering.</b> Below the load knee the waiting queue is empty
+(<code>#queue-req≈0</code>), so order is inert and goodput is a cold-document collision coin-flip; above
+the knee the queue is deep but the GPU is compute- and KV-memory-saturated (<code>full token usage</code>
+0.97, ~39 k tok/s), so the best reordering (shortest-prefill-first) already reaches ~3% of the ceiling.
+Near-zero headroom.</li>
+</ul>
+<p>
+The unifying statement: for long-document conversational serving under a fixed model, tensor-parallel
+width, and KV budget, <b>goodput@SLO is determined by the corpus (unique-document set) and the hardware,
+and is invariant to the serving-policy design space.</b> The only levers that move it are corpus-side —
+deduplicating or compressing the unique-document set, or shaping retrieval to reduce cold first-prefills
+— or hardware-side (more prefill FLOPs, or parallelizing a single document's prefill via context/sequence
+parallelism). All are outside the serving cache.
+</p>
+
+<h2>6 Related work</h2>
+<p>
+Prefix/KV caching (SGLang RadixAttention, vLLM prefix caching), hierarchical offload (HiCache, Mooncake,
+Strata), and eviction theory (LRU/LFU/2Q/GDSF, Belady) all assume re-use exists to capture. Cache-aware
+scheduling and admission variants likewise presume policy headroom. Our contribution is orthogonal and
+cautionary: on a realistic long-document workload the re-use is either trivially captured or
+benchmark-induced, and the metric is corpus-determined. This complements popularity-skew studies (which
+motivate retention) by identifying the regime — few hot items with short reuse distance plus a singleton
+tail — in which retention policy provably cannot help.
+</p>
+
+<h2>7 Limitations</h2>
+<p>
+The claims are for this fixed workload, model, and two-tier capacity. A workload with documents re-used
+at <em>long</em> reuse distance yet high frequency (e.g., a large working set of moderately-popular
+corpora) would create genuine online caching headroom; our result identifies why <em>this</em> corpus
+does not. The document-cache replay abstracts the radix tree at document granularity (faithful because a
+document is one radix path); the throughput/floor constants are measured with a stated sensitivity range.
+The eviction-flag inertia is specific to the hybrid-Mamba <code>HiMambaRadixCache</code> path.
+</p>
+
+<h2>8 Reproducibility</h2>
+<p>
+<code>analysis/doc_reuse.py</code> reproduces the popularity table (§2), the single-pass and 4-pass
+replay results (§3), and the cold floor. Throughput/floor constants (§4) come from the stock full sweep
+(<code>runs/v0-stock</code>) and server logs. The eviction-path finding (§3.3) is read directly from
+<code>python/sglang/srt/mem_cache/hi_mamba_radix_cache.py</code> and the server startup log. All numbers
+derive from the frozen evaluation protocol; no eval knobs were changed.
+</p>
+
+</body></html>

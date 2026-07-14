@@ -201,6 +201,20 @@ goodput@SLO tail is bounded by cache AND compute — folds into Paper 1 as a com
 (strengthens §6). Genuinely-new positive on THIS fixed eval appears exhausted; keep probing per charter but
 Paper 1 (comprehensive bounded-negative/impossibility) is the honest contribution.
 
+## ★ PIVOTAL: v3_wb write_back control (integrity correction)
+write_back (lazy backup on eviction; `SGLANG_TURING_ADMIT=writeback` → write_policy=write_back) @λ=3, same node:
+**hit=0.7372, p99=6591 (PASS!), p50=503.** vs stock 0.6753/11494(FAIL) and flat-crater 0.43.
+- **(a)** write_back does NOT crater → **confirms the selective crater is from content LOSS**, not delayed-backup
+  timing (write_back also delays backup but never loses). ✓ Paper 1 §5 crater-mechanism isolated.
+- **(b) SURPRISE:** write_back gives **+6.2pp hit over stock** (0.737 vs 0.675) AND passes λ=3 SLO. This is the
+  **exclusive-tiering effect** — write_back is naturally device-XOR-host (no L1/L2 KV duplication) → more effective
+  L2 capacity → higher hit. **CONFIG-reachable (write_back flag) + sibling/base-cell known → NOT my contribution**,
+  but I must report it honestly (hit is NOT bounded at 0.675; the write-policy CONFIG reaches 0.737).
+- **INTEGRITY ACTION:** (1) correct paper §3/§4 (hit reaches 0.737 via write_back config, still < oracle 0.809);
+  (2) the λ=3 SLO pass is n=1 → **REPLICATE write_back (n≥2)** to test if it RELIABLY passes goodput@SLO (real
+  config win) or was coin-flip luck. This determines whether the "no lossless win" thesis needs reframing to
+  "only the known exclusive-tiering config helps; novel admission backfires."
+
 ## Formal submissions
 - `submissions/goodput-anatomy/paper.html` — **DRAFT** (registered INDEX.md 2026-07-14). Bounded-negative
   anatomy: effective-capacity collapse + admission backfire (−25pp) + heavy-tailed-prefill tail + within-node

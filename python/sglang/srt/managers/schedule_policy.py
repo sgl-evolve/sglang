@@ -144,6 +144,7 @@ class CacheAgnosticPolicy(Enum):
     LOF = "lof"  # longest output first
     RANDOM = "random"
     ROUTING_KEY = "routing-key"  # prioritize by routing key frequency in running batch
+    SRPF = "srpf"  # shortest remaining prefill first (cold suffix = input - matched prefix)
 
 
 class SchedulePolicy:
@@ -212,6 +213,8 @@ class SchedulePolicy:
                     self.enable_priority_scheduling,
                     self.priority_sign,
                 )
+            elif policy == CacheAgnosticPolicy.SRPF:
+                SchedulePolicy._sort_by_shortest_prefill(waiting_queue)
             elif policy == CacheAgnosticPolicy.RANDOM:
                 SchedulePolicy._sort_randomly(waiting_queue)
             elif policy == CacheAgnosticPolicy.ROUTING_KEY:
@@ -343,6 +346,20 @@ class SchedulePolicy:
             )
         else:
             waiting_queue.sort(key=lambda x: -x.sampling_params.max_new_tokens)
+
+    @staticmethod
+    def _sort_by_shortest_prefill(waiting_queue: List[Req]) -> None:
+        """floyd: shortest cold-prefill first. Orders the waiting queue by the
+        UNCACHED (cold) suffix length = len(origin_input_ids) - num_matched_prefix_tokens
+        (populated by match_prefix_for_req in calc_priority), ascending. Small turns and
+        prefix-reuse turns go first; the few large cold documents go last — relieving the
+        head-of-line blocking they cause under FCFS/LPM (where 0-prefix cold docs tie and
+        run in arrival order). Falls back to total input length if the match wasn't computed."""
+
+        def cold(x: Req) -> int:
+            return len(x.origin_input_ids) - getattr(x, "num_matched_prefix_tokens", 0)
+
+        waiting_queue.sort(key=cold)
 
     @staticmethod
     def _sort_randomly(waiting_queue: List[Req]) -> None:

@@ -57,7 +57,8 @@ W&B: project `sgl-evolve`, run `base` (group v0.31).
   | v-srpf-r3 | 5072 P | **5925 P** | 8052 F | 17269 F | 4.14 | 604 | 0.670 |
   r5: **3/3 concordant PASS** (mean 6321ms, all well under SLO). r7: 1/3 PASS (mean 7990ms — literally on the
   SLO boundary; run 3 missed by 52ms). Conservative goodput = **4.06** (min), median 4.14, mean 4.26.
-  **→ SRPF reliably passes λ=5 (3/3), unlike FCFS which FAILS λ=5 (0/3 certified). +37% conservative.**
+  **→ SRPF reliably passes λ=5 (3/3), unlike FCFS which FAILS λ=5 (0/7 all configs). +37% conservative.**
+  **Pooled Fisher exact (all SRPF 6/6 vs all FCFS 0/7): p = 0.0006. Max SRPF r5 p99 (7001) < min FCFS r5 (10258).**
 - **SRPF+WB compound replicated (n=2, same-node 1-2):**
   | run | λ=3 p99 | λ=5 p99 | λ=7 p99 | λ=10 p99 | goodput | peak tok/s | hit |
   |-----|---------|---------|---------|----------|---------|-----------|-----|
@@ -92,7 +93,7 @@ On sglang's 2-tier HiCache (L1 GPU + L2 768 GB host, hybrid-Mamba Qwen3.5-122B, 
    conservative goodput 4.35, best-case 5.03 (passes through λ=7). r7 is the metastability boundary for both
    configs (SRPF+WT 1/3 PASS mean 7990ms; SRPF+WB 1/2 discordant 7474/8581ms). Two orthogonal levers
    (scheduling + capacity) that compound. **Novel engine code** (commit 01fd8ba0a, `schedule_policy.py`).
-   **Key result: SRPF eliminates the λ=5 coin-flip** — 5/5 runs pass r5 across configs, vs 0/3 FCFS certified.
+   **Key result: SRPF eliminates the λ=5 coin-flip** — 6/6 runs pass r5 across configs, vs 0/7 FCFS (Fisher p=0.0006).
 2. **goodput@SLO is a metastable COIN-FLIP (even at λ=3, under FCFS), and cache capacity de-dup is a
    SIGNIFICANT reliability lever.** STOCK λ=3 p99 (n=6) swings **6.5 s ↔ 36.7 s** (same-node 1-2: 6.5 vs
    23.7 s), median 16.2 s, **1/6 pass** ⇒ stock goodput is 0-or-3 by luck. Capacity de-dup (n=12)
@@ -202,14 +203,16 @@ losslessness of my exclusive-tiering CODE must be argued + verified separately. 
 | **v-srpf-xt-wb (SRPF+XT+WB)** | **1-2** | **★4776** | **★5953** | 8662 | 15304 | **4.42** | 671 | **★0.757** |
 | v-srpf-xt (SRPF+XT+WT) | ondem-2 | ~~11378~~ | — | — | — | ~~0~~ | ~~86~~ | ~~0.000~~ |
 | v-srpf-age5 (SRPF+aging5s) | ondem-2 | 7965 | ~~26657~~ | — | — | in progress | — | 0.676 |
-- **★★ SRPF+WB: conservative goodput 4.35 (+44%), best-case 5.03 (+66%), r5 7/7 concordant PASS (all configs).**
+- **★★ SRPF+WB: conservative goodput 4.35 (+44%), best-case 5.03 (+66%), r5 6/6 concordant PASS (all configs).**
   r7 is the metastability boundary: 1/3 PASS for SRPF+WT (mean 7990ms), 1/2 for SRPF+WB, 0/1 for SRPF+XT+WB.
 - **SRPF+XTIER+WB has the BEST r3/r5** (4776ms, 5953ms) thanks to +1pp hit from exclusive tiering, but
   still fails r7 (8662ms) — the r7 boundary is PHYSICAL (metastable queue), not capacity-limited.
 - **Two orthogonal levers compound**: SRPF alone → median goodput 4.14 (+37%); write_back alone → goodput 3.02 (stuck);
   SRPF+WB together → conservative 4.35, best 5.03. Triple compound adds ~1pp hit but doesn't crack r7.
-- **SRPF reliably breaks the λ=5 barrier** — **7/7** runs pass r5 across ALL configs (WT/WB/XT+WB).
-  Baseline FCFS FAILS r5 on all certified runs. SRPF ELIMINATES the λ=5 coin-flip.
+- **SRPF reliably breaks the λ=5 barrier** — **6/6** runs pass r5 across ALL configs (WT/WB/XT+WB).
+  Baseline FCFS FAILS r5 on **ALL 7 runs** (4 stock + 3 WB-only). **Fisher exact test: 6/6 vs 0/7 → p = 1/1716
+  ≈ 0.0006 (one-sided).** The effect is perfectly separated (max SRPF r5 p99 = 7001ms < min FCFS r5 p99 = 10258ms)
+  with zero overlap across 13 independent runs on multiple nodes.
 - **XTIER+write_through CATASTROPHIC**: hit→0, throughput 86 tok/s. Code invariant: XTIER REQUIRES write_back.
 - **SRPF aging (5s threshold) NEGATIVE**: r3 regresses (+31%), r5 CATASTROPHIC (26657ms). Disrupting SRPF
   ordering by boosting timed-out cold requests creates cascading budget starvation. SRPF IS the optimal ordering.
@@ -233,6 +236,40 @@ losslessness of my exclusive-tiering CODE must be argued + verified separately. 
   goodput=3 is the decode-knee ceiling under FCFS scheduling; λ=5 is unreachable (variance). **BUT SRPF
   scheduling (finding E) breaks through λ=5 (n=1, p99 7001ms) — the ceiling was an FCFS artifact, not physical.**
   Contribution = this rigorous characterization + SRPF breakthrough + exclusive-tiering mechanism + honest negatives.
+
+## ★★★ FORMAL STATISTICAL TEST: SRPF at λ=5 (Fisher exact p = 0.0006, perfectly separated)
+**Complete r5 (λ=5) p99 TTFT census across ALL runs (certified+uncertified):**
+
+| scheduling | write policy | run | node | r5 p99 (ms) | SLO pass? |
+|-----------|-------------|-----|------|-------------|-----------|
+| **SRPF**  | write_through | v-srpf | ondem-2 | 7001 | **PASS** |
+| **SRPF**  | write_through | v-srpf-r2 | ondem-2 | 6038 | **PASS** |
+| **SRPF**  | write_through | v-srpf-r3 | ondem-2 | 5925 | **PASS** |
+| **SRPF**  | write_back | v-srpf-wb | 1-2 | 6183 | **PASS** |
+| **SRPF**  | write_back | v-srpf-wb-r2 | 1-2 | 6557 | **PASS** |
+| **SRPF**  | write_back+xtier | v-srpf-xt-wb | 1-2 | 5953 | **PASS** |
+| FCFS | write_through | v0-cert | 1-2 | 10258 | FAIL |
+| FCFS | write_through | v0-cert-r2 | 1-2 | 27347 | FAIL |
+| FCFS | write_through | v0-cert-r5 | cert | 23555 | FAIL |
+| FCFS | write_through | v0-cert-r6 | cert | 22998 | FAIL |
+| FCFS | write_back | v-wb | uncert | 21285 | FAIL |
+| FCFS | write_back | v-wb-cert | 1-2 | 20650 | FAIL |
+| FCFS | write_back | v-wb-cert-r2 | 1-2 | 11511 | FAIL |
+
+**SRPF: 6/6 PASS. FCFS: 0/7 PASS. Fisher exact (one-sided): p = 1/C(13,6) = 1/1716 ≈ 0.00058.**
+
+**Perfect separation**: max SRPF r5 p99 = 7001ms < min FCFS r5 p99 = 10258ms (gap = 3257ms = 0.41× SLO).
+Mean SRPF r5 = 6276ms (±389ms σ). Mean FCFS r5 = 19658ms (±5978ms σ).
+The variance asymmetry is itself telling: SRPF stddev 389ms vs FCFS stddev 5978ms → **SRPF stabilizes the metric 15×**.
+
+**Controlled comparisons (ruling out confounds):**
+- **Same write policy (write_through), SRPF vs FCFS**: 3/3 vs 0/4 → Fisher p = 1/35 ≈ 0.029.
+- **Same node (1-2), SRPF+WB vs FCFS(any)**: 3/3 vs 0/4 on 1-2 → Fisher p = 1/35 ≈ 0.029.
+- **SRPF passes on BOTH nodes** (ondem-2 and 1-2) while FCFS fails on ALL nodes → not a node confound.
+- **FCFS fails with BOTH write policies** (WT and WB) → SRPF scheduling is the lever, not capacity.
+
+This is the strongest result in this campaign: a **perfectly separated, node-independent, policy-independent**
+scheduling effect with p < 0.001. SRPF converts λ=5 from uniformly unreachable to uniformly reachable.
 
 ## ⚠️⚠️ λ=5 IS VARIANCE-DOMINATED (near the knee) — the goodput headline is a coin-flip [superseded by the definitive block above]
 Certified λ=5 p99 TTFT across nodes/runs (all warm-steady-state v0.31 protocol):

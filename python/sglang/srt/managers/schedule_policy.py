@@ -993,6 +993,15 @@ class PrefillAdder:
                     req.retracted_stain,
                 )
             else:
+                # turing Paper-5: never create a SECOND chunked (partial-prefill) req while one is
+                # already in flight — preserves the scheduler's single-chunked-req invariant that
+                # get_new_batch_prefill asserts (`assert self.chunked_req is None`). Stock never hits
+                # this (an in-flight giant leaves rem_chunk_tokens=0 -> trunc_len<=0 rejects below),
+                # so this is a no-op for stock; it is what makes fair-share interleaving legal: a
+                # waiting req that would truncate behind the giant is left in the queue for a later
+                # step instead of forming an illegal 2nd chunk.
+                if has_chunked_req:
+                    return AddReqResult.OTHER
                 # Make sure at least one page is available
                 trunc_len = self.rem_chunk_tokens // self.page_size * self.page_size
 

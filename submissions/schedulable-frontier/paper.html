@@ -124,11 +124,17 @@ average, <span class="mono">E[U]</span> uncached prefill tokens, so the completi
 <span class="mono">C = R/E[U]</span> requests/s. Because the fraction of prompt tokens that must be computed is
 the miss rate <span class="mono">(1&minus;h)</span>, we have <span class="mono">E[U] &prop; (1&minus;h)</span>,
 giving the law:</p>
-<div class="eq"><b>C(h,K) = K / (1&minus;h)</b>, &nbsp; where &nbsp; <b>K &equiv; C·(1&minus;h)</b> is the raw prefill-rate scale.</div>
+<div class="eq"><b>C(h,K) = K / (1&minus;h)</b>, &nbsp; where &nbsp; <b>K &equiv; R·N / P<sub>total</sub></b> is the raw prefill-rate scale.</div>
 <p>
-K bundles the hardware prefill throughput and the (hit-independent) turn-0 first-sight token mass; it should be
-<em>invariant</em> to the cache policy and move only with the hardware or the scheduler's packing efficiency.
-We test this on the saturated points (&lambda;&nbsp;&isin;&nbsp;{7,10}, where achieved&nbsp;&laquo;&nbsp;offered):</p>
+This is not a curve fit&mdash;it is a <b>work-conservation identity</b>. By definition of the hit rate,
+uncached work per request is <span class="mono">E[U] = (1&minus;h)·P<sub>total</sub>/N</span> (N requests,
+P<sub>total</sub> total prompt tokens), so <span class="mono">C = R/E[U] = (R·N/P<sub>total</sub>)/(1&minus;h)
+= K/(1&minus;h)</span> exactly. Because R (hardware prefill rate), N, and P<sub>total</sub> are all
+<em>policy-invariant</em>, <b>K must be constant across cache policies by construction</b>; the only thing that can
+move K is the hardware or the scheduler's packing efficiency (which changes the <em>effective</em> R). The
+empirical test below therefore does not check the law&mdash;it checks that R is stable, i.e. that the identity's
+one free constant does not secretly depend on the policy. We measure K on the saturated points
+(&lambda;&nbsp;&isin;&nbsp;{7,10}, where achieved&nbsp;&laquo;&nbsp;offered so the engine runs flat-out):</p>
 <table>
 <thead><tr><th>variant</th><th>&lambda;</th><th>C (req/s)</th><th>hit h</th><th>K = C·(1&minus;h)</th><th>lever</th></tr></thead>
 <tbody>

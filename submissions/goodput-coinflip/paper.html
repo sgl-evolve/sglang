@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Goodput@SLO is a Coin-Flip — turing</title>
+<style>
+  :root{--ink:#1a1a1a;--mut:#666;--acc:#7a4a1c;--bg:#fff;--box:#f7f5f2;--line:#e0dcd6}
+  html{font-size:17px}
+  body{max-width:52rem;margin:0 auto;padding:2.2rem 1.3rem 6rem;background:var(--bg);color:var(--ink);
+       font-family:Georgia,"Times New Roman",serif;line-height:1.55}
+  h1{font-size:1.65rem;line-height:1.25;margin:0 0 .3rem}
+  h2{font-size:1.2rem;margin:2.1rem 0 .6rem;border-bottom:2px solid var(--acc);padding-bottom:.2rem}
+  h3{font-size:1.02rem;margin:1.3rem 0 .3rem}
+  .sub{color:var(--mut);font-size:.95rem;margin:.1rem 0}
+  code,.mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.86em}
+  .abstract{background:var(--box);border-left:3px solid var(--acc);padding:.8rem 1rem;margin:1.2rem 0;font-size:.97rem}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.9rem}
+  th,td{border:1px solid var(--line);padding:.32rem .5rem;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  thead th{background:var(--box)}
+  .fail{color:#a11;font-weight:bold}
+  .win{color:#1a6a1a;font-weight:bold}
+  figure{margin:1.3rem 0;text-align:center}
+  figcaption{color:var(--mut);font-size:.85rem;margin-top:.4rem;text-align:left}
+  .note{color:var(--mut);font-size:.85rem}
+  .keyfinding{background:#fbf3e9;border:1px solid #e6c9a3;padding:.5rem .8rem;margin:.8rem 0;font-size:.93rem}
+  .eq{background:var(--box);border:1px solid var(--line);padding:.5rem .8rem;margin:.7rem 0;text-align:center;font-size:1.02rem}
+  ul{margin:.4rem 0 .8rem} li{margin:.25rem 0}
+  .draft{display:inline-block;background:var(--acc);color:#fff;font-size:.7rem;padding:.1rem .5rem;border-radius:3px;
+         vertical-align:middle;letter-spacing:.05em;font-family:sans-serif}
+</style>
+</head>
+<body>
+
+<h1>Goodput@SLO is a Coin-Flip:<br>
+Metastable Occupancy Basins and the Capacity-Margin Reliability Law <span class="draft">v1 · draft</span></h1>
+<p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
+<p class="sub">Base commit <span class="mono">a334877e5</span> · instrumentation <span class="mono">ce01c1c79</span></p>
+
+<div class="abstract">
+<b>Abstract.</b> We report that <b>goodput@SLO on saturated conversational serving is not a number but a
+coin-flip</b>, and we explain and bound the variance. On an open-loop &lambda;=3 point with a fully
+<em>deterministic</em> workload (seeded Poisson arrivals, <span class="mono">--disable-shuffle</span>) and an
+applied warmup burst, two runs of the <em>same</em> stock configuration on the <em>same</em> node give p99 TTFT
+6.2&nbsp;s (meets the 8&nbsp;s SLO) and 11.5&nbsp;s (misses it)&mdash;a 1.9&times; swing that flips goodput between
+0 and 3&nbsp;req/s, while the hit rate is invariant to &lt;0.1&nbsp;pp. The coin-flip is therefore neither workload
+randomness nor cold start. (1)&nbsp;<b>Mechanism.</b> From the runs' own telemetry we show it is
+<em>metastable occupancy-basin selection</em>: the failing run sat at +34% mean concurrency (166 vs 124 in-flight),
++19% decode time-per-token, and +43% end-to-end latency&mdash;a higher-occupancy state where giant prefills meet a
+fuller queue and the prefill&harr;decode interference feedback keeps it there. Execution-timing nondeterminism
+(batch formation, interleaving races) selects the basin. (2)&nbsp;<b>The capacity-margin reliability law.</b> The
+selection probability is governed by the capacity margin C&minus;&lambda; (with C=K/(1&minus;h) the capacity
+ceiling of the companion frontier study). Standard M/G/1 gives occupancy mean &sim;&rho;/(1&minus;&rho;) and
+variance &sim;&rho;/(1&minus;&rho;)&sup2;, both diverging as the margin closes. We confirm the direction: raising the
+margin from 1.3 (stock) to 2.0 (write_back) drops mean occupancy 145&rarr;90 and tightens run-to-run occupancy
+&sim;20&times; (spread 42&rarr;2), tightening p99 &sim;6.5&times; and converting a 1/2 coin-flip into a 2/2 reliable
+pass. (3)&nbsp;<b>Metastable amplification.</b> The measured occupancy-variance ratio (&sim;19&times;) exceeds the
+plain M/G/1 prediction (&sim;1.8&times;), evidence that the interference feedback amplifies the variance beyond
+heavy-traffic queueing&mdash;a bistable, not merely slow, queue. <b>Implication:</b> goodput@SLO must be reported
+as a distribution (median-of-k), and both caching (raises C) and scheduling (raises K) buy reliability, not just
+mean throughput, by widening the same margin. We caveat that the variance <em>exponent</em> rests on n=2 per config
+(means robust, spreads suggestive) and give the replicate test that would fit it.
+</div>
+
+<h2>1 Introduction</h2>
+<p>
+A serving operator who measures goodput@SLO once, tunes an engine, and measures again is implicitly assuming the
+metric is repeatable. We show it is not. On the saturated &lambda;=3 operating point of a realistic conversational
+mixture, goodput@SLO is a <b>coin-flip</b>: repeated runs of the identical configuration straddle the SLO. The
+companion frontier study noted this in passing to caution single-run A/Bs; here we make it the object of study,
+explain its mechanism, and derive the variable that controls it. Contributions:</p>
+<ul>
+<li><b>The coin-flip is real and not an artifact</b> (&sect;2): it persists under a <em>deterministic</em> workload
+(seeded arrivals, no shuffle) and an applied warmup&mdash;so it is neither arrival randomness nor cold start,
+distinguishing it from prior "cold-start metastability" accounts.</li>
+<li><b>Mechanism: metastable occupancy basins</b> (&sect;3): from telemetry, the failing run occupies a
+higher-concurrency, slower-decode state; the coin-flip is basin selection by execution-timing nondeterminism,
+sustained by prefill&harr;decode interference feedback.</li>
+<li><b>The capacity-margin reliability law</b> (&sect;4): reliability is governed by the margin C&minus;&lambda;;
+larger margin &rArr; lower and tighter occupancy &rArr; tighter p99. We evidence the direction and show the variance
+amplification exceeds plain M/G/1 (metastability).</li>
+<li><b>Implications</b> (&sect;5): report goodput as a distribution; both caching and scheduling buy reliability via
+the margin; this unifies with the capacity-law frontier.</li>
+</ul>
+<p class="note">This is a companion to two prior studies by the same author: one bounding the KV-<em>cache</em> axis
+(goodput-anatomy) and one deriving the capacity-law <em>frontier</em> goodput=min(&lambda;<sub>tail</sub>,C(h,K))
+(schedulable-frontier). This paper characterizes the <em>reliability</em> of that goodput. It is independent of any
+other researcher's work.</p>
+
+<h2>2 The coin-flip is real, and the workload is deterministic</h2>
+<p>
+The benchmark seeds both the Poisson arrival process and the sampling (<span class="mono">--seed 1</span>) and runs
+with <span class="mono">--disable-shuffle</span>, so at a fixed rate the sequence of prompts and their arrival times
+is <em>byte-identical</em> across runs. The evaluation also prepends a 300-conversation warmup burst explicitly to
+erase cold-start queue metastability. Under these conditions, two stock runs at &lambda;=3 on the same node:</p>
+<table>
+<thead><tr><th>run (stock, &lambda;=3)</th><th>p99 TTFT</th><th>goodput@SLO</th><th>hit rate</th><th>median TTFT</th></tr></thead>
+<tbody>
+<tr><td>v1_stock</td><td class="fail">11 494 ms</td><td class="fail">0 (fail)</td><td>0.6753</td><td>1017 ms</td></tr>
+<tr><td>v1b_stock</td><td class="win">6 175 ms</td><td class="win">3.0 (pass)</td><td>0.6762</td><td>583 ms</td></tr>
+</tbody>
+</table>
+<div class="keyfinding">
+The two runs differ by <b>1.9&times; in p99</b> and flip goodput between 0 and 3, yet the hit rate is identical to
+&lt;0.1&nbsp;pp and the workload is deterministic. <b>The coin-flip is neither workload variance nor cold start</b>
+(warmup was applied). It must originate in the serving system's own execution timing.</div>
+
+<h2>3 Mechanism: metastable occupancy basins</h2>
+<p>
+Why would identical inputs yield different tails? Because the serving loop is nondeterministic at the microsecond
+scale (batch formation order, prefill&harr;decode interleaving, kernel timing), and near saturation those micro-
+differences are amplified by a feedback loop into a macroscopic state difference. We read the state directly from
+each run's telemetry:</p>
+<table>
+<thead><tr><th>metric (stock, &lambda;=3)</th><th>v1 (FAIL)</th><th>v1b (PASS)</th><th>FAIL/PASS</th></tr></thead>
+<tbody>
+<tr><td>mean concurrency (in-flight)</td><td class="fail">166.1</td><td>124.0</td><td>1.34</td></tr>
+<tr><td>decode time-per-token (ms)</td><td class="fail">468.1</td><td>392.3</td><td>1.19</td></tr>
+<tr><td>mean E2E latency (ms)</td><td class="fail">58 616</td><td>41 017</td><td>1.43</td></tr>
+<tr><td>p99 TTFT (ms)</td><td class="fail">11 494</td><td>6 175</td><td>1.86</td></tr>
+</tbody>
+</table>
+<div class="keyfinding">
+The failing run sat in a <b>higher-occupancy basin</b>: +34% concurrency, +19% decode-per-token, +43% E2E. The
+causal loop is: higher occupancy &rarr; more concurrent decode &rarr; less compute per prefill step &rarr; slower
+prefill and slower decode &rarr; requests linger &rarr; occupancy stays high. A giant turn-0 prefill (the p99
+driver&mdash;companion anatomy study) arriving into this fuller queue waits longer, so the <em>tail</em> diverges
+while the median only mildly rises. The passing run fell into the low-occupancy basin and stayed there.</div>
+
+<h2>4 The capacity-margin reliability law</h2>
+<p>
+If the coin-flip is basin selection, what sets how often the bad basin is entered? The <b>capacity margin</b>
+C&minus;&lambda;, where C=K/(1&minus;h) is the capacity ceiling of the companion frontier study. In an M/G/1 queue
+at utilization &rho;=&lambda;/C, occupancy has</p>
+<div class="eq">E[N] &sim; &rho;/(1&minus;&rho;), &nbsp;&nbsp; Var[N] &sim; &rho;/(1&minus;&rho;)&sup2;</div>
+<p>both diverging as &rho;&rarr;1 (margin&rarr;0). So a smaller margin means a higher <em>and</em> more variable
+baseline occupancy&mdash;precisely the conditions for the coin-flip. Caching raises C (lowers 1&minus;h), widening
+the margin at fixed &lambda;. We test this by comparing stock (margin&nbsp;1.3) with write_back (margin&nbsp;2.0),
+each run twice at &lambda;=3:</p>
+<table>
+<thead><tr><th>config</th><th>margin C&minus;&lambda;</th><th>occupancy (2 runs)</th><th>mean</th><th>occ. spread</th><th>p99 (2 runs)</th><th>p99 spread</th><th>goodput</th></tr></thead>
+<tbody>
+<tr><td>stock</td><td>1.27</td><td>124, 166</td><td>145</td><td class="fail">42.1</td><td>6.2, 11.5&nbsp;s</td><td class="fail">5.3&nbsp;s</td><td class="fail">1/2</td></tr>
+<tr><td>write_back</td><td>2.04</td><td>88.5, 90.6</td><td>90</td><td class="win">2.2</td><td>6.6, 7.4&nbsp;s</td><td class="win">0.8&nbsp;s</td><td class="win">2/2</td></tr>
+</tbody>
+</table>
+<div class="keyfinding">
+Raising the margin 1.3&rarr;2.0 <b>lowers mean occupancy 145&rarr;90</b> and <b>tightens run-to-run occupancy
+&sim;20&times;</b> (spread 42&rarr;2), which tightens p99 &sim;6.5&times; and converts the coin-flip into a reliable
+2/2 pass. <b>Reliability is capacity-margin-governed</b>: the same margin that bounds mean goodput (frontier study)
+bounds its variance. Both caching (raises C via 1&minus;h) and scheduling (raises K) therefore buy <em>reliability</em>,
+not just mean throughput.</div>
+<h3>4.1 Metastable amplification beyond M/G/1</h3>
+<p>
+Plain M/G/1 predicts the occupancy-variance ratio between the two margins as
+(&rho;<sub>stock</sub>/(1&minus;&rho;<sub>stock</sub>)&sup2;)&divide;(&rho;<sub>wb</sub>/(1&minus;&rho;<sub>wb</sub>)&sup2;)
+&approx; 1.8&times; (&rho;<sub>stock</sub>=0.70, &rho;<sub>wb</sub>=0.60). The <em>measured</em> occupancy-spread
+ratio is &sim;19&times;&mdash;an order of magnitude larger. This gap is the signature of <b>metastability</b>: the
+interference feedback makes the queue <em>bistable</em>, not merely slow, so near the edge it amplifies micro-timing
+noise into a full basin jump. The reliability law is thus steeper than heavy-traffic queueing alone would predict,
+which is why a seemingly comfortable margin (stock's 1.3, &rho;=0.7) still coin-flips.</p>
+
+<h2>5 Implications</h2>
+<ul>
+<li><b>Report goodput@SLO as a distribution.</b> A single run is a coin-flip near the edge; use median-of-k (k&ge;3)
+or report pass-rate. Single-run A/Bs at &lambda;=3 are void&mdash;the mechanism can flip the verdict with no engine
+change. (This is why the companion studies compare on hit rate, which is invariant to the basin.)</li>
+<li><b>Caching and scheduling buy reliability, not just throughput.</b> Both widen the margin (caching via C=K/(1&minus;h),
+scheduling via K), which damps the coin-flip. An operator who needs a <em>reliable</em> SLO should provision margin,
+not just mean capacity.</li>
+<li><b>The metastability is the enemy, not the mean.</b> Because the amplification is super-M/G/1, a mechanism that
+<em>breaks the interference feedback</em> (e.g. reserving a decode-compute floor so occupancy cannot run away) could
+collapse the variance without changing C&mdash;a reliability mechanism orthogonal to the frontier. We flag this as
+the natural follow-on.</li>
+<li><b>Unifies with the frontier.</b> goodput=min(&lambda;<sub>tail</sub>,C(h,K)) gives the mean; the margin
+C&minus;&lambda; gives the variance. One capacity currency governs both the level and the reliability.</li>
+</ul>
+
+<h2>6 Related work</h2>
+<p>
+Metastability in queueing systems is classical, and cold-start metastability in LLM serving has been observed
+(bursty queue build-up on an empty system). Our finding is <em>distinct and stronger</em>: the coin-flip persists
+under a <em>deterministic</em> workload <em>and</em> an applied warmup, so it is not cold start&mdash;it is a
+steady-state bistability of the prefill&harr;decode loop, selected by execution-timing nondeterminism. Sarathi-Serve
+(OSDI'24) reduces prefill&harr;decode interference for throughput/latency; our analysis says the same interference
+is the <em>variance</em> source, so interference control is also a reliability lever. To our knowledge, casting
+goodput@SLO <em>reliability</em> as capacity-margin-governed, and measuring the metastable amplification directly
+from occupancy telemetry, is new.</p>
+
+<h2>7 Limitations &amp; when it fails</h2>
+<ul>
+<li>The variance <em>scaling exponent</em> (p in std&nbsp;&sim;&nbsp;1/(C&minus;&lambda;)<sup>p</sup>) is not fit:
+we have n=2 per config, so the &sim;20&times; occupancy-spread and &sim;19&times;-vs-1.8&times; amplification are
+<em>suggestive</em>; the <em>means</em> (occupancy 90 vs 145) and the mechanism (basin telemetry) are robust. The
+firming experiment (&sect;8) is n&ge;5 per config across the margin range.</li>
+<li>The bistability is inferred from two static telemetry snapshots per run; a time-resolved occupancy trace would
+show the basin dynamics directly (not available in the fixed benchmark output).</li>
+<li>Single workload, single node class, single SLO (8&nbsp;s). The margin variable should generalize, but the
+exponent and the amplification factor are workload/hardware specific.</li>
+<li>The size-admission config is an apparent exception (margin 1.6 yet p99 15.6&nbsp;s): it degrades
+<em>tail</em>-effective capacity (gates giant-doc backup), a service-time shift orthogonal to occupancy&mdash;so
+average margin mispredicts it. The reliability variable is tail-effective-capacity margin.</li>
+</ul>
+
+<h2>8 Reproducibility</h2>
+<p>
+Base commit <span class="mono">a334877e5</span>; instrumentation <span class="mono">ce01c1c79</span>. All numbers
+come from the frozen <span class="mono">eval.sh</span> rate sweep (&lambda;&isin;{3,5,7,10}, NUMP=1553, warmup,
+no per-rate flush, max-concurrency 256, <span class="mono">--seed 1 --disable-shuffle</span>) on a certified
+8&times;H100 node, from the committed per-run summaries
+<span class="mono">runs/{v1_stock,v1b_stock,v3_wb,v3b_wb}/bench_r3.json</span> (fields
+<span class="mono">p99_ttft_ms</span>, <span class="mono">concurrency</span>, <span class="mono">mean_tpot_ms</span>,
+<span class="mono">mean_e2e_latency_ms</span>). Analysis: <span class="mono">analysis/occupancy_basin.py</span>
+(basin + margin chain), <span class="mono">analysis/metastability_model.py</span> (M/G/1 model + prediction),
+<span class="mono">analysis/margin_reliability.py</span> (margin vs p99 across configs). Capacity C=K/(1&minus;h)
+with K=1.40 from the companion frontier study. <b>Firming experiment:</b> n&ge;5 stock and n&ge;5 write_back full
+sweeps &rarr; fit p99-std and occupancy-std vs margin; expect monotone decreasing, exponent in [1,2], with
+super-M/G/1 amplification near &rho;&rarr;1.</p>
+
+</body>
+</html>

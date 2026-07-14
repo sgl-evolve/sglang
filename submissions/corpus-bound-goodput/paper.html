@@ -203,22 +203,31 @@ deduplicating or compressing the unique-document set, or shaping retrieval to re
 — or hardware-side (more prefill FLOPs, or parallelizing a single document's prefill via context
 parallelism). All are outside the serving cache.
 </p>
-<h3>5.1 Even the compute-side lever is architecturally unavailable here</h3>
+<h3>5.1 The compute-side lever (context-parallel prefill) is unavailable in this engine</h3>
 <p>
-The natural compute-side attack on the p99 floor — <b>context-parallel (CP) prefill</b>, which splits one
-long document's prefill across the tensor-parallel ranks to cut its latency — turns out to be unavailable
-for this model, for a structural reason worth stating. In sglang v0.31, prefill CP
-(<code>--enable-prefill-cp</code>, running over the 8 TP ranks with <code>attn_cp_size = tp_size</code>)
-is gated to DeepSeek/GLM sparse-attention (DSA) and pure-attention MoE architectures; enabling it on the
-hybrid <b>GatedDeltaNet</b> model is a silent no-op (the server initializes with <code>attn_cp_size=1</code>
-and the model has no CP path). The reason is fundamental, not incidental: CP works for attention because
-the softmax over keys/values decomposes across sequence shards (ring/flash CP), but a
-linear-attention/Mamba layer computes a <em>sequential recurrence</em> — the state is carried token by
-token — so splitting the sequence across ranks requires passing the recurrent state across ranks in order,
-a serial scan that negates the parallelism. Hybrid linear-attention models therefore inherit an
-irreducible single-document prefill-latency floor that pure-attention models can amortize with CP. For the
-workload here, that floor (largest cold documents, ~5–11 s of prefill) is the SLO tail — and no lever,
-serving-policy or compute-side, moves it under the frozen contract.
+The natural compute-side attack on the p99 floor is <b>context-parallel (CP) prefill</b>, which splits one
+long document's prefill across the tensor-parallel ranks to cut its latency. It is well-motivated here: a
+FLOP breakdown of this model (<code>analysis/prefill_flops.py</code>; 12 full-attention + 36 GatedDeltaNet
+layers) shows the biggest cold documents — the ones that form the p99 — are increasingly
+attention-dominated, the O(n²) full-attention rising from ~21% of prefill FLOPs at the median document
+(18.7k tok) to ~49% at p99 (67k) and ~73% at the max (190.9k). Parallelizing those prefills would
+therefore cut the tail materially.
+</p>
+<p>
+But CP is <b>not available for this model in sglang v0.31</b>. Enabling <code>--enable-prefill-cp</code>
+is a silent no-op: the server initializes with <code>attn_cp_size=1</code> (the auto-derivation
+<code>attn_cp_size = tp_size / dp_size</code> is gated to DeepSeek/GLM sparse-attention models via
+<code>is_deepseek_dsa()</code>, and the hybrid <code>Qwen3_5</code> model file has no CP code path — only
+the pure-attention <code>Qwen3-MoE</code> and DSA backends implement it). This is an <em>implementation
+gap, not a fundamental barrier</em>: CP splits the sequence dimension, so the O(n) per-token work
+(projections, MoE FFN, linear-attention in/out) parallelizes across ranks directly, attention parallelizes
+via ring attention, and the GatedDeltaNet recurrence admits a <em>chunked cross-device state scan</em> (an
+O(cp) serial state-combine on top of intra-rank chunked scans, as in sequence-parallel Mamba) — so
+prefill would parallelize near-linearly, not be negated by the recurrence. Implementing hybrid-model
+prefill CP is thus a plausible future lever against the p99 floor; it is simply outside what the current
+engine and the frozen contract expose. Under this system, then, the p99 floor (largest cold documents,
+~5–11 s of prefill) stands: no serving-policy lever moves it, and the one compute-side lever that could is
+unavailable here.
 </p>
 
 <h2>6 Related work</h2>

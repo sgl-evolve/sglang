@@ -667,6 +667,17 @@ versus the measured same-node medk (median 9.4 s, 6.5–25.8 s, §3.1). Because 
 scheduler, or model-specific detail, <b>the coin-flip is a generic property of the workload class</b> —
 heavy-tailed cold prefills scheduled open-loop near the queueing knee — not an artifact of sglang or this
 model.</p>
+<p><b>And the real system exhibits the predicted phase diagram.</b> The contract's rate set (λ&nbsp;&isin;&nbsp;{3,&nbsp;5,&nbsp;7,&nbsp;10})
+samples only the coin-flip band (λ=3) and the reliable-fail regime (λ&nbsp;&ge;&nbsp;5); the reliable-<i>pass</i> regime the
+model predicts <i>below</i> the band is never measured by the eval. An off-contract low-λ diagnostic (same stock
+server, node 1-2; <code>tools/phasemap_eval.sh</code>, an off-contract rate probe like warmdiag/medk — the headline
+eval is unchanged) fills it in: at <b>λ=1.5</b> the p99 TTFT is <b>3.36 and 3.35&nbsp;s</b> (n=2) — comfortably
+below the SLO and, unlike the λ=3 coin-flip, <i>tight</i> (the two draws differ by 16&nbsp;ms). So the real system
+reproduces all three regimes the model predicts — <b>reliable-pass</b> (λ=1.5, p99&nbsp;&asymp;&nbsp;3.35&nbsp;s, low
+variance) → <b>coin-flip band</b> (λ=3, p99 6.1&ndash;36.7&nbsp;s straddling the SLO) → <b>reliable-fail</b>
+(λ&nbsp;&ge;&nbsp;5, §5.1) — and, decisively, the run-to-run <i>variance</i> collapses away from the knee exactly as the
+σ/m diagnostic (§4) requires: goodput@SLO is variance-dominated only inside the band. This is the measured phase
+diagram, matching the forward model's, on the real serving system.</p>
 <p><b>How many replicates would rescue goodput@SLO? The model says: unboundedly many, near the knee.</b>
 We use the model to ask what the empirical triad could not: how large must the median-of-k be for a
 <i>reliable</i> (95%-reproducible) goodput@SLO classification? Because a median-of-k estimate's sampling
@@ -862,9 +873,10 @@ warmup burst, max-concurrency 256, 2-tier <code>--hicache-size 96</code>, p99-TT
 <code>tools/medk_eval.sh</code> / <code>medk_wb_eval.sh</code>: one server on ondem-3, K=5 back-to-back λ=3
 draws each flushed at the load generator's start; <code>medk.csv</code> + <code>summary.json</code> in
 <code>runs/v0-medk{,-wb}/</code>, §3.1); <b>v0-medk-n2</b> (the same-node median-of-k on a second node,
-node1-2, <code>tools/medk_n2_eval.sh</code>, §7 — the node×run grid); and the off-contract
+node1-2, <code>tools/medk_n2_eval.sh</code>, §7 — the node×run grid); the off-contract
 diagnostic <b>v0-warmdiag</b> (identical stock server/sweep with the per-rate <code>/flush_cache</code>
-disabled, run on the same node as v0-stock, §5.3). Each run's <code>curve.csv</code> and
+disabled, run on the same node as v0-stock, §5.3); and the off-contract <b>v0-phasemap</b> (low-λ rate
+probe, λ=1.5, <code>tools/phasemap_eval.sh</code>, §5.5 — the empirical reliable-pass regime of the phase diagram). Each run's <code>curve.csv</code> and
 <code>summary.json</code> hold the per-rate points and the goodput headline; every number in this paper is
 taken directly from those files. Tooling: trace stats <code>tools/tokenize_trace.py</code> →
 <code>tools/trace_stats.json</code>; queueing model <code>tools/queue_model.py</code>; prefill-rate

@@ -34,9 +34,9 @@
 <body>
 
 <h1>Goodput@SLO is a Coin-Flip:<br>
-Metastable Occupancy Basins and the Capacity-Margin Reliability Law <span class="draft">v1 · draft</span></h1>
+Metastable Occupancy Basins and the Capacity-Margin Reliability Law <span class="draft">v2 · submitted</span></h1>
 <p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
-<p class="sub">Base commit <span class="mono">a334877e5</span> · instrumentation <span class="mono">ce01c1c79</span></p>
+<p class="sub">Base commit <span class="mono">a334877e5</span> · instrumentation <span class="mono">ce01c1c79</span> · decode-floor mechanism <span class="mono">239608a1e</span></p>
 
 <div class="abstract">
 <b>Abstract.</b> We report that <b>goodput@SLO on saturated conversational serving is not a number but a
@@ -57,10 +57,17 @@ margin from 1.3 (stock) to 2.0 (write_back) drops mean occupancy 145&rarr;90 and
 &sim;20&times; (spread 42&rarr;2), tightening p99 &sim;6.5&times; and converting a 1/2 coin-flip into a 2/2 reliable
 pass. (3)&nbsp;<b>Metastable amplification.</b> The measured occupancy-variance ratio (&sim;19&times;) exceeds the
 plain M/G/1 prediction (&sim;1.8&times;), evidence that the interference feedback amplifies the variance beyond
-heavy-traffic queueing&mdash;a bistable, not merely slow, queue. <b>Implication:</b> goodput@SLO must be reported
-as a distribution (median-of-k), and both caching (raises C) and scheduling (raises K) buy reliability, not just
-mean throughput, by widening the same margin. We caveat that the variance <em>exponent</em> rests on n=2 per config
-(means robust, spreads suggestive) and give the replicate test that would fit it.
+heavy-traffic queueing&mdash;a bistable, not merely slow, queue. (4)&nbsp;<b>The obvious cure backfires.</b> We built
+and tested the most direct reliability mechanism&mdash;an occupancy-feedback <em>decode floor</em> that throttles
+prefill compute when occupancy is high, at fixed capacity&mdash;and it makes things <em>worse</em>: p99 rises to
+31.8&nbsp;s (2.8&times; the bad basin), losslessly. Decode is memory-bound (reserving compute does not drain it) and
+finer prefill chunking makes giant prefills linger, <em>raising</em> occupancy; the feedback is thus
+memory/slot-mediated, not compute-mediated. <b>Implication:</b> goodput@SLO must be reported as a distribution
+(median-of-k); the coin-flip cannot be cured by reshaping the batch at fixed capacity; the only working levers are the
+capacity-margin levers&mdash;both caching (raises C) and scheduling (raises K) buy reliability, not just mean
+throughput, by widening the same margin. We caveat that the variance <em>exponent</em> rests on n=2 per config (means
+robust, spreads suggestive) and the decode-floor backfire on n=1 (large effect + mechanistic corroboration), and give
+the replicate tests that would firm both.
 </div>
 
 <h2>1 Introduction</h2>
@@ -170,6 +177,45 @@ interference feedback makes the queue <em>bistable</em>, not merely slow, so nea
 noise into a full basin jump. The reliability law is thus steeper than heavy-traffic queueing alone would predict,
 which is why a seemingly comfortable margin (stock's 1.3, &rho;=0.7) still coin-flips.</p>
 
+<h3>4.2 Breaking the feedback directly: a compute-side decode floor backfires</h3>
+<p>
+The margin law damps the coin-flip <em>indirectly</em>, by widening C&minus;&lambda;. A natural question&mdash;flagged
+as the follow-on below&mdash;is whether the interference feedback can be broken <em>directly</em>, at fixed capacity,
+by a run-time controller: a reliability mechanism orthogonal to the frontier. We built and tested the most direct such
+controller, an <b>occupancy-feedback decode floor</b>. At each scheduler step, when device-KV occupancy &rho; exceeds
+&theta;<sub>hi</sub>=0.90 (the saturated regime where the coin-flip lives), it reduces the chunked-prefill token budget
+by a gain g=0.5, reserving compute for decode so in-flight sequences drain and occupancy relaxes toward the
+low-occupancy basin. It is env-gated and lossless (per-step local budget only; server args frozen; outputs and hit
+rate unchanged).</p>
+<table>
+<thead><tr><th>metric (&lambda;=3)</th><th>stock PASS</th><th>stock FAIL</th><th>decode-floor</th></tr></thead>
+<tbody>
+<tr><td>p99 TTFT (s)</td><td>6.2</td><td>11.5</td><td class="fail">31.8</td></tr>
+<tr><td>mean concurrency</td><td>124</td><td>166</td><td class="fail">172</td></tr>
+<tr><td>decode tpot (ms)</td><td>392</td><td>468</td><td class="fail">592</td></tr>
+<tr><td>hit rate</td><td>~0.675</td><td>~0.675</td><td class="win">0.679</td></tr>
+</tbody>
+</table>
+<div class="keyfinding">
+The controller <b>backfires decisively</b>: p99 lands at <b>31.8&nbsp;s&mdash;2.8&times; worse than the natural bad
+basin</b> (11.5&nbsp;s) and far outside the coin-flip band (1.9&times;), with concurrency and decode-per-token
+<em>both</em> monotonically worse than the bad basin. It is lossless (hit 0.679). Two mechanisms explain the failure,
+and together they pin the physics of the feedback:
+<ol>
+<li><b>Decode is memory-bandwidth-bound, not compute-bound.</b> Shrinking prefill chunks to "reserve compute" does not
+speed decode&mdash;tpot <em>rose</em> 468&rarr;592&nbsp;ms. There is no decode-compute deficit to relieve.</li>
+<li><b>Finer chunking makes giants linger.</b> A giant prefill split into more, smaller steps stays in the running
+batch longer, so occupancy stays high <em>longer</em>, concurrency rises, and decode contention increases&mdash;the
+very runaway the controller was meant to break, amplified.</li>
+</ol>
+The lesson is mechanistic, not merely negative: <b>the coin-flip feedback is memory/slot-mediated, not
+compute-mediated.</b> A compute-side decode floor cannot damp it and actively worsens it. This <em>falsifies the
+obvious direct cure</em> and confirms that the only handles on the coin-flip are the capacity-margin levers of
+&sect;4 (caching raises C, scheduling raises K): reliability is bought by widening the margin, not by reshaping the
+batch at fixed capacity. (Capacity is unchanged by construction&mdash;the controller cannot raise admission or
+rate&mdash;so the failure is pure latency, not de-saturation. The controller is n=1; the 2.8&times; effect with dual
+mechanistic corroboration and the predicted sign make the qualitative conclusion secure.)</div>
+
 <h2>5 Implications</h2>
 <ul>
 <li><b>Report goodput@SLO as a distribution.</b> A single run is a coin-flip near the edge; use median-of-k (k&ge;3)
@@ -178,10 +224,12 @@ change. (This is why the companion studies compare on hit rate, which is invaria
 <li><b>Caching and scheduling buy reliability, not just throughput.</b> Both widen the margin (caching via C=K/(1&minus;h),
 scheduling via K), which damps the coin-flip. An operator who needs a <em>reliable</em> SLO should provision margin,
 not just mean capacity.</li>
-<li><b>The metastability is the enemy, not the mean.</b> Because the amplification is super-M/G/1, a mechanism that
-<em>breaks the interference feedback</em> (e.g. reserving a decode-compute floor so occupancy cannot run away) could
-collapse the variance without changing C&mdash;a reliability mechanism orthogonal to the frontier. We flag this as
-the natural follow-on.</li>
+<li><b>The metastability is the enemy, not the mean&mdash;but you cannot cure it from the compute side.</b> The
+tempting fix is a run-time controller that breaks the interference feedback at fixed capacity (e.g. a decode-compute
+floor so occupancy cannot run away). We <em>built and tested</em> exactly this (&sect;4.2) and it <b>backfires</b>
+(p99 6&ndash;11&nbsp;s&rarr;31.8&nbsp;s): decode is memory-bound so reserving compute does not drain it, while finer
+prefill chunking makes giants linger and <em>raises</em> occupancy. The feedback is memory/slot-mediated, so the only
+working levers are the capacity-margin levers below.</li>
 <li><b>Unifies with the frontier.</b> goodput=min(&lambda;<sub>tail</sub>,C(h,K)) gives the mean; the margin
 C&minus;&lambda; gives the variance. One capacity currency governs both the level and the reliability.</li>
 </ul>
@@ -192,10 +240,13 @@ Metastability in queueing systems is classical, and cold-start metastability in 
 (bursty queue build-up on an empty system). Our finding is <em>distinct and stronger</em>: the coin-flip persists
 under a <em>deterministic</em> workload <em>and</em> an applied warmup, so it is not cold start&mdash;it is a
 steady-state bistability of the prefill&harr;decode loop, selected by execution-timing nondeterminism. Sarathi-Serve
-(OSDI'24) reduces prefill&harr;decode interference for throughput/latency; our analysis says the same interference
-is the <em>variance</em> source, so interference control is also a reliability lever. To our knowledge, casting
-goodput@SLO <em>reliability</em> as capacity-margin-governed, and measuring the metastable amplification directly
-from occupancy telemetry, is new.</p>
+(OSDI'24) reduces prefill&harr;decode interference for throughput/latency via <em>static</em> chunked prefill; our
+analysis says the same interference is the <em>variance</em> source. But interference control is not automatically a
+reliability lever: our <em>dynamic</em>, occupancy-adaptive version of it&mdash;throttling prefill when occupancy is
+high (&sect;4.2)&mdash;backfires, because it slows giant prefills into lingering longer and decode is memory- not
+compute-bound. This is a cautionary counterpoint to the intuition that reducing interference always helps. To our
+knowledge, casting goodput@SLO <em>reliability</em> as capacity-margin-governed, measuring the metastable
+amplification directly from occupancy telemetry, and showing that the direct compute-side cure backfires, is new.</p>
 
 <h2>7 Limitations &amp; when it fails</h2>
 <ul>
@@ -203,6 +254,12 @@ from occupancy telemetry, is new.</p>
 we have n=2 per config, so the &sim;20&times; occupancy-spread and &sim;19&times;-vs-1.8&times; amplification are
 <em>suggestive</em>; the <em>means</em> (occupancy 90 vs 145) and the mechanism (basin telemetry) are robust. The
 firming experiment (&sect;8) is n&ge;5 per config across the margin range.</li>
+<li>The decode-floor backfire (&sect;4.2) is n=1. The effect is large (2.8&times; the bad basin, far outside the
+coin-flip band) and doubly corroborated by the mechanism metrics (concurrency and tpot both worse), and its sign
+matches the memory-bound prediction, so the <em>qualitative</em> conclusion (compute-side throttling does not cure and
+actively worsens) is secure; the exact magnitude is single-run. We also swept only one operating point
+(&theta;<sub>hi</sub>=0.90, g=0.5); a gentler gain might backfire less, but cannot help, since the memory-bound
+argument (reserving compute does not drain decode) holds for any g&gt;0.</li>
 <li>The bistability is inferred from two static telemetry snapshots per run; a time-resolved occupancy trace would
 show the basin dynamics directly (not available in the fixed benchmark output).</li>
 <li>Single workload, single node class, single SLO (8&nbsp;s). The margin variable should generalize, but the

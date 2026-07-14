@@ -422,3 +422,66 @@ eager/lazy); backup-gating RAISES K (less host↔device backup I/O → higher ef
 two-lever reframe: (a) cache-HIT via 1/(1-h) [strong; eager full backup] vs (b) K via backup-I/O-reduction
 [linear; gating] — ANTI-CORRELATED (gating craters hit). Hit wins (flat C=3.38 < stock 4.14 despite +49% K).
 Unifies Paper1 crater (crater trades strong hit-lever for weak K-lever). NOW folding into Paper 2 → submitted v2.
+
+## ★★ v7_decfloor λ=3 LANDED (22:07) — PAPER 4 DECISIVE NEGATIVE (occupancy-feedback damping BACKFIRES)
+Mechanism (239608a1e): cap chunked_prefill_size ×(1−g=0.5) when device-KV occupancy > θ_hi=0.90. Env-gated, lossless.
+RESULT λ=3 (n=1): p99 TTFT=**31791ms (31.8s)** | p50=609 | concurrency=**171.9** | tpot=**592ms** | hit=**0.6791** | dur=2992s.
+Compare stock coin-flip band: good{p99 6.2s, conc 124, tpot 392}, bad{p99 11.5s, conc 166, tpot 468}.
+- PRIMARY **FAIL**: p99 31.8s = **2.8× WORSE than the bad basin** (11.5s), 5× the good basin. FAR outside coin-flip
+  variance (band 1.9×) → NOT a bad draw; a real, large adverse mechanism effect.
+- MECHANISM **FAIL (backfire)**: concurrency 172 > bad-basin 166; tpot 592 > bad-basin 468. BOTH monotonically WORSE
+  than the natural bad basin → the controller pushed the system into an even-worse state, not toward the good basin.
+- LOSSLESS **OK**: hit 0.6791 ≈ stock 0.675 (mechanism only reshapes per-step budget; outputs intact). ✓
+- DURATION +20% (2992 vs 2484s) — corroborates: throttling prefill slows the whole run.
+★MECHANISM INSIGHT (why it backfires, decisive): capping prefill compute at high occupancy does the OPPOSITE of
+intended. (1) Decode is MEMORY-BANDWIDTH-bound, not compute-bound — shrinking prefill chunks to "reserve compute for
+decode" does NOT speed decode (tpot went UP 468→592, not down). (2) Meanwhile a giant chunked into MORE, smaller
+steps LINGERS longer in the running batch → occupancy stays high LONGER → concurrency RISES (172) → MORE decode
+contention → decode slower → the exact runaway I aimed to break, AMPLIFIED. The coin-flip feedback is
+**memory/slot-mediated, not compute-mediated**; a compute-side "decode floor" cannot damp it and actively worsens it.
+VERDICT: Paper 4 as a positive mechanism is DEAD. This is a strong, honest BOUNDED NEGATIVE → FOLD into Paper 3
+(goodput-coinflip) §"can the coin-flip be cured?" — the characterization now has a decisive falsification of the
+obvious compute-side cure. n=1 but magnitude (2.8×) ≫ coin-flip band + dual mechanistic corroboration (conc↑, tpot↑)
+→ qualitative conclusion secure; magnitude noted single-run. Let sweep finish for C@10 guard (de-saturation check).
+NEXT: fold into Paper 3; then open Paper 5 (giant-prefill HOL blocking, scouted).
+
+## FOLD COMPLETE (22:15): Paper 4 negative → Paper 3 §4.2 (draft-v2)
+- Added Paper 3 §4.2 "Breaking the feedback directly: a compute-side decode floor backfires" (table stock-good/bad/decfloor,
+  2 mechanisms, memory/slot-mediated conclusion). Updated abstract (pt 4), §5 implication bullet 3 (cure falsified),
+  §6 related work (dynamic-vs-Sarathi-static; cautionary counterpoint), §7 limitations (n=1 caveat + any-g argument).
+  HTML validated (tags balanced, §1-8 coherent). INDEX.md → draft-v2.
+- Removed standalone submissions/reliable-goodput-control skeleton (n=1 negative too thin standalone; stronger as Paper 3
+  capstone: characterization→failed-cure→working-lever). Decision: fold > standalone.
+- PENDING: v7 sweep λ=5,7,10 → add empirical C@10 to §4.2 (de-saturation guard; expect ~4.1 = stock, confirming pure-latency).
+
+## ★★ PAPER 5 HOL DIAGNOSTIC — CONFIRMED ON EXISTING STOCK DATA (zero compute, 22:25)
+Analyzed v1_stock/server.log per-step Prefill batch lines, isolated to λ=3 window (02:14:00–02:56:23, achieved≈offered
+so NOT globally overloaded; the waiting is giant-caused not overload). budget(chunked_prefill_size)=6144.
+- **51.3% of λ=3 prefill steps have #queue-req>0** (shorts waiting).
+- **88.9% of those are HOL-blocked** (a chunk ≥50% budget admitted with ≤2 new-seq) = **45.6% of ALL prefill steps**.
+- **96% of waiting-steps have a giant present** (#pending-token>budget); giant block-length median **11 steps** (max 79).
+- When shorts wait: median #new-seq admitted=**1** (just the giant chunk), median #queue-req=**4** behind it,
+  median #pending-token=61820 (giant ~62K tok still to prefill), max 485903.
+⇒ HOL blocking behind giants is REAL and PERVASIVE at λ=3: nearly half of all prefill steps, a giant monopolizes the
+6144 budget while ~4 shorts wait a median of 11 steps. At ~0.5-0.9s/prefill-step this is ~5-10s added TTFT to the
+blocked shorts = the measured p99 tail band (6-11s). Structurally DISTINCT from Papers 1-4 (not capacity, not
+admission, not eviction, not occupancy-basin). PREMISE SOLID → build fair-share chunk-interleave + test.
+CAVEAT (honest, to resolve by the fix test): net p99 effect depends on WHO is at p99 — the giant's own prefill (fix
+HURTS, giant slower) vs the ~4 shorts behind it (fix HELPS). Median 4 followers suggests followers dominate → likely
+win, but MUST measure. Also running-req~252 during λ=3 prefill steps (near cap 256) = concurrency-capped regime
+(consistent w/ Paper 1 eff-cap collapse; Paper 3's 124/166 = bench Little's-law AVERAGE, different metric).
+Diagnostic script inline (analysis/); reproducible from committed server.log.
+
+## PAPER 5 mechanism v1 CRASHED then FIXED (22:29→22:49)
+- v1 (b9ab920c0) crashed all TP ranks during warmup: `assert self.chunked_req is None`. Root cause: leaving budget
+  for waiting shorts let a LARGE waiting req truncate into a 2nd chunked req while the giant was still chunked →
+  violates sglang's single-chunked-req invariant (get_new_batch_prefill line 2985). Stock never hits this (giant
+  leaves rem_chunk_tokens=0 → trunc_len<=0 rejects).
+- FIX (48ad6612b): in PrefillAdder.add_one_req truncation branch, `if has_chunked_req: return OTHER` — never form a
+  2nd chunk while a giant is in flight (req stays queued for a later step). Provably no-op for stock; makes fair-share
+  legal. Both scheduler.py + schedule_policy.py committed.
+- RELAUNCHED v8_fair (FAIR_PREFILL=1 FRAC=0.5) 22:43 on same held node 19833. ★CHECKPOINT PASSED: 0 crashes through
+  warmup; MECHANISM CONFIRMED FIRING — server log shows `new-seq:2 new-token:6144` (giant's 3072 chunk + a short's
+  3072 admitted TOGETHER) when a giant (pending 940K) + 77 waiting present, vs stock's new-seq:1. Big waiting reqs
+  correctly held by the guard (new-seq:1 new-token:3072 = giant only). Cap to 3072 (=6144×0.5) confirmed.
+- Next: λ=3 completes ~23:45 → analyze_paper5.py verdict (deterministic HOL-frac drop + p99 vs same-node v9_stock2).

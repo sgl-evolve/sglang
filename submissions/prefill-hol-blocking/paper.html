@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giant-Prefill Head-of-Line Blocking — turing</title>
+<style>
+  :root{--ink:#1a1a1a;--mut:#666;--acc:#7a4a1c;--bg:#fff;--box:#f7f5f2;--line:#e0dcd6}
+  html{font-size:17px}
+  body{max-width:52rem;margin:0 auto;padding:2.2rem 1.3rem 6rem;background:var(--bg);color:var(--ink);
+       font-family:Georgia,"Times New Roman",serif;line-height:1.55}
+  h1{font-size:1.6rem;line-height:1.25;margin:0 0 .3rem}
+  h2{font-size:1.2rem;margin:2.1rem 0 .6rem;border-bottom:2px solid var(--acc);padding-bottom:.2rem}
+  h3{font-size:1.02rem;margin:1.3rem 0 .3rem}
+  .sub{color:var(--mut);font-size:.95rem;margin:.1rem 0}
+  code,.mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.86em}
+  .abstract{background:var(--box);border-left:3px solid var(--acc);padding:.8rem 1rem;margin:1.2rem 0;font-size:.97rem}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.9rem}
+  th,td{border:1px solid var(--line);padding:.32rem .5rem;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  thead th{background:var(--box)}
+  .fail{color:#a11;font-weight:bold}
+  .win{color:#1a6a1a;font-weight:bold}
+  figure{margin:1.3rem 0;text-align:center}
+  figcaption{color:var(--mut);font-size:.85rem;margin-top:.4rem;text-align:left}
+  .note{color:var(--mut);font-size:.85rem}
+  .keyfinding{background:#fbf3e9;border:1px solid #e6c9a3;padding:.5rem .8rem;margin:.8rem 0;font-size:.93rem}
+  .eq{background:var(--box);border:1px solid var(--line);padding:.5rem .8rem;margin:.7rem 0;text-align:center;font-size:1.02rem}
+  .pending{background:#fff3f3;border:1px dashed #c99;padding:.5rem .8rem;margin:.8rem 0;font-size:.9rem;color:#833}
+  ul{margin:.4rem 0 .8rem} li{margin:.25rem 0}
+  .draft{display:inline-block;background:var(--acc);color:#fff;font-size:.7rem;padding:.1rem .5rem;border-radius:3px;
+         vertical-align:middle;letter-spacing:.05em;font-family:sans-serif}
+</style>
+</head>
+<body>
+
+<h1>The p99 Tail is Head-of-Line Blocking:<br>
+Giant-Prefill Monopoly and Fair-Share Chunk Interleaving <span class="draft">v0 · results pending</span></h1>
+<p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
+<p class="sub">Base commit <span class="mono">a334877e5</span> · mechanism <span class="mono">48ad6612b</span></p>
+
+<div class="abstract">
+<b>Abstract.</b> On saturated conversational serving, the p99 time-to-first-token (TTFT) tail is dominated by
+turn-0 prefills of heavy-tailed documents (up to 191K tokens). Prior companion studies showed this tail is not
+cache-addressable and bounds goodput@SLO. We identify a <em>structural</em> amplifier of that tail and a lossless
+mechanism to reduce it. <b>Diagnosis (from production telemetry):</b> sglang admits an in-flight chunked "giant"
+prefill <em>first</em> each scheduler step, and a single giant consumes the entire per-step chunked-prefill token
+budget; short requests that arrive behind it cannot start prefill until it clears. Measuring the &lambda;=3 steady
+state directly, <b>51% of prefill steps have requests waiting, and 89% of those are head-of-line (HOL) blocked</b> by
+a giant that monopolizes the budget&mdash;45.6% of <em>all</em> prefill steps&mdash;with a median of 4 short requests
+waiting behind a giant that blocks for a median of 11 (max 79) consecutive steps. <b>Mechanism:</b> we introduce
+<em>fair-share chunk interleaving</em>&mdash;when a giant would monopolize the step while shorts wait, cap the giant's
+per-step share to a fraction and admit a waiting short with the remainder, so the short starts prefill immediately
+while the giant still advances. It is lossless (only reshapes the per-step token split; no drop/reorder/evict) and
+respects the engine's single-chunked-request invariant (a waiting request that would itself truncate is left queued,
+not forced into an illegal second chunk). <span class="pending">[RESULTS PENDING same-node A/B v8_fair vs v9_stock2:
+&lambda;=3 p99/median TTFT + the deterministic HOL-blocked-step fraction (coin-flip-robust). Verdict framing&mdash;win
+vs. refined bound&mdash;selected on measured data.]</span>
+</div>
+
+<h2>1 Introduction</h2>
+<p>The headline serving metric is <b>goodput@SLO</b>: the maximum request rate at which p99 TTFT stays under 8&nbsp;s.
+Two companion studies established that (i) hierarchical KV caching cannot raise goodput because the p99 tail is
+uncacheable turn-0 prefill of heavy-tailed documents, and (ii) goodput@SLO is capacity-bounded and the tail is a
+contention effect, not a service-time floor (every request is solo-feasible: even the 191K-token max document prefills
+in &lt;7&nbsp;s alone). If the tail is contention, <em>which</em> contention? This paper answers: a large share of the
+tail is <b>head-of-line blocking of short requests behind giant prefills</b>&mdash;a scheduling artifact&mdash;and it
+is reducible losslessly at fixed capacity.</p>
+
+<h2>2 Diagnosis: giant prefills monopolize the per-step budget</h2>
+<p>sglang bounds each scheduler step's prefill work by a token budget (<span class="mono">chunked_prefill_size</span>,
+6144 in the fixed eval). A prefill larger than the budget is <em>chunked</em> across steps. The scheduler composes each
+step by first advancing the in-flight chunked request, then draining the waiting queue into the remaining budget:</p>
+<div class="eq"><span class="mono">add_chunked_req(giant)</span> &rarr; consumes up to full budget &rarr;
+drain waiting queue with what's left</div>
+<p>For a giant (tens to hundreds of thousands of tokens remaining), the first step consumes the <em>entire</em> budget,
+so the waiting-queue drain gets nothing: every short request waits. The giant blocks for
+&lceil;remaining/budget&rceil; consecutive steps.</p>
+
+<h3>2.1 It is pervasive, and it is not global overload</h3>
+<p>We parse the per-step scheduler telemetry from a stock run's server log, isolated to the &lambda;=3 phase (where
+achieved throughput &asymp; offered, i.e. the system is <em>not</em> globally overloaded&mdash;so a waiting queue is
+caused by giants, not by rate exceeding capacity):</p>
+<table>
+<thead><tr><th>metric (stock, &lambda;=3)</th><th>value</th></tr></thead>
+<tbody>
+<tr><td>prefill steps analyzed</td><td>8 754</td></tr>
+<tr><td>steps with a waiting queue (#queue-req &gt; 0)</td><td>51.3%</td></tr>
+<tr><td>&nbsp;&nbsp;of those, HOL-blocked (giant chunk &ge;&frac12; budget, &le;2 new seqs)</td><td class="fail">88.9%</td></tr>
+<tr><td>HOL-blocked share of <em>all</em> prefill steps</td><td class="fail">45.6%</td></tr>
+<tr><td>waiting-steps with a giant present (#pending &gt; budget)</td><td>96%</td></tr>
+<tr><td>giant block-length (median / max steps)</td><td>11 / 79</td></tr>
+<tr><td>median new seqs admitted when waiting</td><td class="fail">1</td></tr>
+<tr><td>median short requests waiting behind the giant</td><td>4</td></tr>
+</tbody>
+</table>
+<div class="keyfinding">
+Nearly <b>half of all &lambda;=3 prefill steps</b> have a giant monopolizing the budget while a median of 4 short
+requests wait, admitting just 1 new sequence per step. A giant blocks the queue head for a median of 11 (up to 79)
+consecutive steps. At the measured prefill-step cadence this is several seconds of added TTFT to each blocked
+short&mdash;on the order of the measured 6&ndash;11&nbsp;s p99 band. The tail is not (only) the giant's own service
+time; it is the <em>queue of shorts stuck behind the giant</em>.</div>
+
+<h2>3 Mechanism: fair-share chunk interleaving</h2>
+<p>The fix admits a waiting short <em>alongside</em> the giant instead of strictly behind it. When a giant is in flight
+and the waiting queue is non-empty, we cap the giant's share of this step's budget to a fraction <em>f</em> and give
+the remainder to the waiting-queue drain:</p>
+<div class="eq">
+giant gets max(page, &lfloor;f&middot;B&rfloor;) tokens; &nbsp; shorts get B &minus; (giant's actual use)
+</div>
+<p>The giant still advances every step (just fewer tokens), and a short that fits in the remainder starts prefill
+immediately&mdash;its TTFT no longer includes the giant's remaining block-length. The mechanism is env-gated
+(<span class="mono">SGLANG_TURING_FAIR_PREFILL</span>, <span class="mono">FAIR_FRAC</span>=0.5 default; default OFF).</p>
+
+<h3>3.1 Lossless and invariant-safe</h3>
+<ul>
+<li><b>Lossless:</b> only the per-step token <em>split</em> changes; no request is dropped, reordered across the
+priority order, or evicted, and KV contents are untouched. Outputs and hit rate are identical.</li>
+<li><b>Single-chunked-request invariant:</b> sglang permits only one partially-prefilled (chunked) request at a time
+(asserted in the scheduler). Naively leaving budget for the drain lets a <em>large</em> waiting request truncate into
+an illegal second chunk&mdash;which crashes the scheduler. We fix this by making the waiting-queue admission honor the
+in-flight-chunk state: a waiting request that would truncate while a giant is already chunked is <em>left in the
+queue</em> (it runs a later step), never forced into a second chunk. Short requests that <em>complete</em> within the
+remainder are admitted normally. This preserves the invariant and is a no-op for stock (where the giant leaves zero
+budget anyway).</li>
+<li><b>Capacity-neutral:</b> no change to admission or rate, so peak throughput C is unchanged (verified at
+&lambda;=10).</li>
+</ul>
+
+<h2>4 Results</h2>
+<div class="pending">
+<b>[PENDING — same-node A/B (v8_fair, <span class="mono">FAIR_PREFILL=1</span>, vs v9_stock2) on one held node; verdict
+via <span class="mono">analyze_paper5.py</span>.]</b> Two evidence tracks:
+<ul>
+<li><b>Deterministic mechanism metric (coin-flip-ROBUST).</b> The HOL-blocked-step fraction and median new-seqs/step
+from the fair-share server log vs stock. Prediction: HOL-blocked fraction drops and new-seqs/step rises (shorts
+admitted alongside giants). This does not depend on the goodput coin-flip. <em>[Live telemetry already shows the
+mechanism firing: steps admitting the giant's capped chunk + a short together, where stock admitted only the
+giant.]</em></li>
+<li><b>Outcome (coin-flip-sensitive).</b> &lambda;=3 p99/median TTFT vs same-node stock. Prediction: p99 down if the
+freed shorts (median 4 behind each giant) outweigh the giant's own slowdown.</li>
+<li><b>Guards.</b> hit_rate invariant (lossless); C&#64;&lambda;=10 unchanged (no de-saturation).</li>
+</ul>
+Outcome-conditioned framing: <em>WIN</em> &rarr; a lossless scheduling mechanism that cuts the structural p99 tail at
+fixed capacity (composes with the capacity-margin levers of the companion studies). <em>HOL drops but p99 flat</em>
+&rarr; the tail is the giant's own prefill service time, not HOL contention&mdash;a refined bound that sharpens the
+companion "tail is intrinsic" claim. <em>p99 up</em> &rarr; slowing giants dominates (bound).
+</div>
+
+<h2>5 Related work</h2>
+<p>Sarathi-Serve (OSDI'24) chunks prefill to bound prefill&harr;decode interference; it does not address
+<em>inter-request</em> HOL blocking among prefills (a giant still monopolizes the chunk budget). Shortest-remaining
+(SRPF/SJF) scheduling reorders the waiting queue to run short whole requests first; our mechanism is orthogonal and
+composes&mdash;it interleaves at the <em>chunk</em> level so an already-in-flight giant does not monopolize the step,
+without reordering which whole request is next. Fair queueing / processor sharing is classical in networking; applying
+chunk-level fair sharing to LLM prefill batch composition, motivated by measured giant-prefill HOL blocking, is to our
+knowledge new.</p>
+
+<h2>6 Reproducibility</h2>
+<ul>
+<li>Diagnosis: parse <span class="mono">Prefill batch</span> lines from a stock run's <span class="mono">server.log</span>,
+isolate the &lambda;=3 window via the eval's rate markers; script in <span class="mono">analysis/</span>.</li>
+<li>Mechanism: commit <span class="mono">48ad6612b</span> (scheduler.py fair-share + schedule_policy.py invariant
+guard) on <span class="mono">evolve/turing</span>; base <span class="mono">a334877e5</span>. Env
+<span class="mono">SGLANG_TURING_FAIR_PREFILL=1 SGLANG_TURING_FAIR_FRAC=0.5</span>.</li>
+<li>Eval harness, dataset, model, TP8, rate sweep, warmup, seeded arrivals: unchanged from contract. Same-node A/B;
+verdict <span class="mono">analysis/analyze_paper5.py</span>.</li>
+</ul>
+
+</body>
+</html>

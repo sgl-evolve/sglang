@@ -34,7 +34,7 @@
 <body>
 
 <h1>Effective-Capacity Collapse and the Admission Backfire:<br>
-Why Hierarchical KV Caching Does Not Improve goodput@SLO on Saturated Conversational Serving <span class="draft">v1 · submitted</span></h1>
+Why Hierarchical KV Caching Does Not Improve goodput@SLO on Saturated Conversational Serving <span class="draft">v2 · submitted</span></h1>
 <p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
 <p class="sub">Base commit <span class="mono">a334877e5</span> · mechanism/instrumentation <span class="mono">ce01c1c79</span></p>
 
@@ -86,6 +86,10 @@ craters hit rate by 25&nbsp;pp. We explain it: under device saturation, non-eage
 This is a concrete, counter-intuitive negative for a plausible optimization.</li>
 <li><b>Tail anatomy</b> (&sect;6): the goodput bottleneck is heavy-tailed, uncacheable document prefill amplified by
 prefill&harr;decode interference&mdash;outside the cache's reach&mdash;and goodput@SLO is a variance-dominated coin-flip.</li>
+<li><b>A caching-invariant P99 lower bound</b> (&sect;7): P99&nbsp;TTFT &ge; q<sub>99</sub>(uncached tokens)/R, whose
+tail term is fixed by the document-size distribution and unchanged by hit rate; this analytical bound predicts the
+observed P99 (~9&nbsp;s floor vs measured 11.5&nbsp;s) and the feasible region where caching would&mdash;or, here,
+would not&mdash;matter.</li>
 </ul>
 <p>
 Together these compose an <b>impossibility argument</b> for this regime: goodput@SLO cannot be materially raised
@@ -93,7 +97,7 @@ by any lossless KV-cache or -compute mechanism, because <b>three independent bou
 (i) <b>capacity/admission</b>: the reachable hit headroom is small (&sect;3), the effective cache is host-bound
 under running-KV crowd-out (&sect;4), and the one admission signal available at insertion time backfires under that
 crowd-out (&sect;5); (ii) <b>eviction-optimality</b>: LRU is already near-Belady and the engine's seven pluggable
-eviction policies cannot help a host-bound cache (&sect;4,&sect;7); (iii) <b>compute-irreducibility</b>: the tail is
+eviction policies cannot help a host-bound cache (&sect;4,&sect;8); (iii) <b>compute-irreducibility</b>: the tail is
 O(D&sup2;) exact-attention prefill on unique, heavy-tailed documents, which no lossless mechanism can shrink
 (&sect;6). The contribution is thus a rigorously-bounded negative that tells the community where <em>not</em> to
 spend engine complexity and isolates the true lever (prefill scheduling and SLO/workload design). All numbers come
@@ -312,7 +316,44 @@ cold prefills) or the SLO/workload itself&mdash;not the KV cache. Peak throughpu
 (peak 530 tok/s, 4.14 req/s), as expected.
 </p>
 
-<h2>7 Why this is not just "the cache is full"</h2>
+<h2>7 A caching-invariant lower bound on P99 TTFT</h2>
+<p>
+The anatomy above admits a crisp analytical form. TTFT of a request is bounded below by its own prefill time:
+<b>TTFT(r) &ge; U(r) / R</b>, where U(r) is the request's <em>uncached</em> prefill tokens and R the effective
+per-request prefill rate (queueing only <em>adds</em>). For a turn-0 request, U(r) is the full document&mdash;
+<em>caching-invariant</em>, because a never-before-seen document cannot be cached. Hence, writing q<sub>99</sub>
+for the 99th percentile of U over the request stream, <b>P99&nbsp;TTFT &ge; q<sub>99</sub>(U)/R</b>, and
+q<sub>99</sub>(U) is set by the document-size tail, not by the cache.
+</p>
+<p>
+Quantitatively: fitting R from the measured &lambda;=3 median (p50 TTFT 1.02&nbsp;s at p50 U = 4170 tokens gives
+R &approx; 4100 tok/s, an <em>upper</em> estimate since the median already includes some wait), the p99 of U is
+&approx;36.7&nbsp;K tokens and is <b>invariant across hit rates from 0.62 to 0.95</b> (the reused-prefix term shrinks
+with hit, but the turn-0 document term does not):
+</p>
+<table>
+<thead><tr><th>hit rate</th><th>E[U] (mean, tok)</th><th>q<sub>99</sub>(U) (tail, tok)</th><th>P99 floor = q<sub>99</sub>/R (s)</th><th>vs 8 s SLO</th></tr></thead>
+<tbody>
+<tr><td>0.00</td><td>14006</td><td>63943</td><td>15.6</td><td class="fail">FAIL</td></tr>
+<tr><td>0.62 (stock)</td><td>7011</td><td>36695</td><td>8.9</td><td class="fail">FAIL</td></tr>
+<tr><td>0.737 (write_back)</td><td>5691</td><td>36695</td><td>8.9</td><td class="fail">FAIL</td></tr>
+<tr><td>0.809 (oracle)</td><td>4878</td><td>36472</td><td>8.9</td><td class="fail">FAIL</td></tr>
+<tr><td>0.95</td><td>3287</td><td>35227</td><td>8.6</td><td class="fail">FAIL</td></tr>
+</tbody>
+</table>
+<p>
+Caching drives the <em>mean</em> E[U] down by 4&times; (14006&rarr;3287) &mdash; that is throughput/&rho; &mdash;
+yet the <em>tail</em> q<sub>99</sub>(U) barely moves, so the P99 floor stays at ~8.9&nbsp;s, above the SLO, at
+<em>every</em> hit rate up to and beyond the oracle. The largest document alone is 47&nbsp;s of prefill. The
+measured &lambda;=3 p99 (11.5&nbsp;s) sits just above this floor (floor + queue), confirming the bound is the
+binding term. This is the analytical statement of the impossibility: <b>goodput@SLO is governed by the
+caching-invariant service tail q<sub>99</sub>(U)/R; caching moves the mean, not the tail, so it cannot lift a
+tail-bound P99.</b> (The bound also predicts where caching <em>would</em> matter: a workload whose document tail
+satisfies q<sub>99</sub>(U) &lt; R&middot;SLO, e.g. shorter documents or a looser SLO, leaves the P99 below the
+floor and returns the lever to the cache&mdash;absent here.)
+</p>
+
+<h2>8 Why this is not just "the cache is full"</h2>
 <p>
 A skeptic might say we simply need more L2. But the budget is fixed by construction (the contribution must come
 from a smarter engine, not more memory), and within that budget every lossless lever is bounded: eviction is
@@ -326,7 +367,7 @@ conversational workload leaves the KV cache almost no room to move goodput@SLO&m
 scheduling and SLO/workload design, not the cache.</em>
 </p>
 
-<h2>8 Related work</h2>
+<h2>9 Related work</h2>
 <p>
 HiCache (LMSys 2025) and Mooncake (FAST'25) build the hierarchy and its write-back policies; our
 <span class="mono">write_through_selective</span> result is a cautionary measurement <em>on</em> that machinery.
@@ -337,7 +378,7 @@ under device saturation, where withholding admission <em>loses</em> the hot obje
 scheduling (SRPF/SJF) are the known levers for the &sect;6 tail; we position them as the correct axis, not the cache.
 </p>
 
-<h2>9 Limitations &amp; when the conclusion flips</h2>
+<h2>10 Limitations &amp; when the conclusion flips</h2>
 <ul>
 <li><b>One model/workload/SLO.</b> The bound is specific to a saturated, heavy-tailed, first-sight-dominated
 regime. Under a smaller working set (cache not binding), a looser SLO, or a workload with heavy cross-conversation
@@ -349,7 +390,7 @@ the write-policy space (&sect;5).</li>
 concurrency; we report it as a range and will pin it with a controlled single-giant-doc measurement.</li>
 </ul>
 
-<h2>10 Reproducibility</h2>
+<h2>11 Reproducibility</h2>
 <p>
 Base commit <span class="mono">a334877e5</span>; instrumentation/mechanism <span class="mono">ce01c1c79</span>
 (env-gated <span class="mono">SGLANG_TURING_ADMIT</span> in <span class="mono">unified_radix_cache.py</span>;

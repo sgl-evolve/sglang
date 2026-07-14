@@ -336,3 +336,17 @@ frontier up → could raise goodput** (the one lever that lifts the ceiling, ort
 NEEDS: (a) isolated-prefill R_single measurement (single-req, any a3 node, diagnostic) to firm the headroom; (b) a
 mechanism (candidate: prefill-batch packing / interference-aware step composition — must beat Sarathi chunked-prefill
 baseline, non-trivial, lossless). Risk: sglang already chunks; headroom may be comms/MoE-bound (hard). Firm (a) first.
+
+## PAPER 3 THEORY built (`analysis/metastability_model.py`) — reliability foundation
+Coin-flip MECHANISM (queueing-grounded, novel application to goodput reliability):
+- p99 TTFT = the ~1% GIANT turn-0 prefills meeting the AMBIENT queue occupancy N on arrival.
+- Arrivals seeded/deterministic (seed=1) BUT the occupancy N a giant meets depends on execution-timing
+  nondeterminism → giant TTFT varies run-to-run → coin-flip.
+- M/G/1: E[N]~ρ/(1−ρ), Var[N]~ρ/(1−ρ)² both blow up as ρ=λ/C→1 (margin C−λ→0). Near the edge (small margin):
+  high+variable occupancy → high+variable giant TTFT → COIN-FLIP. Large margin → low+stable → RELIABLE.
+- Prediction: p99 std (coin-flip amplitude) ~ 1/(C−λ)^p, p∈[1,2]. Direction MATCHES data: stock (margin 1.27,
+  C/(C−λ)=3.4) widest spread 5.3s; wb (margin 2.04, 2.5) tightest 0.8s (6.6× tighter). size=separate tail-service
+  knob (tail-gating raises giants' OWN service time, occupancy-independent → p99 15.6s despite good margin).
+- UNIFIES with frontier: the SAME C=K/(1−h) that sets the mean ceiling (Paper 2) sets the reliability via margin.
+- TESTABLE (needs n≥4-5/config, accumulating): fit p99-std vs margin; expect monotone ~1/(C−λ)^p.
+Paper 3 = "Goodput reliability is capacity-margin-governed" — theory DONE, needs replicate data to fit the exponent.

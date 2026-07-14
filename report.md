@@ -410,3 +410,15 @@ Eager full backup (high h, low K) wins because h enters as 1/(1-h). This unifies
 the crater trades a strong 1/(1-h) lever for a weak linear-K lever. HONEST: not a clean constant-K law across full
 hit range; K is regime-dependent (backup-gating). Clean λ=10 comparison (~21:00) confirms monotonic-K-in-gating.
 Also: flat K rising within-config across λ (1.67→1.88→2.00) = under-saturation (true K at λ10); use λ10 for all.
+
+## ★★ v6_flat λ=10 LANDED (20:52) — K STORY RESOLVED (Paper 2 integrity revision)
+flat λ10: C=3.38 h=0.3864 K=2.074. Full saturated K-by-gating (CLEAN):
+  pure write-policy stock/wb (full backup): K_base=1.388 ±0.034 CV 2.5% (INVARIANT) — cache-hit lever line.
+  backup-gating: size (gate giants) K=1.58 (+14%); flat (gate all) K=2.07 (+49%) — MONOTONIC in gating.
+  schedule: lpm K=1.55 (+11%).
+★CORRECTION (integrity): the draft-v1 claim "K invariant across CACHE variants (CV 2.5%)" is FALSE when
+size/flat included (CV 17%). TRUE: K_base invariant only for PURE WRITE-POLICY (same backup targeting, differ
+eager/lazy); backup-gating RAISES K (less host↔device backup I/O → higher effective prefill R). ⇒ Paper 2 v2
+two-lever reframe: (a) cache-HIT via 1/(1-h) [strong; eager full backup] vs (b) K via backup-I/O-reduction
+[linear; gating] — ANTI-CORRELATED (gating craters hit). Hit wins (flat C=3.38 < stock 4.14 despite +49% K).
+Unifies Paper1 crater (crater trades strong hit-lever for weak K-lever). NOW folding into Paper 2 → submitted v2.

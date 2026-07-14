@@ -46,10 +46,13 @@ prefill, irreducible by any cache). Crucially, <b>the SLO tail <em>is</em> those
 prefills</b> — so deferring them is self-defeating. We measure this: CCA that defers cold prefills
 craters λ=3 p99 to <b class="b">56&nbsp;s</b> (≈7× stock); a cost-blind variant even induces a
 <b class="b">0→518-retraction</b> cascade that crashes the server; and the one variant that never
-touches cold prefills (pacing only L2→L1 load-backs) is <em>neutral</em> — because the stock collapse is
-<b>not</b> retraction-driven (stock retracts <b>zero</b> times). We conclude that goodput@SLO here is
-<b>cold-prefill-compute-bound</b>: no lossless <em>deferring</em> KV-admission mechanism can improve it,
-and the design space is dominated by the stock policy. Along the way we report a sharp systems lesson: a
+touches cold prefills (pacing only L2→L1 load-backs) does not crash — it <b>lowers the λ=3 tail mean
+(8746→~8.1k&nbsp;ms) and shrinks its variance ~6×</b> (a real, novel variance-reduction effect), but
+the tightened cluster still straddles the 8&nbsp;s SLO, so goodput stays a coin-flip rather than a
+reliable pass. We conclude that, at the λ=3 coin-flip, goodput@SLO is <b>cold-prefill-compute-bound</b>:
+prefill admission control cannot reliably clear it (and cost-blind deferral is dangerous), because the
+stock collapse is <b>not</b> retraction-driven (stock retracts <b>zero</b> times) and the queue is empty
+— capping a pool that was never the bottleneck cannot help. Along the way we report a sharp systems lesson: a
 per-rank wall-clock decision in the TP scheduler desynchronizes the ranks' prefill batches and
 deadlocks the NCCL collectives — admission decisions in tensor-parallel serving must be deterministic.
 </div>
@@ -72,8 +75,9 @@ prefill-compute queueing, not a KV-pool/retraction cascade.</li>
 <li><b>A negative result</b> (§3–4): prefill admission control that <em>defers</em> expensive prefills
 cannot improve goodput@SLO and can catastrophically harm it, because the SLO tail <em>is</em> the
 expensive cold prefills. We measure the full mechanism family: deferring cold prefills → 56&nbsp;s p99;
-cost-blind deferral → retraction-cascade crash; load-back-only pacing → neutral. The space is
-dominated by stock.</li>
+cost-blind deferral → retraction-cascade crash; load-back-only pacing → lowers the tail mean and
+variance (~6×) but does not reliably clear the SLO. No admission-control variant reliably improves
+goodput@SLO at λ=3.</li>
 <li><b>A systems lesson</b> (§5): a per-rank non-deterministic (wall-clock) admission decision desyncs
 TP ranks and hangs NCCL; TP scheduling decisions must be deterministic or explicitly all-gathered.</li>
 </ul>
@@ -158,11 +162,12 @@ flags; hooks the live path (per-pass <code>cca[defer/gated/force]</code> log con
 <h2>4 Why it fails — the negative result</h2>
 <table>
 <caption>Same-node (ondem-3) λ=3, screen sweep. Stock is a coin-flip; every CCA variant is dominated.</caption>
-<tr><th>config</th><th>λ=3 p99 (ms)</th><th>retracts</th><th>verdict</th></tr>
-<tr><td>stock (n=3)</td><td>{6327, 8124, 11787}</td><td>0</td><td>coin-flip (1/3 pass)</td></tr>
-<tr><td>CCA recompute-currency</td><td>—</td><td class="b">518 → crash</td><td class="b">HARMFUL</td></tr>
-<tr><td>CCA device-footprint</td><td class="b">56157</td><td>0</td><td class="b">CATASTROPHIC</td></tr>
-<tr><td>CCA load-back-only</td><td>8556 (n≥2 firming)</td><td>0</td><td>NEUTRAL (in stock band)</td></tr>
+<tr><th>config</th><th>λ=3 p99 (ms)</th><th>mean / std</th><th>verdict</th></tr>
+<tr><td>stock (n=3)</td><td>{6327, 8124, 11787}</td><td>8746 / 2272</td><td>coin-flip (1/3 pass)</td></tr>
+<tr><td>CCA recompute-currency</td><td class="b">518 retr → crash</td><td>—</td><td class="b">HARMFUL</td></tr>
+<tr><td>CCA device-footprint (defers cold)</td><td class="b">56157, 58482</td><td>—</td><td class="b">CATASTROPHIC</td></tr>
+<tr><td>CCA load-back-only, W=0.85 (n=3)</td><td>{8556, 8549, 7767}</td><td>8291 / 370</td><td>lower var, coin-flip@edge</td></tr>
+<tr><td>CCA load-back-only, W=0.90 (n≥2)</td><td>{7789, 8243}</td><td>8016 / —</td><td>lower mean, coin-flip@edge</td></tr>
 </table>
 <ul>
 <li><b>Deferring cold prefills is self-defeating.</b> The device-footprint gate defers the large cold
@@ -175,24 +180,31 @@ device footprint of L2→L1 load-backs (recompute≈0 for reuse turns), so reuse
 the pool while cold prefills are throttled — shifting load into decode concurrency and driving
 <b class="b">0→518 retractions</b> (stock has 0) that watchdog-crash the server. Cost misestimation
 turns a stable system unstable.</li>
-<li><b>Even the "correct" gentle variant is neutral.</b> Load-back-only gating never touches cold
-prefills and caps the pool at 0.54 with 0 retracts — yet λ=3 p99 = 8556&nbsp;ms, inside the stock
-coin-flip band and still failing. Pool control is a non-lever <em>because stock never retracts</em>:
-capping a pool that was never the bottleneck cannot help. <span class="todo">[n≥3 firming replicates in
-progress to bound the neutral claim as a distribution.]</span></li>
+<li><b>The gentle variant helps modestly but doesn't flip the coin.</b> Load-back-only gating never
+touches cold prefills (0 retracts, pool capped ~0.54). It <em>lowers</em> the λ=3 tail mean
+(8746→8016–8291&nbsp;ms) and <em>shrinks</em> the variance ~6× (std 2272→370), moving the coin-flip
+toward passing — but the cluster still straddles the 8&nbsp;s SLO (W=0.85: {8556,8549,7767}; W=0.90:
+{7789,8243}), so goodput remains a coin-flip, not a reliable pass. This is the honest ceiling of
+admission control here: it can tighten and lower the tail (a real, novel variance-reduction effect via
+pacing L2→L1 load-backs), but cannot reliably clear a compute-bound SLO. <span class="todo">[firming
+each config to n≥5–6 for a Levene/Mann-Whitney claim on the mean+variance reduction.]</span></li>
 </ul>
-<p><b>Why not just expedite them instead?</b> Because at λ=3 — the goodput-relevant rate — there is
-almost nothing to schedule: the server waiting queue has <b>median depth 0</b> (empty 56% of the time),
-so a request's TTFT is dominated by its own prefill compute, not by queueing behind others. Reordering
-an empty queue cannot help; only <em>deferring</em> (artificially queueing) a cold prefill changes its
-TTFT — for the worse. Thus <em>no</em> admission/scheduling reordering — defer or expedite — improves
-goodput@SLO at the operating point that matters; the space is not just "deferring is bad", it is
-"scheduling is moot".</p>
-<p><b>The bound.</b> goodput@SLO is <b>cold-prefill-compute-bound</b>. Caching is near its ceiling
-(75% cold, LRU≈Belady); transfer is cheap; the stock system does not retract; the queue is empty at the
-knee. The only genuine levers are compute-side (faster prefill kernels / more prefill parallelism for
-the giant cold documents) — not KV-cache admission, residency, or scheduling. The residual variance
-(the coin-flip) is a metastable-stall phenomenon orthogonal to admission control.</p>
+<p><b>Why doesn't reordering rescue it at λ=3?</b> Because at λ=3 — where the goodput coin-flip lives —
+there is almost nothing to reorder: the server waiting queue has <b>median depth 0</b> (empty 56% of
+the time), so a request's TTFT is dominated by its own prefill compute, not by queueing behind others.
+Reordering an empty queue cannot help at λ=3; only <em>deferring</em> (artificially queueing) a cold
+prefill changes its TTFT — for the worse. (At higher rates a real queue forms, and shortest-first
+reordering (SJF/SRPF) becomes a genuine lever — but that raises the operating point, it does not fix
+the λ=3 coin-flip; it is orthogonal to the admission-control question studied here and we do not
+evaluate it.)</p>
+<p><b>The scoped bound.</b> At the λ=3 coin-flip, goodput@SLO is <b>cold-prefill-compute-bound</b>:
+caching is near its ceiling (75% cold, LRU≈Belady), transfer is cheap, the stock system does not
+retract, and the queue is empty — so prefill <em>admission control</em> (the natural overload remedy)
+has no purchase and deferring only hurts. The one thing admission control <em>does</em> do —
+load-back-only gating (§4, below) — lowers the λ=3 tail mean (8746→~8.1k ms) and shrinks its variance
+(~6×), nudging the coin-flip toward passing, but not reliably across the 8&nbsp;s line. The genuine
+goodput levers here are compute-side (faster / more-parallel cold-document prefill) and, at higher
+rates, prefill reordering — not KV-cache admission or residency.</p>
 
 <h2>5 Systems lesson: deterministic TP scheduling</h2>
 <p>

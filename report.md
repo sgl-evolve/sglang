@@ -361,3 +361,14 @@ test:** if backup-gating raises K, flat should show the HIGHEST K; if flat is ba
 noise/other. HOLD Paper 2 Fig 1 fold until v6_flat resolves this (don't overclaim the separation). Cache-K now
 mean 1.430±0.076 CV 5.3% n=6 (widened by size). Honest: present stock/wb/flat as the (1-h) line; size/lpm as
 K-raisers IF v6_flat confirms.
+
+## PIPELINE (18:13): v6_flat → v7_decfloor autonomous chain (analysis/chain_v7.sh)
+Paper-4 mechanism IMPLEMENTED + committed (239608a1e): occupancy-feedback damping in scheduler.get_new_batch_prefill
+(env SGLANG_TURING_DECODE_FLOOR/THETA_HI/GAIN, default OFF, lossless, syntax-verified). Swapped chain_flat→chain_v7:
+- v6_flat_sweep RUNNING (server ready 18:11, warmup→λ sweep, done ~21:30) = Paper 2 low-hit anchor (h≈0.43) + K test.
+- chain_v7 then: log v6_flat → free DRAM → launch v7_decfloor (DECODE_FLOOR=1, θ_hi=0.90, g=0.5, full sweep, done
+  ~00:30) = Paper 4 first test → log v7 → RELEASE node.
+Ops this turn: v5_size λ10 landed (C=4.67, K=1.58); killed lingering v5 servers (clean v6 bind); DRAM confirmed
+1814G. NEXT on wake: (a) when v6_flat done → fold Paper 2 Fig 1 (flat+size measured, resolve K story), flip
+submitted v2; (b) when v7 done → analyze Paper 4 (λ=3 p99 spread/mean vs stock coin-flip band; lossless; C@λ10
+unchanged); if promising → n≥3 + θ_hi/g sweep; write Paper 4 or fold negative into Paper 3.

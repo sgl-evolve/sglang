@@ -399,3 +399,14 @@ established-direction across a 3-point margin range). Still need n≥3/config to
 - flat p99 non-monotonic (λ3=48s > λ5=20s) despite λ5 more overloaded → METASTABILITY (basin selection dominates
   over offered-rate at low margin). More Paper-3 evidence. Both FAIL (goodput=0, crater as expected).
 - hit drops with λ (0.435→0.403) = more churn at higher rate.
+
+## v6_flat λ=7 (20:15): C=3.29 h=0.3907 K=2.005 (rising). ★KEY: K RISES WITH BACKUP-GATING AMOUNT
+K by gating amount (saturated-ish): stock/wb (full backup) ~1.42 < size (gate giants) ~1.58 < flat (gate ALL) ~2.0.
+Hypothesis: backup I/O competes w/ prefill compute for host↔device resources; gating backup raises effective
+prefill throughput R → higher K. BUT gating craters hit; C=K/(1-h) → hit crater DOMINATES (flat C=3.3 < stock 4.0
+despite +43% K). ⇒ REFRAMES Paper 2: two levers on C are (a) cache-HIT via 1/(1-h) [strong, EAGER backup] vs
+(b) K via backup-I/O-reduction [linear, GATING backup] — and they're ANTI-CORRELATED (gating raises K but lowers h).
+Eager full backup (high h, low K) wins because h enters as 1/(1-h). This unifies Paper1(crater)+Paper2(law):
+the crater trades a strong 1/(1-h) lever for a weak linear-K lever. HONEST: not a clean constant-K law across full
+hit range; K is regime-dependent (backup-gating). Clean λ=10 comparison (~21:00) confirms monotonic-K-in-gating.
+Also: flat K rising within-config across λ (1.67→1.88→2.00) = under-saturation (true K at λ10); use λ10 for all.

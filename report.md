@@ -754,3 +754,36 @@ TWO honest outcomes, both STRENGTHEN the paper: (a) SRPF shifts the p99 median /
 POSITIVE tail-scheduling MECHANISM (charter's top prize; reconcile with variance-domination by reporting the
 stable p99 distribution, exactly as my methodology prescribes); (b) SRPF is neutral/worse → convert the
 vulnerable PREDICTION into a MEASURED negative, hardening §3.3's closure. Result pending (~10h).
+
+## ═══ CHARTER UPDATE (program.md Jul 14 21:28) → OPEN PAPER 2 ═══ (2026-07-14 ~22:30Z)
+Re-read program.md: it was REWRITTEN today with strong new language — "A formal submission is a MILESTONE not
+the finish line… Do not stop, 'hold', or declare the campaign complete after one paper… produce a SERIES of
+strong submissions… Only the supervisor decides when a slot retires." My "hold for material trigger" posture is
+now CONTRARY to charter. ⇒ Opening Paper 2 (orthogonal direction). ALSO: line 23 explicitly DISQUALIFIES
+"SJF/SRPF … dropped onto pluggable interfaces" as a contribution → my in-flight SRPF A/B (job 19832) is NOT a
+Paper-2 bid; it is (a) a lossless CONTROL firming Paper 1's one unmeasured §3.3 claim, and (b) a DIAGNOSTIC for
+Paper 2 (below).
+
+### PAPER 2 direction (candidate, code-verified): prefill HEAD-OF-LINE at chunk granularity → a "reserved short-prefill lane"
+CODE FINDING (kleinrock-srpf-wt python, v0.31): the engine serves ONE chunked_req at a time (scheduler.py
+self.chunked_req single field). In get_new_batch_prefill (scheduler.py:2813-2896): each prefill iteration has a
+6144-token budget; if a chunked_req is in flight, `adder.add_chunked_req` runs FIRST and takes
+`_rem_tokens=min(rem_chunk_tokens, rem_total_tokens)` (schedule_policy.py:719-756) = the FULL 6144 for a mega-
+doc mid-prefill → `rem_chunk_tokens→0` → the subsequent `add_one_req` loop returns NO_TOKEN for every waiting
+req → batch full. So while a 192K-token cold doc prefills (~192542/6144≈32 iterations), NO other request can
+prefill; each req arriving in that window is HEAD-OF-LINE-BLOCKED ~32×iter (~8s @ ~250ms/iter) = exactly the
+p99 6-11s tail Paper 1 measured. This is INTER-PREFILL HOL, distinct from a req's own prefill time.
+NOVEL MECHANISM: cap the chunked mega-doc's per-iteration take at `6144 - RESERVE`, reserving RESERVE tokens so
+short waiting reqs prefill ALONGSIDE it (a localized change in add_chunked_req). NOT SRPF (no reorder, no
+starvation — mega-doc still progresses, just fair-shares); lossless (same tokens/outputs); a real engine change,
+not a config flag. HYPOTHESIS: collapses the HOL-victim p99 without starving mega-docs → shifts the curve /
+raises goodput reliably (victims' prefill is short+deterministic once unblocked).
+SRPF is the DIAGNOSTIC GATE: SRPF puts short reqs first (kills HOL for them) but starves mega-docs. If SRPF
+IMPROVES p99 ⇒ HOL victims dominate the tail ⇒ fair-lane is promising & STRICTLY BETTER than SRPF. If SRPF
+worsens/neutral ⇒ mega-docs' own prefill dominates ⇒ new bounded negative (fair-lane can't beat the mega-doc
+floor either). Either way informs Paper 2.
+TODO before implementing: (1) await SRPF result; (2) per-request instrumentation — bench JSONs are AGGREGATE-only
+(no per-req arrays), so HOL must be measured via server-side per-req logging (arrival→first-prefill delay vs
+prefill size) or a bench patch. Prior art to position vs: Sarathi/chunked-prefill (prefill↔decode mixing),
+FastServe (preemptive), Mooncake, and classic fair-queuing (must frame novelty as the INSIGHT + inter-prefill
+mechanism, not fair-queuing-transplanted, to clear the bar).

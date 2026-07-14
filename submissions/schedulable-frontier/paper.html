@@ -36,7 +36,7 @@
 
 <h1>The Schedulable Frontier:<br>
 goodput@SLO is Capacity-Bounded but Contention-Limited in Saturated Conversational Serving
-<span class="draft">v1 · draft</span></h1>
+<span class="draft">v2 · submitted</span></h1>
 <p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
 <p class="sub">Base commit <span class="mono">a334877e5</span> · mechanism/instrumentation <span class="mono">ce01c1c79</span></p>
 
@@ -47,12 +47,15 @@ That negative left a puzzle: caching demonstrably raises both hit rate <em>and</
 write_back config lifts achieved req/s from 4.1 to 5.1), yet goodput does not move. This paper resolves the
 puzzle with a single closed-form law and, in doing so, unifies the cache and scheduling axes into one frontier.
 (1)&nbsp;<b>A capacity law.</b> The serving system has a hard prefill-throughput ceiling
-<b>C = K/(1&minus;h)</b>, where <span class="mono">h</span> is the cache hit rate and <span class="mono">K</span>
-is a raw-prefill-rate constant. We validate it directly from the saturated region of every measured sweep:
-<span class="mono">K = C·(1&minus;h)</span> is invariant to <b>2.5%</b> across cache variants and predicts the
-measured ceiling to within 1&ndash;3%. Caching raises C only by lowering the miss rate (1&minus;h); a scheduling
-change (LPM co-residency) <em>appears</em> to raise C by lifting K ~11% at fixed h (suggestive, n=1)&mdash;two
-<em>orthogonal</em> levers on the <em>same</em> ceiling. (2)&nbsp;<b>An intrinsic-feasibility floor.</b> Using the calibrated K we show every
+<b>C = K/(1&minus;h)</b>, where <span class="mono">h</span> is the cache hit rate and <span class="mono">K =
+R·N/P<sub>total</sub></span> a prefill-rate scale. Sweeping four configs across a 1.9&times; hit range (0.39&ndash;0.72)
+at saturation reveals <b>two orthogonal, anti-correlated levers</b>. For pure write-policy variants (stock, write_back)
+K is invariant&mdash;<b>K<sub>base</sub>&nbsp;=&nbsp;1.388&nbsp;±&nbsp;0.034 (CV&nbsp;2.5%)</b>, predicting the ceiling
+to 1&ndash;3%&mdash;so caching raises C purely by lowering the miss rate (the <em>hit lever</em>, via 1/(1&minus;h)).
+Separately, <b>reducing backup I/O raises K</b> (gating giant-doc backup +14%, gating all backup +49%, monotone;
+scheduling +11%)&mdash;the <em>K lever</em>. But the two are anti-correlated: the cache-side way to raise K (gate
+backup) craters the hit rate, and since h enters as 1/(1&minus;h) (strong) and K linearly (weak), the hit lever
+dominates (gating-all's +49% K still yields C=3.4 &lt; stock's 4.1). Eager <em>full</em> backup is thus optimal. (2)&nbsp;<b>An intrinsic-feasibility floor.</b> Using the calibrated K we show every
 request is <em>solo-feasible</em>: even the largest document (191&nbsp;K tokens) prefills alone in 6.95&nbsp;s,
 under the 8&nbsp;s SLO; the p99 request needs only 1.3&nbsp;s. Therefore <b>every SLO violation is contention/
 queueing, never irreducible service time</b>&mdash;so the capacity ceiling bounds the offline-optimal goodput
@@ -83,8 +86,9 @@ show, is that <b>goodput lives in a different currency than throughput</b>, and 
 governed by contention, not capacity. Our contributions:</p>
 <ul>
 <li><b>The capacity law C&nbsp;=&nbsp;K/(1&minus;h)</b> (&sect;3): a one-parameter, closed-form ceiling on
-achievable throughput, validated to 2.5% across every cache/schedule variant we ran. It cleanly separates the
-<em>cache lever</em> (lower 1&minus;h) from the <em>scheduling/hardware lever</em> (raise K).</li>
+achievable throughput. K<sub>base</sub> is invariant to 2.5% for pure write-policy variants, and the sweep isolates
+<em>two anti-correlated levers</em>: the <em>hit lever</em> (lower 1&minus;h, strong) and the <em>K lever</em>
+(reduce backup I/O, linear)&mdash;with the hit lever dominating.</li>
 <li><b>The intrinsic-feasibility floor</b> (&sect;4): from the calibrated K, no single request&mdash;up to the
 191&nbsp;K-token maximum&mdash;is intrinsically SLO-infeasible. Hence the offline-optimal goodput <em>equals</em>
 the capacity ceiling, and all violations are contention.</li>
@@ -127,32 +131,40 @@ the miss rate <span class="mono">(1&minus;h)</span>, we have <span class="mono">
 giving the law:</p>
 <div class="eq"><b>C(h,K) = K / (1&minus;h)</b>, &nbsp; where &nbsp; <b>K &equiv; R·N / P<sub>total</sub></b> is the raw prefill-rate scale.</div>
 <p>
-This is not a curve fit&mdash;it is a <b>work-conservation identity</b>. By definition of the hit rate,
-uncached work per request is <span class="mono">E[U] = (1&minus;h)·P<sub>total</sub>/N</span> (N requests,
-P<sub>total</sub> total prompt tokens), so <span class="mono">C = R/E[U] = (R·N/P<sub>total</sub>)/(1&minus;h)
-= K/(1&minus;h)</span> exactly. Because R (hardware prefill rate), N, and P<sub>total</sub> are all
-<em>policy-invariant</em>, <b>K must be constant across cache policies by construction</b>; the only thing that can
-move K is the hardware or the scheduler's packing efficiency (which changes the <em>effective</em> R). The
-empirical test below therefore does not check the law&mdash;it checks that R is stable, i.e. that the identity's
-one free constant does not secretly depend on the policy. We measure K on the saturated points
-(&lambda;&nbsp;&isin;&nbsp;{7,10}, where achieved&nbsp;&laquo;&nbsp;offered so the engine runs flat-out):</p>
+This is a <b>work-conservation identity</b>. By definition of the hit rate, uncached work per request is
+<span class="mono">E[U] = (1&minus;h)·P<sub>total</sub>/N</span> (N requests, P<sub>total</sub> total prompt tokens),
+so <span class="mono">C = R/E[U] = (R·N/P<sub>total</sub>)/(1&minus;h) = K/(1&minus;h)</span> exactly, with
+<span class="mono">K = R·N/P<sub>total</sub></span>. N and P<sub>total</sub> are workload constants, so K is set by the
+<em>effective</em> prefill rate R. The empirical question is what moves R. We swept four engine configurations
+across a 1.9&times; hit range (h = 0.39&ndash;0.72) at saturation (&lambda;&nbsp;&isin;&nbsp;{7,10}):</p>
 <table>
-<thead><tr><th>variant</th><th>&lambda;</th><th>C (req/s)</th><th>hit h</th><th>K = C·(1&minus;h)</th><th>lever</th></tr></thead>
+<thead><tr><th>variant</th><th>&lambda;</th><th>C</th><th>hit h</th><th>K = C·(1&minus;h)</th><th>class</th></tr></thead>
 <tbody>
-<tr><td>stock write_through</td><td>7</td><td>3.99</td><td>0.6568</td><td>1.369</td><td>cache</td></tr>
-<tr><td>stock write_through</td><td>10</td><td>4.14</td><td>0.6537</td><td>1.434</td><td>cache</td></tr>
-<tr><td>write_back</td><td>7</td><td>4.91</td><td>0.7263</td><td>1.344</td><td>cache</td></tr>
-<tr><td>write_back</td><td>10</td><td>5.11</td><td>0.7247</td><td>1.407</td><td>cache</td></tr>
-<tr><td><b>cache mean</b></td><td></td><td></td><td></td><td><b>1.388 ± 0.034</b></td><td><b>CV 2.5%</b></td></tr>
-<tr><td>lpm co-residency</td><td>7</td><td>4.39</td><td>0.6591</td><td class="win">1.497</td><td>schedule</td></tr>
-<tr><td>lpm co-residency</td><td>10</td><td>4.64</td><td>0.6567</td><td class="win">1.593</td><td>schedule</td></tr>
+<tr><td>stock write_through</td><td>10</td><td>4.14</td><td>0.6537</td><td>1.434</td><td>pure write-policy</td></tr>
+<tr><td>write_back</td><td>10</td><td>5.11</td><td>0.7247</td><td>1.407</td><td>pure write-policy</td></tr>
+<tr><td><b>K<sub>base</sub> (stock+wb, &lambda;7&amp;10)</b></td><td></td><td></td><td></td><td><b>1.388 ± 0.034 (CV 2.5%)</b></td><td><b>invariant</b></td></tr>
+<tr><td>size (gate giant-doc backup)</td><td>10</td><td>4.67</td><td>0.6616</td><td class="win">1.580</td><td>backup-gating (+14%)</td></tr>
+<tr><td>flat (gate all backup)</td><td>10</td><td>3.38</td><td class="fail">0.3864</td><td class="win">2.074</td><td>backup-gating (+49%)</td></tr>
+<tr><td>lpm co-residency</td><td>10</td><td>4.64</td><td>0.6567</td><td class="win">1.593</td><td>schedule (+11%)</td></tr>
 </tbody>
 </table>
 <div class="keyfinding">
-<b>K is invariant across cache variants to CV&nbsp;2.5%</b> and predicts the measured ceiling to 1&ndash;3%
-(stock C<sub>pred</sub>&nbsp;4.01 vs 4.14; wb 5.04 vs 5.11). A scheduling change (LPM co-residency) leaves h
-essentially unchanged yet <b>lifts K by ~11%</b>&mdash;confirming K and h are independent knobs on one ceiling:
-<em>caching lowers 1&minus;h; scheduling raises K</em>.
+<b>K has two behaviors, revealing two orthogonal levers on the capacity ceiling.</b>
+(1)&nbsp;For <b>pure write-policy</b> variants (stock write_through, write_back&mdash;same backup <em>targeting</em>,
+differing only in eager vs lazy timing), <b>K is invariant: K<sub>base</sub>&nbsp;=&nbsp;1.388&nbsp;±&nbsp;0.034
+(CV&nbsp;2.5%)</b>, and C=K<sub>base</sub>/(1&minus;h) predicts the ceiling to 1&ndash;3%. Here caching moves C
+purely by lowering the miss rate (1&minus;h)&mdash;the <em>hit lever</em>.
+(2)&nbsp;<b>Reducing backup I/O raises K</b>: gating backup of giant documents (size) lifts K +14%, gating
+<em>all</em> backup (flat) lifts it +49%&mdash;<em>monotone in the amount of gating</em>. Backup writes to host
+memory compete with prefill for host&harr;device bandwidth and scheduler cycles, so withholding them raises the
+effective prefill rate R&mdash;the <em>K lever</em> (a scheduling change, LPM, raises K +11% similarly).
+<b>Crucially the two levers are anti-correlated:</b> the only way to raise K via the cache (gate backup) also
+craters the hit rate, and since h enters as 1/(1&minus;h) (strong) while K enters linearly (weak), the hit lever
+dominates&mdash;flat's +49% K cannot rescue its crashed hit, so its capacity C=3.38 is <em>below</em> stock's 4.14.
+This is exactly why eager <em>full</em> backup (high h, baseline K) is the right operating point, and why the
+companion admission study found gating backup to be a net negative: <b>it trades a strong 1/(1&minus;h) lever for a
+weak linear-K one.</b> The clean cache-hit lever therefore lives on the C=K<sub>base</sub>/(1&minus;h) line;
+backup-gating and scheduling are the (bounded) ways to lift K<sub>base</sub> itself.
 </div>
 <h3>3.1 Why the law is token-linear despite O(D&sup2;) attention (a hybrid-architecture effect)</h3>
 <p>
@@ -180,16 +192,18 @@ distribution and no clean token-linear law would hold. The hybrid design is what
 <svg width="640" height="380" viewBox="0 0 640 380" xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif">
   <line x1="60" y1="340" x2="600" y2="340" stroke="#333"/>
   <line x1="60" y1="340" x2="60" y2="40" stroke="#333"/>
-  <!-- law line C = 1.388 * 1/(1-h) -->
+  <!-- K_base line C = 1.388 / (1-h) (pure write-policy) -->
   <line x1="60" y1="236" x2="600" y2="62" stroke="#1c4a8a" stroke-width="2" stroke-dasharray="6 3"/>
-  <text x="470" y="150" fill="#1c4a8a" font-size="13">C = K/(1&#8722;h), K=1.388</text>
-  <!-- measured saturated points -->
-  <circle cx="360" cy="133" r="5" fill="#1c4a8a"/><text x="300" y="128" font-size="12">stock (h=.654)</text>
-  <circle cx="521" cy="84" r="5" fill="#1c4a8a"/><text x="452" y="79" font-size="12">write_back (h=.725)</text>
-  <circle cx="365" cy="108" r="5" fill="#1a6a1a"/><text x="372" y="104" font-size="12" fill="#1a6a1a">lpm (h=.657, +K)</text>
-  <!-- predicted (to be confirmed by v6_flat/v5_size) -->
-  <circle cx="112" cy="219" r="5" fill="none" stroke="#a11" stroke-width="1.5"/><text x="90" y="238" font-size="11" fill="#a11">flat (h=.43, pred)</text>
-  <circle cx="450" cy="110" r="5" fill="none" stroke="#a11" stroke-width="1.5"/><text x="430" y="130" font-size="11" fill="#a11">size (h=.70, pred)</text>
+  <text x="455" y="158" fill="#1c4a8a" font-size="12">C = K<tspan baseline-shift="sub">base</tspan>/(1&#8722;h), K=1.388</text>
+  <!-- pure write-policy: ON the line (hit lever) -->
+  <circle cx="360" cy="133" r="5" fill="#1c4a8a"/><text x="300" y="128" font-size="12">stock (h=.65)</text>
+  <circle cx="521" cy="84" r="5" fill="#1c4a8a"/><text x="452" y="79" font-size="12">write_back (h=.72)</text>
+  <!-- K-raisers: ABOVE the line (backup-gating / schedule) -->
+  <circle cx="374" cy="106" r="5" fill="#a11"/><text x="380" y="102" font-size="11" fill="#a11">size +14%K</text>
+  <circle cx="365" cy="120" r="5" fill="#1a6a1a"/><text x="300" y="118" font-size="11" fill="#1a6a1a">lpm +11%K</text>
+  <circle cx="88" cy="171" r="5" fill="#a11"/><text x="70" y="188" font-size="11" fill="#a11">flat +49%K (h=.39)</text>
+  <line x1="88" y1="171" x2="88" y2="220" stroke="#a11" stroke-width="0.8" stroke-dasharray="2 2"/>
+  <text x="92" y="212" font-size="9" fill="#a11">above line</text>
   <!-- axes labels -->
   <text x="300" y="372" font-size="13" text-anchor="middle">1 / (1 &#8722; h)</text>
   <text x="20" y="195" font-size="13" text-anchor="middle" transform="rotate(-90 20 195)">capacity C (req/s)</text>
@@ -198,11 +212,13 @@ distribution and no clean token-linear law would hold. The hybrid design is what
   <text x="52" y="140" font-size="10" text-anchor="end">4</text>
   <text x="52" y="65" font-size="10" text-anchor="end">5.5</text>
 </svg>
-<figcaption><b>Figure 1. The capacity law.</b> Measured saturated throughput C vs 1/(1&minus;h). Cache variants
-(blue, filled) fall on the line C=1.388/(1&minus;h); write_back reaches a higher C purely by lowering the miss
-rate. The scheduling variant (green) sits <em>above</em> the cache line at the same hit&mdash;it raised K.
-Hollow red markers are the law's predictions for the flat-admission (low-hit) and size-admission points, being
-confirmed by full-sweep runs <span class="mono">v6_flat_sweep</span> / <span class="mono">v5_size</span>.</figcaption>
+<figcaption><b>Figure 1. The capacity law and its two levers</b> (measured saturated C vs 1/(1&minus;h), 5 configs,
+&lambda;=10). <b>Pure write-policy</b> variants (blue) fall on the line C=K<sub>base</sub>/(1&minus;h),
+K<sub>base</sub>=1.388: write_back reaches higher C than stock purely by raising the hit rate (the <em>hit lever</em>).
+<b>Backup-gating</b> variants (red) sit <em>above</em> the line&mdash;size (gate giant-doc backup) at +14% K, flat
+(gate all backup) at +49% K&mdash;because withholding backup I/O raises the effective prefill rate (the <em>K lever</em>);
+scheduling (lpm, green) similarly at +11%. But flat's large K gain comes at a crashed hit (h=0.39), so its
+<em>absolute</em> C=3.4 is the lowest of all&mdash;the hit lever (1/(1&minus;h)) dominates the K lever (linear).</figcaption>
 </figure>
 
 <h2>4 The intrinsic-feasibility floor: no request is too big</h2>

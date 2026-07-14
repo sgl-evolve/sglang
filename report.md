@@ -134,5 +134,39 @@ stalls; 70% giant prefills; queue≈0), which is a compute/scheduling phenomenon
 (bounded-negative + the effective-capacity-collapse + admission-crater anatomy) is itself a rigorous
 characterization contribution.
 
+**v1b_stock** (mechanism OFF; tag `config`) — same-node stock REPLICATE for within-node coin-flip
+variance (v1_stock was n=1). RUNNING. Pairs with v1_stock to separate within-node run variance from
+between-node variance (baseline.json p99=6326 PASSED on its node; v1_stock p99=11494 FAILED on 0-3).
+
+## Paper 1 (planned) — "Why hierarchical KV caching stalls on saturated conversational serving:
+## the effective-capacity collapse and the admission backfire"
+**Thesis (mechanism-anatomy + bounded negative, charter-valid):** On saturated multiturn+doc-QA serving,
+lossless KV-cache mechanisms cannot materially raise goodput@SLO, and there is a crisp mechanistic reason.
+**Novel, defensible contributions (all my own data):**
+1. **Effective-capacity collapse** — at λ=3 the system already runs at max concurrency (247/256) with the
+   device (L1) 84-100% full of *running-request* KV; the prefix cache is therefore L2-bound, and physical
+   L2 (7.8M) is the effective ceiling. (real per-batch occupancy data)
+2. **Admission backfire (counterintuitive)** — reuse-gated L2 admission (=`write_through_selective`)
+   craters hit_rate −25pp because, under device saturation, any prefix not *eagerly* backed up is evicted
+   from L1 and lost before reuse. Eager write-through is *necessary*, not merely preferred; and backup BW
+   is non-binding (~1 GB/s ≪ 64 GB/s) so selective's I/O savings buy nothing. (v1_stock vs v2_flat2)
+3. **Oracle decomposition** — infinite-cache hit 0.809; unavoidable turn-0 first-sight floor 19.1%;
+   avoidable 18.8pp is capacity-bound (L2) + info-constrained (one-shot unpredictable at turn 0). (offline)
+4. **The tail is not a cache phenomenon** — p50 flat ~1s while p99 explodes 11→41s; 12.6% decode stalls;
+   70% giant prefills; queue≈0 → the goodput killer is prefill↔decode interference, a compute/scheduling
+   metastability (coin-flip), which the cache cannot address. (v1_stock server.log + curve)
+
+**Evidence still needed before submission (future sessions):**
+- Crater replicate (n≥2) + full multi-λ crater curve (currently v2_flat2 is λ=3 n=1; I killed it early).
+- `write_back` control (backs up on eviction → never loses content) to prove the crater is from *loss*,
+  not delayed-backup timing — isolates the mechanism cleanly.
+- v1b variance (in flight) to quantify within-node coin-flip.
+
+## Direction 2 (next) — hunting a positive off the caching axis
+Caching axis is bounded (this work). Retention/residency, prefill-admission-for-metastability, de-dup,
+SRPF, cost-aware eviction are covered by prior art / stock config / textbook. Least-explored, in-charter
+axes to probe for a genuine novel primitive: **KV layout/paging & transfer granularity**, and
+**multiturn session-level KV management** (`session_radix_cache`). Study before committing.
+
 ## Formal submissions
-_(none yet)_
+_(none yet — Paper 1 in preparation; will register in submissions/INDEX.md when evidence is airtight)_

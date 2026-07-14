@@ -519,6 +519,12 @@ giants are a small enough minority the p99 shifts onto a fast small request. Our
 <b>KV cache</b> (which cannot move the tail) and to the SLO/workload-shape lever (&sect;7); resolving the
 scheduling axis (SRPF and beyond) is important future work, not something we close here.</li>
 </ul>
+<p class="note"><b>Companion studies.</b> This paper's negative is the first of a series. A follow-on
+(<em>The Schedulable Frontier</em>) resolves the scheduling axis by deriving goodput@SLO&nbsp;=&nbsp;min(&lambda;<sub>tail</sub>,&nbsp;C(h,K))
+with a capacity law C=K/(1&minus;h): caching raises the ceiling C but the SLO binds below it via contention, which
+is why caching alone (this paper) cannot move goodput. A third (<em>Goodput@SLO is a Coin-Flip</em>) explains the
+variance&mdash;the &lambda;=3 coin-flip noted here is metastable occupancy-basin selection, governed by the same
+capacity margin C&minus;&lambda;. Together the three organize goodput@SLO around one capacity currency.</p>
 
 <h2>11 Reproducibility</h2>
 <p>

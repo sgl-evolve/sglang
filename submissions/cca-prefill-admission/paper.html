@@ -161,6 +161,39 @@ themselves</b> — straddling the 8&nbsp;s SLO. So the metric is <em>fragile by 
 a run passes depends on whether its heaviest cold documents land just under or just over the floor —
 exactly the coin-flip of §2.2, and exactly what no admission/residency mechanism can move.</p>
 
+<h3>2.4 Two regimes, one wall: direct evidence the bottleneck is physical, not policy</h3>
+<p>
+The scheduler's own batch logs make the bound concrete and explain why <em>every</em> control axis —
+admission (this paper), residency (caching), and reordering (scheduling) — is bounded. Prefill is
+<b>serial and chunked</b>: essentially every prefill step admits <code>#new-seq: 1</code> and burns the
+full <code>#new-token: 6144</code> budget (the frozen <code>--chunked-prefill-size</code>), so a single
+190.9k-token cold document occupies ~31 consecutive prefill steps during which no other request's TTFT
+clock can stop. Two regimes then follow directly from the measured waiting-queue depth:
+</p>
+<ul>
+<li><b>Below the knee (λ=3): the queue is empty.</b> Steady-state <code>#queue-req≈0</code>; requests are
+served on arrival. With nothing to reorder or defer, admission <em>and</em> scheduling order are both
+inert — goodput is decided purely by whether heavy cold documents happen to collide in time (§2.2's
+coin-flip). This is why CCA is neutral here (§4) and why a reordering policy cannot help here either.</li>
+<li><b>Above the knee (λ≥5): the queue is deep but the GPU is saturated.</b> <code>#queue-req</code> runs
+20–183 while <code>full token usage</code> holds at 0.96–0.98 and per-step prefill input throughput sits
+at ~39k&nbsp;tok/s — the engine is <em>simultaneously compute- and KV-memory-bound</em>. Reordering the
+deep queue is now meaningful, and shortest-prefill-first (concurrent work) exploits it to reach
+~4.1&nbsp;req/s — but that is already within ~3% of the work-conservation ceiling of §2.3
+(~4.2&nbsp;req/s). The remaining gap is the compute wall, not a policy we have failed to find.</li>
+</ul>
+<p>
+An offline, trace-driven scheduling simulator (calibrated to the measured saturation throughput)
+corroborates the <em>structural</em> reading: under a serial-chunked prefill server, small-first ordering
+(which the stock cache-aware policy approximates) minimizes median TTFT but pushes the heavy cold-document
+tail — the p99 — outward, while tail-protecting orders bound it; yet neither can lift throughput past the
+~4.2&nbsp;req/s wall. We report this only as structural corroboration: the simulator does not model
+prefill/decode step interleaving and so is not faithful in absolute latency. The load-bearing facts —
+serial 6144-token chunking, the empty-queue λ=3 regime, and the saturated λ≥5 regime — are read directly
+from the engine, and together they close the control-policy design space: no admission, residency, or
+reordering policy can move a wall set by cold first-turn prefill cost under a frozen model, tensor-parallel
+width, and KV budget.</p>
+
 <h2>3 The mechanism we tried: CCA</h2>
 <p>
 CCA (Cache-adjusted prefill Admission control) is a preventive gate in the sglang prefill admission

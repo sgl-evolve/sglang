@@ -54,14 +54,28 @@ is cold-prefill-compute-bound and no lossless KV mechanism shifts it beyond the 
 
 ## Versions
 
-### v0_official (baseline)
-- **Hypothesis:** Stock 2-tier HiCache at λ=3
-- **Change:** None (supervisor-provided baseline)
-- **Result:** hit_rate=0.6217, TTFT p50=750ms, p99=6326ms, req/s=2.78, tok/s=355
-- **Lossless:** N/A (reference)
-- **Takeaway:** L2 at 100% util, load_back only 1.6ms (NOT the bottleneck). 60% of hits
-  from L2 host. The bottleneck is prefill compute for the 38% cache miss.
+### v0_official (supervisor baseline, λ=3 only)
+- hit_rate=0.6217, TTFT p50=750ms, p99=6326ms, req/s=2.78, tok/s=355; load_back 1.6ms (NOT bottleneck).
+
+### v0-stock (my baseline, ondem-3, job 19730) — IN PROGRESS
+- **λ=3:** req/s=2.87, tok/s=367.5, p50=1056ms, **p99=11787ms → FAILS 8s SLO.** hit=0.6777.
+- **Key live observation:** stock hit **full KV-pool usage = 1.00 ten times** during λ=3
+  (pool saturates in bursts → prefill admission stalls → TTFT tail spikes). p50 is fine
+  (1s) but p99 is 11.8s — confirms the tail is a few pool-saturation/large-cold-prefill events,
+  not steady-state. This run landed on the FAIL side of the known λ=3 coin-flip.
+- λ=5/7/10 pending.
+
+### v1-cca (first-look screen, node1-2) — WEDGED (JIT race), re-running serially
+- **Mechanism-level evidence (node-independent, valid):** with CCA on, KV-pool usage was
+  **capped at 0.70** (0× at 1.00) vs stock's 10× at 1.00. The preventive watermark gate fires
+  (`cca[defer:5455 gated-pass:1288 force:283]`), sustains 70–99 running reqs at 0.20–0.36 pool
+  usage, and prevents the saturation spikes — exactly as designed. Confirms the mechanism
+  engages the live path and controls pool pressure.
+- **Wedged** ~2.5 min into λ=3 measurement: concurrent floyd evals share the workspace
+  flashinfer JIT cache over NFS → JIT race hang (a known OPS hazard, not a logic bug; the gate
+  was functioning normally up to the freeze). Killed, not logged. **Re-run SERIALLY** (no
+  concurrent floyd eval) on ondem-3 after v0-stock finishes → clean same-node A/B pair.
 
 ## Formal Submissions
 
-(none yet)
+(none yet — awaiting complete same-node CCA curve to judge whether pool-control → p99/goodput win)

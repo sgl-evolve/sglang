@@ -1050,6 +1050,58 @@ is empirical — pending eval (commit 83c6009b9).
   This is a genuine code invariant, not a configuration preference. Must be enforced.
 - W&B: logged as `v-srpf-xt` [mechanism].
 
+### v-srpf-wb-qpac — SRPF+WB+QPAC (queue-pressure adaptive chunking)  [DONE, 1-2, job 19802, commit 677b531ee] ★NEUTRAL
+- **Mechanism: Queue-Pressure Adaptive Chunking (QPAC)** — when `len(waiting_queue) > 15`, scales
+  `chunked_prefill_size` from 6144 to `min(6144×4, max_prefill_tokens)` = 16384. The larger chunk
+  lets the continuing chunked request finish in fewer iterations, clearing the bottleneck faster.
+  Env-gated `QPAC=1`. Implemented in scheduler.py `_get_new_fill_batch`.
+- Config: `--schedule-policy srpf --hicache-write-policy write_back` + `QPAC=1`.
+- **Full sweep (node 1-2):**
+  | λ | p99 TTFT | p50 TTFT | req/s | tok/s | hit | SLO |
+  |---|---------|---------|-------|-------|-----|-----|
+  | 3 | 5662ms  | 464ms   | 3.02  | 387   | 0.743 | PASS |
+  | 5 | 6270ms  | 601ms   | 4.47  | 571   | 0.733 | PASS |
+  | 7 | 7099ms  | 691ms   | 5.15  | 658   | 0.729 | **PASS** |
+  | 10| 8451ms  | 765ms   | 5.39  | 689   | 0.727 | FAIL |
+- **goodput@SLO = 5.15** — r7 PASS (7099ms), r10 FAIL. The 5.15 is the best single-run goodput
+  on 1-2, but within the coin-flip variance zone (baseline range 4.35–5.03, n=3).
+- **Activation analysis**: QPAC is INERT at r3 (max queue=13 <15 with SRPF) and r5 (queue never
+  exceeds 15). At r7, ~410 batches activate QPAC (~13% of iterations), but theoretical throughput
+  gain is only +2.6% (batch time increases proportionally with chunk size). At r10, QPAC activates
+  heavily and shows dramatic r10 p99 improvement (8451ms vs baseline 14216-14798ms = −40%), but
+  r10 still FAILS SLO — the improvement is irrelevant for goodput@SLO.
+- **Verdict**: QPAC is NEUTRAL for goodput@SLO. The mechanism is architecturally sound but SRPF
+  already keeps the queue short enough at SLO-relevant rates that the queue>15 threshold never
+  triggers. The r7 PASS (7099ms) is likely run variance, not mechanism effect.
+- W&B: logged as `v-srpf-wb-qpac` [mechanism].
+
+### v-srpf-wb-ibac — SRPF+WB+IBAC (input budget after chunk)  [DONE, ondem-2, job 19811, commit 867bb940e] ★NEUTRAL
+- **Mechanism: Input Budget After Chunk (IBAC)** — when `rem_chunk_tokens ≤ 0` after the continuing
+  chunked request consumes the chunk budget, allows small non-chunked requests to bypass the gate
+  using remaining `rem_input_tokens`, up to a cumulative cap `IBAC_CAP` (default 2048 tokens) per
+  iteration. Prevents OOM by bounding the bypass volume. Env-gated `IBAC=1`.
+  Commits: 83c6009b9 (initial), 503e4953b (memory-safety cap), 867bb940e (configurable cap).
+- Config: `--schedule-policy srpf --hicache-write-policy write_back` + `IBAC=1 IBAC_CAP=2048`.
+- **Full sweep (node ondem-2):**
+  | λ | p99 TTFT | p50 TTFT | req/s | tok/s | hit | SLO |
+  |---|---------|---------|-------|-------|-----|-----|
+  | 3 | 6188ms  | 494ms   | 3.02  | 387   | 0.739 | PASS |
+  | 5 | 7066ms  | 578ms   | 4.23  | 542   | 0.731 | PASS |
+  | 7 | 10200ms | 658ms   | 4.82  | 617   | 0.728 | FAIL |
+  | 10| *(pending)* | | | | | |
+- **goodput@SLO = 4.23** — r5 PASS (7066ms), r7 FAIL (10200ms). On ondem-2, which is a SLOWER node
+  than the 1-2 baselines. Cross-node comparison unreliable; however, the throughput (542 tok/s at r5)
+  and hit rate (0.731) are within normal ranges for ondem-2.
+- **Bypass analysis**: IBAC activates in 36% of chunk-dominated batches. Average bypass = ~107 tokens
+  per event. Total bypass tokens = 113K of 19M total (0.6%) — the mechanism is correct but the
+  bypass volume is too small to materially affect tail latency. The prefill budget waste (10240
+  rem_input_tokens stranded after chunk gate) remains 62% unreachable because most waiting requests
+  are also chunked (>6144 tokens remaining).
+- **Verdict**: IBAC is NEUTRAL. The mechanism bypasses too few tokens to affect goodput@SLO. The
+  fundamental constraint is the rem_chunk_tokens gate design, which IBAC partially circumvents but
+  the bypass volume is architecturally limited.
+- W&B: *(logged after r10 completes)*.
+
 ## Ops notes
 - eval.sh has a path bug (computes `workspace/sgl/v0.3_ablations/base`); fixed by symlink
   `v0.3_ablations/base → v0.31/base` (frozen eval.sh untouched — fairness-clean).

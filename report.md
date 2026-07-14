@@ -810,3 +810,11 @@ Closest prior art for the reserved-short-prefill-lane, and why the mechanism is 
 Novelty hinges on the empirical signal (screen 19836) + attribution. If the effect is null → a NEW bounded
 negative ("even fair prefill budget-sharing can't beat the cold mega-doc prefill floor"), still a Paper-2-worthy
 result distinct from Paper 1.
+
+### SRPF/short-lane A/Bs — first data (2026-07-14 ~22:57Z)
+- SRPF fcfs λ5 rep1 (job 19832, ondem-2): p99 TTFT=22330ms (deep FAIL), p50=706ms, req=4.11, tok=525.5,
+  hit=0.677. Confirms Paper-1 baseline (λ5 reliably fails). NOTE: 22.3s ≫ single 192K-doc prefill (~9.4s) →
+  ~13s of QUEUEING atop the mega-doc floor = consistent with HOL stacking. Implication: at λ5, HOL relief may
+  cut p99 toward the ~9.4s mega-doc floor (big distribution shift) but not below 8s (no goodput flip); the
+  fail→pass goodput WIN is likelier at λ3 (coin-flip boundary). Screen at λ5 still detects the p99 cut; if
+  present, run full sweep incl λ3. Awaiting more reps + srpf arm + shortlane reserve0/reserve2048.

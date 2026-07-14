@@ -1,0 +1,5 @@
+# lambda3-only firming for Levene variance test: stock n->6, CCA-lb(w90) n->more
+v0-stock-r5:
+v5-cca-lb-w90-r3:--enable-cca-prefill --cca-threshold 4096 --cca-max-defer-passes 30 --cca-gate-loadback-only --cca-watermark 0.90
+v0-stock-r6:
+v5-cca-lb-w90-r4:--enable-cca-prefill --cca-threshold 4096 --cca-max-defer-passes 30 --cca-gate-loadback-only --cca-watermark 0.90

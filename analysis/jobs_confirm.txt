@@ -1,0 +1,5 @@
+# Confirm v5-w90 WIN: v5-w90 replicates (target reliable <8000) + paired stock, same-node ondem-3
+v5-cca-lb-w90-r2:--enable-cca-prefill --cca-threshold 4096 --cca-max-defer-passes 30 --cca-gate-loadback-only --cca-watermark 0.90
+v0-stock-r4:
+v5-cca-lb-w90-r3:--enable-cca-prefill --cca-threshold 4096 --cca-max-defer-passes 30 --cca-gate-loadback-only --cca-watermark 0.90
+v5-cca-lb-w90-r4:--enable-cca-prefill --cca-threshold 4096 --cca-max-defer-passes 30 --cca-gate-loadback-only --cca-watermark 0.90

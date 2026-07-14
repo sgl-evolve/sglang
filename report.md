@@ -192,13 +192,14 @@ tail/interference framing. TEST next session.
    L2 eviction (ADMIT-independent; new eviction-priority in UnifiedRadixCache). 4. Update paper.html eval
    section; flip draft→submitted if airtight. 5. Log all to W&B.
 
-## Direction 3 (bolder, orthogonal — after Paper 1 is firm)
-Since the caching axis is bounded and the goodput@SLO bottleneck is **prefill compute** (heavy-tailed,
-uncacheable turn-0 documents), the bolder orthogonal question is whether prefill COMPUTE can be reduced
-losslessly using the model's structure — hybrid Mamba/GDN (only 12/48 layers hold attention KV; 36 are
-constant-state recurrent) and MoE (10B active/122B). This is a different subsystem (compute, not cache),
-genuinely un-probed by me, ambitious/risky. Scope only after Paper 1 is submitted. (Lossy sparse-attention is
-out of bounds.)
+## Direction 3 (assessed — ALSO BOUNDED)
+Model = 48 layers, `full_attention_interval=4` → 12 TRUE full-attention (O(D²) exact, head_dim 256, NO sliding
+window) + 36 linear-attention (O(D)); MoE 256 experts/8-active. The giant-doc prefill tail is dominated by the
+12 layers' **O(D²) exact attention**, which is losslessly IRREDUCIBLE (FlashAttention already FLOP/IO-optimal;
+no exact sub-quadratic attention). So lossless prefill-compute reduction is NOT accessible either. ⇒ the
+goodput@SLO tail is bounded by cache AND compute — folds into Paper 1 as a compute-irreducibility argument
+(strengthens §6). Genuinely-new positive on THIS fixed eval appears exhausted; keep probing per charter but
+Paper 1 (comprehensive bounded-negative/impossibility) is the honest contribution.
 
 ## Formal submissions
 - `submissions/goodput-anatomy/paper.html` — **DRAFT** (registered INDEX.md 2026-07-14). Bounded-negative

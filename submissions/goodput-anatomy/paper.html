@@ -240,9 +240,14 @@ request is healthy; the goodput failure is entirely a tail phenomenon.</figcapti
 tail is catastrophic. Three facts locate the tail outside the cache:
 </p>
 <ul>
-<li><b>Heavy-tailed prefill.</b> Turn-0 document sizes are p50=7.4&nbsp;K, p90=29&nbsp;K, p99=62&nbsp;K,
-max=191&nbsp;K tokens. Prefilling a 62&ndash;191&nbsp;K document is irreducible new-content compute&mdash;no cache
-helps&mdash;and at a realistic saturated prefill rate its TTFT alone approaches or exceeds the SLO.</li>
+<li><b>Heavy-tailed, compute-irreducible prefill.</b> Turn-0 document sizes are p50=7.4&nbsp;K, p90=29&nbsp;K,
+p99=62&nbsp;K, max=191&nbsp;K tokens. The model interleaves 12 <em>true full-attention</em> layers
+(<span class="mono">full_attention_interval=4</span>, head_dim 256, no sliding window) with 36 linear-attention
+layers; a document's prefill is dominated by the <b>O(D&sup2;) exact attention</b> in those 12 layers. This is
+new-content compute&mdash;no cache helps&mdash;and it is <em>losslessly irreducible</em> (FlashAttention is
+already FLOP/IO-optimal; there is no exact sub-quadratic attention). At a realistic saturated prefill rate a
+62&ndash;191&nbsp;K document's TTFT alone approaches or exceeds the SLO. The bottleneck is thus outside both the
+cache <em>and</em> any lossless compute mechanism.</li>
 <li><b>Prefill&harr;decode interference.</b> 70% of prefill batches are full 6144-token document chunks; 12.6% of
 decode batches stall (&lt;50 tok/s) and 34% run &lt;150 tok/s, while the request queue is essentially empty
 (p50=0). The tail is not head-of-line queueing&mdash;it is giant prefills stealing decode cycles, a metastable

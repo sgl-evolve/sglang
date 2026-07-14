@@ -1071,6 +1071,31 @@ class Scheduler(
             self.server_args
         )
 
+        # CCA: cache-adjusted prefill admission control (floyd, research).
+        # See ServerArgs.enable_cca_prefill. Preventive gate that defers
+        # expensive (cache-adjusted) cold prefills near the KV retraction cliff
+        # while letting cheap prefix-reuse turns flow, breaking the metastable
+        # goodput@SLO collapse. Lossless (only affects prefill admission timing).
+        self.enable_cca_prefill = bool(
+            getattr(self.server_args, "enable_cca_prefill", False)
+        )
+        self.cca_watermark = float(getattr(self.server_args, "cca_watermark", 0.85))
+        self.cca_threshold = int(getattr(self.server_args, "cca_threshold", 4096))
+        self.cca_use_raw_cost = bool(
+            getattr(self.server_args, "cca_use_raw_cost", False)
+        )
+        # Lightweight counters for observability / self-audit (not on hot path).
+        self.cca_deferrals = 0
+        self.cca_passes_gated = 0
+        if self.enable_cca_prefill:
+            logger.info(
+                "CCA prefill admission control ENABLED "
+                "(watermark=%.3f threshold=%d use_raw_cost=%s)",
+                self.cca_watermark,
+                self.cca_threshold,
+                self.cca_use_raw_cost,
+            )
+
     def init_soft_watchdog(self, server_args: ServerArgs):
         if (x := server_args.soft_watchdog_timeout) is not None:
             self.soft_watchdog = create_scheduler_watchdog(
@@ -2735,6 +2760,24 @@ class Scheduler(
         res = min(res, self.req_to_token_pool.available_size())
         return res
 
+    def _cca_prefill_cost(self, req) -> int:
+        """Cache-adjusted prefill work (tokens) for CCA admission control.
+
+        The recompute cost of a request = total fill tokens minus what is
+        already resident in the radix cache (device prefix `prefix_indices` +
+        host prefix `host_hit_length`, which loads back cheaply, ~1.6ms). This
+        is the CONTROL CURRENCY: a prefix-reuse turn is ~0, a cold document is
+        tens of thousands. With `cca_use_raw_cost` (ablation) we meter by raw
+        input length instead, isolating the value of cache-awareness.
+        """
+        total = len(req.full_untruncated_fill_ids)
+        if self.cca_use_raw_cost:
+            return total
+        resident = len(req.prefix_indices) + int(
+            getattr(req, "host_hit_length", 0) or 0
+        )
+        return max(0, total - resident)
+
     def get_new_batch_prefill(self) -> Optional[ScheduleBatch]:
         prefill_delayer_single_pass = None
         if self.prefill_delayer:
@@ -2857,6 +2900,27 @@ class Scheduler(
         mamba_allocator = getattr(self.req_to_token_pool, "mamba_allocator", None)
         if mamba_allocator is not None:
             mamba_allocator.alloc_group_begin(len(self.waiting_queue))
+
+        # CCA: cache-adjusted prefill admission control (floyd). Snapshot the
+        # KV-pool usage once per pass; `cca_admitted` accumulates the cache-
+        # adjusted work admitted so far this pass (the extend KV that will land
+        # in the device pool when this prefill batch runs), so the watermark
+        # projection sees the batch we are building, not just current usage.
+        cca_active = self.enable_cca_prefill and self.chunked_req is None
+        cca_admitted = 0
+        cca_limit = 0
+        cca_base_used = 0
+        cca_gated_pass = False
+        if cca_active:
+            cca_limit = int(self.cca_watermark * self.max_total_num_tokens)
+            try:
+                cca_base_used = (
+                    self.max_total_num_tokens
+                    - self.token_to_kv_pool_allocator.available_size()
+                )
+            except Exception:
+                cca_active = False
+
         # Get requests from the waiting queue to a new prefill batch
         for req in self.waiting_queue:
             if self.enable_lora and not self._can_schedule_lora_req(req, running_loras):
@@ -2889,11 +2953,31 @@ class Scheduler(
                 )
 
             req.init_next_round_input(self.tree_cache)
+
+            # CCA gate: defer an *expensive* (cache-adjusted) prefill when
+            # admitting it would push projected KV-pool usage past the watermark,
+            # reserving decode headroom to prevent a retraction cascade. Cheap
+            # prefix-reuse turns (cost <= threshold) are never gated. Only gates
+            # while something is decoding (progress guarantee: an empty running
+            # batch always admits so the pipeline can't stall).
+            if cca_active:
+                cca_cost = self._cca_prefill_cost(req)
+                if (
+                    cca_cost > self.cca_threshold
+                    and len(self.running_batch.reqs) > 0
+                    and (cca_base_used + cca_admitted + cca_cost) > cca_limit
+                ):
+                    self.cca_deferrals += 1
+                    cca_gated_pass = True
+                    continue
+
             res = adder.add_one_req(
                 req,
                 has_chunked_req=(self.chunked_req is not None),
                 truncation_align_size=self.truncation_align_size,
             )
+            if cca_active and res == AddReqResult.CONTINUE:
+                cca_admitted += cca_cost
 
             if self.enable_lora:
                 running_loras.add(req.lora_id)
@@ -2925,6 +3009,9 @@ class Scheduler(
 
         if mamba_allocator is not None:
             mamba_allocator.alloc_group_end()
+
+        if cca_gated_pass:
+            self.cca_passes_gated += 1
 
         # Update waiting queue
         can_run_list: List[Req] = adder.can_run_list

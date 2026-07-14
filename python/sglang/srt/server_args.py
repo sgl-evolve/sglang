@@ -1277,6 +1277,37 @@ class ServerArgs:
     ] = None
 
     # -------------------------------------------------------------------------
+    # CCA: cache-adjusted prefill admission control (floyd, research)
+    # A preventive admission gate that throttles *expensive* (cache-adjusted)
+    # prefills when the KV pool is near the retraction cliff, so a burst of cold
+    # long-document prefills can't push running decode over the edge and trigger
+    # a retraction cascade (the metastable goodput@SLO collapse). Cheap prefix-
+    # reuse turns (near-zero cache-adjusted work) are NEVER gated. Lossless:
+    # changes only *when* prefills run, never KV contents or outputs.
+    # -------------------------------------------------------------------------
+    enable_cca_prefill: A[
+        bool,
+        "Enable cache-adjusted prefill admission control (CCA): gate expensive "
+        "cold prefills near the KV retraction cliff while letting cheap reuse flow.",
+    ] = False
+    cca_watermark: A[
+        float,
+        "KV-pool usage high-watermark (fraction, 0-1). Expensive prefills are "
+        "deferred once projected pool usage exceeds this, reserving decode "
+        "headroom to prevent a retraction cascade. Typical 0.7-0.9.",
+    ] = 0.85
+    cca_threshold: A[
+        int,
+        "Cache-adjusted extend length (tokens) above which a prefill is 'expensive' "
+        "and subject to the CCA watermark gate. Cheaper prefills always admit.",
+    ] = 4096
+    cca_use_raw_cost: A[
+        bool,
+        "Ablation: meter admission by RAW input length instead of cache-adjusted "
+        "(input - resident-prefix) work. Isolates the value of cache-awareness.",
+    ] = False
+
+    # -------------------------------------------------------------------------
     # Min free slots delay (prefill refill batching)
     # -------------------------------------------------------------------------
     min_free_slots_delay: A[

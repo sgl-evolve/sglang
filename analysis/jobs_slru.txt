@@ -1,0 +1,3 @@
+# Paper-2 retention steelman: SLRU (segmented LRU = protect nodes with hit_count>=2 from eviction).
+# Directly tests "does protecting reused/hot docs beat LRU?" Expect NO (hot docs already resident = mirage).
+v-evict-slru:--radix-eviction-policy slru

@@ -1,0 +1,4 @@
+# Paper-2 empirical eviction A/B (--radix-eviction-policy is LIVE on UnifiedRadixCache). Screen lambda3,5.
+# Tests whether any eviction policy beats stock LRU. Expect: LRU>=LFU (LRU~=Belady; LFU may crater per prior art).
+v-evict-lfu:--radix-eviction-policy lfu
+v0-stock-evictctl:

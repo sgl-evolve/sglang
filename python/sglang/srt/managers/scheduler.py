@@ -994,6 +994,12 @@ class Scheduler(
         self._turing_decode_floor = os.environ.get("SGLANG_TURING_DECODE_FLOOR", "0") == "1"
         self._turing_theta_hi = float(os.environ.get("SGLANG_TURING_THETA_HI", "0.90"))
         self._turing_gain = float(os.environ.get("SGLANG_TURING_GAIN", "0.5"))
+        # turing Paper-5: fair-share chunk interleaving (env-gated, default OFF; lossless).
+        # When an in-flight chunked giant would monopolize the per-step prefill budget while
+        # short requests wait, cap the giant's share to FAIR_FRAC so a short can also start
+        # prefill this step (breaks head-of-line blocking behind giants). Giant still progresses.
+        self._turing_fair_prefill = os.environ.get("SGLANG_TURING_FAIR_PREFILL", "0") == "1"
+        self._turing_fair_frac = float(os.environ.get("SGLANG_TURING_FAIR_FRAC", "0.5"))
         uses_transformers_backend = (
             get_resolved_model_impl(self.model_config) == ModelImpl.TRANSFORMERS
         )
@@ -2859,7 +2865,24 @@ class Scheduler(
 
         if self.chunked_req is not None:
             self.chunked_req.init_next_round_input()
-            self.chunked_req = adder.add_chunked_req(self.chunked_req)
+            # turing Paper-5: fair-share chunk interleaving (env-gated, lossless).
+            # Cap the in-flight giant's per-step share so waiting shorts can also start prefill,
+            # then restore the remainder of the full budget for the waiting-queue drain below.
+            # Only reshapes the per-step token split; total <= full budget; giant still advances.
+            if (
+                getattr(self, "_turing_fair_prefill", False)
+                and len(self.waiting_queue) > 0
+                and adder.rem_chunk_tokens is not None
+            ):
+                _full = adder.rem_chunk_tokens  # full per-step chunk budget
+                _cap = max(self.page_size, int(_full * self._turing_fair_frac))
+                adder.rem_chunk_tokens = _cap  # cap the giant's share this step
+                self.chunked_req = adder.add_chunked_req(self.chunked_req)
+                _giant_used = _cap - adder.rem_chunk_tokens  # tokens the giant took (<= _cap)
+                # restore the rest of the FULL budget for the waiting-queue drain (shorts get it)
+                adder.rem_chunk_tokens = _full - _giant_used
+            else:
+                self.chunked_req = adder.add_chunked_req(self.chunked_req)
 
         if self.enable_lora:
             running_loras = {

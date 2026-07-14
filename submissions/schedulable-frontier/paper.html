@@ -153,6 +153,28 @@ one free constant does not secretly depend on the policy. We measure K on the sa
 essentially unchanged yet <b>lifts K by ~11%</b>&mdash;confirming K and h are independent knobs on one ceiling:
 <em>caching lowers 1&minus;h; scheduling raises K</em>.
 </div>
+<h3>3.1 Why the law is token-linear despite O(D&sup2;) attention (a hybrid-architecture effect)</h3>
+<p>
+The capacity law treats prefill cost as linear in tokens (C=R/E[U] with E[U] in tokens). But the model has 12
+full-attention layers whose prefill cost is O(D&sup2;) in the context length D&mdash;so why does a token-linear law
+hold to 2.5%? Because prefill cost is <b>dominated by the MoE feed-forward network</b> (linear in tokens) until a
+crossover length. From the exact Qwen3.5-122B-A10B dimensions (d<sub>model</sub>=3072; 48 layers = 12 full-attn +
+<b>36 linear-attn/GDN</b>; MoE 256 experts, 8 active +1 shared, intermediate 1024; 32 query heads &times; head-dim 256),
+the per-token linear cost is <b>&approx;1.4&ndash;2.0&times;10<sup>10</sup> FLOPs</b> (MoE-FFN 8.2&times;10<sup>9</sup>
+of it), while the full-attention quadratic term is <b>3.9&times;10<sup>5</sup>&middot;D FLOPs/token</b>. They cross at
+<b>D*&nbsp;&approx;&nbsp;35&ndash;51&nbsp;K tokens</b>:</p>
+<ul>
+<li>Documents below D* (p50, p90, and the p99 turn-0 doc at ~35&nbsp;K) are <b>FFN-dominated &rArr; linear</b>;
+<b>81&ndash;90% of all prefill token mass sits below D*</b>, so the <em>aggregate</em> capacity is token-linear and
+K is invariant&mdash;exactly what &sect;3 measures.</li>
+<li>Only the extreme tail (p99.9 = 68&nbsp;K, max = 191&nbsp;K) crosses into the O(D&sup2;) regime&mdash;and that is
+<em>also</em> where the intrinsic-feasibility margin shrinks (&sect;4). The two nonlinearities coincide at the same
+tail, which is why the model stays clean everywhere else.</li>
+<li><b>This is a hybrid-architecture effect.</b> The 36 linear-attention (GDN) layers contribute no quadratic term;
+a dense model with all 48 layers full-attention would cross over at D*<sub>dense</sub>&nbsp;&approx;&nbsp;8.9&nbsp;K
+tokens&mdash;<b>4&times; sooner</b>&mdash;so its capacity would be super-linear across most of this document
+distribution and no clean token-linear law would hold. The hybrid design is what makes C=K/(1&minus;h) a good law here.</li>
+</ul>
 <figure>
 <svg width="640" height="380" viewBox="0 0 640 380" xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif">
   <line x1="60" y1="340" x2="600" y2="340" stroke="#333"/>
@@ -354,8 +376,8 @@ approaches but need not attain C near saturation (p99 wait &rarr; &infin; as &la
 <h2>10 Reproducibility</h2>
 <p>
 Base commit <span class="mono">a334877e5</span>; instrumentation <span class="mono">ce01c1c79</span>. The law and
-floor are computed by <span class="mono">analysis/frontier.py</span> and
-<span class="mono">analysis/frontier_des.py</span> from the committed run outputs
+floor are computed by <span class="mono">analysis/frontier.py</span>; the FLOP crossover D* (&sect;3.1) by
+<span class="mono">analysis/flop_crossover.py</span> from the model config; all from the committed run outputs
 <span class="mono">runs/{v1_stock,v1b_stock,v3_wb,v3b_wb,v4_lpm,v5_size}/curve.csv</span>, all produced by the frozen
 <span class="mono">eval.sh</span> rate sweep (&lambda;&isin;{3,5,7,10}, NUMP=1553, warmup, no per-rate flush,
 max-concurrency 256) on a certified 8&times;H100 node. Uncached-work distribution U is derived from

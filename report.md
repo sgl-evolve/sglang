@@ -188,7 +188,18 @@ to measure (in progress).
   Mann-Whitney (location) on λ=3 p99. Claim "reduces tail mean+variance" IF significant — NOT a
   goodput flip. (base guardrail: 4 over-claims caught by replication — do not repeat.)
 
-### Stats (current, HONEST): variance-reduction SUGGESTIVE, not yet significant
+### ★ FINAL honest picture (stock n=4): variance-reduction is REAL but goodput-NEUTRAL
+- stock λ3 {6327, 6392, 8124, 11787} n=4: mean **8158**, std 2216, 2/4 pass.
+- CCA-lb {8556,8549,7767,7790,8243} n=5: mean **8181**, std 348, 2/5 pass.
+- ⇒ CCA-lb reduces the p99 SPREAD ~6.4× (std 2216→348; range 5460→789ms) BUT mean is EQUAL (8158≈8181)
+  and pass-rate is EQUAL/slightly-worse (2/4 vs 2/5). **The variance-reduction does NOT improve
+  goodput** — it trades an unpredictable coin-flip for a predictable near-8s value, still ~50% failing.
+- **∴ Paper conclusion = NEGATIVE: prefill admission control (any variant) does not improve goodput@SLO.**
+  Load-back gating's variance-reduction is a descriptive side-observation (makes p99 predictable, not
+  better). Report the ~6.4× spread reduction DESCRIPTIVELY (Levene underpowered at feasible n on the
+  heavy-tailed coin-flip: p≈0.11 at n=4/5). Do NOT frame as a goodput win.
+
+### Stats (superseded): variance-reduction SUGGESTIVE, not yet significant
 - stock λ3 p99 (n=3): mean 8746, std **2272**. CCA-lb pooled v4+v5 (n=5): mean 8181, std **348**.
 - **Levene p=0.10 (variance) — NOT significant** at n=3/5 (stock variance driven by the 11787 outlier;
   small n → unstable variance estimate). MWU p=1.0 (means overlap). pass@8s: stock 1/3, CCA-lb 2/5.

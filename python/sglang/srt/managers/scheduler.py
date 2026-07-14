@@ -990,6 +990,10 @@ class Scheduler(
 
     def init_chunked_prefill(self):
         self.chunked_prefill_size = self.server_args.chunked_prefill_size
+        # turing Paper-4: occupancy-feedback damping (env-gated, default OFF; lossless).
+        self._turing_decode_floor = os.environ.get("SGLANG_TURING_DECODE_FLOOR", "0") == "1"
+        self._turing_theta_hi = float(os.environ.get("SGLANG_TURING_THETA_HI", "0.90"))
+        self._turing_gain = float(os.environ.get("SGLANG_TURING_GAIN", "0.5"))
         uses_transformers_backend = (
             get_resolved_model_impl(self.model_config) == ModelImpl.TRANSFORMERS
         )
@@ -2817,6 +2821,22 @@ class Scheduler(
             dynamic_size = self.predict_next_chunk_size(history_len)
             if dynamic_size is not None:
                 chunked_prefill_size = dynamic_size
+
+        # turing Paper-4: occupancy-feedback damping. At high device-KV occupancy, shrink the
+        # per-step prefill budget to reserve compute for decode, breaking the occupancy-runaway
+        # feedback behind the goodput coin-flip (companion goodput-coinflip study). Env-gated,
+        # default OFF; lossless (reshapes the per-step budget only, not admission/rate; the
+        # server-arg chunked_prefill_size is untouched, so resolved_args stay frozen).
+        if getattr(self, "_turing_decode_floor", False) and chunked_prefill_size:
+            _alloc = self.token_to_kv_pool_allocator
+            try:
+                _occ = 1.0 - _alloc.available_size() / _alloc.size
+            except Exception:
+                _occ = 0.0
+            if _occ > self._turing_theta_hi:
+                chunked_prefill_size = max(
+                    self.page_size, int(chunked_prefill_size * (1.0 - self._turing_gain))
+                )
 
         # Prefill policy
         adder = PrefillAdder(

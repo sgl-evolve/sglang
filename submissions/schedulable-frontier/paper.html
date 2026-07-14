@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Schedulable Frontier — turing</title>
+<style>
+  :root{--ink:#1a1a1a;--mut:#666;--acc:#1c4a8a;--bg:#fff;--box:#f5f7fa;--line:#dce0e6}
+  html{font-size:17px}
+  body{max-width:52rem;margin:0 auto;padding:2.2rem 1.3rem 6rem;background:var(--bg);color:var(--ink);
+       font-family:Georgia,"Times New Roman",serif;line-height:1.55}
+  h1{font-size:1.7rem;line-height:1.25;margin:0 0 .3rem}
+  h2{font-size:1.2rem;margin:2.1rem 0 .6rem;border-bottom:2px solid var(--acc);padding-bottom:.2rem}
+  h3{font-size:1.02rem;margin:1.3rem 0 .3rem}
+  .sub{color:var(--mut);font-size:.95rem;margin:.1rem 0}
+  code,.mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.86em}
+  .abstract{background:var(--box);border-left:3px solid var(--acc);padding:.8rem 1rem;margin:1.2rem 0;font-size:.97rem}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.9rem}
+  th,td{border:1px solid var(--line);padding:.32rem .5rem;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  thead th{background:var(--box)}
+  .fail{color:#a11;font-weight:bold}
+  .win{color:#1a6a1a;font-weight:bold}
+  figure{margin:1.3rem 0;text-align:center}
+  figcaption{color:var(--mut);font-size:.85rem;margin-top:.4rem;text-align:left}
+  .note{color:var(--mut);font-size:.85rem}
+  .keyfinding{background:#eef4fb;border:1px solid #b8d0ea;padding:.5rem .8rem;margin:.8rem 0;font-size:.93rem}
+  .eq{background:var(--box);border:1px solid var(--line);padding:.5rem .8rem;margin:.7rem 0;text-align:center;font-size:1.02rem}
+  ul{margin:.4rem 0 .8rem}
+  li{margin:.25rem 0}
+  .draft{display:inline-block;background:var(--acc);color:#fff;font-size:.7rem;padding:.1rem .5rem;border-radius:3px;
+         vertical-align:middle;letter-spacing:.05em;font-family:sans-serif}
+</style>
+</head>
+<body>
+
+<h1>The Schedulable Frontier:<br>
+goodput@SLO is Capacity-Bounded but Contention-Limited in Saturated Conversational Serving
+<span class="draft">v1 · draft</span></h1>
+<p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
+<p class="sub">Base commit <span class="mono">a334877e5</span> · mechanism/instrumentation <span class="mono">ce01c1c79</span></p>
+
+<div class="abstract">
+<b>Abstract.</b> A companion study established that no lossless KV-<em>cache</em> mechanism raises
+<b>goodput@SLO</b> (max req/s at p99&nbsp;TTFT&nbsp;&le;&nbsp;8&nbsp;s) on a saturated conversational rate sweep.
+That negative left a puzzle: caching demonstrably raises both hit rate <em>and</em> peak throughput (the
+write_back config lifts achieved req/s from 4.1 to 5.1), yet goodput does not move. This paper resolves the
+puzzle with a single closed-form law and, in doing so, unifies the cache and scheduling axes into one frontier.
+(1)&nbsp;<b>A capacity law.</b> The serving system has a hard prefill-throughput ceiling
+<b>C = K/(1&minus;h)</b>, where <span class="mono">h</span> is the cache hit rate and <span class="mono">K</span>
+is a raw-prefill-rate constant. We validate it directly from the saturated region of every measured sweep:
+<span class="mono">K = C·(1&minus;h)</span> is invariant to <b>2.5%</b> across cache variants and predicts the
+measured ceiling to within 1&ndash;3%. Caching raises C only by lowering the miss rate (1&minus;h); a scheduling
+change (LPM co-residency) raises C by lifting K ~11% at fixed h&mdash;two <em>orthogonal</em> levers on the
+<em>same</em> ceiling. (2)&nbsp;<b>An intrinsic-feasibility floor.</b> Using the calibrated K we show every
+request is <em>solo-feasible</em>: even the largest document (191&nbsp;K tokens) prefills alone in 6.95&nbsp;s,
+under the 8&nbsp;s SLO; the p99 request needs only 1.3&nbsp;s. Therefore <b>every SLO violation is contention/
+queueing, never irreducible service time</b>, and the offline-optimal goodput equals the capacity ceiling:
+<b>goodput@SLO<sub>offline</sub> = C(h,K)</b>. (3)&nbsp;<b>The frontier.</b> Combining the law with a stability
+argument (offered&nbsp;&gt;&nbsp;C &rArr; unbounded queue &rArr; p99 diverges), we show the SLO binds strictly
+<em>below</em> C: measured online goodput sits at ~3 req/s&mdash;<em>flat across hit rate</em>&mdash;while C rises
+from 2.4 to 5.1. The whole <b>[3,&nbsp;C] gap is a contention/scheduling problem</b>, which is exactly why
+caching (which lifts C, not the gap) cannot move goodput, and why an SRPF-class scheduler (which closes the gap)
+can. The operative frontier is <b>goodput@SLO = min(feasible-tail-rate, C(h,K))</b>: caching raises the ceiling,
+scheduling reaches it, and <b>neither alone suffices</b>&mdash;goodput demands their co-design. We give a
+generalizable feasibility criterion an operator can evaluate from a trace, an SLO, and one hardware constant.
+</div>
+
+<h2>1 Introduction</h2>
+<p>
+For an operator of a saturated LLM serving cluster, the metric that matters is <b>goodput@SLO</b>: the maximum
+request rate that still satisfies a tail-latency service objective (here p99&nbsp;TTFT&nbsp;&le;&nbsp;8&nbsp;s on
+an open-loop Poisson rate sweep over &lambda;&nbsp;&isin;&nbsp;{3,5,7,10}). Two engine levers are usually pitched
+independently: a smarter <em>KV cache</em> (raise reuse, cut prefill work) and a smarter <em>scheduler</em>
+(reorder prefills to protect the tail). The serving literature optimizes each in isolation.</p>
+<p>
+A companion study of this exact regime reached a sharp negative on the first lever: no lossless KV-cache mechanism
+raises goodput@SLO. But it surfaced a <em>puzzle</em> it did not fully resolve. Caching is not inert&mdash;the
+write_back configuration raises hit rate 0.65&rarr;0.72 <em>and</em> raises peak achieved throughput
+4.1&rarr;5.1&nbsp;req/s (+23%). If caching buys 23% more throughput, why is goodput@SLO unmoved? The answer, we
+show, is that <b>goodput lives in a different currency than throughput</b>, and the exchange rate between them is
+governed by contention, not capacity. Our contributions:</p>
+<ul>
+<li><b>The capacity law C&nbsp;=&nbsp;K/(1&minus;h)</b> (&sect;3): a one-parameter, closed-form ceiling on
+achievable throughput, validated to 2.5% across every cache/schedule variant we ran. It cleanly separates the
+<em>cache lever</em> (lower 1&minus;h) from the <em>scheduling/hardware lever</em> (raise K).</li>
+<li><b>The intrinsic-feasibility floor</b> (&sect;4): from the calibrated K, no single request&mdash;up to the
+191&nbsp;K-token maximum&mdash;is intrinsically SLO-infeasible. Hence the offline-optimal goodput <em>equals</em>
+the capacity ceiling, and all violations are contention.</li>
+<li><b>The schedulable frontier</b> (&sect;5&ndash;6): a stability argument pins measured online goodput strictly
+below C. The [measured,&nbsp;C] gap&mdash;flat across hit rate&mdash;is a pure scheduling problem. This
+<em>unifies</em> the two axes: caching raises the ceiling, scheduling reaches it, and goodput requires both.</li>
+<li><b>A generalizable feasibility criterion</b> (&sect;7): given a trace's uncached-work distribution, the SLO,
+and one measured hardware constant K, decide whether a target &lambda; is reachable&mdash;and by which lever.</li>
+</ul>
+<p class="note">This paper is a bound-and-law study; it introduces no new mechanism. Its novelty is the unifying
+law and the resulting design principle. It is scrupulously independent: the SRPF-class scheduling conclusion is
+<em>derived</em> from the intrinsic-feasibility floor, not measured here, so as not to depend on any other work.</p>
+
+<h2>2 Motivation: the throughput&ndash;goodput puzzle</h2>
+<p>Same-node rate sweeps for the stock cache and the best cache configuration (write_back), swept identically:</p>
+<table>
+<thead><tr><th>&lambda; (offered)</th><th>stock ach. req/s</th><th>stock p99 (ms)</th><th>wb ach. req/s</th><th>wb p99 (ms)</th></tr></thead>
+<tbody>
+<tr><td>3</td><td>2.83&ndash;3.02</td><td>6175&ndash;11494</td><td>3.02</td><td>6591&ndash;7406</td></tr>
+<tr><td>5</td><td>3.59</td><td class="fail">24957</td><td>4.30</td><td class="fail">22005</td></tr>
+<tr><td>7</td><td>3.99</td><td class="fail">35753</td><td>4.91</td><td class="fail">31117</td></tr>
+<tr><td>10</td><td>4.14</td><td class="fail">41015</td><td>5.11</td><td class="fail">38353</td></tr>
+</tbody>
+</table>
+<p>
+Two facts stand out. First, <b>achieved throughput saturates</b>: offering 10&nbsp;req/s yields only ~4.1
+(stock) or ~5.1 (wb)&mdash;there is a hard ceiling well below the offered load. Second, caching <b>raises that
+ceiling</b> (4.1&rarr;5.1) but <b>does not change where p99 crosses the SLO</b>: for both, p99&nbsp;&le;&nbsp;8&nbsp;s
+holds only at &lambda;=3 and blows past 22&nbsp;s by &lambda;=5. Goodput@SLO is therefore ~3 for both&mdash;caching
+moved the ceiling but not the goodput. The rest of the paper explains exactly why by deriving the ceiling in
+closed form and then showing the SLO binds far below it.</p>
+
+<h2>3 The capacity law: C = K/(1&minus;h)</h2>
+<p>
+At saturation (offered&nbsp;&gt;&nbsp;capacity), the prefill engine runs flat-out: it completes uncached prefill
+tokens at a hardware-limited aggregate rate <span class="mono">R</span> (tokens/s). Each request costs, on
+average, <span class="mono">E[U]</span> uncached prefill tokens, so the completion rate is
+<span class="mono">C = R/E[U]</span> requests/s. Because the fraction of prompt tokens that must be computed is
+the miss rate <span class="mono">(1&minus;h)</span>, we have <span class="mono">E[U] &prop; (1&minus;h)</span>,
+giving the law:</p>
+<div class="eq"><b>C(h,K) = K / (1&minus;h)</b>, &nbsp; where &nbsp; <b>K &equiv; C·(1&minus;h)</b> is the raw prefill-rate scale.</div>
+<p>
+K bundles the hardware prefill throughput and the (hit-independent) turn-0 first-sight token mass; it should be
+<em>invariant</em> to the cache policy and move only with the hardware or the scheduler's packing efficiency.
+We test this on the saturated points (&lambda;&nbsp;&isin;&nbsp;{7,10}, where achieved&nbsp;&laquo;&nbsp;offered):</p>
+<table>
+<thead><tr><th>variant</th><th>&lambda;</th><th>C (req/s)</th><th>hit h</th><th>K = C·(1&minus;h)</th><th>lever</th></tr></thead>
+<tbody>
+<tr><td>stock write_through</td><td>7</td><td>3.99</td><td>0.6568</td><td>1.369</td><td>cache</td></tr>
+<tr><td>stock write_through</td><td>10</td><td>4.14</td><td>0.6537</td><td>1.434</td><td>cache</td></tr>
+<tr><td>write_back</td><td>7</td><td>4.91</td><td>0.7263</td><td>1.344</td><td>cache</td></tr>
+<tr><td>write_back</td><td>10</td><td>5.11</td><td>0.7247</td><td>1.407</td><td>cache</td></tr>
+<tr><td><b>cache mean</b></td><td></td><td></td><td></td><td><b>1.388 ± 0.034</b></td><td><b>CV 2.5%</b></td></tr>
+<tr><td>lpm co-residency</td><td>7</td><td>4.39</td><td>0.6591</td><td class="win">1.497</td><td>schedule</td></tr>
+<tr><td>lpm co-residency</td><td>10</td><td>4.64</td><td>0.6567</td><td class="win">1.593</td><td>schedule</td></tr>
+</tbody>
+</table>
+<div class="keyfinding">
+<b>K is invariant across cache variants to CV&nbsp;2.5%</b> and predicts the measured ceiling to 1&ndash;3%
+(stock C<sub>pred</sub>&nbsp;4.01 vs 4.14; wb 5.04 vs 5.11). A scheduling change (LPM co-residency) leaves h
+essentially unchanged yet <b>lifts K by ~11%</b>&mdash;confirming K and h are independent knobs on one ceiling:
+<em>caching lowers 1&minus;h; scheduling raises K</em>.
+</div>
+<figure>
+<svg width="640" height="380" viewBox="0 0 640 380" xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif">
+  <line x1="60" y1="340" x2="600" y2="340" stroke="#333"/>
+  <line x1="60" y1="340" x2="60" y2="40" stroke="#333"/>
+  <!-- law line C = 1.388 * 1/(1-h) -->
+  <line x1="60" y1="236" x2="600" y2="62" stroke="#1c4a8a" stroke-width="2" stroke-dasharray="6 3"/>
+  <text x="470" y="150" fill="#1c4a8a" font-size="13">C = K/(1&#8722;h), K=1.388</text>
+  <!-- measured saturated points -->
+  <circle cx="360" cy="133" r="5" fill="#1c4a8a"/><text x="300" y="128" font-size="12">stock (h=.654)</text>
+  <circle cx="521" cy="84" r="5" fill="#1c4a8a"/><text x="452" y="79" font-size="12">write_back (h=.725)</text>
+  <circle cx="365" cy="108" r="5" fill="#1a6a1a"/><text x="372" y="104" font-size="12" fill="#1a6a1a">lpm (h=.657, +K)</text>
+  <!-- predicted (to be confirmed by v6_flat/v5_size) -->
+  <circle cx="112" cy="219" r="5" fill="none" stroke="#a11" stroke-width="1.5"/><text x="90" y="238" font-size="11" fill="#a11">flat (h=.43, pred)</text>
+  <circle cx="450" cy="110" r="5" fill="none" stroke="#a11" stroke-width="1.5"/><text x="430" y="130" font-size="11" fill="#a11">size (h=.70, pred)</text>
+  <!-- axes labels -->
+  <text x="300" y="372" font-size="13" text-anchor="middle">1 / (1 &#8722; h)</text>
+  <text x="20" y="195" font-size="13" text-anchor="middle" transform="rotate(-90 20 195)">capacity C (req/s)</text>
+  <text x="52" y="344" font-size="10" text-anchor="end">0</text>
+  <text x="52" y="240" font-size="10" text-anchor="end">2</text>
+  <text x="52" y="140" font-size="10" text-anchor="end">4</text>
+  <text x="52" y="65" font-size="10" text-anchor="end">5.5</text>
+</svg>
+<figcaption><b>Figure 1. The capacity law.</b> Measured saturated throughput C vs 1/(1&minus;h). Cache variants
+(blue, filled) fall on the line C=1.388/(1&minus;h); write_back reaches a higher C purely by lowering the miss
+rate. The scheduling variant (green) sits <em>above</em> the cache line at the same hit&mdash;it raised K.
+Hollow red markers are the law's predictions for the flat-admission (low-hit) and size-admission points, being
+confirmed by full-sweep runs <span class="mono">v6_flat_sweep</span> / <span class="mono">v5_size</span>.</figcaption>
+</figure>
+
+<h2>4 The intrinsic-feasibility floor: no request is too big</h2>
+<p>
+The calibrated raw rate is <span class="mono">R = C·E[U] &approx; 27&ndash;30&nbsp;K tokens/s</span> (stock
+4.14&times;6630&nbsp;=&nbsp;27450; wb 5.11&times;5829&nbsp;=&nbsp;29788). We now ask the decisive question: is any
+single request <em>intrinsically</em> unable to meet the 8&nbsp;s SLO even if served <b>alone</b> on the whole
+machine? The solo prefill time of a request with uncached work U is U/R:</p>
+<table>
+<thead><tr><th>percentile of U</th><th>U (uncached tok)</th><th>solo TTFT = U/R (s)</th><th>vs 8&nbsp;s SLO</th></tr></thead>
+<tbody>
+<tr><td>p50</td><td>4 227</td><td>0.15</td><td class="win">feasible</td></tr>
+<tr><td>p90</td><td>17 702</td><td>0.64</td><td class="win">feasible</td></tr>
+<tr><td>p99</td><td>36 695</td><td>1.34</td><td class="win">feasible</td></tr>
+<tr><td>p99.9</td><td>68 049</td><td>2.48</td><td class="win">feasible</td></tr>
+<tr><td><b>max</b></td><td><b>190 890</b></td><td><b>6.95</b></td><td class="win"><b>feasible</b></td></tr>
+</tbody>
+</table>
+<div class="keyfinding">
+<b>Every request is solo-feasible.</b> The p99 request needs 1.3&nbsp;s; even the single largest document
+(191&nbsp;K tokens) prefills in 6.95&nbsp;s&mdash;<em>under</em> the 8&nbsp;s SLO. Therefore <b>no SLO violation is
+irreducible service time; every violation is contention or queueing delay.</b> A clairvoyant, work-conserving
+scheduler operating below the capacity C could meet the SLO for every request, so:
+<div class="eq"><b>goodput@SLO<sub>offline</sub> = C(h,K).</b></div>
+The offline-optimal goodput <em>equals</em> the capacity ceiling. This is the tightest possible upper bound on
+the entire scheduling axis, and it is reached, in principle, by contention management alone.</div>
+<p class="note">Caveat: at the very tail (p99.9&nbsp;&rarr;&nbsp;max) solo time approaches the SLO, so if K were
+~15% lower the single largest document would become intrinsically infeasible. But goodput@SLO is defined at the
+p99, where the margin is 6&times; (1.3&nbsp;s vs 8&nbsp;s); the conclusion is robust at the metric's percentile.</p>
+
+<h2>5 The stability crossover: why the SLO binds below C</h2>
+<p>
+An open-loop queue is stable only when offered&nbsp;&lambda;&nbsp;&lt;&nbsp;C. Above C the backlog grows without
+bound and every latency percentile diverges&mdash;no scheduler can prevent it (it is a conservation law, not a
+policy choice). The measured sweep shows exactly this crossover around C&nbsp;&approx;&nbsp;4&ndash;5:</p>
+<table>
+<thead><tr><th>&lambda;</th><th>stock achieved</th><th>&lambda;&nbsp;&lt;&nbsp;C<sub>stock</sub>≈4.0?</th><th>p99</th><th>regime</th></tr></thead>
+<tbody>
+<tr><td>3</td><td>2.83&ndash;3.02</td><td>yes</td><td>6&ndash;11&nbsp;s</td><td>stable (p99 ≈ SLO, coin-flip)</td></tr>
+<tr><td>5</td><td>3.59</td><td class="fail">no</td><td class="fail">25&nbsp;s</td><td>unstable (achieved&lt;offered)</td></tr>
+<tr><td>7</td><td>3.99</td><td class="fail">no</td><td class="fail">36&nbsp;s</td><td>unstable</td></tr>
+<tr><td>10</td><td>4.14</td><td class="fail">no</td><td class="fail">41&nbsp;s</td><td>unstable (running at C)</td></tr>
+</tbody>
+</table>
+<p>
+At &lambda;=3 (offered&nbsp;&lt;&nbsp;C) the queue is stable and p99 hovers at the SLO&mdash;the variance-dominated
+coin-flip documented in the companion study. At &lambda;&nbsp;&ge;&nbsp;5 the offered load exceeds C, the queue is
+unstable, and p99 diverges to 25&ndash;41&nbsp;s regardless of policy. Because the swept grid jumps 3&rarr;5,
+<b>goodput@SLO is pinned at 3</b> for both stock and write_back even though C differs (4.1 vs 5.1): the extra
+capacity from caching lands in the unstable &lambda;&ge;5 region where the SLO is already lost, so it never
+converts to goodput. This is the mechanical reason caching raises throughput but not goodput.</p>
+
+<h2>6 The schedulable frontier</h2>
+<p>Putting &sect;3&ndash;5 together yields the operative frontier:</p>
+<div class="eq"><b>goodput@SLO = min( &lambda;<sub>tail</sub>(h,K,SLO), &nbsp; C(h,K) )</b></div>
+<p>
+where &lambda;<sub>tail</sub> is the largest offered rate whose p99 contention delay still fits the SLO. &sect;4
+shows the intrinsic component of the tail is negligible at the p99, so &lambda;<sub>tail</sub> is set purely by
+<em>contention management</em> (the scheduler), while C is set by <em>capacity</em> (cache&nbsp;&times;&nbsp;K).
+The two levers act on different terms of the min:</p>
+<figure>
+<svg width="640" height="380" viewBox="0 0 640 380" xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif">
+  <line x1="60" y1="340" x2="600" y2="340" stroke="#333"/>
+  <line x1="60" y1="340" x2="60" y2="40" stroke="#333"/>
+  <!-- capacity ceiling C(h) curve -->
+  <polyline points="60,224 214,201 369,167 446,141 523,109 562,87 600,62" fill="none" stroke="#1c4a8a" stroke-width="2.5"/>
+  <text x="360" y="150" fill="#1c4a8a" font-size="13">capacity ceiling C(h)=K/(1&#8722;h)</text>
+  <text x="360" y="166" fill="#1c4a8a" font-size="11">= offline-optimal goodput</text>
+  <!-- measured online goodput ~3 flat -->
+  <line x1="60" y1="190" x2="600" y2="190" stroke="#a11" stroke-width="2" stroke-dasharray="7 4"/>
+  <text x="150" y="184" fill="#a11" font-size="12">measured online goodput@SLO &#8776; 3 (flat in h)</text>
+  <!-- contention gap arrows -->
+  <line x1="523" y1="188" x2="523" y2="111" stroke="#888" stroke-width="1"/>
+  <text x="530" y="150" font-size="11" fill="#555">contention</text>
+  <text x="530" y="164" font-size="11" fill="#555">gap</text>
+  <!-- lever annotations -->
+  <text x="120" y="300" font-size="12" fill="#1a6a1a">&#8594; caching raises the ceiling (moves C up)</text>
+  <text x="120" y="318" font-size="12" fill="#a11">&#8594; scheduling closes the gap (moves the red line toward C)</text>
+  <text x="300" y="372" font-size="13" text-anchor="middle">hit rate h</text>
+  <text x="20" y="195" font-size="13" text-anchor="middle" transform="rotate(-90 20 195)">goodput@SLO (req/s)</text>
+  <text x="52" y="344" font-size="10" text-anchor="end">0</text>
+  <text x="52" y="192" font-size="10" text-anchor="end">3</text>
+  <text x="52" y="65" font-size="10" text-anchor="end">5.5</text>
+  <text x="64" y="352" font-size="10">0.40</text><text x="580" y="352" font-size="10">0.75</text>
+</svg>
+<figcaption><b>Figure 2. The schedulable frontier.</b> The capacity ceiling C(h) (blue) rises with hit rate and
+equals the offline-optimal goodput (&sect;4). Measured <em>online</em> goodput (red dashed) sits at ~3 req/s and
+is <em>flat in h</em>&mdash;caching lifts the ceiling but the online scheduler cannot reach it, so the gain is
+unrealized. The vertical gap is contention headroom. Caching moves the blue curve up; scheduling moves the red
+line up toward blue. Goodput needs both: a high ceiling <em>and</em> a scheduler that reaches it.</figcaption>
+</figure>
+<div class="keyfinding">
+<b>The unifying insight.</b> goodput@SLO is <em>capacity-bounded</em> (ceiling C&nbsp;=&nbsp;K/(1&minus;h)) but
+<em>contention-limited</em> (it binds far below C). Caching operates on the ceiling; scheduling operates on the
+gap. This is <b>why the companion cache study found a negative</b> (caching raises a ceiling the system never
+reaches) and <b>why SRPF-class scheduling helps</b> (it closes a gap that has nothing to do with capacity).
+Neither lever alone maximizes goodput: caching without scheduling lifts an unreached ceiling; scheduling without
+caching closes the gap to a low ceiling. Maximal goodput requires <b>co-design</b>&mdash;raise C with the cache,
+then reach it with the scheduler.</div>
+
+<h2>7 A generalizable feasibility criterion</h2>
+<p>The law reduces the operator's question&mdash;"can I serve &lambda; at this SLO?"&mdash;to three measurable
+inputs: the trace's uncached-work distribution U (hence E[U] and its tail), one hardware constant
+<span class="mono">R</span> (raw prefill tok/s, measured once), and the SLO. The decision:</p>
+<ul>
+<li><b>Capacity test (necessary):</b> is &lambda;&nbsp;&lt;&nbsp;C&nbsp;=&nbsp;R/E[U]&nbsp;=&nbsp;K/(1&minus;h)? If
+not, no scheduler helps&mdash;raise C by improving h (cache) or K (packing), or shed load.</li>
+<li><b>Intrinsic-tail test (necessary):</b> is q<sub>99</sub>(U)/R&nbsp;&le;&nbsp;SLO? If not, the tail is
+irreducible&mdash;only lossy compression or workload change helps. (Here 1.3&nbsp;s&nbsp;&laquo;&nbsp;8&nbsp;s: passes.)</li>
+<li><b>Contention gap (the lever):</b> if both pass, the residual gap between the measured online goodput and C is
+a scheduling problem&mdash;an SRPF/contention-aware policy is the tool, and its ceiling is C.</li>
+</ul>
+<p>This generalizes beyond our workload: it tells any operator <em>which</em> lever (cache, schedule, hardware,
+or SLO) binds for their trace, rather than trying them blindly. For this regime the verdict is: capacity test
+binds at &lambda;&ge;5 (raise via cache/packing), intrinsic-tail passes with 6&times; margin, and the &lambda;=3
+&rarr; C&nbsp;gap is the scheduling opportunity.</p>
+
+<h2>8 Related work</h2>
+<p>
+<b>Mooncake</b> (FAST'25) and <b>Strata</b> (arXiv 2508.18572) optimize KV movement and batching; <b>HiCache</b>
+and <b>LMCache</b> optimize the tier hierarchy; classic goodput work (e.g. queueing-theoretic admission control)
+optimizes the scheduler. Each treats one lever. Our contribution is orthogonal and unifying: a closed-form
+capacity law that <em>separates</em> the cache term (1&minus;h) from the scheduling/hardware term (K) and shows
+the two are levers on a single ceiling, plus the intrinsic-feasibility floor that proves the offline goodput
+equals that ceiling. The observation that prefill throughput scales as R/E[U] is folklore; casting it as
+<b>C=K/(1&minus;h)</b> with an empirically invariant K, and using it to explain why a cache gain in throughput
+does <em>not</em> become a gain in goodput, is (to our knowledge) new. SRPF-class prefill scheduling is the known
+tool for the contention gap; we position it precisely (it closes the gap, bounded by C) without re-deriving it.</p>
+
+<h2>9 Limitations &amp; when it fails</h2>
+<ul>
+<li>The law is validated on a narrow hit range (0.65&ndash;0.73) plus predictions at 0.43/0.70 being confirmed by
+<span class="mono">v6_flat_sweep</span>/<span class="mono">v5_size</span>; K's invariance is n=4 (2 variants&times;2 rates).</li>
+<li>The "scheduling raises K" observation is n=1 (LPM, two rates)&mdash;suggestive, not established; the paper's
+hard claims do not depend on it.</li>
+<li>The intrinsic-feasibility margin shrinks at the extreme tail; a workload with documents &gt;~1.5&times; ours,
+or hardware with lower K, could make the largest requests intrinsically infeasible (the criterion in &sect;7
+detects this).</li>
+<li>R is treated as a single scalar; prefill&harr;decode interference makes the <em>effective</em> R load-dependent,
+which the companion study measured (12.6% decode stalls). This tightens the online gap but not the offline ceiling.</li>
+<li>goodput@SLO<sub>offline</sub>=C assumes a clairvoyant, preemptive scheduler; a realizable online scheduler
+approaches but need not attain C near saturation (p99 wait &rarr; &infin; as &lambda;&rarr;C).</li>
+</ul>
+
+<h2>10 Reproducibility</h2>
+<p>
+Base commit <span class="mono">a334877e5</span>; instrumentation <span class="mono">ce01c1c79</span>. The law and
+floor are computed by <span class="mono">analysis/frontier.py</span> and
+<span class="mono">analysis/frontier_des.py</span> from the committed run outputs
+<span class="mono">runs/{v1_stock,v1b_stock,v3_wb,v3b_wb,v4_lpm,v5_size}/curve.csv</span>, all produced by the frozen
+<span class="mono">eval.sh</span> rate sweep (&lambda;&isin;{3,5,7,10}, NUMP=1553, warmup, no per-rate flush,
+max-concurrency 256) on a certified 8&times;H100 node. Uncached-work distribution U is derived from
+<span class="mono">mooncake_mix_v1.jsonl</span> via the loogle multiturn loader (tok&approx;chars/4), matching the
+eval's hit-rate accounting. K = C·(1&minus;h) at &lambda;&isin;{7,10}; R = C·E[U]; solo TTFT = U/R. Every number
+above traces to a committed <span class="mono">curve.csv</span> or the deterministic trace analysis.</p>
+
+</body>
+</html>

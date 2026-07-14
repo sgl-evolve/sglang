@@ -181,11 +181,18 @@ coin-flip band and still failing. Pool control is a non-lever <em>because stock 
 capping a pool that was never the bottleneck cannot help. <span class="todo">[n≥3 firming replicates in
 progress to bound the neutral claim as a distribution.]</span></li>
 </ul>
+<p><b>Why not just expedite them instead?</b> Because at λ=3 — the goodput-relevant rate — there is
+almost nothing to schedule: the server waiting queue has <b>median depth 0</b> (empty 56% of the time),
+so a request's TTFT is dominated by its own prefill compute, not by queueing behind others. Reordering
+an empty queue cannot help; only <em>deferring</em> (artificially queueing) a cold prefill changes its
+TTFT — for the worse. Thus <em>no</em> admission/scheduling reordering — defer or expedite — improves
+goodput@SLO at the operating point that matters; the space is not just "deferring is bad", it is
+"scheduling is moot".</p>
 <p><b>The bound.</b> goodput@SLO is <b>cold-prefill-compute-bound</b>. Caching is near its ceiling
-(75% cold, LRU≈Belady); transfer is cheap; the stock system does not retract. The only remaining lever
-is <em>scheduling the cold prefills</em> — and any mechanism that <em>defers</em> them inflates the tail
-they constitute. The corollary levers are compute-side (faster prefill kernels/parallelism) or
-expediting (never deferring) cold prefills, not KV-cache admission/residency.</p>
+(75% cold, LRU≈Belady); transfer is cheap; the stock system does not retract; the queue is empty at the
+knee. The only genuine levers are compute-side (faster prefill kernels / more prefill parallelism for
+the giant cold documents) — not KV-cache admission, residency, or scheduling. The residual variance
+(the coin-flip) is a metastable-stall phenomenon orthogonal to admission control.</p>
 
 <h2>5 Systems lesson: deterministic TP scheduling</h2>
 <p>

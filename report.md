@@ -233,4 +233,39 @@ ranks' prefill batches → NCCL hang (must be deterministic / all-gathered).
 
 ## Formal Submissions
 
-(finalizing the negative/characterization paper; firming CCA n≥2 + one watermark-sweep point to show domination)
+**Paper 1 — `submissions/cca-prefill-admission/paper.html` — SUBMITTED (v1).** Clean negative +
+characterization + compute bounds (§2.3) + two-regime engine evidence (§2.4) + TP-desync systems
+lesson. Registered in `submissions/INDEX.md`.
+
+## ★ Post-submission deepening: scheduling axis rigorously CLOSED → design space CLOSED
+
+After paper 1, I probed the last open control axis — **scheduling** (reordering the waiting queue) —
+to decide whether a genuinely novel paper 2 exists. It does not; the axis is closed.
+
+- **Offline oracle** (`analysis/oracle.py`): trace-driven discrete-step sim of sglang chunked prefill
+  (1-new-seq × 6144-tok budget/step), calibrated to the measured saturation throughput 4.22 req/s.
+  Compares FCFS / SRPF(small-first) / SRPT / LPF / EDF / SLACK(tail-protecting). **Structural finding
+  (robust):** small-first ordering (which the stock cache-aware `lpm` policy approximates) minimizes
+  median TTFT but pushes the heavy cold-doc tail (= the p99) outward; tail-protecting orders bound it —
+  BUT none lifts throughput past the ~4.2 req/s wall. ⚠ The sim is **fidelity-limited in absolute
+  latency** (it does not model prefill/decode step interleaving; sim p99 ran 10–30× high) → I use it
+  ONLY as structural corroboration, never for absolute goodput claims.
+- **Direct engine evidence (load-bearing, from `runs/v0-stock/server.log` + metrics):**
+  - Prefill is **serial+chunked**: nearly every prefill step is `#new-seq:1, #new-token:6144` → a
+    190.9k-tok cold doc occupies ~31 consecutive prefill steps (its TTFT floor is physical).
+  - **λ=3: `#queue-req≈0`** (empty queue) → scheduling ORDER and admission are BOTH inert; goodput is
+    pure cold-doc collision variance (the coin-flip). No reordering can help below the knee.
+  - **λ≥5: `#queue-req` 20–183 (deep) BUT `full token usage` 0.96–0.98 + input tput ~39k tok/s** →
+    simultaneously compute- AND KV-memory-bound. Reordering is meaningful here and the sibling's SRPF
+    reaches ~4.1 req/s = within ~3% of the 4.22 work-conservation ceiling (§2.3). The residual gap is
+    the compute wall, not a missing policy.
+- **Ground-truth calibration** (`runs/v0-stock` full sweep): achieved req/s saturates 2.87→3.66→4.00→
+  **4.22** at λ=3→5→7→10 (arrival ≫ achieved above λ3); new-prefill compute ≈ input_tput×(1−hit) ≈
+  **~19k tok/s** at saturation — matches §2.3's C independently. hit 0.677→0.659 across rates.
+
+**Conclusion:** the control-policy design space for goodput@SLO on this frozen contract is CLOSED —
+admission = negative (paper 1), residency/caching = bounded (fleet: LRU≈Belady), reordering = inert
+below the knee + ≤3% of the compute ceiling above it (sibling SRPF already there). The only lever that
+could raise the 4.22 wall is reducing cold first-turn prefill COST (context/sequence parallelism,
+compression, quantization) — all either lossy or frozen by the contract (`--tp 8`, model, KV budget).
+Paper 1 deepened with §2.4 to make this the definitive characterization; no fragile/derivative paper 2.

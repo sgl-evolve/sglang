@@ -109,6 +109,14 @@ is cold-prefill-compute-bound and no lossless KV mechanism shifts it beyond the 
   so far FAILED to complete on ondem-3 (hangs at pool 0.10 / 0.17, one crash at 0.99); ondem-3 may have
   degraded over hours. Re-testing on a health-checked node (stock-r2 first, then v2-cca-df, same-node).
 
+### ★ Same-node coin-flip CONFIRMED (my data)
+Two STOCK runs on the SAME node (ondem-3): **λ=3 p99 = 11787ms (FAIL) [v0-stock] vs 6327ms (PASS)
+[v0-stock-r2]** — 1.86× run-to-run variance straddling the 8s SLO. goodput@SLO is a metastable
+coin-flip even same-node ⇒ single-run A/Bs are VOID; any CCA claim needs n≥3–6 replicates per arm
+(compare p99 DISTRIBUTIONS, Levene/MWU). stock-r2 also: pool peak 1.00, **0 retracts** (confirms
+stock handles saturation via prefill-stall, no cascade). ondem-3 is HEALTHY (stock ran clean) ⇒ the
+3 prior CCA hangs/crash were CCA-related or transient, not node degradation.
+
 ### ⚠ Emerging thesis reframe (honest)
 Stock has **0 retracts** and completes — its goodput=0 is a **cold-prefill-compute p99 tail**, NOT a
 retraction cascade. So CCA's premise ("prevent the retraction cliff") is only half-right: there is no

@@ -348,15 +348,24 @@ binds at &lambda;&ge;5 (raise via cache/packing), intrinsic-tail passes with 6&t
 
 <h2>8 Related work</h2>
 <p>
-<b>Mooncake</b> (FAST'25) and <b>Strata</b> (arXiv 2508.18572) optimize KV movement and batching; <b>HiCache</b>
-and <b>LMCache</b> optimize the tier hierarchy; classic goodput work (e.g. queueing-theoretic admission control)
-optimizes the scheduler. Each treats one lever. Our contribution is orthogonal and unifying: a closed-form
-capacity law that <em>separates</em> the cache term (1&minus;h) from the scheduling/hardware term (K) and shows
-the two are levers on a single ceiling, plus the intrinsic-feasibility floor that proves the offline goodput
-equals that ceiling. The observation that prefill throughput scales as R/E[U] is folklore; casting it as
-<b>C=K/(1&minus;h)</b> with an empirically invariant K, and using it to explain why a cache gain in throughput
-does <em>not</em> become a gain in goodput, is (to our knowledge) new. SRPF-class prefill scheduling is the known
-tool for the contention gap; we position it precisely (it closes the gap, bounded by C) without re-deriving it.</p>
+<b>Mechanism papers</b> attack goodput@SLO directly. <b>Sarathi-Serve</b> (OSDI'24) introduces chunked-prefill and
+stall-free batching to reduce the prefill&harr;decode interference that inflates the tail&mdash;precisely the
+contention that our floor (&sect;4) shows to be the operative limit; in our terms it raises the effective
+R<sub>eff</sub> (closes the gap) and, by improving packing, K. <b>DistServe</b> (OSDI'24) and <b>Mooncake</b>
+(FAST'25) disaggregate prefill and decode to hit goodput targets&mdash;a way to raise K and remove interference by
+dedicating hardware. <b>Strata</b> (arXiv 2508.18572), <b>HiCache</b>, and <b>LMCache</b> optimize the KV tier
+hierarchy&mdash;the cache lever, which in our law moves (1&minus;h). Each proposes a mechanism on one lever.</p>
+<p>
+Our contribution is orthogonal and unifying: not a mechanism but a <em>bound and a law</em>. We (i) give a
+closed-form capacity ceiling C=K/(1&minus;h) that <em>separates</em> the cache term (1&minus;h) from the
+scheduling/hardware term (K) and shows they act on one ceiling; (ii) prove, via the intrinsic-feasibility floor,
+that offline goodput <em>equals</em> that ceiling; and (iii) use the two together to explain the otherwise-puzzling
+fact that a cache-driven throughput gain (+23%) does not become a goodput gain. The scalar identity C=R/E[U] is
+roofline folklore; what is new is the <b>invariant-K/(1&minus;h) decomposition</b>, the <b>solo-feasibility proof
+that the offline goodput bound is exactly C</b>, and the resulting <b>design principle</b> that caching and
+scheduling are complementary levers on a shared frontier and must be co-designed. We position Sarathi/DistServe-style
+scheduling precisely&mdash;it closes the contention gap up to the ceiling C&mdash;without re-deriving it, keeping
+this study independent of any concurrent scheduling work on this platform.</p>
 
 <h2>9 Limitations &amp; when it fails</h2>
 <ul>

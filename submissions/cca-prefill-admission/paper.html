@@ -145,6 +145,22 @@ not a KV-pool/retraction failure. This distinction is what dooms admission contr
 metastable. But stock retracts 0 times: saturation is handled by prefill-admission stall, not retraction.</figcaption>
 </figure>
 
+<h3>2.3 Two compute bounds that box in the metric</h3>
+<p>
+Two assumption-light, trace-driven bounds make "cold-prefill-compute-bound" quantitative.
+<b>(1) Goodput ceiling (work-conservation).</b> No scheduler can sustain a request rate whose prefill
+work exceeds the GPU's prefill throughput: goodput@SLO ≤ peak&nbsp;req/s = C&nbsp;/&nbsp;mean-work. The
+measured peak is ~4.2&nbsp;req/s, implying an effective prefill capacity C&nbsp;≈&nbsp;4.2&nbsp;×&nbsp;3594
+≈&nbsp;15k&nbsp;tok/s (decode shares the GPU, pulling C well below the 40k&nbsp;tok/s batched-prefill
+peak). Any lossless mechanism — caching, admission, or reordering — is capped here; the best reported
+scheduler (shortest-prefill-first) reaches ~4.1&nbsp;req/s, i.e. it is already at the ceiling.
+<b>(2) p99-TTFT floor.</b> A request's TTFT cannot be smaller than its own prefill time. The p99
+cache-adjusted work is 40.6k&nbsp;tok and the max is 190.9k&nbsp;tok; at the effective single-doc prefill
+rate (~15–40k&nbsp;tok/s under chunking) the largest cold documents cost <b>~5–13&nbsp;s of prefill by
+themselves</b> — straddling the 8&nbsp;s SLO. So the metric is <em>fragile by construction</em>: whether
+a run passes depends on whether its heaviest cold documents land just under or just over the floor —
+exactly the coin-flip of §2.2, and exactly what no admission/residency mechanism can move.</p>
+
 <h2>3 The mechanism we tried: CCA</h2>
 <p>
 CCA (Cache-adjusted prefill Admission control) is a preventive gate in the sglang prefill admission

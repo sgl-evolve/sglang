@@ -154,7 +154,19 @@ to measure (in progress).
   load-backs = NEUTRAL at λ=3, maybe mild λ=5 tail-reduction, but NO goodput@SLO improvement (never
   clears 8s). No admission-control variant improves the headline.
 
-## Contribution = rigorous NEGATIVE + characterization (charter-valid)
+### ★★ PIVOT: v4-cca-lb REDUCES the goodput VARIANCE (n=2, striking)
+- **v4-lb λ=3 p99 = {8556, 8549}** (n=2, spread **7ms**) vs stock {6327, 8124, 11787} (spread 5460ms).
+  Load-back-only gating **collapses the coin-flip to a stable ~8.55s** — a ~1000× variance reduction.
+  This is a POSITIVE mechanism effect (novel: pacing L2→L1 load-backs removes the metastable
+  stall-clusters that cause stock's high-variance FAIL runs), analogous to the known de-dup
+  variance-reduction but via prefill admission.
+- **The catch:** the stable point (8.55s) is JUST above the 8s SLO → reliably FAILS λ=3, so goodput
+  reliably 0 (vs stock's lucky 1/3 pass). Variance reduction landed on the wrong side of the SLO.
+- **The opportunity:** if a config shifts the stable point <8000ms, CCA-lb converts the coin-flip into
+  a RELIABLE pass → goodput reliably 3 (a real WIN). ⇒ sweep watermark/threshold to find it.
+- Confirm low variance at n≥3 (v4-r3); then watermark sweep (0.75, 0.90) + threshold.
+
+## Contribution = variance-reduction lead OR rigorous negative (charter-valid either way)
 **Thesis:** goodput@SLO for long-document multiturn 2-tier serving is a **cold-prefill-compute-bound
 metastable coin-flip**, and **prefill admission control that defers expensive prefills cannot improve
 it (and can catastrophically harm it)** — because the SLO tail IS the expensive cold prefills.

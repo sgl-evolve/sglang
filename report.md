@@ -140,6 +140,15 @@ to measure (in progress).
   small valve) → converges to stock (no benefit). No (watermark, valve) setting where deferring the
   tail-causing prefills helps. CCA is dominated by stock across its parameter space.
 
+### v4-cca-lb (load-back-only gating, protect cold prefills, valve=30) — NEUTRAL
+- λ=3 p99 = **8556ms** (n=1). vs v3-df 56157 (protecting cold prefills avoids the catastrophe), but
+  within stock's coin-flip band {6327, 11787} and still FAILS (>8000). Pool capped 0.54, 0 retracts,
+  defer 1920 (vs v3's 21591 — gates only load-backs). ⇒ load-back gating is ~NEUTRAL: pacing reuse
+  load-backs neither craters nor clearly helps, because stock's collapse is NOT retraction/pool-driven
+  (0 retracts) — capping the pool addresses a non-bottleneck. Firming n≥3.
+- **Complete CCA picture:** deferring cold prefills = CATASTROPHIC (they ARE the tail); deferring only
+  load-backs = NEUTRAL (wrong bottleneck). No admission-control variant improves goodput@SLO.
+
 ## Contribution = rigorous NEGATIVE + characterization (charter-valid)
 **Thesis:** goodput@SLO for long-document multiturn 2-tier serving is a **cold-prefill-compute-bound
 metastable coin-flip**, and **prefill admission control that defers expensive prefills cannot improve

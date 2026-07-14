@@ -88,8 +88,29 @@ natural probation tier. Risk to measure: multiturn docs whose 2nd turn arrives a
 2. [in progress] Implement reuse-gated L2 promotion in the live cache-controller / radix path; commit.
 3. check_env smoke test; full rate-sweep test submission (+ same-node stock replicate for A/B); ablations; error bars; lossless check.
 
-### Versions
-_(none yet)_
+### Versions (same-node A/B on certified node slurm2-a3nodeset0-3)
+
+**v1_stock** (commit ce01c1c79, mechanism OFF; tag `config`) — my same-node baseline curve.
+Real device data during the run: at λ=3 concurrency is already MAXED (running-req p50=247/256),
+device KV usage p50=0.84/p90=0.95/max=1.0 (running KV crowds out the prefix cache → L2-bound).
+Decode dynamics: 12.6% of decode batches stall (<50 tok/s), 70% of prefill batches are giant
+6144-token doc chunks, queue p50=0 → the TTFT tail is **prefill↔decode interference**, not HoL.
+
+| λ | req/s | ttft_p50 | ttft_p99 | hit_rate |
+|---|---|---|---|---|
+| 3 | 2.83 | 1017 ms | **11494 ms** | 0.6753 |
+| 5 | 3.59 | 1002 ms | 24957 ms | 0.6627 |
+| 7 | 3.99 | 1053 ms | 35753 ms | 0.6568 |
+| 10 | 4.14 | 1055 ms | 41015 ms | 0.6537 |
+
+**goodput@SLO = 0** (every λ p99 > 8 s). p50 stays ~1000 ms while p99 explodes → metastable-tail
+coin-flip (baseline.json's p99=6326 PASSED; this same-config run FAILS at 11494 → confirms the
+coin-flip; single-run goodput@SLO is not a usable headline → I compare **hit_rate (robust)** + p99 values).
+
+**v2_flat2** (mechanism ON, `flat` gate_hits=2 == write_through_selective; tag `config` CONTROL) — RUNNING.
+Confirmed live: gate withholds ~76% of would-be L2 backups (gated_skips ≫ backups). Purpose: does
+reuse-gated admission move hit_rate on the real system? (Prediction from HiCache docs + my BW analysis:
+selective helps only when backup BW is scarce — it isn't here (~1 GB/s ≪ 64 GB/s) — so likely ≤ stock.)
 
 ## Formal submissions
 _(none yet)_

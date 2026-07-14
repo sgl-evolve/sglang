@@ -134,9 +134,13 @@ stalls; 70% giant prefills; queue≈0), which is a compute/scheduling phenomenon
 (bounded-negative + the effective-capacity-collapse + admission-crater anatomy) is itself a rigorous
 characterization contribution.
 
-**v1b_stock** (mechanism OFF; tag `config`) — same-node stock REPLICATE for within-node coin-flip
-variance (v1_stock was n=1). RUNNING. Pairs with v1_stock to separate within-node run variance from
-between-node variance (baseline.json p99=6326 PASSED on its node; v1_stock p99=11494 FAILED on 0-3).
+**v1b_stock** (mechanism OFF; tag `config`) — same-node stock REPLICATE. ★KEY RESULT (within-node coin-flip):
+same node 0-3, same stock config, λ=3: v1_stock p99=**11494** (FAIL) vs v1b_stock p99=**6175** (PASS) — a
+**1.86× swing straddling the 8s SLO → goodput@SLO flips 0↔≥3 on identical config/node.** p50 also swings
+(1017 vs 583). But **hit_rate is rock-stable: 0.6753 vs 0.6762 (Δ<0.1pp).** ⇒ (a) single-run goodput@SLO is
+meaningless (within-node run variance, not just cross-node — baseline.json p99=6326 was simply a lucky run);
+(b) hit_rate is THE robust comparator, so the −25pp admission crater (v2_flat2) is real signal, not noise.
+(Full v1b sweep completing; λ=3 datum above.)
 
 ## Paper 1 (planned) — "Why hierarchical KV caching stalls on saturated conversational serving:
 ## the effective-capacity collapse and the admission backfire"

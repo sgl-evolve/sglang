@@ -366,6 +366,17 @@ r7-only TTFT histograms (7038 requests per run, differential metrics_r7 − metr
   tail requests from exceeding 8s. These are likely cold-start first-turn documents arriving during a burst;
   SRPF already reduced them from ~440 (FCFS) to ~70–77, but the last ~7 are at the physical metastability edge.
 
+**SRPF tail reduction across all rates (requests with TTFT >8s, r7038 total per rate point):**
+| rate | FCFS stock | SRPF+WT | SRPF+WB r1 | SRPF+WB r2 | reduction |
+|------|-----------|---------|-----------|-----------|-----------|
+| λ=5  | 132 (1.9%) FAIL | 60 (0.9%) PASS | 52 (0.7%) PASS | 51 (0.7%) PASS | **2.2–2.6×** |
+| λ=7  | **439 (6.2%)** FAIL | 83 (1.2%) FAIL | **70 (1.0%)** PASS | 77 (1.1%) FAIL | **5.6–6.3×** |
+| λ=10 | 416 (5.9%) FAIL | 114 (1.6%) FAIL | 93 (1.3%) FAIL | 92 (1.3%) FAIL | **3.7–4.5×** |
+
+SRPF's tail reduction is MASSIVE (5.6× at r7), not just a shift in mean TTFT. The SLO p99 threshold
+(~70th-worst) sits at a knife edge between SRPF's residual ~70 violations and the FCFS's ~440. Adding
+write_back (+6pp hit) further compresses the tail, cutting violations from 83→70 at r7.
+
 ## MECHANISTIC DIAGNOSIS #2 — the p99 tail is DEVICE-KV-pressure during bursts (why host-tier mechs can't help)
 Device KV pool usage during serving (v0-cert, per decode step): p50 **0.01**, p90 0.26, p99 **0.92**, max 0.99.
 - The device is **bursty**: nearly empty most of the time, but **nearly FULL (p99 0.92) during concurrency

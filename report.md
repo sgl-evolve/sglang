@@ -170,10 +170,12 @@ to measure (in progress).
 - **The opportunity:** if a config shifts the stable point <8000ms, CCA-lb converts the coin-flip into
   a RELIABLE pass → goodput reliably 3 (a real WIN). ⇒ sweep watermark/threshold to find it.
 - Confirm low variance at n≥3 (v4-r3); then watermark sweep (0.75, 0.90) + threshold.
-- **λ=5 ALSO improved:** v4-lb λ=5 p99 {13528, 11186} vs stock {17372, 23130, 23587} — CCA-lb cuts the
-  λ=5 tail ~40% (20s→12s) AND tightens it. So load-back gating reduces p99 tail+variance across the
-  sweep; it just doesn't clear the specific 8s SLO at λ=3 (lands 8.55s, ~7% over). If SLO were 9-10s it
-  would convert failing coin-flips → reliable passes. Real positive tail/variance mechanism.
+- **λ=5 NOISY (honest correction):** v4-lb λ=5 p99 {13528, 11186, 23281} (n=3) — r3 landed 23281 (in
+  stock's range), so the earlier "λ=5 tail reduction" was partly luck; λ=5 mean ~16s vs stock ~21s but
+  high variance. The clearer effect is the **λ=3 variance reduction** (std ~370 vs 2272), but pass-rate
+  is UNCHANGED (1/3 both). ⇒ v4-lb is trending NEUTRAL on goodput (tightens λ=3 near the boundary, no
+  pass-rate gain). The sweep (v5-w90/v6-w95/v7-th16k) is the last chance for a config that reliably
+  clears 8s; absent that, the honest result is the NEGATIVE + a suggestive variance-reduction observation.
 
 ## Contribution = variance-reduction lead OR rigorous negative (charter-valid either way)
 **Thesis:** goodput@SLO for long-document multiturn 2-tier serving is a **cold-prefill-compute-bound

@@ -116,8 +116,12 @@ def main():
         for pol in ["stock", "srpf", "interleave"]:
             p99, p50 = simulate(work, lam, pol)
             print(f"{lam:>4} {pol:>10} {p99:>8.0f}ms {p50:>6.0f}ms")
-    print("\nIf interleave/srpf p99 << stock p99 at λ3 => λ3 p99 is HEAD-OF-LINE blocking (reducible).")
-    print("If all ~equal => λ3 p99 is the big docs' own prefill floor (irreducible).")
+    print("\nIf srpf p99 << stock p99 at λ3 => λ3 p99 is HEAD-OF-LINE blocking (reducible by scheduling).")
+    print("★CAVEAT: this single-server sim is CALIBRATED ONLY AT λ3 (matches the measured coin-flip).")
+    print("  ABOVE λ3 it over-serializes and is UNRELIABLE — it wrongly fails non-preempt srpf at λ3.5-4,")
+    print("  contradicting base's GPU result that non-preempt SRPF PASSES λ5 (9/9). So the apparent")
+    print("  'chunk-preemption beats non-preempt srpf at λ3.5' is a SIM ARTIFACT, NOT a real lever.")
+    print("  Trust ONLY the λ3 comparison: stock coin-flips (3/5), srpf stabilizes it (5/5).")
 
 if __name__ == "__main__":
     main()

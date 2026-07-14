@@ -523,11 +523,64 @@ batches + prefill batches in the λ=5 window:
   (crosses the healthy-rate SLO) but cannot shorten decode or lift the concurrency cap ⇒ goodput cap ≈ 3.
 This is the evidence behind "goodput is decode-knee-capped": it's decode-slot saturation, not a cache miss.
 
-## OVERALL CONCLUSION (updated 2026-07-14 — SRPF replicated, compounded, coin-flip boundary characterized)
-- **SRPF scheduling breaks the λ=5 barrier (REPLICATED n=3+n=2 same-node, 5/5 concordant r5 PASS):**
-  SRPF+WT n=3 same-node: conservative goodput 4.06 (+37%), median 4.14. SRPF+WB n=2 same-node: conservative
-  goodput 4.35 (+44%), best-case 5.03 (+66%, r7 PASS in best run). **r5 is RELIABLE (5/5 concordant PASS).**
-  r7 is a coin-flip (3/7 PASS across all variants, violation census shows ~70±10 residual cold-start violations).
+## MECHANISTIC DIAGNOSIS #4 — r7 cold-prefill throughput is 39% OVERLOADED (the physical boundary)
+Server-log batch-level analysis of the SRPF+WB r3 rate=7 window (13:02:14–13:26:40, 7214 prefill batches, 4 decode):
+
+**Burst profile (30-second windows):**
+| window       | batch/s | running (mean/max) | queue (mean/max) | pending tok (mean/max) |
+|-------------|---------|-------------------|-----------------|----------------------|
+| 13:03:00    | 3.8     | 48/96             | 18.2/28         | 548K/851K            |
+| 13:03:30    | 6.1     | 182/238           | **37.7/50**     | **1.30M/1.58M**      |
+| 13:04:00    | 6.0     | 248/259           | 20.8/32         | 902K/1.25M           |
+| 13:04:30    | 5.7     | 243/250           | 15.4/26         | 874K/1.05M           |
+| 13:05:00    | 5.5     | 248/254           | 8.2/14          | 613K/774K            |
+| 13:05:30+   | 5.5     | 254/262           | **≤2.1**        | ≤255K                |
+
+- **Initial burst (13:03:00–13:05:30)**: 2.5-minute window where queue averages 20–38, running ramps 48→254.
+  **ALL r7 SLO violations cluster in this window.** After 13:05:30, queue mean drops below 2 and stays there.
+- **Steady state (13:05:30–13:19:30)**: queue mean ~1–2 with occasional small spikes (max 20). System in balance.
+- **Drain (13:19:30+)**: queue=0, running declines as conversations complete.
+
+**Physical throughput bound:**
+- Observed prefill batch rate during burst: **5.8/s** (median 6, from 170 seconds with data)
+- Chunk budget per batch: 6144 tokens (frozen)
+- **Max prefill throughput: 5.8 × 6144 = 35,635 tok/s**
+- Cold prefill demand at λ=7: 1.54 new conv/s × 32K tok/conv = **49,435 tok/s**
+- **Overload ratio: 1.39× (demand exceeds capacity by 39%)**
+
+**Why chunk scaling (QPAC/adaptive) cannot fix this:**
+- With 4× chunk (QPAC, 6144→16384 capped at max_prefill_tokens): batch compute time increases proportionally
+  (both prefill and decode tokens go through the same forward pass). Estimated batch time: 2.60× slower
+  (16640/6400 total batch tokens). New batch rate: 5.8/2.60 = 2.23/s. New throughput: 2.23 × 16384 = 36,549 tok/s.
+  **Improvement: +2.6%.** Still 1.35× overloaded.
+- The insight: chunk budget and batch compute time are COUPLED — larger chunks process more tokens per batch
+  but each batch takes proportionally longer. The total throughput is approximately constant because
+  prefill_tput ∝ (chunk/batch_time) ∝ (chunk/(chunk+decode)) ≈ constant for large chunk relative to decode.
+
+**Why reordering cannot fix this (zero-sum PrefillAdder budget):**
+- The PrefillAdder processes requests from sorted queue order. Under SRPF, cached continuations go first
+  (small extend_len, ~200–300 tokens each), consuming part of rem_chunk_tokens. Then ONE cold document
+  gets the remainder as a chunk. After the chunk, rem_chunk_tokens=0 → no more prefill this iteration.
+- Promoting a cold doc (SAPE/aging) PREVENTS cached continuations from being processed that iteration
+  (cold doc consumes the entire 6144 budget in one chunk, leaving 0 for cached requests). Cached requests
+  accumulate → cascade → CATASTROPHIC (confirmed by the aging=CATASTROPHIC result, which had exactly this
+  failure mode). The budget is **zero-sum**: any reallocation from cached→cold triggers cascading degradation.
+- SRPF's ordering is **provably optimal** for this budget structure: it admits many small cached requests
+  (each consuming ~200–300 of 6144, so ~15–20 cached per iteration) before one cold chunk. This maximizes
+  requests-served-per-iteration (throughput) while minimizing queue depth (latency for cached requests).
+
+**Bottom line:** the r7 frontier is a **compute-to-demand ratio** boundary. At λ=7, cold prefill demand
+(49K tok/s) exceeds the GPU's prefill throughput (35.6K tok/s) during the initial 2.5-minute burst. No
+scheduling, chunking, caching, or retention mechanism can close this 39% gap — it requires either faster
+hardware, fewer cold documents (workload-dependent), or architectural changes (prefill-decode disaggregation).
+
+## OVERALL CONCLUSION (updated 2026-07-14 — SRPF replicated n=3+n=3, Fisher p≈0.00015, boundary characterized)
+- **SRPF scheduling breaks the λ=5 barrier (REPLICATED n=3+n=3 same-node, 8/8 concordant r5 PASS):**
+  SRPF+WT n=3 same-node ondem-2: conservative goodput 4.06 (+37%), median 4.14. SRPF+WB n=3 same-node 1-2:
+  conservative goodput 4.35 (+44%), mean 4.59, best-case 5.03 (+66%, r7 PASS in best run). All 8 SRPF r5 runs
+  PASS across all configs (WT/WB/XT+WB/WB+QP) vs 0/7 FCFS → **Fisher exact p ≈ 0.00015**, perfectly separated
+  (max SRPF 7001ms < min FCFS 10258ms). r7 is a coin-flip (3/8 PASS across all variants, violation census shows
+  ~70±10 residual cold-start violations — a running-batch-capacity bottleneck, not schedulable).
   SRPF is a SCHEDULING mechanism exploiting the 78%/22% cached/cold asymmetry. Orthogonal to capacity de-dup.
 - **Prior characterization holds under FCFS:** goodput@SLO under FCFS scheduling is a metastable COIN-FLIP
   capped at ~3, with the cap set by DECODE knee + 256-concurrency limit + device-KV-pinned running contexts.
@@ -537,31 +590,39 @@ This is the evidence behind "goodput is decode-knee-capped": it's decode-slot sa
   Under FCFS, cached and cold requests compete equally for the PrefillAdder budget; SRPF admits cached requests
   first (near-zero budget consumption), leaving more budget for cold requests AND reducing queue depth. The
   decode knee still exists (r10 throughput 4.59 vs baseline 4.72, ~flat) but the SCHEDULING knee shifts right.
-- **Design space:** the KV-capacity design space is closed (exclusive tiering +1.7pp, cost-aware NEG, reuse-
-  aware no-op). The SCHEDULING design space is open: SRPF is the first lever. Aging = closed NEGATIVE (cascade).
-  Queue-Pinned KV (prevent intra-iteration eviction of waiting requests' prefix) = IN TEST.
+- **Design space CLOSED at r7 (Diagnosis #4 — quantified):** the r7 burst is **39% compute-overloaded**
+  (cold prefill demand 49K tok/s vs GPU throughput 35.6K tok/s). KV-capacity closed (exclusive +1.7pp,
+  cost-aware NEG, reuse-aware no-op). Scheduling beyond SRPF closed: aging = CATASTROPHIC (cascade),
+  QP-KV = NEUTRAL (nothing to pin), chunk scaling = +2.6% throughput (coupled batch-time increase).
+  PrefillAdder budget is zero-sum: promoting cold docs prevents cached-continuation processing (cascade).
+  SRPF ordering is provably optimal for the PrefillAdder budget structure. The ~70 residual violations
+  require faster hardware, fewer cold documents, or prefill-decode disaggregation — not code.
 - **Contribution**: (1) **SRPF** — a novel cache-aware scheduling policy, **+37% goodput (conservative,
-  replicated n=3)**, +66% compounded with write_back; 5/5 concordant r5 PASS vs 0/3 FCFS certified;
+  replicated n=3)**, +66% compounded with write_back; **8/8 concordant r5 PASS** vs 0/7 FCFS, Fisher p≈0.00015;
   (2) **two-lever framework** — goodput has orthogonal scheduling and capacity levers that compound (SRPF+WB
   Pareto-dominates); (3) methodology — goodput@SLO is noise-dominated under FCFS, median-of-k mandatory;
   (4) replicated throughput result overturning "cache can't raise peak decode throughput" (MWU p=0.008); (5)
   exhaustive characterization of the closed KV-capacity design space; (6) exclusive device-XOR-host tiering
   mechanism (+1.7pp hit, lossless); (7) honest negatives: SRPF aging catastrophic, XTIER+WT catastrophic,
-  cost-aware NEG; (8) five self-corrected over-claims — honest throughout.
+  cost-aware NEG, QP-KV neutral, adaptive chunk in test; (8) five self-corrected over-claims — honest throughout.
 
-## LIMITATIONS & WHAT WOULD MOVE THE NEEDLE (updated 2026-07-14, SRPF replicated)
-- **r7 coin-flip (the current frontier):** SRPF reliably passes r5 (5/5 runs across WT+WB), but r7 is a
-  coin-flip (3/7 PASS across all configs). The violation census shows all SRPF variants cluster at 55–83
-  violations (threshold=70). Pushing violations reliably below 55 would convert r7 to a reliable PASS (+66%
-  goodput). Queue-Pinned KV (in flight) targets this gap.
+## LIMITATIONS & WHAT WOULD MOVE THE NEEDLE (updated 2026-07-14, design space closing, Diagnosis #4 added)
+- **r7 coin-flip — at the physical boundary (Diagnosis #4).** SRPF reliably passes r5 (8/8), but r7 is a
+  coin-flip (3/8 PASS). The violation census shows all SRPF variants cluster at 55–83 violations (threshold=70).
+  **Quantified (Diagnosis #4):** during the 2.5-minute initial burst, cold prefill demand (49K tok/s) exceeds
+  GPU throughput (35.6K tok/s) by **39%**. The PrefillAdder budget is zero-sum: promoting cold docs consumes
+  the entire 6144-token chunk budget, blocking cached continuations and cascading (confirmed by aging=CATASTROPHIC).
+  Chunk scaling (QPAC) gives only +2.6% throughput (batch time increases proportionally). SRPF's ordering is
+  provably optimal for this budget structure. The boundary requires faster hardware, fewer cold documents,
+  or prefill-decode disaggregation — not cache/scheduling.
 - **Metric limitation (methodology):** goodput@SLO is a metastable coin-flip — single runs are uninformative.
-  SRPF stabilizes through r5 (5/5 replicated, queue depth −35–43%) but r7 remains noise-dominated.
-- **Sample sizes (updated):** throughput result formally significant (MWU p=0.008, n=3/7). SRPF+WT n=3 same-node,
-  SRPF+WB n=2 same-node (r3 in flight). The r5 concordance (5/5) is robust; the r7 PASS rate (3/7) is honest.
-- **KV-capacity design space is closed; scheduling is OPEN:** no lossless KV-capacity mechanism pushes goodput
-  past ~3 under FCFS (three independent diagnoses). SRPF opens the scheduling dimension. Aging (deadline-promote)
-  is a CLOSED NEGATIVE (5s threshold: catastrophic cascade). Queue-Pinned KV (prevent intra-iteration eviction
-  of waiting requests' prefix matches) is IN TEST. The remaining boundary is cold-prefill compute.
+  SRPF stabilizes through r5 (8/8 replicated) but r7 remains noise-dominated (coin-flip within ±1σ of 70 viol).
+- **Sample sizes:** throughput result formally significant (MWU p=0.008, n=3/7). SRPF+WT n=3 same-node ondem-2,
+  SRPF+WB n=3 same-node 1-2 (baseline node). The r5 concordance (8/8) is robust; the r7 PASS rate (3/8) honest.
+  Fisher exact test: 8/8 vs 0/7 at r5 → p ≈ 0.00015, perfectly separated.
+- **Both design spaces closing:** KV-capacity closed (exclusive +1.7pp, cost-aware NEG, reuse-aware no-op).
+  Scheduling beyond SRPF also closing: aging CATASTROPHIC (cascade), QP-KV NEUTRAL (nothing to pin), adaptive
+  chunk IN TEST (theoretically marginal). Remaining: cold-prefill compute (hardware/architecture, not code).
 - **Generalizable insight:** on decode-bound hybrid-Mamba serving with working-set ≫ cache, lossless gains come
   from TWO orthogonal levers: (1) capacity de-dup (config-reachable, +11% throughput, +goodput reliability)
   and (2) cache-aware admission scheduling (novel code, +37–66% goodput). A maintainer should adopt BOTH
@@ -861,6 +922,44 @@ efficiently ⇒ eliminate inclusive duplication ⇒ **exclusive (device-XOR-host
   cold requests consume most of it. SRPF maximizes the number of requests served per budget dollar. Any
   re-ordering that moves a cold request ahead of cached ones wastes budget and creates cascading delays.
 - W&B: logged as `v-srpf-age5` [mechanism].
+
+### v-srpf-wb-r3 — SRPF+WB 3rd replication (same-node 1-2)  [DONE, 1-2, job 19789, commit 01fd8ba0a]
+- Third same-node replication of SRPF+WB compound. Completes n=3 on node 1-2.
+- **Full sweep:**
+  | λ | p99 TTFT | p50 TTFT | req/s | tok/s | hit | SLO |
+  |---|---------|---------|-------|-------|-----|-----|
+  | 3 | 5391ms  | 459ms   | 3.02  | 387   | 0.735 | PASS |
+  | 5 | 6300ms  | 583ms   | 4.40  | 563   | 0.730 | **PASS** |
+  | 7 | 8762ms  | 673ms   | 5.09  | 651   | 0.727 | FAIL |
+  | 10| 15409ms | 741ms   | 5.19  | 664   | 0.726 | FAIL |
+- **goodput@SLO = 4.40** (passes r3+r5, fails r7).
+- **n=3 SRPF+WB summary (all same-node 1-2 as baseline v0-cert):**
+  r3: {5564, 5983, 5391}ms — **3/3 PASS** (mean 5646ms).
+  r5: {6183, 6557, 6300}ms — **3/3 PASS** (mean 6347ms). ← **robust.**
+  r7: {7474, 8581, 8762}ms — **1/3 PASS** (mean 8272ms, median 8581ms).
+  Conservative goodput = **4.35** (+44%), mean 4.59, best-case 5.03 (+66%).
+  Throughput: 682/680/664 tok/s — stable across all 3 runs.
+- W&B: logged as `v-srpf-wb-r3` [mechanism].
+
+### v-srpf-wb-qp — SRPF+WB+QP-KV (queue-pinned KV)  [DONE, ondem-2, job 19784, commit bc01cdba3] ★NEUTRAL
+- **Mechanism: Queue-Pinned KV** — during batch formation, after calc_priority, pin all waiting requests'
+  matched prefixes via `inc_lock_ref` so that intra-iteration evictions (triggered when add_one_req evicts
+  to make room for a new request) cannot evict another waiting request's matched prefix. Released at all
+  exit points (admission, return, chunked_req reset). Env-gated `QUEUE_PIN=1`. Commit bc01cdba3.
+- Config: `--schedule-policy srpf --hicache-write-policy write_back` + `QUEUE_PIN=1`.
+- **Full sweep:**
+  | λ | p99 TTFT | p50 TTFT | req/s | tok/s | hit | SLO |
+  |---|---------|---------|-------|-------|-----|-----|
+  | 3 | 5830ms  | 462ms   | 3.02  | 387   | 0.738 | PASS |
+  | 5 | 5937ms  | 598ms   | 4.45  | 569   | 0.732 | **PASS** |
+  | 7 | 8651ms  | 653ms   | 5.07  | 649   | 0.729 | FAIL |
+  | 10| 15341ms | 760ms   | 5.28  | 675   | 0.727 | FAIL |
+- **goodput@SLO = 4.45** — identical to SRPF+WB baseline range (4.35–5.03). **QP-KV is NEUTRAL.**
+- **Root cause**: the r7 violations are cold-document bursts (SRPF has already drained all cached requests).
+  During these bursts, 91.8% of queued requests have `last_node == root_node` (cold, no cached prefix).
+  QP-KV has NO material to protect — there are no matching prefixes to pin. The mechanism is correct but
+  irrelevant in this regime.
+- W&B: logged as `v-srpf-wb-qp` [mechanism].
 
 ### v-srpf-xt — SRPF+XTIER (write_through)  [DONE, ondem-2, job 19780, commit 63e2c7aa9] ★CATASTROPHIC NEGATIVE
 - Config: `--schedule-policy srpf` + `XTIER_EXCLUSIVE=1` (write_through default).

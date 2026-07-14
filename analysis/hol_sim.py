@@ -84,6 +84,10 @@ def simulate(work, lam, policy, seed=1):
             order = sorted(active, key=lambda j: rem[j])
         elif policy == "interleave":     # round-robin start point → rotate who gets budget first
             k = rr % len(active); order = list(active)[k:] + list(active)[:k]; rr += 1
+        elif policy == "lpm":            # DEFAULT: reuse turns (≤1 chunk cold work) first, then cold docs FCFS
+            reuse = [j for j in active if work[j] <= B]
+            cold  = [j for j in active if work[j] > B]
+            order = reuse + cold          # reuse-first; cold docs remain in arrival order (like lpm among 0-prefix)
         else: raise ValueError(policy)
         budget = B; now += TAU; finished = []
         for i in order:

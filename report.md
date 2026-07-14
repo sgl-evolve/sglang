@@ -108,6 +108,8 @@ On sglang's 2-tier HiCache (L1 GPU + L2 768 GB host, hybrid-Mamba Qwen3.5-122B, 
 6. **Honest negatives + self-corrections:** cost-aware retention (−3.3pp hit, NEG); **XTIER+write_through
    CATASTROPHIC** (hit→0, throughput 86 tok/s = −86%: XTIER frees L2 on load_back but WT doesn't recreate
    on eviction → entries permanently lost after evict→load→evict cycle; XTIER REQUIRES write_back);
+   **SRPF aging (5s threshold) CATASTROPHIC** — erases entire SRPF benefit through cascading budget starvation
+   (r5 p99: +322%, r10: +144%); SRPF ordering is critically sensitive to perturbation.
    4 variance-artifact over-claims caught and corrected by replication.
    Methodology: certified nodes + median-of-k mandatory.
 
@@ -338,6 +340,31 @@ Certified λ=5 p99 TTFT across nodes/runs (all warm-steady-state v0.31 protocol)
   cannot move goodput, which is cap-bound.) The real, stable throughput lever remains capacity de-dup (C).
   Screening the premise (instrument → short run → measure) again converted a plausible mechanism into a
   data-grounded negative before spending the certified pool — the disciplined loop.
+
+## MECHANISTIC DIAGNOSIS #1.5 — the r7 pass/fail is decided by ~7 requests (histogram characterization)
+r7-only TTFT histograms (7038 requests per run, differential metrics_r7 − metrics_r5):
+
+| TTFT bucket   | v-srpf-wb r1 (PASS) | v-srpf-wb r2 (FAIL) | Δ     |
+|---------------|---------------------|---------------------|-------|
+| ≤ 400ms       | 1222 (17.4%)        | 1155 (16.4%)        | −67   |
+| ≤ 600ms       | 3724 (52.9%)        | 3533 (50.2%)        | −191  |
+| ≤ 1000ms      | 5550 (78.9%)        | 5369 (76.3%)        | −181  |
+| ≤ 2000ms      | 6512 (92.5%)        | 6441 (91.5%)        | −71   |
+| ≤ 4000ms      | 6895 (98.0%)        | 6872 (97.6%)        | −23   |
+| ≤ 6000ms      | 6952 (98.8%)        | 6940 (98.6%)        | −12   |
+| **≤ 8000ms**  | **6968** (99.0%)    | **6961** (98.9%)    | **−7**|
+| > 8s (SLO)    | **70** (1.0%)       | **77** (1.1%)       | **+7**|
+
+- **p99 position = 70th-worst request** (ceil(0.01 × 7038) = 70). In r1, exactly 70 requests > 8s → p99 at the
+  8s boundary → PASS (7474ms). In r2, 77 requests > 8s → p99 crosses to the 10s bucket → FAIL (8581ms).
+- **The entire pass/fail is decided by ~7 requests** — 0.1% of traffic shifting from ≤8s to >8s. This is the
+  metastability in quantitative terms: the "coin-flip" is a Bernoulli on whether a handful of requests
+  experience a cold-start queue alignment that pushes them past the SLO.
+- **The bulk distribution is remarkably stable** between r1 and r2: the ≤400ms to ≤2000ms bins differ by
+  <3%. The instability is EXCLUSIVELY in the tail >4s, and the pass/fail swing is in the >8s tail only.
+- **Implication for mechanisms**: to reliably push r7 from FAIL to PASS, a mechanism needs to prevent ~7–10
+  tail requests from exceeding 8s. These are likely cold-start first-turn documents arriving during a burst;
+  SRPF already reduced them from ~440 (FCFS) to ~70–77, but the last ~7 are at the physical metastability edge.
 
 ## MECHANISTIC DIAGNOSIS #2 — the p99 tail is DEVICE-KV-pressure during bursts (why host-tier mechs can't help)
 Device KV pool usage during serving (v0-cert, per decode step): p50 **0.01**, p90 0.26, p99 **0.92**, max 0.99.

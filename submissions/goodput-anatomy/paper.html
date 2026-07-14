@@ -34,7 +34,7 @@
 <body>
 
 <h1>Effective-Capacity Collapse and the Admission Backfire:<br>
-Why Hierarchical KV Caching Does Not Improve goodput@SLO on Saturated Conversational Serving <span class="draft">v3 · submitted</span></h1>
+Why Hierarchical KV Caching Does Not Improve goodput@SLO on Saturated Conversational Serving <span class="draft">v4 · submitted</span></h1>
 <p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
 <p class="sub">Base commit <span class="mono">a334877e5</span> · mechanism/instrumentation <span class="mono">ce01c1c79</span></p>
 
@@ -393,6 +393,27 @@ binding capacity is host-side and the goodput tail is not a miss-count phenomeno
 not an artifact of one policy but a property of the regime: <em>a saturated, heavy-tailed, first-sight-dominated
 conversational workload leaves the KV cache almost no room to move goodput@SLO&mdash;the lever is prefill
 scheduling and SLO/workload design, not the cache.</em>
+</p>
+<p>
+<b>Design-space coverage.</b> To make the negative definitive rather than one-mechanism-deep, we address every
+lever the KV-cache / serving literature (and the sglang engine) offers on this regime:
+</p>
+<table>
+<thead><tr><th>lever (design axis)</th><th>concrete form tested / argued</th><th>result on goodput@SLO</th><th>evidence</th></tr></thead>
+<tbody>
+<tr><td>Admission / reuse-gating</td><td>write_through_selective (hit-count gate)</td><td class="fail">craters hit &minus;24 pp</td><td>measured (n=2)</td></tr>
+<tr><td>Tiering / write policy</td><td>write_back = exclusive (device XOR host)</td><td>+6 pp hit (config ceiling), no goodput lift &ge;&lambda;5</td><td>measured (n=2)</td></tr>
+<tr><td>Eviction ordering</td><td>LRU (+ 6 other pluggable strategies; GreedyDual)</td><td>near-Belady; bounded</td><td>LRU&asymp;Belady + host-bound (&sect;4)</td></tr>
+<tr><td>Conversation co-residency</td><td>LPM (longest-prefix-match) scheduling</td><td>neutral (+0.3 pp hit; p99 in coin-flip band)</td><td>measured (v4_lpm)</td></tr>
+<tr><td>Transfer / L1&harr;L2 overlap</td><td>load-back on the critical path</td><td>1.65 ms mean, non-binding</td><td>measured (baseline)</td></tr>
+<tr><td>Layout / paging</td><td><span class="mono">page_first_direct</span></td><td>fixed by budget/model constraints</td><td>frozen</td></tr>
+<tr><td>Prefill compute</td><td>O(D&sup2;) exact attention on unique docs</td><td>losslessly irreducible</td><td>architectural (&sect;6&ndash;7)</td></tr>
+</tbody>
+</table>
+<p>
+No axis yields a novel lossless goodput@SLO win: admission backfires, tiering is a known config, eviction is
+saturated, co-residency scheduling is neutral, transfer is already hidden, layout is fixed, and the binding tail
+is irreducible compute. The impossibility is a property of the <em>regime</em>, not of any one mechanism.
 </p>
 
 <h2>9 Related work</h2>

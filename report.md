@@ -188,7 +188,19 @@ to measure (in progress).
   Mann-Whitney (location) on λ=3 p99. Claim "reduces tail mean+variance" IF significant — NOT a
   goodput flip. (base guardrail: 4 over-claims caught by replication — do not repeat.)
 
-### ★ FINAL honest picture (stock n=4): variance-reduction is REAL but goodput-NEUTRAL
+### ★★ FINAL (stock n=5, CCA-lb n=5): CLEAN NEGATIVE — variance-reduction is goodput-neutral/negative
+- stock λ3 {6327,6391,7765,8124,11786} mean 8079 std 1988, **3/5 pass**.
+- CCA-lb λ3 {7767,7789,8242,8549,8555} mean 8181 std 348, **2/5 pass**.
+- CCA-lb tightens the p99 spread ~5.7× (real behavioral effect) BUT: (a) NOT statistically significant
+  (Levene p=0.15, Fligner p=0.16 — underpowered on the heavy-tailed coin-flip even at n=5); (b)
+  goodput-NEUTRAL-to-NEGATIVE — CCA-lb passes LESS often (2/5 vs 3/5) because tightening removes the
+  lucky-LOW passes (6327, 6391, 7765) along with the unlucky-high fails. Mean unchanged (8181≈8079).
+- ★∴ **CLEAN NEGATIVE: NO admission-control variant improves goodput@SLO.** Load-back gating trades the
+  coin-flip for a predictable near-SLO value — no pass-rate gain (slight loss). The variance-reduction
+  is an honest behavioral OBSERVATION, NOT a contribution. Firming further is pointless (Levene trending
+  ~0.15 not →0.05; pass-rate stock≥CCA-lb). Paper = rigorous negative + characterization + TP-lesson.
+
+### (superseded) picture (stock n=4): variance-reduction REAL but goodput-NEUTRAL
 - stock λ3 {6327, 6392, 8124, 11787} n=4: mean **8158**, std 2216, 2/4 pass.
 - CCA-lb {8556,8549,7767,7790,8243} n=5: mean **8181**, std 348, 2/5 pass.
 - ⇒ CCA-lb reduces the p99 SPREAD ~6.4× (std 2216→348; range 5460→789ms) BUT mean is EQUAL (8158≈8181)

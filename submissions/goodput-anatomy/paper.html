@@ -34,7 +34,7 @@
 <body>
 
 <h1>Effective-Capacity Collapse and the Admission Backfire:<br>
-Why Hierarchical KV Caching Does Not Improve goodput@SLO on Saturated Conversational Serving <span class="draft">v2 · submitted</span></h1>
+Why Hierarchical KV Caching Does Not Improve goodput@SLO on Saturated Conversational Serving <span class="draft">v3 · submitted</span></h1>
 <p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
 <p class="sub">Base commit <span class="mono">a334877e5</span> · mechanism/instrumentation <span class="mono">ce01c1c79</span></p>
 
@@ -312,8 +312,18 @@ comparator, which is why the &minus;25&nbsp;pp admission crater (&sect;5) is rea
 </ul>
 <p>
 The lever for this tail is prefill <em>scheduling</em> (letting the many cheap continuations bypass the few giant
-cold prefills) or the SLO/workload itself&mdash;not the KV cache. Peak throughput is decode-bound and ~flat
-(peak 530 tok/s, 4.14 req/s), as expected.
+cold prefills) or the SLO/workload itself&mdash;not the KV cache.
+</p>
+<p>
+<b>Peak throughput is NOT the flat decode-bound control one expects &mdash; the workload is prefill-bound.</b>
+The protocol treats peak tok/s and req/s as ~flat honest controls (decode-bound). Here they are not: write_back
+reaches peak <b class="win">5.11 req/s / 653 tok/s</b> versus stock's <b>4.14 / 530</b> (<b>+23%</b> on both),
+because a higher hit rate removes giant recompute-prefills and the system is <em>prefill-work-bound</em> at
+saturation, not decode-bound. (This is config-reachable exclusive tiering, consistent with prior de-duplication
+reports of +8&ndash;18% peak throughput; n=1 here.) The consequence is a clean <b>two-metric split</b>: caching
+<em>does</em> help <em>throughput</em> (prefill-bound, so lower prefill work &rArr; higher tok/s) but <em>not</em>
+tight-SLO <em>goodput</em> (tail-bound, &sect;6&ndash;7). The two questions have opposite answers, and conflating
+them is the trap.
 </p>
 
 <h2>7 A caching-invariant lower bound on P99 TTFT</h2>
@@ -351,6 +361,24 @@ caching-invariant service tail q<sub>99</sub>(U)/R; caching moves the mean, not 
 tail-bound P99.</b> (The bound also predicts where caching <em>would</em> matter: a workload whose document tail
 satisfies q<sub>99</sub>(U) &lt; R&middot;SLO, e.g. shorter documents or a looser SLO, leaves the P99 below the
 floor and returns the lever to the cache&mdash;absent here.)
+</p>
+<p>
+<b>The feasible region, measured.</b> Sweeping the SLO threshold over the actual p99 curves confirms the criterion:
+goodput@SLO is caching-insensitive at tight SLO and becomes caching-sensitive only as the SLO loosens.
+</p>
+<table>
+<thead><tr><th>SLO (s)</th><th>2</th><th>4</th><th>6</th><th>8</th><th>12</th><th>16</th><th>25</th><th>40</th></tr></thead>
+<tbody>
+<tr><td>stock goodput (req/s)</td><td>0</td><td>0</td><td>0</td><td>0</td><td>2.83</td><td>2.83</td><td>3.59</td><td>3.99</td></tr>
+<tr><td>write_back goodput (req/s)</td><td>0</td><td>0</td><td>0</td><td>3.02</td><td>3.02</td><td>3.02</td><td>4.30</td><td>5.11</td></tr>
+</tbody>
+</table>
+<p>
+Below ~6&nbsp;s <em>no</em> configuration achieves positive goodput (the tail exceeds the SLO even at &lambda;=3);
+the target 8&nbsp;s SLO sits right at the boundary (hence the coin-flip); and only well above it (&ge;25&nbsp;s)
+does the write_back throughput advantage translate into a goodput gap. This is the two-metric split of &sect;6
+made quantitative: <b>tighten the SLO and goodput becomes tail-bound and caching-proof; loosen it and goodput
+becomes throughput-bound and caching helps.</b> The frozen 8&nbsp;s SLO sits on the wrong side of that line.
 </p>
 
 <h2>8 Why this is not just "the cache is full"</h2>

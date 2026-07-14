@@ -80,8 +80,13 @@ def simulate(work, lam, policy, seed=1):
         # order in which docs get the step's 6144-token budget
         if policy == "stock":            # FCFS + back-to-back: oldest first; a big doc at the
             order = list(active)         # head takes the whole budget each step until it finishes
-        elif policy == "srpf":           # shortest-remaining first (small turns drain first)
+        elif policy == "srpf":           # PREEMPTIVE shortest-remaining (re-sorted every step)
             order = sorted(active, key=lambda j: rem[j])
+        elif policy == "srpf_np":        # NON-PREEMPTIVE srpf (= my --schedule-policy srpf impl):
+            # reorder the WAITING set shortest-first, but an in-progress (mid-chunk) doc must
+            # continue (chunked_req back-to-back). New small arrivals wait behind an in-progress big doc.
+            inprog = cur if (cur is not None and cur in active and 0 < rem[cur] < work[cur]) else None
+            order = [inprog] if inprog is not None else sorted(active, key=lambda j: work[j])
         elif policy == "interleave":     # round-robin start point → rotate who gets budget first
             k = rr % len(active); order = list(active)[k:] + list(active)[:k]; rr += 1
         elif policy == "lpm":            # DEFAULT: reuse turns (≤1 chunk cold work) first, then cold docs FCFS
@@ -97,6 +102,8 @@ def simulate(work, lam, policy, seed=1):
                 ttft[i] = (now - arr[i]) * 1000.0; finished.append(i)
         for i in finished:
             active.remove(i); done += 1
+        if policy == "srpf_np":  # track the in-progress (mid-chunk) doc so it continues next step
+            cur = next((i for i in order if i in active and 0 < rem[i] < work[i]), None)
         admit()
     ts = sorted(ttft)
     return ts[int(0.99*n)], ts[n//2]

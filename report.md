@@ -388,13 +388,22 @@ cold-prefill-compute-bound / control-invariance" claims in BOTH papers.
   levers is closing hard: residency=mirage, admission=neg, transfer=cheap, Mamba=non-binding; only
   prefill SCHEDULING (textbook) and compute-side cost reduction remain.
 
-### NEXT DIRECTION (scoped): head-of-line fast-lane — queue-adaptive chunk-budget partition
+### DIRECTION SCREENED-OUT (negative, no GPU spent): head-of-line fast-lane
 - **Hypothesis:** relieve head-of-line WITHOUT reordering by reserving R tokens of the per-batch chunk
-  budget for waiting small turns while a big cold doc is mid-chunk, so big+small prefill co-run in the
-  same batch. Distinct from SRPF (reorders WHICH req) and from stock PP dynamic-chunking (history-based,
-  gated on pp_size>1, OFF in this eval). Lossless (only partitions the chunk budget).
-- **Hook:** `chunk_cap` param on `PrefillAdder.add_chunked_req` (cap big-doc chunk at chunked_prefill_size−R
-  when a small waiting turn exists); scheduler decides the cap in the "Determine chunked_prefill_size" block.
-- **Discipline:** FAST-SCREEN in hol_sim.py first (add a `fastlane` policy); only eval on GPU if the sim
-  shows it beats stock at λ3. RISK: may be redundant with SRPF (both relieve head-of-line) — the unique
-  value is helping mid-chunk arrivals + working under fcfs. Test carefully; do not trust sim above λ3.
+  budget for waiting small turns while a big cold doc is mid-chunk (chunk_cap on add_chunked_req).
+  Distinct primitive from SRPF (budget-partition vs queue-reorder); lossless.
+- **FAST-SCREEN (`hol_sim.py` fastlane policy, λ3, 5 seeds):** stock 3/5 (7507ms); fast-lane R∈{1k,2k,3k}
+  **4/5 (~6310ms)** — beats stock; but non-preempt SRPF **5/5 (6205ms) STRICTLY DOMINATES it**.
+- **Verdict: NEGATIVE, screened out (no GPU burned).** Structural reason: fast-lane still gives the big
+  cold doc B−R tokens/step, so it is a *partial* SRPF that converges to SRPF only as R→B (where it IS
+  SRPF). It cannot beat the textbook policy ⇒ not a contribution (charter: a gain a textbook policy also
+  gets is not a contribution). REINFORCES the papers: SRPF is the *efficient* realization of head-of-line
+  relief; budget-partition variants are dominated. Fast-screen discipline (sim before GPU) paid off.
+
+### DESIGN-SPACE STATUS (goodput@SLO, this workload/eval) — closing hard
+Bounded non-levers: residency/eviction (P2 mirage, LRU=Belady), admission (P1 neg), transfer (cheap),
+Mamba-state (never binding), fast-lane chunk-partition (dominated by SRPF). Sole lever = prefill
+SCHEDULING (SRPF/SJF, textbook — excluded as a contribution), compute-ceiling-capped (~4.2 req/s).
+My contributions = the two negatives + the head-of-line DIAGNOSIS (multi-method: arithmetic+trace+sim+GPU).
+Next: after λ5 firms the papers + W&B, decide between (a) a bounded-impossibility SYNTHESIS paper, or
+(b) one genuinely orthogonal axis. Do NOT manufacture a weak mechanism; a rigorous negative is valid.

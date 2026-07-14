@@ -150,7 +150,20 @@ different policy can do is match it or do worse. We confirm this empirically wit
 A/B (LFU vs stock LRU): LFU does not improve hit rate or goodput@SLO over LRU (consistent with prior
 reports that frequency-based eviction is neutral-to-catastrophic on this serving workload), while LRU
 already sits at the single-pass optimum. Eviction policy is thus a non-lever for <em>improving</em>
-goodput — by proof (no policy beats Belady=LRU) and by measurement.
+goodput — by proof (no policy beats Belady=LRU) and by measurement.</p>
+<h3>3.4 Generalization: a caching-headroom phase boundary</h3>
+<p>
+The mirage generalizes through a simple, measurable boundary. LRU captures a re-use exactly when its
+<em>stack-distance</em> — the number of <em>distinct</em> documents touched since the document was last
+used — is below the cache horizon <code>H = CAP / mean-doc-size</code> (in documents); a re-use with
+stack-distance above <code>H</code> is evicted by LRU and is the only kind a popularity-aware policy could
+keep. So the online caching headroom of <em>any</em> corpus is exactly the fraction of its re-uses with
+stack-distance &gt; H. Here <code>H ≈ 517</code> documents while the re-use stack-distance is tiny
+(p50 = 2, p90 = 11, max = 519): <b>99.8% of all 665 re-uses fall within the horizon</b> and are
+LRU-captured, leaving ~0% headroom (<code>analysis/reuse_distance.py</code>). A corpus is in the mirage
+regime whenever its popular documents recur at short stack-distance (here: the two hot documents at
+distance ≈ 2) with a singleton tail — and the boundary says exactly when caching <em>would</em> pay off
+instead: a large working set re-used at stack-distance &gt; H, which this document-QA corpus is far from.
 </p>
 
 <h2>4 The corpus-bound model</h2>
@@ -251,21 +264,24 @@ tail — in which retention policy provably cannot help.
 
 <h2>7 Limitations</h2>
 <p>
-The claims are for this fixed workload, model, and two-tier capacity. A workload with documents re-used
-at <em>long</em> reuse distance yet high frequency (e.g., a large working set of moderately-popular
-corpora) would create genuine online caching headroom; our result identifies why <em>this</em> corpus
-does not. The document-cache replay abstracts the radix tree at document granularity (faithful because a
-document is one radix path); the throughput/floor constants are measured with a stated sensitivity range.
-The eviction-flag inertia is specific to the hybrid-Mamba <code>HiMambaRadixCache</code> path.
+The claims are for this fixed workload, model, and two-tier capacity. The document-cache replay abstracts
+the radix tree at document granularity (faithful because a document is one radix path); the
+throughput/floor constants are measured with a stated sensitivity range. The eviction/retention findings
+are for the active <code>UnifiedRadixCache</code> path (full-attention component); a model whose active
+cache exposed a different eviction interface could behave differently, though the LRU=Belady argument is
+workload-, not implementation-, specific.
 </p>
 
 <h2>8 Reproducibility</h2>
 <p>
 <code>analysis/doc_reuse.py</code> reproduces the popularity table (§2), the single-pass and 4-pass
-replay results (§3), and the cold floor. Throughput/floor constants (§4) come from the stock full sweep
-(<code>runs/v0-stock</code>) and server logs. The eviction-path finding (§3.3) is read directly from
-<code>python/sglang/srt/mem_cache/hi_mamba_radix_cache.py</code> and the server startup log. All numbers
-derive from the frozen evaluation protocol; no eval knobs were changed.
+replay results (§3), and the cold floor; <code>analysis/reuse_distance.py</code> reproduces the phase
+boundary (§3.4). Throughput/floor constants (§4) come from the stock full sweep (<code>runs/v0-stock</code>)
+and server logs. The live eviction path (§3.3) is <code>UnifiedRadixCache</code> →
+<code>unified_cache_components/full_component.py</code> (<code>drive_eviction</code> orders by
+<code>eviction_strategy.get_priority</code>), with the strategy selected from
+<code>--radix-eviction-policy</code>; the LFU/SLRU vs LRU A/B runs are in <code>runs/v-evict-*</code>. All
+numbers derive from the frozen evaluation protocol; no eval knobs were changed.
 </p>
 
 </body></html>

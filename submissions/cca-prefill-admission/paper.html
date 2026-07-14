@@ -30,7 +30,7 @@
 
 <h1>Deferring Cannot Help When the Tail <em>Is</em> the Work:<br>
 A Negative Result and Characterization for Prefill Admission Control in Long-Document Multiturn LLM Serving</h1>
-<div class="aut"><b>floyd</b> · sglang KV-cache research · v0.31 · draft (firming replicates in progress)</div>
+<div class="aut"><b>floyd</b> · sglang KV-cache research · v0.31 · v1 · negative + characterization (stock n=5, CCA-lb n=5)</div>
 
 <div class="abs">
 <b>Abstract.</b> Under a throughput–latency rate sweep with a p99-TTFT SLO, the headline
@@ -46,11 +46,12 @@ prefill, irreducible by any cache). Crucially, <b>the SLO tail <em>is</em> those
 prefills</b> — so deferring them is self-defeating. We measure this: CCA that defers cold prefills
 craters λ=3 p99 to <b class="b">56&nbsp;s</b> (≈7× stock); a cost-blind variant even induces a
 <b class="b">0→518-retraction</b> cascade that crashes the server; and the one variant that never
-touches cold prefills (pacing only L2→L1 load-backs) does not crash — it <b>shrinks the λ=3 p99 spread
-~6.4×</b> (std 2216→348&nbsp;ms; range 5460→789) around an <em>unchanged</em> mean (stock 8158 vs CCA-lb
-8181, n=4/5) — a real, novel variance-reduction, but it does <em>not</em> improve goodput: the tightened
-cluster still straddles the 8&nbsp;s SLO (pass-rate 2/4 vs 2/5), trading an unpredictable coin-flip for
-a predictable near-boundary value. We conclude that, at the λ=3 coin-flip, goodput@SLO is
+touches cold prefills (pacing only L2→L1 load-backs) does not crash — it <b>tightens the λ=3 p99
+distribution ~5.7×</b> (std 1988→348&nbsp;ms, n=5) at the <em>same</em> mean (stock 8079 vs CCA-lb 8181) —
+a real behavioral effect — but it does <em>not</em> improve goodput: removing the unlucky-high fails also
+removes the lucky-low passes, so the pass-rate is if anything lower (2/5 vs 3/5), and the spread
+reduction is not significant at feasible n (Levene p=0.15). We conclude that, at the λ=3 coin-flip,
+goodput@SLO is
 <b>cold-prefill-compute-bound</b>:
 prefill admission control cannot reliably clear it (and cost-blind deferral is dangerous), because the
 stock collapse is <b>not</b> retraction-driven (stock retracts <b>zero</b> times) and the queue is empty
@@ -77,9 +78,9 @@ prefill-compute queueing, not a KV-pool/retraction cascade.</li>
 <li><b>A negative result</b> (§3–4): prefill admission control that <em>defers</em> expensive prefills
 cannot improve goodput@SLO and can catastrophically harm it, because the SLO tail <em>is</em> the
 expensive cold prefills. We measure the full mechanism family: deferring cold prefills → 56&nbsp;s p99;
-cost-blind deferral → retraction-cascade crash; load-back-only pacing → shrinks the p99 spread ~6.4× at
-an unchanged mean, but does not improve the pass-rate. No admission-control variant improves
-goodput@SLO at λ=3.</li>
+cost-blind deferral → retraction-cascade crash; load-back-only pacing → tightens the p99 distribution
+~5.7× (not significant) but at the same mean and no higher pass-rate. No admission-control variant
+improves goodput@SLO at λ=3.</li>
 <li><b>A systems lesson</b> (§5): a per-rank non-deterministic (wall-clock) admission decision desyncs
 TP ranks and hangs NCCL; TP scheduling decisions must be deterministic or explicitly all-gathered.</li>
 </ul>
@@ -165,11 +166,16 @@ flags; hooks the live path (per-pass <code>cca[defer/gated/force]</code> log con
 <table>
 <caption>Same-node (ondem-3) λ=3, screen sweep. Stock is a coin-flip; every CCA variant is dominated.</caption>
 <tr><th>config</th><th>λ=3 p99 (ms)</th><th>mean / std</th><th>verdict</th></tr>
-<tr><td>stock (n=4)</td><td>{6327, 6392, 8124, 11787}</td><td>8158 / 2216</td><td>coin-flip (2/4 pass)</td></tr>
+<tr><td>stock (n=5)</td><td>{6327, 6391, 7765, 8124, 11786}</td><td>8079 / 1988</td><td>coin-flip, 3/5 pass</td></tr>
 <tr><td>CCA recompute-currency</td><td class="b">518 retr → crash</td><td>—</td><td class="b">HARMFUL</td></tr>
 <tr><td>CCA device-footprint (defers cold)</td><td class="b">56157, 58482</td><td>—</td><td class="b">CATASTROPHIC</td></tr>
-<tr><td>CCA load-back-only (n=5, W=0.85/0.90)</td><td>{7767,7790,8243,8549,8556}</td><td>8181 / 348</td><td>~6.4× tighter, same mean/pass</td></tr>
+<tr><td>CCA load-back-only (n=5, W=0.85/0.90)</td><td>{7767,7790,8243,8549,8556}</td><td>8181 / 348</td><td>5.7× tighter, but 2/5 pass (≤stock)</td></tr>
 </table>
+<p style="font-size:14px;color:#666">Load-back-only gating tightens the p99 distribution ~5.7× (std
+1988→348) but at the <em>same</em> mean and a <em>lower</em> pass-rate (2/5 vs 3/5): it removes the
+unlucky-high fails <em>and</em> the lucky-low passes, netting no goodput gain. The spread reduction is
+not statistically significant at feasible n (Levene p=0.15, Fligner p=0.16) on this heavy-tailed
+coin-flip. So <b>no admission-control variant improves goodput@SLO.</b></p>
 <ul>
 <li><b>Deferring cold prefills is self-defeating.</b> The device-footprint gate defers the large cold
 prefills when the pool is high — but those prefills <em>are</em> the p99. Deferring them (to the valve)
@@ -182,13 +188,14 @@ the pool while cold prefills are throttled — shifting load into decode concurr
 <b class="b">0→518 retractions</b> (stock has 0) that watchdog-crash the server. Cost misestimation
 turns a stable system unstable.</li>
 <li><b>The gentle variant tightens the tail but does not flip the coin.</b> Load-back-only gating never
-touches cold prefills (0 retracts, pool capped ~0.54). It <em>shrinks</em> the λ=3 p99 spread ~6.4×
-(std 2216→348&nbsp;ms; range 5460→789: stock {6327,6392,8124,11787}, CCA-lb {7767,7790,8243,8549,8556})
-— a real, novel variance-reduction via pacing L2→L1 load-backs — but around an <em>unchanged</em> mean
-(8158 vs 8181) and with <em>no</em> pass-rate gain (2/4 vs 2/5). It converts an unpredictable coin-flip
-into a predictable near-8&nbsp;s value that still straddles the SLO. This is the honest ceiling of
-admission control here: it can make the tail predictable, but cannot lower or reliably clear a
-compute-bound SLO. <span class="todo">[The spread reduction is reported descriptively; a formal Levene
+touches cold prefills (0 retracts, pool capped ~0.54). It <em>tightens</em> the λ=3 p99 distribution
+~5.7× (std 1988→348&nbsp;ms, n=5: stock {6327,6391,7765,8124,11786}, CCA-lb {7767,7790,8243,8549,8556})
+— a real behavioral effect via pacing L2→L1 load-backs — but at the <em>same</em> mean (8079 vs 8181)
+and, crucially, <em>no</em> goodput gain: by removing the unlucky-high fails it also removes the
+lucky-low passes, so the pass-rate is 2/5 vs stock's 3/5 (if anything lower). It converts an
+unpredictable coin-flip into a predictable near-8&nbsp;s value that still straddles the SLO — making
+failure reliable, not passing. The spread reduction is not significant at feasible n (Levene p=0.15,
+Fligner p=0.16) on this heavy-tailed distribution. <span class="todo">[The spread reduction is reported descriptively; a formal Levene
 test is underpowered at feasible n (p≈0.11 at n=4/5) on this heavy-tailed coin-flip.]</span></li>
 </ul>
 <p><b>Why doesn't reordering rescue it at λ=3?</b> Because at λ=3 — where the goodput coin-flip lives —
@@ -203,8 +210,9 @@ evaluate it.)</p>
 caching is near its ceiling (75% cold, LRU≈Belady), transfer is cheap, the stock system does not
 retract, and the queue is empty — so prefill <em>admission control</em> (the natural overload remedy)
 has no purchase and deferring only hurts. The one thing admission control <em>does</em> do —
-load-back-only gating (§4, below) — shrinks the λ=3 p99 spread ~6.4× (a predictable tail) but leaves
-the mean and pass-rate unchanged, so it does not cross the 8&nbsp;s line. The genuine goodput levers
+load-back-only gating (§4, below) — tightens the λ=3 p99 distribution ~5.7× (a predictable tail) but at
+the same mean and no higher pass-rate (it removes the lucky-lows with the unlucky-highs), so it does not
+cross the 8&nbsp;s line. The genuine goodput levers
 here are compute-side (faster / more-parallel cold-document prefill) and, at higher rates, prefill
 reordering — not KV-cache admission or residency.</p>
 

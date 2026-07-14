@@ -1,0 +1,18 @@
+Peak throughput (NOT flat/decode-bound — the workload is PREFILL-bound at saturation):
+  v1_stock : peak 4.14 req/s / 530 tok/s (hit 0.675)
+  v3_wb    : peak 5.11 req/s / 653 tok/s (hit 0.737)  => +23% req/s AND tok/s from write_back/exclusive
+  => higher hit -> less giant recompute-prefill -> more throughput. Consistent with base's established
+     de-dup peak-throughput result (+8-18%, MWU p=0.008). CONFIG-reachable (write_back flag), n=1 here.
+
+goodput@SLO vs SLO threshold (feasible region, from p99 curves):
+  SLO(s)  v1_stock  v3_wb(write_back)
+   2-6      0.00      0.00     <- tail exceeds even at lambda=3 (impossible for all)
+   8        0.00      3.02     <- write_back passes lambda=3 (this v1_stock run failed; coin-flip)
+   12-16    2.83      3.02
+   25       3.59      4.30
+   40       3.99      5.11     <- at loose SLO, write_back's +23% throughput => higher goodput
+
+Two-metric story (correction to Paper 1):
+  - THROUGHPUT (peak req/s, tok/s): PREFILL-bound => caching/hit gains RAISE it +23% (not decode-flat).
+  - GOODPUT@SLO at TIGHT SLO (8s): TAIL-bound => caching cannot lift it (giant turn-0 prefills, section 7).
+  - Caching's goodput lever appears only as the SLO loosens (q99(U) < R*SLO, section 7 feasible region).

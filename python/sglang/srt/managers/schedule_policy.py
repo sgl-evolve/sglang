@@ -649,6 +649,7 @@ class PrefillAdder:
         extend_input_len: int,
         max_new_tokens: int,
         retracted_stain: bool,
+        deduct_chunk_budget: bool = True,
     ):
         # TODO(lsyin): check this workaround logic, which only ensures the prefill will not out of memory, and may be too conservative
         extend_input_len = self.ceil_paged_tokens(extend_input_len)
@@ -664,7 +665,7 @@ class PrefillAdder:
 
         if self.dllm_config is not None:
             self.rem_dllm_tokens -= extend_input_len
-        elif self.rem_chunk_tokens is not None:
+        elif self.rem_chunk_tokens is not None and deduct_chunk_budget:
             self.rem_chunk_tokens -= extend_input_len
 
         # reprocessed_log_* is a subset of log_*; metrics_reporter subtracts it
@@ -765,6 +766,7 @@ class PrefillAdder:
         new_len = min(cand_extend_input_len, _rem_tokens)
         req.set_extend_range(len(req.prefix_indices), len(req.prefix_indices) + new_len)
         self.can_run_list.append(req)
+        dbs_enabled = os.environ.get("DBS", "0") == "1"
         self._update_prefill_budget(
             0,
             req.extend_range.length,
@@ -774,6 +776,7 @@ class PrefillAdder:
                 else 0
             ),
             req.retracted_stain,
+            deduct_chunk_budget=not (dbs_enabled and truncated),
         )
 
         # Return if chunked prefill not finished

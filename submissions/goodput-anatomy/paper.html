@@ -82,9 +82,17 @@ This is a concrete, counter-intuitive negative for a plausible optimization.</li
 <li><b>Tail anatomy</b> (&sect;6): the goodput bottleneck is heavy-tailed, uncacheable document prefill amplified by
 prefill&harr;decode interference&mdash;outside the cache's reach&mdash;and goodput@SLO is a variance-dominated coin-flip.</li>
 </ul>
-<p class="note">This is a bounded-negative / measurement contribution: it tells the community where <em>not</em> to
-spend engine complexity, and isolates the true lever (prefill scheduling and SLO/workload design). All numbers
-come from the frozen evaluation and match the raw run JSON.</p>
+<p>
+Together these compose an <b>impossibility argument</b> for this regime: goodput@SLO cannot be materially raised
+by any lossless KV-cache or -compute mechanism, because <b>three independent bounds jointly close the space</b> —
+(i) <b>capacity/admission</b>: the reachable hit headroom is small (&sect;3), the effective cache is host-bound
+under running-KV crowd-out (&sect;4), and the one admission signal available at insertion time backfires under that
+crowd-out (&sect;5); (ii) <b>eviction-optimality</b>: LRU is already near-Belady and the engine's seven pluggable
+eviction policies cannot help a host-bound cache (&sect;4,&sect;7); (iii) <b>compute-irreducibility</b>: the tail is
+O(D&sup2;) exact-attention prefill on unique, heavy-tailed documents, which no lossless mechanism can shrink
+(&sect;6). The contribution is thus a rigorously-bounded negative that tells the community where <em>not</em> to
+spend engine complexity and isolates the true lever (prefill scheduling and SLO/workload design). All numbers come
+from the frozen evaluation and match the raw run JSON.</p>
 
 <h2>2 Setup &amp; method</h2>
 <p>

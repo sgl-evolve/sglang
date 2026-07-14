@@ -1,0 +1,11 @@
+Direction 4 (free screen, analysis/tail_accel_screen.py): prefill TAIL-ACCELERATION BACKFIRES.
+- Idea: dedicate compute to giant (tail) prefills so each finishes at R_peak (<3s solo) -> cut p99 TTFT.
+- Result: serving giants one-at-a-time SERIALIZES them into a giant-queue. Over the run ~3% of 7163 reqs
+  are giants (U>30K tok); serial service (even at 16x rate) gives p99 TTFT 34-136s >> baseline 11.5s.
+  Concurrent processing (baseline processor-sharing) handles giants in PARALLEL -> near-optimal for giant p99.
+- Robust argument (not sim-dependent): N giants concurrent finish in ~max(U)/share; serial in ~sum(U)/R.
+  For many giants sum >> max -> serialization is fundamentally worse for the p99.
+=> Combined with SRPF (prioritizes SMALL -> DELAYS giants -> worse giant p99), NEITHER direction of prefill
+   scheduling helps the giant-dominated p99 tail. The concurrent baseline is near-optimal.
+=> CORRECTION to Paper 1: the residual lever is NOT prefill scheduling (both directions fail) — it is ONLY
+   SLO/workload design (loosen SLO, cap document size). Even stronger, more complete impossibility.

@@ -32,11 +32,11 @@ through the KV cache, that single-pass LRU is <b>Belady-optimal</b> (LRU = LFU =
 re-prefill at the real two-tier capacity): every miss is the first-sight prefill of a unique document,
 which no eviction or retention policy can remove. The only "avoidable" re-prefill we can find is a
 benchmark artifact of sweeping four request rates over the same conversation set, and even that is
-un-capturable by any online policy (LFU ≈ LRU; only a clairvoyant oracle recovers it). We further find
-the eviction-policy knob is inert on the hybrid-Mamba HiCache path (the active cache hardcodes
-last-access LRU), so the result holds by construction as well as by proof. The consequence is a
-control-invariance law: <b>goodput@SLO is a function of the corpus's unique-document set and the
-hardware's prefill throughput, not of the serving policy.</b> Together with our companion result that
+un-capturable by any online policy (LFU ≈ LRU; only a clairvoyant oracle recovers it). The eviction
+policy is a live, pluggable knob on the active cache, but since LRU is already Belady-optimal here no
+policy can beat it — a same-node A/B confirms LFU does not improve hit rate or goodput over LRU. The
+consequence is a control-invariance law: <b>goodput@SLO is a function of the corpus's unique-document set
+and the hardware's prefill throughput, not of the serving policy.</b> Together with our companion result that
 prefill <em>admission</em> control cannot help, and a scheduling analysis showing reordering is inert
 below the load knee and compute-capped above it, this closes the KV-cache control-policy design space
 for this workload: the lever is corpus-side (dedup, compression, retrieval shaping) or hardware, never
@@ -138,16 +138,19 @@ is <b>un-capturable by any online policy</b>: the reuse distance is one full pas
 them — LFU (54.0M) ≈ LRU (55.1M). Only the clairvoyant Belady optimum (23.1M), which knows the future
 sweep, recovers any of it. No deployable cache policy closes this gap.
 </p>
-<h3>3.3 The knob is inert by construction, too</h3>
+<h3>3.3 Eviction policy is a live knob — and still a non-lever</h3>
 <p>
-Independently of the above, the <code>--radix-eviction-policy {lru,lfu,slru,priority}</code> flag does
-not reach the cache this model uses. The server initializes a <code>Unified RadixTree (FULL, MAMBA)</code>
-— <code>HiMambaRadixCache</code> — whose <code>evict()</code> heapifies tree nodes by
-<code>last_access_time</code> (hardcoded LRU) and never consults the configured eviction strategy (which
-is wired only into the non-hierarchical <code>RadixCache</code>). So on the hybrid-Mamba HiCache path the
-eviction policy is fixed to LRU regardless of the flag — which §3.1 shows is already optimal. Eviction
-policy is a non-lever both by proof and by construction; an A/B on the flag would be a confounded no-op,
-so we do not run one.
+The eviction policy <em>is</em> a live, pluggable knob on the active cache: the server runs a
+<code>Unified RadixTree (FULL, MAMBA)</code> whose full-attention component orders eviction by
+<code>eviction_strategy.get_priority(node)</code>, and that strategy is selected from
+<code>--radix-eviction-policy {lru,lfu,slru,priority,…}</code> (default LRU). So a policy A/B is
+meaningful, not a no-op. But §3.1 already settles the outcome: since single-pass LRU is Belady-optimal
+(zero avoidable re-prefill), <em>no</em> eviction policy can beat LRU on this workload — the only thing a
+different policy can do is match it or do worse. We confirm this empirically with a same-node rate-sweep
+A/B (LFU vs stock LRU): LFU does not improve hit rate or goodput@SLO over LRU (consistent with prior
+reports that frequency-based eviction is neutral-to-catastrophic on this serving workload), while LRU
+already sits at the single-pass optimum. Eviction policy is thus a non-lever for <em>improving</em>
+goodput — by proof (no policy beats Belady=LRU) and by measurement.
 </p>
 
 <h2>4 The corpus-bound model</h2>

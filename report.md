@@ -225,7 +225,18 @@ admission mechanism craters (−24pp); no novel lossless mechanism beats the con
 Paper 1 → flip draft→submitted.
 
 ## Formal submissions
-- `submissions/goodput-anatomy/paper.html` — **DRAFT** (registered INDEX.md 2026-07-14). Bounded-negative
-  anatomy: effective-capacity collapse + admission backfire (−25pp) + heavy-tailed-prefill tail + within-node
-  coin-flip. Figures: oracle decomposition, rate-sweep curve. Firm w/ crater replicate + write_back control,
-  then flip draft→submitted.
+- `submissions/goodput-anatomy/paper.html` — **v1 SUBMITTED** (2026-07-14). Impossibility/anatomy: 3 independent
+  bounds (capacity/admission, eviction-optimality, compute-irreducibility) close the space for NOVEL lossless
+  mechanisms on saturated conversational serving. Firm results: admission backfire −24pp (n=2), effective-capacity
+  collapse (device 84-100% full of running KV), heavy-tailed O(D²) compute-irreducible tail, coin-flip. Honest
+  config baseline: write_back/exclusive +6-7pp hit (2/2 λ=3 SLO pass, stabilizes coin-flip; n=2 suggestive).
+  Evidence: 7 W&B versions (v0/v1_stock/v1b_stock/v2_flat2/v2b_flat2/v3_wb/v3b_wb), all numbers match runs/.
+  2 figures. Node released.
+
+## Direction 2 (OPEN, free/offline) — analytical goodput@SLO model
+Turn the empirical anatomy into a PREDICTIVE THEORY: model goodput@SLO as a function of (doc-size tail
+distribution × SLO × effective prefill-rate × L1/L2 capacity × concurrency), validate against my 7 versions'
+data, and derive the FEASIBLE REGION (where caching helps vs where it's impossible). Novel (mine, not
+sibling/config/textbook), free (offline, no GPU), and extends Paper 1 from "here's the bound" to "here's the
+law." First step: fit the prefill-rate + tail model to the measured curves; predict goodput vs SLO; show the
+frozen eval sits in the infeasible region. Then a Paper 2 (or Paper 1 v2 §Model).

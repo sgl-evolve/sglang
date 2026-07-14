@@ -4,6 +4,13 @@
 **Clone:** `workspace/sgl/v0.31/research/researchers/floyd/`
 **Base commit:** `a334877e5` (stock sglang)
 
+> **⚠ CURRENT THESIS (read the "★★ PIVOTAL CORRECTION (head-of-line)" section near the end first).**
+> This log is chronological. The early "Thesis"/"Mechanism" prose below (admission control, "retraction
+> cliff") was my *original* direction and is **superseded**: CCA admission is a rigorous **NEGATIVE**, and
+> the λ3 goodput coin-flip is **head-of-line blocking** (small turns queued behind a few large cold docs'
+> back-to-back chunked prefill), not a retraction cascade (stock has **0 retractions**). Both papers (v2):
+> caching & admission are non-levers; **prefill scheduling (shortest-prefill-first) is the goodput lever**.
+
 ## Research Direction (Paper 1): Cache-adjusted prefill admission control
 
 **Diagnosis (trace-driven, `analysis/trace_diag.py`).** The FIXED workload = 1553 multiturn

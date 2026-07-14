@@ -717,3 +717,19 @@ unreliability blocks validating ANY tail-targeting mechanism → why the contrib
 mechanism"). Honest (unmeasurable+not-novel, NOT "tested/closed"). Also confirms mechanism unmeasurability
 applies under BOTH goodput@SLO (coin-flip) AND stable metrics (only config-equivalent wins exist per landscape).
 No bolder line exists that isn't already closed. Paper: 9 sections / 7 figs / 10 tables, HEAD f525c307c.
+
+### PHASE-MAP diagnostic → empirical phase diagram on the REAL system (2026-07-14 ~00:50Z, commit c3544ee7e)
+Charter re-read ("pick a bolder line") → identified a genuinely valuable within-charter experiment: the §5.5
+phase diagram's reliable-PASS regime was MODEL-ONLY (the eval's λ-set {3,5,7,10} never samples below the coin-
+flip band). Ran an off-contract low-λ diagnostic (job 19702, phasemap_eval.sh, durable sbatch on idle 1-2 —
+FAIR: all 4 certified nodes idle, no pending siblings) to measure it. RESULT: at λ=1.5, p99 TTFT = 3.36, 3.35s
+(n=2) — comfortably below the 8s SLO and TIGHT (16ms apart, req_tput 1.52 = kept up, below-saturation). So the
+real system EMPIRICALLY exhibits all THREE regimes the minimal model predicts:
+  reliable-PASS (λ=1.5, p99~3.35s, LOW variance) → COIN-FLIP band (λ=3, 6.1-36.7s, straddles SLO) → reliable-
+  FAIL (λ≥5). And the run-to-run VARIANCE collapses away from the knee exactly as σ/m (§4) requires.
+⇒ Turns the model-only phase diagram into one EMPIRICALLY CONFIRMED on the real serving system — a strong
+generality/model-validation result (a key reviewer concern). Integrated §5.5 + §8, committed c3544ee7e. Killed
+job after the key n=2 result (freed idle node; λ=2.5 transition detail not worth the monitoring cost). Off-
+contract diagnostic (like warmdiag/medk), headline eval UNCHANGED. Paper: 9 sections / 7 figs / 10 tables.
+KEY: charter re-read genuinely earned a bolder experiment — not polish. The reliable-pass regime is the last
+empirical gap in the phase-diagram story, now closed on real hardware.

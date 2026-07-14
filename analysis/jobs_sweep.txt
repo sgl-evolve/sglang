@@ -1,0 +1,5 @@
+# Confirm v4 variance (n=3) + watermark/threshold sweep to shift stable point <8000ms
+v4-cca-lb-r3:--enable-cca-prefill --cca-threshold 4096 --cca-max-defer-passes 30 --cca-gate-loadback-only --cca-watermark 0.85
+v5-cca-lb-w90:--enable-cca-prefill --cca-threshold 4096 --cca-max-defer-passes 30 --cca-gate-loadback-only --cca-watermark 0.90
+v6-cca-lb-w95:--enable-cca-prefill --cca-threshold 4096 --cca-max-defer-passes 30 --cca-gate-loadback-only --cca-watermark 0.95
+v7-cca-lb-th16k:--enable-cca-prefill --cca-max-defer-passes 30 --cca-gate-loadback-only --cca-watermark 0.85 --cca-threshold 16384

@@ -1102,6 +1102,36 @@ is empirical — pending eval (commit 83c6009b9).
   the bypass volume is architecturally limited.
 - W&B: logged as `v-srpf-wb-ibac` [mechanism].
 
+### v-srpf-wb-dbs — SRPF+WB+DBS (dual budget separation)  [DONE, 1-2, job 19819, commit b78bb2706] ★STRONG NEGATIVE
+- **Mechanism: Dual Budget Separation (DBS)** — when a continuing chunked request is processed, its
+  tokens are NOT charged against `rem_chunk_tokens`, leaving the full chunk budget (6144) available
+  for new requests from the waiting queue. New non-chunked requests can be admitted alongside the
+  continuing chunked req. New chunked requests are blocked (single-chunked-req invariant protected).
+  Env-gated `DBS=1`. First version crashed (assert violation — new chunked req during continuing
+  chunk); fixed by blocking the chunking branch when DBS has a continuing chunk.
+  Commits: a438ef295 (initial), b78bb2706 (invariant fix).
+- Config: `--schedule-policy srpf --hicache-write-policy write_back` + `DBS=1`.
+- **Full sweep (node 1-2):**
+  | λ | p99 TTFT | p50 TTFT | req/s | tok/s | hit | SLO |
+  |---|---------|---------|-------|-------|-----|-----|
+  | 3 | 5710ms  | 481ms   | 3.02  | 387   | 0.736 | PASS |
+  | 5 | 7547ms  | 604ms   | 4.23  | 541   | 0.729 | PASS |
+  | 7 | 10665ms | 672ms   | 4.78  | 611   | 0.726 | FAIL |
+  | 10| **129692ms** | 1394ms | **0.55** | **19** | — | **CATASTROPHIC** |
+- **goodput@SLO = 4.23** — WORSE than baseline best (5.03). r5 p99 is 7547ms (+990-1364ms above
+  baseline range 6183-6557ms). r10 completely COLLAPSED (130s p99, 0.55 req/s).
+- **Root cause**: DBS increases per-iteration prefill tokens from 6144 to up to 12288 (chunked +
+  new requests). This makes each iteration ~2× longer, which HURTS decode latency for all running
+  requests. At high rates (r10), the longer iterations cause cascading queue buildup → system
+  collapse. **The rem_chunk_tokens budget "waste" is actually an INTENTIONAL design constraint** —
+  it bounds iteration time to protect decode latency. Trying to reclaim the "wasted" budget by
+  admitting more prefill work per iteration is COUNTERPRODUCTIVE.
+- **Key insight**: The chunked prefill budget design is a TRADEOFF, not a bug. The 10240 unused
+  rem_input_tokens after the chunk gate protects decode responsiveness. Any mechanism that tries to
+  fill this gap will increase iteration time and hurt tail latency. This closes the budget
+  optimization design space: IBAC (too small to matter), QPAC (inert at SLO rates), DBS (harmful).
+- W&B: logged as `v-srpf-wb-dbs` [mechanism].
+
 ## Ops notes
 - eval.sh has a path bug (computes `workspace/sgl/v0.3_ablations/base`); fixed by symlink
   `v0.3_ablations/base → v0.31/base` (frozen eval.sh untouched — fairness-clean).

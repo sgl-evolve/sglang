@@ -43,9 +43,12 @@ Why Hierarchical KV Caching Does Not Improve goodput@SLO on Saturated Conversati
 multi-turn and long-document serving. We ask whether, on a saturated open-loop rate sweep, a <em>lossless</em>
 KV-cache mechanism can raise <b>goodput@SLO</b> (max req/s with p99&nbsp;TTFT&nbsp;&le;&nbsp;8&nbsp;s). Through a
 trace-driven analysis of a 1:1:1 ShareGPT/LEval/LooGLE mixture and same-node A/B measurement on 8&times;H100, we
-find it cannot, and we give the mechanism. (1)&nbsp;<b>The cache headroom is small and bounded</b>: the
-infinite-cache hit ceiling is 0.809, of which an unavoidable 19.1% is first-sight (turn-0) document prefill;
-the stock cache already reaches 0.62–0.68, and the residual is capacity- and information-bound.
+find that no <em>novel</em> mechanism beats the best stock <em>configuration</em>, and we give the mechanism.
+(1)&nbsp;<b>The cache headroom is small and bounded</b>: the infinite-cache hit ceiling is 0.809, of which an
+unavoidable 19.1% is first-sight (turn-0) document prefill; stock write_through reaches 0.62–0.68 and the best
+config (write_back / exclusive tiering, which avoids L1&ndash;L2 duplication) reaches 0.74 &mdash; so the slice a
+novel mechanism could add over the known config baseline is only the &le;7&nbsp;pp up to the oracle, and it is
+capacity- and information-bound.
 (2)&nbsp;<b>Effective-capacity collapse</b>: under the sweep the device (L1) runs 84–100% full of <em>running-request</em>
 KV even at the lowest rate, so the prefix cache is host-bound and eviction ordering is near-Belady&mdash;there is
 little to win. (3)&nbsp;<b>The admission backfire</b> (counter-intuitive): reuse-gated L2 admission&mdash;the stock
@@ -57,8 +60,10 @@ cache</b>: p50 TTFT stays ~1&nbsp;s while p99 explodes from 11&nbsp;s to 41&nbsp
 seeded by a heavy-tailed document distribution (p99 = 62&nbsp;K, max 191&nbsp;K tokens) whose irreducible prefill
 is amplified by prefill&harr;decode interference (12.6% of decode steps stall) under saturation&mdash;a
 compute/scheduling phenomenon the cache cannot touch. goodput@SLO is consequently a variance-dominated coin-flip
-(the same stock config passes at 6.3&nbsp;s p99 on one node and fails at 11.5&nbsp;s on another). We conclude that
-on this regime the KV cache is the wrong lever for goodput@SLO, and we bound exactly why.
+(the same stock config passes at 6.2&nbsp;s p99 in one run and fails at 11.5&nbsp;s in another on the <em>same</em>
+node). We conclude that on this regime a <em>novel</em> lossless KV-cache mechanism has essentially no room over
+the known exclusive-tiering configuration: the reachable hit slice is &le;7&nbsp;pp, the natural admission signal
+for it backfires, and the goodput tail is compute-irreducible. We bound exactly why.
 </div>
 
 <h2>1 Introduction</h2>
@@ -131,21 +136,28 @@ workload:
   <text x="20" y="130" fill="#666">bar = hit-rate scale 0..1 (x20..620px)</text>
 </svg>
 <figcaption><b>Fig. 1.</b> Oracle decomposition. The infinite-cache hit ceiling is 0.809; 19.1% of prompt tokens
-are unavoidable first-sight (turn-0 document) prefill. The stock cache reaches 0.62 (baseline node) to 0.68
-(node 0-3). The gap to oracle is capacity-bound (L2 = 7.8&nbsp;M tokens) and information-bound (see &sect;5).</figcaption>
+are unavoidable first-sight (turn-0 document) prefill. Stock write_through reaches 0.62 (baseline node) to 0.68
+(node 0-3); the best <em>configuration</em>, write_back / exclusive tiering, reaches 0.74 (&sect;5). The residual
+gap to oracle is capacity-bound (L2 = 7.8&nbsp;M tokens) and information-bound (see &sect;5).</figcaption>
 </figure>
 <p>
 The reuse structure is bimodal: <b>38.2%</b> of conversations are one-shot (a document seen once, never reused),
 accounting for <b>56.7%</b> of all document token mass; the rest are multi-turn (mean 4.6 turns). This tempts an
 admission policy that keeps one-shot documents out of L2 (&sect;5). But the oracle already shows the prize is
 modest: even a perfect policy cannot exceed 0.809, and 19.1% of the work&mdash;prefilling never-before-seen
-documents&mdash;is fundamentally uncacheable.
+documents&mdash;is fundamentally uncacheable. The reachable slice is smaller still: the best configuration
+(write_back, &sect;5) already captures the low-hanging duplication headroom, reaching 0.74; what a <em>novel</em>
+mechanism could add over that config is the &le;7&nbsp;pp between 0.74 and the 0.809 oracle&mdash;and &sect;5 shows
+the natural admission signal for that slice backfires.
 </p>
 
 <h2>4 Effective-capacity collapse</h2>
 <p>
-Why does the stock cache sit ~13&ndash;19&nbsp;pp below the oracle when L2 holds 7.8&nbsp;M tokens? Because the
-<em>usable</em> prefix-cache capacity collapses under serving load. Instrumenting every prefill/decode batch of a
+Why does the stock cache sit ~13&ndash;19&nbsp;pp below the oracle when L2 holds 7.8&nbsp;M tokens? Two reasons.
+First, <em>duplication</em>: eager write_through keeps a hot prefix in <em>both</em> L1 and L2, so the 7.8&nbsp;M
+host pool is partly spent mirroring device-resident KV&mdash;switching to write_back (device-XOR-host, i.e.,
+exclusive tiering) recovers ~6&nbsp;pp for free (&sect;5). Second, and more fundamentally, the <em>usable</em>
+prefix-cache capacity collapses under serving load. Instrumenting every prefill/decode batch of a
 stock run at the lowest swept rate (&lambda;=3):
 </p>
 <table>
@@ -187,10 +199,28 @@ queued to further isolate that the crater is from content <em>loss</em>, not del
 <tr><td>stock (eager write_through)</td><td>2.83</td><td>1017</td><td>11494</td><td>0.6753</td></tr>
 <tr><td>reuse-gated admission (=selective), run 1</td><td>2.91</td><td>1475</td><td>12060</td><td class="fail">0.4259</td></tr>
 <tr><td>reuse-gated admission (=selective), run 2</td><td>3.02</td><td>1349</td><td>8182</td><td class="fail">0.4445</td></tr>
+<tr><td>write_back (lazy, on-eviction) &mdash; control</td><td>3.02</td><td>503</td><td>6591</td><td class="win">0.7372</td></tr>
 </tbody>
 </table>
 <p>
-<b>Why it backfires.</b> The intuition ("skip backing up cold one-shot docs") ignores &sect;4: the device is
+<b>The control isolates the mechanism.</b> <span class="mono">write_back</span> <em>also</em> defers the D&rarr;H
+backup (it writes only on eviction), yet it does <b>not</b> crater&mdash;hit rate is <b class="win">0.7372</b>,
+above even stock. This pins the crater on content <em>loss</em>, not on backup <em>timing</em>: selective
+under write-through <em>deletes</em> an unbacked node when the saturated device evicts it, whereas write_back
+backs it up at that moment, so nothing is lost. The two "lazy backup" policies differ only in whether the
+deferred content survives eviction, and that is exactly the &minus;30&nbsp;pp gap between them.
+<b>An aside that we must report honestly:</b> write_back's 0.7372 is <em>+6.2&nbsp;pp over stock</em>
+write_through&mdash;the familiar exclusive-tiering effect (write_back keeps KV device-XOR-host, so it does not
+duplicate hot prefixes across L1 and L2, freeing effective L2 capacity). This is a <em>known, configuration-reachable</em>
+result (it is the <span class="mono">--hicache-write-policy write_back</span> flag, and prior work on exclusive
+KV tiering reports the same), <b>not a contribution of this paper</b>; we include it as the baseline ceiling that a
+novel mechanism would have to beat. Our novel admission mechanism does not beat it&mdash;it craters. Whether
+write_back <em>reliably</em> clears the &lambda;=3 SLO (it passed here, p99 6591) or merely landed in the good
+basin of the &sect;6 coin-flip is being tested with replicates; the +6.2&nbsp;pp <em>hit</em> gain, however, is
+robust (hit rate does not coin-flip, &sect;6).
+</p>
+<p>
+<b>Why the novel admission gate backfires.</b> The intuition ("skip backing up cold one-shot docs") ignores &sect;4: the device is
 saturated, so a prefix that is <em>not</em> eagerly mirrored to L2 lives only briefly in L1 and is evicted&mdash;and
 under write-through, an unbacked evicted node is deleted&mdash;<em>before</em> its next turn arrives. The gate
 cannot tell a one-shot document from a multi-turn one at admission time (that information only exists after the

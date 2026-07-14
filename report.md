@@ -154,8 +154,13 @@ to measure (in progress).
   load-backs = NEUTRAL at λ=3, maybe mild λ=5 tail-reduction, but NO goodput@SLO improvement (never
   clears 8s). No admission-control variant improves the headline.
 
-### ★★ PIVOT: v4-cca-lb REDUCES the goodput VARIANCE (n=2, striking)
-- **v4-lb λ=3 p99 = {8556, 8549}** (n=2, spread **7ms**) vs stock {6327, 8124, 11787} (spread 5460ms).
+### ★★ PIVOT: v4-cca-lb REDUCES the goodput VARIANCE (n=3 confirmed)
+- **v4-lb λ=3 p99 = {8556, 8549, 7767}** (n=3, std ~370ms, mean 8291, 1/3 pass) vs stock
+  {6327, 8124, 11787} (std ~2272ms, mean 8746, 1/3 pass). **CCA-lb is ~6× tighter variance** and
+  slightly lower mean — the coin-flip is largely collapsed to a cluster RIGHT AT the 8s SLO boundary.
+  (The n=2 "7ms" tightness was luck; n=3 std ~370ms, still ~6× < stock.)
+- Pass-rate tied at n=3 (1/3 each), BUT v4's cluster hugs the SLO ⇒ a config that shifts it reliably
+  <8000 flips it to reliable-pass (goodput 0→3) while stock stays a coin-flip. THAT is the win to find.
   Load-back-only gating **collapses the coin-flip to a stable ~8.55s** — a ~1000× variance reduction.
   This is a POSITIVE mechanism effect (novel: pacing L2→L1 load-backs removes the metastable
   stall-clusters that cause stock's high-variance FAIL runs), analogous to the known de-dup

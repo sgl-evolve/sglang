@@ -81,3 +81,10 @@ collapse), so θ_hi=0.90 fires in exactly the saturated regime where the coin-fl
 prefill is already incremental so no explicit θ_lo needed (cap lifts automatically when occ drops). Verify lossless
 (outputs match) + resolved_args frozen (chunked_prefill_size server-arg unchanged; only the per-step LOCAL is
 reshaped). Test: `SGLANG_TURING_DECODE_FLOOR=1 eval.sh turing v7_decfloor`, focus λ=3, n≥3 vs stock n≥3.
+
+## ⚠️ IMPLEMENTATION TIMING GUARD
+v6_flat launches ~18:00 via chain_flat from THIS working tree (eval uses working tree at launch). Editing
+scheduler.py before v6_flat's server is up would be picked up by it — a syntax/import bug would CRASH the Paper 2
+firming eval. So: do NOT edit scheduler.py until v6_flat's server is confirmed RUNNING (past import, ~18:10);
+its already-imported server is then immune to my edit. Before any Paper 4 eval, verify `python -c "import sglang"`
+clean. (Env-gated default-OFF means even if picked up, behavior is unchanged — but import-safety is the risk.)

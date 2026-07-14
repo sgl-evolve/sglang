@@ -1,0 +1,10 @@
+# floyd controls/ablations (screen RATES="3 5", same-node ondem-3). Launch AFTER primary A/B if CCA wins.
+# (1) ablation: raw-cost currency (does cache-adjustment matter? if raw==cache-adj, novelty moot)
+v3-cca-raw:--enable-cca-prefill --cca-watermark 0.85 --cca-threshold 4096 --cca-max-defer-ms 4000 --cca-use-raw-cost
+# (2) config control: stock PrefillDelayer tuned to delay under pressure (is CCA config-reachable?)
+v4-delayer:--enable-prefill-delayer --prefill-delayer-queue-min-ratio 0.3 --prefill-delayer-token-usage-low-watermark 0.7
+# (3) watermark sweep: tighter / looser
+v5-cca-w75:--enable-cca-prefill --cca-watermark 0.75 --cca-threshold 4096 --cca-max-defer-ms 4000
+v6-cca-w95:--enable-cca-prefill --cca-watermark 0.95 --cca-threshold 4096 --cca-max-defer-ms 4000
+# (4) threshold sweep: gate ALL prefills (theta small) vs only huge (theta large)
+v7-cca-th1k:--enable-cca-prefill --cca-watermark 0.85 --cca-threshold 1024 --cca-max-defer-ms 4000

@@ -215,6 +215,15 @@ write_back (lazy backup on eviction; `SGLANG_TURING_ADMIT=writeback` → write_p
   config win) or was coin-flip luck. This determines whether the "no lossless win" thesis needs reframing to
   "only the known exclusive-tiering config helps; novel admission backfires."
 
+## ★ write_back goodput reliability (n=2, resolves the caveat)
+write_back @λ=3, same node: v3_wb p99=6591 (PASS, hit 0.7372), v3b_wb p99=7405 (PASS, hit 0.7365) → **2/2 PASS**
+vs stock **1/2** (v1_stock FAIL 11494, v1b PASS 6175). hit rock-stable (Δ0.07pp). ⇒ write_back/exclusive-tiering
+(CONFIG) gives robust +6-7pp hit AND plausibly **stabilizes the λ=3 coin-flip** (2/2 vs 1/2; n=2 underpowered but
+consistent with known de-dup variance-reduction). At λ≥5 write_back still FAILS (tail compute-irreducible).
+**Honest thesis (final):** the reachable goodput lever at λ=3 is the KNOWN exclusive-tiering config; my NOVEL
+admission mechanism craters (−24pp); no novel lossless mechanism beats the config; tail caps goodput at λ≥5.
+Paper 1 → flip draft→submitted.
+
 ## Formal submissions
 - `submissions/goodput-anatomy/paper.html` — **DRAFT** (registered INDEX.md 2026-07-14). Bounded-negative
   anatomy: effective-capacity collapse + admission backfire (−25pp) + heavy-tailed-prefill tail + within-node

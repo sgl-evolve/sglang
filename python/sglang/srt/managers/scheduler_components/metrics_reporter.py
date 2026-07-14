@@ -549,6 +549,15 @@ class SchedulerMetricsReporter:
             f"#pending-token: {prefill_stats.num_pending_tokens}, "
         )
 
+        # CCA (floyd): surface admission-control activity so we can prove the
+        # gate fires on the live path (not dead code) and quantify throttling.
+        if getattr(self.scheduler, "enable_cca_prefill", False):
+            msg += (
+                f"cca[defer:{self.scheduler.cca_deferrals} "
+                f"gated-pass:{self.scheduler.cca_passes_gated} "
+                f"force:{self.scheduler.cca_force_admits}], "
+            )
+
         if self.scheduler.disaggregation_mode == DisaggregationMode.PREFILL:
             msg += f"#bootstrap-req: {len(self.scheduler.disagg_prefill_bootstrap_queue.queue)}, "
             msg += (

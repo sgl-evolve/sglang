@@ -1084,16 +1084,21 @@ class Scheduler(
         self.cca_use_raw_cost = bool(
             getattr(self.server_args, "cca_use_raw_cost", False)
         )
+        self.cca_max_defer_s = (
+            float(getattr(self.server_args, "cca_max_defer_ms", 4000.0)) / 1000.0
+        )
         # Lightweight counters for observability / self-audit (not on hot path).
         self.cca_deferrals = 0
         self.cca_passes_gated = 0
+        self.cca_force_admits = 0
         if self.enable_cca_prefill:
             logger.info(
                 "CCA prefill admission control ENABLED "
-                "(watermark=%.3f threshold=%d use_raw_cost=%s)",
+                "(watermark=%.3f threshold=%d use_raw_cost=%s max_defer_ms=%.0f)",
                 self.cca_watermark,
                 self.cca_threshold,
                 self.cca_use_raw_cost,
+                self.cca_max_defer_s * 1000.0,
             )
 
     def init_soft_watchdog(self, server_args: ServerArgs):
@@ -2906,12 +2911,16 @@ class Scheduler(
         # adjusted work admitted so far this pass (the extend KV that will land
         # in the device pool when this prefill batch runs), so the watermark
         # projection sees the batch we are building, not just current usage.
-        cca_active = self.enable_cca_prefill and self.chunked_req is None
+        # Active even while a chunk is in flight (the pool is under pressure then
+        # too); the chunk itself lives in self.chunked_req, not the loop.
+        cca_active = self.enable_cca_prefill
         cca_admitted = 0
         cca_limit = 0
         cca_base_used = 0
+        cca_now = 0.0
         cca_gated_pass = False
         if cca_active:
+            cca_now = time.perf_counter()
             cca_limit = int(self.cca_watermark * self.max_total_num_tokens)
             try:
                 cca_base_used = (
@@ -2959,7 +2968,9 @@ class Scheduler(
             # reserving decode headroom to prevent a retraction cascade. Cheap
             # prefix-reuse turns (cost <= threshold) are never gated. Only gates
             # while something is decoding (progress guarantee: an empty running
-            # batch always admits so the pipeline can't stall).
+            # batch always admits so the pipeline can't stall). Safety valve: a
+            # request that has already waited > cca_max_defer_s is force-admitted
+            # to bound worst-case TTFT under the SLO.
             if cca_active:
                 cca_cost = self._cca_prefill_cost(req)
                 if (
@@ -2967,9 +2978,13 @@ class Scheduler(
                     and len(self.running_batch.reqs) > 0
                     and (cca_base_used + cca_admitted + cca_cost) > cca_limit
                 ):
-                    self.cca_deferrals += 1
-                    cca_gated_pass = True
-                    continue
+                    entry_t = req.time_stats.wait_queue_entry_time
+                    waited = (cca_now - entry_t) if entry_t > 0 else 0.0
+                    if waited < self.cca_max_defer_s:
+                        self.cca_deferrals += 1
+                        cca_gated_pass = True
+                        continue
+                    self.cca_force_admits += 1
 
             res = adder.add_one_req(
                 req,

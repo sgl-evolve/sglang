@@ -1306,6 +1306,12 @@ class ServerArgs:
         "Ablation: meter admission by RAW input length instead of cache-adjusted "
         "(input - resident-prefix) work. Isolates the value of cache-awareness.",
     ] = False
+    cca_max_defer_ms: A[
+        float,
+        "Safety valve: an expensive prefill that has already waited this long "
+        "(ms, since entering the waiting queue) is force-admitted regardless of "
+        "the watermark, bounding worst-case TTFT under the SLO. Typical 2000-5000.",
+    ] = 4000.0
 
     # -------------------------------------------------------------------------
     # Min free slots delay (prefill refill batching)

@@ -93,13 +93,33 @@ def simulate(work, lam, policy, seed=1):
             reuse = [j for j in active if work[j] <= B]
             cold  = [j for j in active if work[j] > B]
             order = reuse + cold          # reuse-first; cold docs remain in arrival order (like lpm among 0-prefix)
-        else: raise ValueError(policy)
+        elif policy.startswith("fl"):     # FAST-LANE (my mechanism): FCFS ordering (NO reorder), but reserve
+            order = list(active)          # R tokens/step for shortest waiting SMALL turns so they co-run with
+        else: raise ValueError(policy)    # the in-progress big cold doc instead of waiting for it to finish.
         budget = B; now += TAU; finished = []
-        for i in order:
-            if budget <= 0: break
-            take = min(rem[i], budget); rem[i] -= take; budget -= take
+        def _fill(i, cap):
+            nonlocal budget
+            take = min(rem[i], cap, budget); rem[i] -= take; budget -= take
             if rem[i] <= 1e-6:
                 ttft[i] = (now - arr[i]) * 1000.0; finished.append(i)
+        if policy.startswith("fl"):
+            R = int(policy[2:])           # reserve size in tokens (e.g. fl2048)
+            smalls = sorted([j for j in active if work[j] <= B], key=lambda j: rem[j])
+            bigs   = [j for j in active if work[j] > B]        # keep FCFS order (no reorder among cold docs)
+            sb = min(R, budget)
+            for i in smalls:              # phase 1: small turns get up to R (the fast lane)
+                if sb <= 0: break
+                pre = budget; _fill(i, sb); sb -= (pre - budget)
+            for i in bigs:                # phase 2: big cold docs get the rest (B-R + any unused reserve)
+                if budget <= 0: break
+                _fill(i, budget)
+            for i in smalls:             # phase 3: spill leftover budget back to remaining small turns
+                if budget <= 0: break
+                if rem[i] > 1e-6: _fill(i, budget)
+        else:
+            for i in order:
+                if budget <= 0: break
+                _fill(i, budget)
         for i in finished:
             active.remove(i); done += 1
         if policy == "srpf_np":  # track the in-progress (mid-chunk) doc so it continues next step
@@ -111,12 +131,18 @@ def simulate(work, lam, policy, seed=1):
 def main():
     work = load_work(); n = len(work)
     print(f"turns={n} tau={TAU*1000:.0f}ms/step  max-doc chunks={max(math.ceil(w/B) for w in work)} (~{max(math.ceil(w/B) for w in work)*TAU:.1f}s prefill)")
-    print(f"{'lam':>4} {'policy':>10} {'p99_ttft':>9} {'p50':>7}")
-    for lam in [3, 5]:
-        for pol in ["stock", "srpf", "interleave"]:
-            p99, p50 = simulate(work, lam, pol)
-            print(f"{lam:>4} {pol:>10} {p99:>8.0f}ms {p50:>6.0f}ms")
-    print("\nIf srpf p99 << stock p99 at λ3 => λ3 p99 is HEAD-OF-LINE blocking (reducible by scheduling).")
+    SEEDS = [1, 2, 3, 4, 5]
+    lam = 3
+    print(f"\n=== FAST-LANE screen @λ{lam} (5 seeds); SLO=8000ms; fl<R>=reserve R tok/step for small turns ===")
+    print(f"{'policy':>12} {'p99 per seed (ms)':>44} {'mean':>7} {'pass/5':>7}")
+    for pol in ["stock", "srpf_np", "fl1024", "fl2048", "fl3072", "srpf"]:
+        p99s = [simulate(work, lam, pol, seed=s)[0] for s in SEEDS]
+        passes = sum(1 for x in p99s if x <= 8000)
+        mean = sum(p99s)/len(p99s)
+        print(f"{pol:>12} {str([round(x) for x in p99s]):>44} {mean:>6.0f} {passes:>5}/5")
+    print("\nfl* = FAST-LANE (fcfs, reserve R for small turns, NO reorder). srpf_np = my non-preempt SRPF.")
+    print("Screen verdict: adopt fast-lane ONLY if it clears the coin-flip (≥ stock pass-rate, ideally 5/5)")
+    print("AND is not strictly dominated by srpf_np. Sim reliable ONLY @λ3 (see caveat below).")
     print("★CAVEAT: this single-server sim is CALIBRATED ONLY AT λ3 (matches the measured coin-flip).")
     print("  ABOVE λ3 it over-serializes and is UNRELIABLE — it wrongly fails non-preempt srpf at λ3.5-4,")
     print("  contradicting base's GPU result that non-preempt SRPF PASSES λ5 (9/9). So the apparent")

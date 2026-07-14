@@ -314,3 +314,26 @@ Under the current engine + frozen contract, the p99 cold-doc floor stands: no se
 it (papers 1, 2), and the one compute-side lever that could (CP) is unavailable for this hybrid model.
 goodput@SLO is corpus- and hardware-bound in this system. Both "CP blocked by fixed tp" and
 "linear-recurrence can't be CP'd" were wrong framings — corrected.
+
+## ★ Paper-2 empirical grounding (eviction/retention A/B) + phase boundary (2026-07-14 session)
+
+**Integrity corrections this session** (found by hands-on verification, not armchair):
+1. Active cache = **UnifiedRadixCache** (not HiMambaRadixCache, which is DORMANT). My first hot-pin edit
+   was a dead path (flag True but inert) → cancelled wasted run 19829.
+2. Eviction knob is **LIVE** on the active path (`full_component.drive_eviction` orders by
+   `eviction_strategy.get_priority`; strategy from `--radix-eviction-policy`, kv_cache_builder.py:219).
+   Paper 2 §3.3+abstract "dead knob" claim was WRONG (misattributed to dormant HiMamba) → FIXED
+   (commit e5f7af397). Reverted redundant dead-path hot_doc_pin code (692e4364a); native `SLRUStrategy`
+   IS the retention steelman (protect nodes with hit_count≥threshold).
+
+**§3.4 phase boundary (commit 107fd9157):** caching headroom = fraction of reuses with LRU stack-distance
+> cache horizon H=CAP/mean-doc≈517 docs. Measured: 99.8% of 665 reuses within H (p50=2,p90=11,max=519) →
+mirage regime, ~0% headroom. Generalizes: predicts exactly when caching WOULD help (large working set,
+long reuse distance). `analysis/reuse_distance.py`.
+
+**Eviction/retention A/B (job 19830, ondem-2, screen λ3,5, live --radix-eviction-policy):**
+- Hypothesis: since single-pass LRU=Belady (§3.1) + 99.8% reuses within horizon (§3.4), NO eviction
+  (LFU) or retention (SLRU=protect reused nodes) policy beats stock LRU on hit_rate or goodput@SLO.
+- Method: v-evict-lfu (LFU) + v0-stock-evictctl (LRU, same-node) + v-evict-slru (SLRU), compare hit+goodput.
+- Prediction (from §3.4): LFU/SLRU hit ≈ stock 0.678; goodput within coin-flip band. [RESULTS PENDING]
+- This gives paper 2 its rate-sweep empirical leg (program paper §5 spec).

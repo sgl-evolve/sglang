@@ -372,3 +372,11 @@ Ops this turn: v5_size λ10 landed (C=4.67, K=1.58); killed lingering v5 servers
 1814G. NEXT on wake: (a) when v6_flat done → fold Paper 2 Fig 1 (flat+size measured, resolve K story), flip
 submitted v2; (b) when v7 done → analyze Paper 4 (λ=3 p99 spread/mean vs stock coin-flip band; lossless; C@λ10
 unchanged); if promising → n≥3 + θ_hi/g sweep; write Paper 4 or fold negative into Paper 3.
+
+## v6_flat λ=3 LANDED (19:02): C=2.95, hit=0.4352, p99=48065ms — crater REPLICATED + frontier-unifying
+- Crater n=2: flat hit 0.4352 (vs v2_flat2 0.4259) → Paper 1 firmed.
+- ★UNIFIES Paper1(crater)+Paper2(frontier): flat is the ONLY config with λ=3 achieved (2.95) < offered (3) —
+  low hit → lowest C=K/(1-h) → λ=3 AT/OVER capacity → p99 EXPLODES to 48s (vs stock 6-11s). The crater's harm is
+  MEDIATED by the capacity law. (K@λ3=1.666 but λ=3 near-cap not clean; await λ=10 saturated for clean K + the
+  low-hit anchor.) p50=1994ms (elevated vs others ~500-1000 → whole system in high-occupancy basin, consistent
+  w/ Paper 3 occupancy mechanism at low margin).

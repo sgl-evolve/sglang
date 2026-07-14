@@ -60,6 +60,7 @@ VAR = {
  "v3_wb":"cache: write_back", "v3b_wb":"cache: write_back",
  "v2_flat2":"cache: flat-admission (crater)", "v2b_flat2":"cache: flat-admission (crater)",
  "v4_lpm":"schedule: lpm co-residency", "v5_size":"cache: size-admission",
+ "v6_flat_sweep":"cache: flat-admission (low-hit anchor)",
 }
 
 print("="*74)

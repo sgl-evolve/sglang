@@ -540,6 +540,23 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         self.write_through_threshold = (
             1 if server_args.hicache_write_policy == "write_through" else 2
         )
+        # --- [turing] reuse-gated L2 backup admission (research mechanism) ---
+        # Gate the D->H backup on demonstrated reuse instead of eager write-through.
+        # ADMIT: off (stock) | flat (gate every node = write_through_selective control)
+        #        | size (gate only prefixes >= SIZE_TOK; small prefixes admit eagerly).
+        # GATE_HITS: hit_count required before a gated node is backed up (default 2 =
+        #   "earn L2 on first reuse"). SIZE_TOK: token-size cutoff for size mode.
+        import os as _os
+        self._turing_admit = _os.environ.get("SGLANG_TURING_ADMIT", "off").lower()
+        self._turing_gate_hits = int(_os.environ.get("SGLANG_TURING_GATE_HITS", "2"))
+        self._turing_size_tok = int(_os.environ.get("SGLANG_TURING_SIZE_TOK", "4096"))
+        if self._turing_admit != "off":
+            logger.info(
+                f"[turing] reuse-gated backup admission: mode={self._turing_admit} "
+                f"gate_hits={self._turing_gate_hits} size_tok={self._turing_size_tok}"
+            )
+        self._turing_gated_skips = 0  # backups withheld pending demonstrated reuse
+        self._turing_backups = 0      # backups actually issued (all policies)
         self.load_back_threshold = 10
         self.prefetch_stop_policy = server_args.hicache_storage_prefetch_policy
 
@@ -1807,6 +1824,27 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
             )
         return transfers
 
+    def _turing_backup_threshold(self, node: UnifiedTreeNode) -> int:
+        """[turing] Per-node backup-admission threshold (# hits before D->H backup).
+
+        - off  : stock behavior (self.write_through_threshold).
+        - flat : every node must reach gate_hits before backup
+                 (== write_through_selective; a config-equivalent CONTROL).
+        - size : only prefixes >= size_tok are gated; small prefixes admit at 1.
+                 Motivation: giant one-shot documents (loogle 73% one-shot, docs up
+                 to 191K tok) are the dominant cache pollutant under load; small
+                 prefixes are cheap to admit eagerly (low opportunity cost).
+        """
+        if self._turing_admit == "off":
+            return self.write_through_threshold
+        if self._turing_admit == "flat":
+            return self._turing_gate_hits
+        if self._turing_admit == "size":
+            val = node.component_data[BASE_COMPONENT_TYPE].value
+            size = len(val) if val is not None else 0
+            return self._turing_gate_hits if size >= self._turing_size_tok else 1
+        return self.write_through_threshold
+
     def _inc_hit_count(self, node: UnifiedTreeNode, chunked: bool = False) -> None:
         """Increment hit count; trigger write_backup when threshold reached."""
         if node.evicted or chunked:
@@ -1817,12 +1855,17 @@ class UnifiedRadixCache(KVCacheEventMixin, BasePrefixCache):
         ):
             return
         node.hit_count += 1
-        if (
-            self.cache_controller is not None
-            and not node.backuped
-            and node.hit_count >= self.write_through_threshold
-        ):
-            self.write_backup(node)
+        if self.cache_controller is not None and not node.backuped:
+            if node.hit_count >= self._turing_backup_threshold(node):
+                self.write_backup(node)
+                self._turing_backups += 1
+            elif self._turing_admit != "off":
+                self._turing_gated_skips += 1
+                if self._turing_gated_skips % 4000 == 0:
+                    logger.info(
+                        f"[turing] admission live: gated_skips={self._turing_gated_skips} "
+                        f"backups={self._turing_backups}"
+                    )
 
     def write_backup_storage(self, node: UnifiedTreeNode) -> None:
         if (

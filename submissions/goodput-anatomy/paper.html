@@ -234,9 +234,13 @@ cold prefills) or the SLO/workload itself&mdash;not the KV cache. Peak throughpu
 A skeptic might say we simply need more L2. But the budget is fixed by construction (the contribution must come
 from a smarter engine, not more memory), and within that budget every lossless lever is bounded: eviction is
 near-Belady (&sect;4); admission backfires (&sect;5); backup bandwidth is non-binding (&sect;5); and the tail is
-uncacheable prefill (&sect;6). The negative is therefore not an artifact of one policy but a property of the
-regime: <em>a saturated, heavy-tailed, first-sight-dominated conversational workload leaves the KV cache almost no
-room to move goodput@SLO.</em>
+uncacheable prefill (&sect;6). Nor is the eviction result for lack of trying on the policy axis: the engine already
+ships a full zoo of pluggable eviction strategies (LRU, LFU, FIFO, MRU, FILO, Priority, SLRU in
+<span class="mono">evict_policy.py</span>); adding one more (cost-/size-aware GreedyDual) cannot help, because the
+binding capacity is host-side and the goodput tail is not a miss-count phenomenon at all. The negative is therefore
+not an artifact of one policy but a property of the regime: <em>a saturated, heavy-tailed, first-sight-dominated
+conversational workload leaves the KV cache almost no room to move goodput@SLO&mdash;the lever is prefill
+scheduling and SLO/workload design, not the cache.</em>
 </p>
 
 <h2>8 Related work</h2>

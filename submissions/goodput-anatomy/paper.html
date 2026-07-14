@@ -217,7 +217,11 @@ KV tiering reports the same), <b>not a contribution of this paper</b>; we includ
 novel mechanism would have to beat. Our novel admission mechanism does not beat it&mdash;it craters. Whether
 write_back <em>reliably</em> clears the &lambda;=3 SLO (it passed here, p99 6591) or merely landed in the good
 basin of the &sect;6 coin-flip is being tested with replicates; the +6.2&nbsp;pp <em>hit</em> gain, however, is
-robust (hit rate does not coin-flip, &sect;6).
+robust (hit rate does not coin-flip, &sect;6). Notably the hit gain <em>persists</em> across the sweep
+(&lambda;=5: write_back 0.7291 vs stock 0.6627, +6.6&nbsp;pp) yet does <em>not</em> rescue goodput at higher load
+(write_back &lambda;=5 p99 is still 22&nbsp;s, a fail) &mdash; a robust hit improvement leaves the
+compute-irreducible tail (&sect;6) untouched, which is precisely why even the best cache configuration cannot lift
+goodput@SLO once the load clears the &lambda;=3 boundary.
 </p>
 <p>
 <b>Why the novel admission gate backfires.</b> The intuition ("skip backing up cold one-shot docs") ignores &sect;4: the device is

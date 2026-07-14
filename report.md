@@ -364,8 +364,37 @@ cold-prefill-compute-bound / control-invariance" claims in BOTH papers.
   IS the goodput lever** (relieves λ3 head-of-line + λ5 throughput=concurrent SRPF). Both papers reframed:
   P1 = "admission is the wrong tool, scheduling the right"; P2 retitled "cache retention is the non-lever,
   prefill scheduling is the lever." Commits cf6c60f94 (P1), 297bde123 (P2), 62bd9c28d (INDEX).
-- **Honesty note:** SRPF is concurrent work's mechanism; my contribution is the head-of-line DIAGNOSIS +
-  correcting the record. λ3-SRPF GPU A/B is the next validation (base GPU-confirmed SRPF@λ5).
+- **Honesty note:** SRPF/SJF is a TEXTBOOK scheduling policy (the charter explicitly excludes it as a
+  contribution); my contribution is the head-of-line DIAGNOSIS + the admission/caching NEGATIVES. Papers
+  now cite SRPF as textbook prior art (no sibling attribution) and back the reordering claim with my OWN
+  GPU run.
 - **Lesson:** my earlier oracle.py over-serialized (1-turn-per-step), wrongly suggesting small-first
   "pushes the tail out"; hol_sim.py (correct 6144-packing) shows the opposite. Verify sim fidelity before
   drawing scheduling conclusions.
+- **Direct trace (`analysis/hol_trace.py`):** in the stock run, the waiting queue is **9.6× deeper**
+  during big-cold-doc prefill chunks (#new-token≥6144, #cached-token=0: mean 11.9, p90 33, max 183) vs
+  other prefill steps (mean 1.2, p90 0) — head-of-line confirmed directly from the real run, independent
+  of the sim.
+
+### ★ GPU A/B DONE (job 19834, node 0-3, my own run): SRPF λ3 CONFIRMS head-of-line relief
+- **v-srpf-r1 λ3:** p99 TTFT **5892ms**, p50 519ms, req_tput 3.02, hit 0.673 — **below the 8s SLO**,
+  below the stock coin-flip mean (8079) and 4/5 of its draws {6327,6391,7765,8124,11786}. Matches the sim
+  prediction (srpf_np 6205ms). ⇒ reordering (serve-small-first) relieves the λ3 head-of-line tail, exactly
+  as diagnosed. n=1 (corroborative; diagnosis rests on arithmetic + trace, not this one run).
+- **λ5:** in flight (~40min out). Will add the throughput-regime point (my own, not cited).
+- Integrated into BOTH papers (commit above); SRPF cited as textbook, my GPU run as the corroboration.
+- **Other axes bounded this session:** Mamba-state pool NEVER binding (max usage 0.77 vs attn-KV 1.0,
+  `analysis/mamba_pressure.py`) ⇒ hybrid-asymmetry is a non-lever too. Design space for KV-cache goodput
+  levers is closing hard: residency=mirage, admission=neg, transfer=cheap, Mamba=non-binding; only
+  prefill SCHEDULING (textbook) and compute-side cost reduction remain.
+
+### NEXT DIRECTION (scoped): head-of-line fast-lane — queue-adaptive chunk-budget partition
+- **Hypothesis:** relieve head-of-line WITHOUT reordering by reserving R tokens of the per-batch chunk
+  budget for waiting small turns while a big cold doc is mid-chunk, so big+small prefill co-run in the
+  same batch. Distinct from SRPF (reorders WHICH req) and from stock PP dynamic-chunking (history-based,
+  gated on pp_size>1, OFF in this eval). Lossless (only partitions the chunk budget).
+- **Hook:** `chunk_cap` param on `PrefillAdder.add_chunked_req` (cap big-doc chunk at chunked_prefill_size−R
+  when a small waiting turn exists); scheduler decides the cap in the "Determine chunked_prefill_size" block.
+- **Discipline:** FAST-SCREEN in hol_sim.py first (add a `fastlane` policy); only eval on GPU if the sim
+  shows it beats stock at λ3. RISK: may be redundant with SRPF (both relieve head-of-line) — the unique
+  value is helping mid-chunk arrivals + working under fcfs. Test carefully; do not trust sim above λ3.

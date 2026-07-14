@@ -53,7 +53,7 @@ capacity- and information-bound.
 KV even at the lowest rate, so the prefix cache is host-bound and eviction ordering is near-Belady&mdash;there is
 little to win. (3)&nbsp;<b>The admission backfire</b> (counter-intuitive): reuse-gated L2 admission&mdash;the stock
 <span class="mono">write_through_selective</span> idea, which "backs up only hot data"&mdash;<em>craters</em> hit rate
-by 25&nbsp;points, because under device saturation any prefix not <em>eagerly</em> mirrored to L2 is evicted from
+by ~24&nbsp;points (n=2: &minus;23 to &minus;25&nbsp;pp), because under device saturation any prefix not <em>eagerly</em> mirrored to L2 is evicted from
 L1 and lost before its reuse. Eager write-through is not merely preferred, it is necessary; and backup bandwidth
 (~1&nbsp;GB/s) is nowhere near binding, so the "savings" buy nothing. (4)&nbsp;<b>The bottleneck is outside the
 cache</b>: p50 TTFT stays ~1&nbsp;s while p99 explodes from 11&nbsp;s to 41&nbsp;s across the sweep; the tail is
@@ -424,7 +424,9 @@ Strata (arXiv 2508.18572) targets balanced batching and transfer overlap; our &s
 mechanisms are starved here. Classic admission/eviction (2Q, TinyLFU, AdaptSize, GreedyDual-Size) motivate &sect;5;
 our finding is that their central assumption&mdash;that keeping cold objects out protects hot ones&mdash;inverts
 under device saturation, where withholding admission <em>loses</em> the hot objects. Cache-aware and shortest-job
-scheduling (SRPF/SJF) are the known levers for the &sect;6 tail; we position them as the correct axis, not the cache.
+scheduling (SRPF/SJF) are the classic levers for a heavy-tailed prefill tail; we position them as the correct axis
+(not the cache), while noting the caveat that the one cache-aware policy the engine exposes (LPM, &sect;8) is
+neutral here&mdash;so the effective lever is a scheduler the engine does not yet implement, or SLO/workload design.
 </p>
 
 <h2>10 Limitations &amp; when the conclusion flips</h2>
@@ -432,25 +434,37 @@ scheduling (SRPF/SJF) are the known levers for the &sect;6 tail; we position the
 <li><b>One model/workload/SLO.</b> The bound is specific to a saturated, heavy-tailed, first-sight-dominated
 regime. Under a smaller working set (cache not binding), a looser SLO, or a workload with heavy cross-conversation
 prefix sharing, the cache regains leverage.</li>
-<li><b>Pending evidence.</b> The admission crater is replicated n=2 at &lambda;=3 (&minus;23 to &minus;25&nbsp;pp);
-the full multi-&lambda; crater curve and a <span class="mono">write_back</span> control are queued to complete
-the write-policy space (&sect;5).</li>
-<li><b>Effective prefill rate.</b> The &sect;6 heavy-tail bound depends on the per-request prefill rate under
-concurrency; we report it as a range and will pin it with a controlled single-giant-doc measurement.</li>
+<li><b>Sample sizes.</b> The admission crater is replicated n=2 at &lambda;=3 (&minus;23 to &minus;25&nbsp;pp) and
+shown at &lambda;=5; the write_back control is n=2 (both pass the &lambda;=3 SLO); the write_back <em>hit</em> and
+<em>+23% peak-throughput</em> gains are single-run but consistent with prior de-duplication results. Because the
+goodput headline is a coin-flip, we compare on the robust hit rate throughout; the "write_back stabilizes the
+coin-flip" claim (2/2 vs 1/2) is marked suggestive.</li>
+<li><b>Effective prefill rate.</b> The &sect;7 heavy-tail bound depends on the per-request prefill rate R under
+concurrency; we fit R from the measured median TTFT (an upper estimate) and report the floor accordingly&mdash;
+the largest documents exceed the SLO by multiples for any plausible R.</li>
+<li><b>SRPF not directly testable.</b> The classic tail lever (shortest-remaining-prefill-first) is not among the
+engine's schedule-policy choices, so we could not measure it; we tested the available cache-aware policy (LPM),
+which is neutral (&sect;8). Our claim is therefore that no <em>available lossless</em> mechanism helps, and that
+the residual lever is prefill scheduling of a kind the engine does not yet expose, or SLO/workload design.</li>
 </ul>
 
 <h2>11 Reproducibility</h2>
 <p>
 Base commit <span class="mono">a334877e5</span>; instrumentation/mechanism <span class="mono">ce01c1c79</span>
-(env-gated <span class="mono">SGLANG_TURING_ADMIT</span> in <span class="mono">unified_radix_cache.py</span>;
-<span class="mono">off</span>=stock, <span class="mono">flat</span>=selective). Versions:
-<span class="mono">v1_stock</span> (&sect;6 curve, &sect;4 occupancy), <span class="mono">v2_flat2</span> (&sect;5 crater),
-<span class="mono">v1b_stock</span> (variance). Offline analyses (&sect;3, &sect;5 reuse, &sect;6 heavy-tail) in
-<span class="mono">analysis/</span>. All eval runs via the frozen <span class="mono">eval.sh</span> rate sweep on
-a certified node; numbers match <span class="mono">runs/&lt;ver&gt;/summary.json</span>.
+(env-gated <span class="mono">SGLANG_TURING_ADMIT</span> in <span class="mono">unified_radix_cache.py</span>:
+<span class="mono">off</span>=stock write-through, <span class="mono">flat</span>=reuse-gated (=write_through_selective),
+<span class="mono">size</span>=size-conditioned gate, <span class="mono">writeback</span>=activates stock write_back).
+Versions (all same certified node 0-3, frozen <span class="mono">eval.sh</span> rate sweep &lambda;{3,5,7,10}):
+<span class="mono">v1_stock</span>/<span class="mono">v1b_stock</span> (&sect;6 curve, &sect;4 occupancy, coin-flip),
+<span class="mono">v2_flat2</span>/<span class="mono">v2b_flat2</span> (&sect;5 crater, n=2),
+<span class="mono">v3_wb</span>/<span class="mono">v3b_wb</span> (write_back control, n=2, &sect;5&ndash;7),
+<span class="mono">v4_lpm</span> (LPM co-residency, <span class="mono">--schedule-policy lpm</span>, &sect;8). Offline analyses
+(&sect;3 oracle, &sect;5 reuse geometry, &sect;6&ndash;7 heavy-tail &amp; P99-bound, feasible region) in
+<span class="mono">analysis/</span>. Numbers match <span class="mono">runs/&lt;ver&gt;/summary.json</span>; all logged
+to the W&amp;B run <span class="mono">turing</span>.
 </p>
 
-<p class="note" style="margin-top:2rem">v1 (submitted) — turing, sglang v0.31. Evidence: v1_stock, v1b_stock
+<p class="note" style="margin-top:2rem">v4 (submitted) — turing, sglang v0.31. Evidence: v1_stock, v1b_stock
 (coin-flip), v2_flat2, v2b_flat2 (crater n=2), v3_wb, v3b_wb (write_back n=2) + offline oracle/tail analyses; all
 numbers match <span class="mono">runs/*/summary.json</span>. The "write_back stabilizes the coin-flip" claim
 (&sect;5) is n=2 and marked suggestive; the core results (admission crater, effective-capacity collapse,

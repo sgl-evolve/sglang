@@ -233,6 +233,16 @@ Paper 1 → flip draft→submitted.
   Evidence: 7 W&B versions (v0/v1_stock/v1b_stock/v2_flat2/v2b_flat2/v3_wb/v3b_wb), all numbers match runs/.
   2 figures. Node released.
 
+
+## ★ Direction 4: prefill tail-acceleration (free screen) — BACKFIRES → strengthens Paper 1 to v5
+Tested (free discrete-event screen, analysis/tail_accel_screen.py) whether dedicating compute to giant (tail)
+prefills cuts p99. Result: serving giants one-at-a-time SERIALIZES them (p99 34-136s >> baseline 11.5s), even at
+16x rate — concurrent processor-sharing (baseline) is near-optimal for the giant p99. Combined with SRPF (delays
+giants → worse giant p99), NEITHER prefill-scheduling direction helps the giant-dominated tail (giants are ~3% =
+the p99). ⇒ CORRECTS Paper 1's "lever is prefill scheduling": the sole residual lever is SLO/workload design.
+Paper 1 → v5 (impossibility now spans caching AND scheduling axes). Robust argument: N giants concurrent ~max(U)/
+share vs serial ~ΣU/R.
+
 ## ★ Direction 3: conversation co-residency = LPM scheduling (--schedule-policy lpm, NOT forbidden) — NEUTRAL
 Tested LPM (longest-prefix-match = prioritize continuations = conversation co-residency, the charter's listed
 target) directly on the real eval (v4_lpm, same node 0-3, schedule_policy='lpm' confirmed). @λ=3: hit **0.6792**

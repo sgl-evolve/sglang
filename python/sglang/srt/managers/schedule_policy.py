@@ -497,6 +497,7 @@ class PrefillAdder:
         self.can_run_list = []
         self.preempt_list = []
         self.new_chunked_req = None
+        self.dbs_has_continuing_chunk = False
         self.log_hit_tokens = 0
         self.reprocessed_log_hit_tokens = 0
         # TODO(lsyin): report the real input tokens excluding page alignment
@@ -767,6 +768,8 @@ class PrefillAdder:
         req.set_extend_range(len(req.prefix_indices), len(req.prefix_indices) + new_len)
         self.can_run_list.append(req)
         dbs_enabled = os.environ.get("DBS", "0") == "1"
+        if dbs_enabled and truncated:
+            self.dbs_has_continuing_chunk = True
         self._update_prefill_budget(
             0,
             req.extend_range.length,
@@ -1039,6 +1042,8 @@ class PrefillAdder:
                     req.retracted_stain,
                 )
             else:
+                if self.dbs_has_continuing_chunk:
+                    return AddReqResult.OTHER
                 # Make sure at least one page is available
                 trunc_len = self.rem_chunk_tokens // self.page_size * self.page_size
 

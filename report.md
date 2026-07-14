@@ -177,13 +177,16 @@ to measure (in progress).
   pass-rate gain). The sweep (v5-w90/v6-w95/v7-th16k) is the last chance for a config that reliably
   clears 8s; absent that, the honest result is the NEGATIVE + a suggestive variance-reduction observation.
 
-### ★★★ v5-w90 (watermark 0.90) λ=3 = 7789ms — PASSES 8s SLO (n=1)
-- Less-aggressive gating (w0.90 vs 0.85) LOWERS the stable point: 7789 < v4-w85 mean 8291 (less
-  load-back deferral overhead) AND still variance-reduced. **7789 < 8000 ⇒ PASSES.** If v5-w90
-  RELIABLY lands <8000, CCA-lb@0.90 converts stock's λ=3 coin-flip (1/3 pass) into reliable pass
-  ⇒ goodput 0→3 = a real WIN. MUST replicate n≥3-4 (coin-flip guardrail: single-run VOID).
-- Trend: watermark ↑ (0.85→0.90) lowers overhead → lower tail, keeps variance reduction. Sweet spot.
-- NEXT: replicate v5-w90 (r2/r3/r4) + paired stock; if reliably <8000 → positive paper.
+### v5-w90 (watermark 0.90) λ=3 — modest positive, NOT a clean flip (HONEST, n=2)
+- v5-w90 λ=3 = **{7789 PASS, 8243 FAIL}** (n=2) — ALSO a coin-flip, but centered LOWER (mean 8016) than
+  v4-w85 (8291) and stock (8746). So watermark 0.90 lowers the mean further but still straddles 8000.
+- **Honest reassessment (no over-claim):** CCA-lb does NOT reliably flip goodput. What it DOES:
+  lowers λ=3 p99 MEAN (stock 8746 → CCA ~8016–8291) and REDUCES variance (std 2272 → ~370), nudging
+  the coin-flip toward passing but not decisively clearing the 8s SLO. Same PATTERN as the known
+  capacity-dedup variance-reduction result, but via a NOVEL mechanism (load-back prefill admission).
+- Path to a defensible claim: firm ONE config (v5-w90) to n≥5-6 + stock n≥5-6; Levene (variance) +
+  Mann-Whitney (location) on λ=3 p99. Claim "reduces tail mean+variance" IF significant — NOT a
+  goodput flip. (base guardrail: 4 over-claims caught by replication — do not repeat.)
 
 ## Contribution = variance-reduction lead → possible goodput WIN (v5-w90) OR rigorous negative
 **Thesis:** goodput@SLO for long-document multiturn 2-tier serving is a **cold-prefill-compute-bound

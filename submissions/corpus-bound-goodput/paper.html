@@ -200,8 +200,25 @@ The unifying statement: for long-document conversational serving under a fixed m
 width, and KV budget, <b>goodput@SLO is determined by the corpus (unique-document set) and the hardware,
 and is invariant to the serving-policy design space.</b> The only levers that move it are corpus-side —
 deduplicating or compressing the unique-document set, or shaping retrieval to reduce cold first-prefills
-— or hardware-side (more prefill FLOPs, or parallelizing a single document's prefill via context/sequence
+— or hardware-side (more prefill FLOPs, or parallelizing a single document's prefill via context
 parallelism). All are outside the serving cache.
+</p>
+<h3>5.1 Even the compute-side lever is architecturally unavailable here</h3>
+<p>
+The natural compute-side attack on the p99 floor — <b>context-parallel (CP) prefill</b>, which splits one
+long document's prefill across the tensor-parallel ranks to cut its latency — turns out to be unavailable
+for this model, for a structural reason worth stating. In sglang v0.31, prefill CP
+(<code>--enable-prefill-cp</code>, running over the 8 TP ranks with <code>attn_cp_size = tp_size</code>)
+is gated to DeepSeek/GLM sparse-attention (DSA) and pure-attention MoE architectures; enabling it on the
+hybrid <b>GatedDeltaNet</b> model is a silent no-op (the server initializes with <code>attn_cp_size=1</code>
+and the model has no CP path). The reason is fundamental, not incidental: CP works for attention because
+the softmax over keys/values decomposes across sequence shards (ring/flash CP), but a
+linear-attention/Mamba layer computes a <em>sequential recurrence</em> — the state is carried token by
+token — so splitting the sequence across ranks requires passing the recurrent state across ranks in order,
+a serial scan that negates the parallelism. Hybrid linear-attention models therefore inherit an
+irreducible single-document prefill-latency floor that pure-attention models can amortize with CP. For the
+workload here, that floor (largest cold documents, ~5–11 s of prefill) is the SLO tail — and no lever,
+serving-policy or compute-side, moves it under the frozen contract.
 </p>
 
 <h2>6 Related work</h2>

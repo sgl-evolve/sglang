@@ -63,3 +63,15 @@ class SLRUStrategy(EvictionStrategy):
 
         is_protected = 1 if node.hit_count >= self.protected_threshold else 0
         return (is_protected, node.last_access_time)
+
+
+class CostAwareStrategy(EvictionStrategy):
+    def __init__(self, threshold: int = 2048):
+        import os
+
+        self.threshold = int(os.environ.get("COST_AWARE_THRESHOLD", str(threshold)))
+
+    def get_priority(self, node: TreeNode) -> Tuple[int, float]:
+        key_len = len(node.key) if node.key is not None else 0
+        is_costly = 1 if key_len >= self.threshold else 0
+        return (is_costly, node.last_access_time)

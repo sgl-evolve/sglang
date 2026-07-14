@@ -270,3 +270,45 @@ requests U = full doc (caching-invariant). ⇒ P99 TTFT ≥ q99(U)/R. Fit R≈41
 EVERY hit rate** (largest doc alone 47s); measured λ=3 p99 11.5s = floor + queue (validates). Caching cuts E[U]
 mean 4× (14006→3287) but not the tail. This is the ANALYTICAL form of the Paper-1 impossibility + predicts the
 feasible region (caching matters iff q99(U) < R·SLO — false here). Folded into Paper 1 **v2 §7** (empirics+theory).
+
+---
+
+## PAPER 2 (DRAFT): "The Schedulable Frontier" — `submissions/schedulable-frontier/paper.html`
+
+**Thesis:** goodput@SLO = min(λ_tail(contention), **C(h,K)**), where the capacity ceiling **C = K/(1−h)**.
+Unifies the cache axis (Paper 1) and the scheduling axis into ONE frontier and resolves the throughput↔goodput
+puzzle (caching raises throughput but not goodput).
+
+### The capacity law C = K/(1−h)  [`analysis/frontier.py`]
+At saturation the prefill engine completes uncached work at raw rate R; C = R/E[U] and E[U] ∝ (1−h) ⇒ **C=K/(1−h)**,
+K ≡ C·(1−h). Validated on saturated points (λ∈{7,10}): **cache-variant K = 1.388 ± 0.034 (CV 2.5%)**, predicts
+measured C within 1–3% (stock 4.01 vs 4.14; wb 5.04 vs 5.11). **Two orthogonal levers on ONE ceiling:** caching
+lowers (1−h); a scheduling change (lpm) raised **K +11%** at fixed h (n=1, suggestive). Caching raises the ceiling
+4.1→5.1 but goodput stays ~3 — the extra C lands in the unstable λ≥5 region where SLO is already lost.
+
+### The intrinsic-feasibility floor  [decisive, `analysis/frontier_des.py`]
+R_raw = C·E[U] ≈ 27–30K tok/s. Solo prefill time U/R_raw vs 8s SLO: p50 0.15s, p99 **1.34s**, p99.9 2.48s,
+**MAX (191K-tok doc) 6.95s < 8s → EVERY request is solo-feasible.** ⇒ all SLO violations are contention/queueing,
+never irreducible service ⇒ **goodput@SLO_offline = C(h,K)** (tightest bound on the scheduling axis).
+**Reconciles Paper 1:** companion's R_eff≈4100 (contended) vs R_raw≈27450 (solo); ratio **6.7× = the contention
+factor = the [measured,C] gap**. Caching can't change R_raw or contention → can't lower the 8.9s floor (Paper 1's
+negative); a scheduler reduces the tail's effective concurrency → raises R_eff toward R_raw (the headroom).
+
+### The unified insight (novel, generalizable)
+goodput@SLO is **capacity-bounded but contention-limited** (binds far below C). Caching operates on the ceiling;
+scheduling operates on the gap. This is WHY caching alone fails (Paper 1: lifts an unreached ceiling) and WHY
+SRPF-class scheduling helps (closes a capacity-irrelevant gap; bounded by C, derived NOT copied — full independence).
+**Co-design required.** + Generalizable feasibility criterion (§7): from trace U, one hardware K, and SLO, decide
+which lever (cache/schedule/hardware/SLO) binds.
+
+### Firming (in flight)
+- `v6_flat_sweep` (ADMIT=flat, full sweep) → LOW-hit capacity anchor (h≈0.43 → predict C≈2.42) confirms law across
+  0.43→0.73; also crater-replicate at rates (Paper 1). Chained on held node after `v5_size` (`analysis/chain_flat.sh`).
+- `v5_size` λ=10 → predict C≈4.59 (h=0.6976); turns predicted markers → measured in Fig 1.
+
+## PAPER 3 SEED (needs GPU replicates n≥3): margin-reliability of the coin-flip
+Frontier predicts the goodput coin-flip is a **capacity-MARGIN (C−λ) effect**: near the stability edge, transient
+cold-start backlog drains slowly → metastable high-latency basin. Suggestive: stock (C≈4.0, margin 1.0) λ=3 p99
+{6175,11494}=COIN-FLIP; wb (C≈5.1, margin 2.1) λ=3 p99 {6591,7406}=RELIABLE PASS. **BUT size (C≈4.6) λ=3 p99
+15553=FAIL at n=1 CONTRADICTS** → margin-reliability is NOT established; needs n≥3 per config at λ=3. Real open
+question, honest.

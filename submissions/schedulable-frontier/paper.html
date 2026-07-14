@@ -203,6 +203,19 @@ the entire scheduling axis, and it is reached, in principle, by contention manag
 <p class="note">Caveat: at the very tail (p99.9&nbsp;&rarr;&nbsp;max) solo time approaches the SLO, so if K were
 ~15% lower the single largest document would become intrinsically infeasible. But goodput@SLO is defined at the
 p99, where the margin is 6&times; (1.3&nbsp;s vs 8&nbsp;s); the conclusion is robust at the metric's percentile.</p>
+<div class="keyfinding">
+<b>Reconciliation with the contended tail (why this is not a contradiction).</b> The companion study fit an
+<em>effective</em> per-request prefill rate R<sub>eff</sub>&nbsp;&approx;&nbsp;4100&nbsp;tok/s from the measured
+&lambda;=3 latencies, giving a p99 <em>floor</em> q<sub>99</sub>(U)/R<sub>eff</sub>&nbsp;&approx;&nbsp;8.9&nbsp;s
+&mdash; above the SLO. Here we use the <em>solo/raw</em> rate R<sub>raw</sub>&nbsp;&approx;&nbsp;27&nbsp;450&nbsp;tok/s,
+giving 1.3&nbsp;s &mdash; below it. The two are consistent: their ratio
+<b>R<sub>raw</sub>/R<sub>eff</sub>&nbsp;&approx;&nbsp;6.7</b> is precisely the effective concurrency a tail request
+experiences under contention (it receives ~1/6.7 of the machine while sharing with others). That 6.7&times; factor
+<em>is</em> the contention gap made quantitative: caching changes neither R<sub>raw</sub> nor the contention, so it
+cannot lower the 8.9&nbsp;s floor (the companion's negative); a scheduler that reduces the tail request's effective
+concurrency raises its R<sub>eff</sub> toward R<sub>raw</sub>, which is the entire [measured,&nbsp;C] headroom. The
+solo floor (1.3&nbsp;s) is thus the target a perfect scheduler drives toward, and the contended floor (8.9&nbsp;s)
+is where the current FCFS-ish online policy sits.</div>
 
 <h2>5 The stability crossover: why the SLO binds below C</h2>
 <p>

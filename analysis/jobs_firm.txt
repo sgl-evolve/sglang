@@ -1,0 +1,5 @@
+# Firming distributions (screen 3,5, same-node ondem-3): stock coin-flip + v4-lb neutral
+v0-stock-r3:
+v4-cca-lb-r2:--enable-cca-prefill --cca-watermark 0.85 --cca-threshold 4096 --cca-max-defer-passes 30 --cca-gate-loadback-only
+v0-stock-r4:
+v4-cca-lb-r3:--enable-cca-prefill --cca-watermark 0.85 --cca-threshold 4096 --cca-max-defer-passes 30 --cca-gate-loadback-only

@@ -216,9 +216,12 @@ helps&mdash;and at a realistic saturated prefill rate its TTFT alone approaches 
 decode batches stall (&lt;50 tok/s) and 34% run &lt;150 tok/s, while the request queue is essentially empty
 (p50=0). The tail is not head-of-line queueing&mdash;it is giant prefills stealing decode cycles, a metastable
 coupling that amplifies the heavy-tailed seed.</li>
-<li><b>Coin-flip.</b> The identical stock config passes the SLO on one node/run (baseline p99 = 6326&nbsp;ms) and
-fails on another (11494&nbsp;ms) &mdash; a 1.8&times; swing straddling the SLO. goodput@SLO is variance-dominated;
-single-run A/Bs on it are void, which is why we compare on hit rate and p99 <em>values</em>.</li>
+<li><b>Coin-flip (same node, same config).</b> Two stock runs on the <em>same</em> certified node at &lambda;=3
+give p99 TTFT = <b class="fail">11494&nbsp;ms</b> (fail) vs <b class="win">6175&nbsp;ms</b> (pass) &mdash; a
+1.86&times; swing straddling the 8&nbsp;s SLO, so goodput@SLO flips 0&harr;&ge;3 on identical configuration.
+Crucially, <b>hit rate is invariant across the same two runs (0.6753 vs 0.6762, &Delta;&lt;0.1&nbsp;pp)</b>.
+goodput@SLO is therefore variance-dominated and single-run A/Bs on it are void; hit rate is the robust
+comparator, which is why the &minus;25&nbsp;pp admission crater (&sect;5) is real signal and not noise.</li>
 </ul>
 <p>
 The lever for this tail is prefill <em>scheduling</em> (letting the many cheap continuations bypass the few giant

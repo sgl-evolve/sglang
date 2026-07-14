@@ -1306,6 +1306,14 @@ class ServerArgs:
         "Ablation: meter admission by RAW input length instead of cache-adjusted "
         "(input - resident-prefix) work. Isolates the value of cache-awareness.",
     ] = False
+    cca_ignore_loadback: A[
+        bool,
+        "Ablation: meter admission by RECOMPUTE cost (input - device_prefix - "
+        "host_hit_length) instead of the default DEVICE-FOOTPRINT cost (input - "
+        "device_prefix, which counts the L2->L1 load-back KV). Device-footprint is "
+        "what actually pressures the KV pool; ignoring load-back lets reuse-heavy "
+        "load-backs saturate the pool (measured: 0->518 retracts + crash).",
+    ] = False
     cca_max_defer_ms: A[
         float,
         "Safety valve: an expensive prefill that has already waited this long "

@@ -1084,6 +1084,9 @@ class Scheduler(
         self.cca_use_raw_cost = bool(
             getattr(self.server_args, "cca_use_raw_cost", False)
         )
+        self.cca_ignore_loadback = bool(
+            getattr(self.server_args, "cca_ignore_loadback", False)
+        )
         self.cca_max_defer_s = (
             float(getattr(self.server_args, "cca_max_defer_ms", 4000.0)) / 1000.0
         )
@@ -2766,21 +2769,28 @@ class Scheduler(
         return res
 
     def _cca_prefill_cost(self, req) -> int:
-        """Cache-adjusted prefill work (tokens) for CCA admission control.
+        """DEVICE-FOOTPRINT admission cost (tokens) for CCA — the NEW KV this
+        request will place in the L1 (GPU) pool when admitted.
 
-        The recompute cost of a request = total fill tokens minus what is
-        already resident in the radix cache (device prefix `prefix_indices` +
-        host prefix `host_hit_length`, which loads back cheaply, ~1.6ms). This
-        is the CONTROL CURRENCY: a prefix-reuse turn is ~0, a cold document is
-        tens of thousands. With `cca_use_raw_cost` (ablation) we meter by raw
-        input length instead, isolating the value of cache-awareness.
+        cost = total_fill_tokens - device_resident_prefix. It counts BOTH the
+        cold suffix that must be prefilled AND the host (L2) prefix that
+        `init_load_back` copies to L1 on admission — because both occupy device
+        KV and both pressure the retraction cliff. A prefix-reuse turn whose KV
+        is already device-resident is ~0 (never gated); a cold doc or a large
+        L2->L1 load-back is tens of thousands (gated near the watermark).
+
+        Ablations:
+          --cca-use-raw-cost   : meter by raw input length (cache-blind).
+          --cca-ignore-loadback: meter by RECOMPUTE cost (also subtract
+                                  host_hit_length) — the v1 currency that
+                                  MISSED load-back and let the pool saturate.
         """
         total = len(req.full_untruncated_fill_ids)
         if self.cca_use_raw_cost:
             return total
-        resident = len(req.prefix_indices) + int(
-            getattr(req, "host_hit_length", 0) or 0
-        )
+        resident = len(req.prefix_indices)
+        if self.cca_ignore_loadback:
+            resident += int(getattr(req, "host_hit_length", 0) or 0)
         return max(0, total - resident)
 
     def get_new_batch_prefill(self) -> Optional[ScheduleBatch]:

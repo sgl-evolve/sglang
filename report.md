@@ -188,7 +188,16 @@ to measure (in progress).
   Mann-Whitney (location) on λ=3 p99. Claim "reduces tail mean+variance" IF significant — NOT a
   goodput flip. (base guardrail: 4 over-claims caught by replication — do not repeat.)
 
-## Contribution = variance-reduction lead → possible goodput WIN (v5-w90) OR rigorous negative
+### Stats (current, HONEST): variance-reduction SUGGESTIVE, not yet significant
+- stock λ3 p99 (n=3): mean 8746, std **2272**. CCA-lb pooled v4+v5 (n=5): mean 8181, std **348**.
+- **Levene p=0.10 (variance) — NOT significant** at n=3/5 (stock variance driven by the 11787 outlier;
+  small n → unstable variance estimate). MWU p=1.0 (means overlap). pass@8s: stock 1/3, CCA-lb 2/5.
+- ⇒ The ~7× std ratio is visually striking but needs n≥6 (both arms) to firm (base needed n=6-12).
+  Confirm campaign → stock n=4, CCA-lb n=7; re-test then. HONEST: report as SUGGESTIVE unless Levene<0.05.
+- ROBUST findings (paper's core, decisive at current n): the deferring-negative (56s), the recompute
+  crash (0→518), the characterization (coin-flip/bimodal/75%-cold/0-retract), the TP-desync fix.
+
+## Contribution = rigorous NEGATIVE + characterization + TP-lesson (+ suggestive variance-reduction)
 **Thesis:** goodput@SLO for long-document multiturn 2-tier serving is a **cold-prefill-compute-bound
 metastable coin-flip**, and **prefill admission control that defers expensive prefills cannot improve
 it (and can catastrophically harm it)** — because the SLO tail IS the expensive cold prefills.

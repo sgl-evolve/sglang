@@ -34,7 +34,7 @@
 <body>
 
 <h1>Effective-Capacity Collapse and the Admission Backfire:<br>
-Why Hierarchical KV Caching Does Not Improve goodput@SLO on Saturated Conversational Serving <span class="draft">v6 · submitted</span></h1>
+Why Hierarchical KV Caching Does Not Improve goodput@SLO on Saturated Conversational Serving <span class="draft">v7 · submitted</span></h1>
 <p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
 <p class="sub">Base commit <span class="mono">a334877e5</span> · mechanism/instrumentation <span class="mono">ce01c1c79</span></p>
 
@@ -63,9 +63,11 @@ compute/scheduling phenomenon the cache cannot touch. goodput@SLO is consequentl
 (the same stock config passes at 6.2&nbsp;s p99 in one run and fails at 11.5&nbsp;s in another on the <em>same</em>
 node). We conclude that on this regime a <em>novel</em> lossless KV-cache mechanism has essentially no room over
 the known exclusive-tiering configuration: the reachable hit slice is &le;7&nbsp;pp, the natural admission signal
-for it backfires, and the goodput tail is compute-irreducible. We further show the tail is beyond prefill
-<em>scheduling</em> too&mdash;the giants <em>are</em> the p99, so SRPF only delays them and tail-acceleration
-serializes them&mdash;so the sole remaining lever is the SLO/workload shape (&sect;7). We bound exactly why.
+for it backfires, and the goodput tail is compute-irreducible. The remaining lever is <em>not</em> the cache
+but prefill <em>scheduling</em> (a textbook SRPF-class policy) or the SLO/workload shape (&sect;7); we scope our
+claim to the cache and do not close the scheduling axis (indeed we show one scheduling idea, tail-acceleration,
+backfires by serializing the giants, while SRPF &mdash; untested here &mdash; our model suggests could help).
+We bound exactly why the <em>KV cache</em> cannot.
 </div>
 
 <h2>1 Introduction</h2>
@@ -313,16 +315,20 @@ goodput@SLO is therefore variance-dominated and single-run A/Bs on it are void; 
 comparator, which is why the &minus;25&nbsp;pp admission crater (&sect;5) is real signal and not noise.</li>
 </ul>
 <p>
-What can move this tail? Not the cache (&sect;3&ndash;5). And, it turns out, not prefill scheduling either.
-Because the giants are ~3% of requests (more than 1%), <em>they are the p99</em>, and both directions of
-scheduling make them worse: shortest-job/SRPF prioritizes the many small continuations and thereby <em>delays</em>
-the giants (their TTFT rises); the opposite &mdash; "tail-acceleration", dedicating compute so each giant finishes
-at its &ge;4&times; solo rate &mdash; <em>serializes</em> the giants into a queue (a free discrete-event screen gives
-p99 34&ndash;136&nbsp;s vs the 11.5&nbsp;s concurrent baseline, because N giants served one-at-a-time cost
-&sum;U/R whereas the concurrent baseline costs ~max&nbsp;U/share). The stock concurrent processor-sharing of
-prefills is already near-optimal for the giant p99. The only remaining lever is therefore the <b>SLO / workload
-itself</b> (loosen the SLO, or cap/segment document size so q<sub>99</sub>(U) falls below R&middot;SLO, &sect;7)
-&mdash; not the KV cache and not the prefill scheduler.
+What can move this tail? Not the cache (&sect;3&ndash;5). The remaining lever is prefill <em>scheduling</em>,
+which we deliberately do <b>not</b> claim to have closed &mdash; and one natural scheduling idea in fact
+<em>backfires</em>, which is instructive. "Tail-acceleration" (dedicating compute so each giant finishes at its
+&ge;4&times; solo rate) <em>serializes</em> the giants into a queue: a free discrete-event screen gives p99
+34&ndash;136&nbsp;s vs the 11.5&nbsp;s concurrent baseline, because N giants served one-at-a-time cost
+&sum;U/R whereas the concurrent baseline costs ~max&nbsp;U/share &mdash; so monopolizing for the giants is worse
+than the stock concurrent processor-sharing. The <em>other</em> classic direction, shortest-remaining-prefill-first
+(SRPF), is the opposite intervention: clear the many small jobs first and run the few giants when the system is
+less contended (higher R<sub>eff</sub>, &sect;7). We could not measure it &mdash; SRPF is not exposed as a
+schedule-policy choice and would need an engine change &mdash; and it is a textbook policy outside this paper's
+KV-cache scope, so we make no claim about it beyond noting that our R<sub>eff</sub> model gives a reason it
+<em>could</em> help (it raises R<sub>eff</sub> for the giants and, if the giants are a small enough minority,
+moves the p99 onto a fast small request). The honest scope of our result is therefore: <b>the KV cache cannot
+move this tail; the lever, if any, is prefill scheduling (SRPF-class) or the SLO/workload shape (&sect;7)</b>.
 </p>
 <p>
 <b>Peak throughput is NOT the flat decode-bound control one expects &mdash; the workload is prefill-bound.</b>
@@ -435,16 +441,20 @@ lever the KV-cache / serving literature (and the sglang engine) offers on this r
 <tr><td>Tiering / write policy</td><td>write_back = exclusive (device XOR host)</td><td>+6 pp hit (config ceiling), no goodput lift &ge;&lambda;5</td><td>measured (n=2)</td></tr>
 <tr><td>Eviction ordering</td><td>LRU (+ 6 other pluggable strategies; GreedyDual)</td><td>near-Belady; bounded</td><td>LRU&asymp;Belady + host-bound (&sect;4)</td></tr>
 <tr><td>Conversation co-residency</td><td>LPM (longest-prefix-match) scheduling</td><td>neutral (+0.3 pp hit; p99 in coin-flip band)</td><td>measured (v4_lpm)</td></tr>
-<tr><td>Prefill scheduling (the tail)</td><td>SRPF (delay giants) / tail-acceleration (serialize giants)</td><td class="fail">both worsen the giant p99</td><td>argued + screened (&sect;6)</td></tr>
+<tr><td>Prefill scheduling &mdash; tail-acceleration</td><td>dedicate compute to giants (monopolize)</td><td class="fail">backfires (serializes giants)</td><td>screened (&sect;6)</td></tr>
+<tr><td>Prefill scheduling &mdash; SRPF</td><td>shortest-remaining-prefill-first</td><td>not evaluated (textbook; may help &mdash; §7)</td><td>out of scope</td></tr>
 <tr><td>Transfer / L1&harr;L2 overlap</td><td>load-back on the critical path</td><td>1.65 ms mean, non-binding</td><td>measured (baseline)</td></tr>
 <tr><td>Layout / paging</td><td><span class="mono">page_first_direct</span></td><td>fixed by budget/model constraints</td><td>frozen</td></tr>
 <tr><td>Prefill compute</td><td>O(D&sup2;) exact attention on unique docs</td><td>losslessly irreducible</td><td>architectural (&sect;6&ndash;7)</td></tr>
 </tbody>
 </table>
 <p>
-No axis yields a novel lossless goodput@SLO win: admission backfires, tiering is a known config, eviction is
-saturated, co-residency scheduling is neutral, transfer is already hidden, layout is fixed, and the binding tail
-is irreducible compute. The impossibility is a property of the <em>regime</em>, not of any one mechanism.
+No <em>KV-cache</em> axis yields a novel lossless goodput@SLO win: admission backfires, tiering is a known config,
+eviction is saturated, co-residency (LPM) is neutral, transfer is already hidden, layout is fixed, and the binding
+tail is irreducible compute. The one non-cache mechanism we screened &mdash; giant tail-acceleration &mdash;
+backfires; SRPF (the classic tail lever) is untested and out of our KV-cache scope. So the impossibility is scoped
+to the cache: it is a property of the <em>regime</em> (heavy-tailed first-sight prefill under device saturation),
+and the lever, if any, lies in prefill scheduling or the SLO/workload shape, not the KV cache.
 </p>
 
 <h2>9 Related work</h2>
@@ -455,12 +465,13 @@ Strata (arXiv 2508.18572) targets balanced batching and transfer overlap; our &s
 mechanisms are starved here. Classic admission/eviction (2Q, TinyLFU, AdaptSize, GreedyDual-Size) motivate &sect;5;
 our finding is that their central assumption&mdash;that keeping cold objects out protects hot ones&mdash;inverts
 under device saturation, where withholding admission <em>loses</em> the hot objects. Cache-aware and shortest-job
-scheduling (SRPF/SJF) are the classic levers for a heavy-tailed prefill tail, but here they do not apply: because
-the giants <em>are</em> the p99 (~3% of requests), SRPF (which prioritizes the short jobs) only <em>delays</em>
-them, and the opposite &mdash; accelerating giants &mdash; serializes them (&sect;6); the concurrent
-processor-sharing baseline is already near-optimal for the giant p99. The distinguishing feature of this regime is
-that the tail is a small population of <em>very large, unique, first-sight</em> jobs&mdash;neither a caching nor a
-scheduling problem, but a workload/SLO-shape one.
+scheduling (SRPF/SJF) are the classic levers for a heavy-tailed prefill tail and we position them, not the cache,
+as the axis worth pursuing for this tail: our contribution is precisely that the <em>cache</em> is the wrong lever,
+and that the tail is a small population of <em>very large, unique, first-sight</em> jobs. We show one scheduling
+idea (giant tail-acceleration) backfires by serializing the giants (&sect;6), which is a useful caution; SRPF
+itself we do not evaluate (it is not exposed as a policy and is textbook / outside our KV-cache scope). The
+distinguishing feature of this regime &mdash; a heavy-tailed, first-sight-dominated prefill tail &mdash; is what
+makes it a scheduling/SLO problem rather than a caching one.
 </p>
 
 <h2>10 Limitations &amp; when the conclusion flips</h2>
@@ -476,11 +487,14 @@ coin-flip" claim (2/2 vs 1/2) is marked suggestive.</li>
 <li><b>Effective prefill rate.</b> The &sect;7 heavy-tail bound depends on the per-request prefill rate R under
 concurrency; we fit R from the measured median TTFT (an upper estimate) and report the floor accordingly&mdash;
 the largest documents exceed the SLO by multiples for any plausible R.</li>
-<li><b>Scheduling argued, not exhaustively measured.</b> We measured LPM (neutral, &sect;8) and screen
-tail-acceleration with a discrete-event model (backfires, &sect;6); SRPF's delay-the-giants effect and the
-serialization argument are analytical. A full scheduler implementation of each is future work, but the population
-argument (giants are the p99, so both scheduling directions worsen them) is policy-independent. The residual lever
-is SLO/workload design, not any prefill scheduler.</li>
+<li><b>Scheduling is out of our scope &mdash; we do NOT claim it cannot help.</b> We measured LPM (neutral,
+&sect;8) and screened tail-acceleration (backfires by serializing giants, &sect;6). We did <em>not</em> evaluate
+SRPF (shortest-remaining-prefill-first): it is not a schedule-policy choice, requires an engine change, and is a
+textbook policy outside this paper's KV-cache focus. Our R<sub>eff</sub> model (&sect;7) in fact suggests SRPF
+<em>could</em> help &mdash; clearing small jobs first lets the giants run at higher R<sub>eff</sub>, and if the
+giants are a small enough minority the p99 shifts onto a fast small request. Our claim is scoped strictly to the
+<b>KV cache</b> (which cannot move the tail) and to the SLO/workload-shape lever (&sect;7); resolving the
+scheduling axis (SRPF and beyond) is important future work, not something we close here.</li>
 </ul>
 
 <h2>11 Reproducibility</h2>

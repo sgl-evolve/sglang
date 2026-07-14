@@ -23,11 +23,11 @@ b{color:#000}em{color:#333}
 <div class="abs">
 <b>Abstract.</b> Long-document conversational serving looks like an ideal target for KV-cache retention:
 in the fixed Mooncake-mix workload, <b>41% of conversations are served by just two documents</b>, and
-45% of conversations re-use a document that some other conversation already prefilled. We show this
+45% involve a document shared across conversations (43% are non-first re-uses). We show this
 apparent caching goldmine is a <em>mirage</em>. The reuse concentration is degenerate — <b>97% of the
-888 unique documents are used exactly once</b>, and the two hot documents have a median reuse distance
-of two conversations, so the stock content-keyed radix cache holds them resident with a trivial
-footprint and captures <em>all</em> of their reuse for free. We prove, by replaying the real trace
+888 unique documents are used exactly once</b>, and the most popular document has a median reuse distance
+of two conversations, so the stock content-keyed radix cache holds the hot documents resident with a
+trivial footprint and captures <em>all</em> of their reuse for free. We prove, by replaying the real trace
 through the KV cache, that single-pass LRU is <b>Belady-optimal</b> (LRU = LFU = Belady = 0 avoidable
 re-prefill at the real two-tier capacity): every miss is the first-sight prefill of a unique document,
 which no eviction or retention policy can remove. The only "avoidable" re-prefill we can find is a

@@ -690,3 +690,24 @@ table (λ3 4.5s PASS / λ5 3.4s PASS thr4.85 stable / λ7 29.8s FAIL saturated 5
 C ~4.14→~5.2 +26%, accel = K-lever of P2 C=K/(1-h)). Renumbered §5/6/7; fixed stale n=1 caveat → n=4 doubly-sig.
 Abstract already carried the frontier headline. HTML validates (tags balanced). Propagated to INDEX.md (SUBMITTED-v2),
 SYNTHESIS.md (P6 entry + design-map row + contributions). Awaiting λ=10 (saturated-C confirm) → then W&B log + release node.
+
+## CAPSTONE (6th formal) + dose-response autonomous + Paper 7 scoping (09:32)
+- ★6th FORMAL SUBMISSION: submissions/residency-concurrency-runaway/paper.html (capstone, commit d9efd55fe pushed).
+  The series' unifying PREDICTIVE theory: goodput@SLO tail = ONE memory-bound concurrency<->decode runaway, ONE state
+  variable = RESIDENCY. The LAW (sign of goodput effect = sign of residency effect, inverted) forecast 3 negatives
+  (P1/P4/P5) + the positive DUAL (P6, stated before built, confirmed). + capacity backbone + design-space partition
+  table + coin-flip methodology. 9 sections, validated. Registered INDEX.
+- ★DOSE-RESPONSE autonomous: analysis/chain_factor.sh (f=3 v14_accelf3, f=1.5 v15_accelf15 full sweeps) +
+  chain_factor_launcher.sh (waits for chain_frontier to release node 19916 -> acquires fresh node -> runs serially,
+  no concurrent-eval flashinfer race). Launched pid 2745290. Q: does f=3 push frontier PAST 5 (goodput 3->7?) or does
+  C cap at ~5.2 (accel already reaches hard ceiling)? Either result is clean+publishable.
+- ★KEY REFRAME (from frontier data): stock goodput 3 vs C 4.14 = contention GAP; accel goodput 5 vs C ~5.2 = NEARLY NO
+  gap. So accel didn't just raise C -- it made the system operate AT capacity (eliminated the contention penalty).
+  Residency reduction converts a contention-limited system to a capacity-limited one. Dose-response tests if 5.2 is the
+  hard (compute/mem) ceiling.
+- ★PAPER 7 scoped (backup-I/O K-lever): hook = write_backup->cache_controller.write in ACTIVE UnifiedRadixCache
+  (line 1575/1613), env-gate-able. BUT feasibility analysis => LIKELY NEGATIVE: deferring backup under L1-full pressure
+  reopens P1's eviction-loss window (not-backuped + write_through => cascade-evict-deleted => content LOST => hit
+  craters, exactly P1). Lossless deferral would need to PIN deferred nodes vs eviction => device fills with un-backed KV
+  => same L1-full problem. => bandwidth-aware backup deferral likely re-derives P1's "eager backup necessary." HOLD;
+  let dose-response pick the real Paper 7 (candidate: compose accel+own-SRPF to test if C~5.2 is reachable/breakable).

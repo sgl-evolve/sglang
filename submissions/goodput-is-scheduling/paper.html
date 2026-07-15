@@ -58,7 +58,13 @@ is re-used across turns and even across conversations, so a good cache should be
 We test that intuition exhaustively against a single fixed metric and find it wrong. On a 122B hybrid
 Mamba-attention model with a two-tier KV cache, <b>goodput@SLO is set by how the heterogeneous prefill work
 is scheduled and by a hard compute ceiling — not by any KV-cache data-movement or retention decision.</b>
-Our contributions:
+Two of the eight axes (caching-residency and admission) are treated in depth in companion papers; this paper's
+own contributions are the <em>unifying framework</em> that places all eight axes on one metric (including four
+axes bounded here for the first time — transfer, the recurrent-state pool, the prefill/decode split, and a
+chunk-partition mechanism we designed), the four-way head-of-line diagnosis that explains <em>why</em>
+scheduling is the lever, and the parameter-free lever-selection procedure with its multi-corpus phase
+boundary. It is a map-and-mechanism-of-the-map paper, not a restatement of the two axis studies. Our
+contributions:
 </p>
 <ul>
 <li><b>A complete design-space map (§3).</b> We characterize every KV-cache/serving axis against

@@ -64,7 +64,7 @@ agnostic σ/m test for when goodput@SLO is trustworthy at all, warm steady-state
 same-node median-of-k, and (since even median-of-k cannot resolve the tail here) reporting the cache's
 <i>stable</i> effects (hit, mean/p50, peak throughput) and the p99 distribution rather than the
 variance-dominated binary metric. The KV cache reliably optimizes the body of the latency
-distribution; the SLO tail it does not reliably move is the wrong lens for evaluating it.
+distribution; the SLO tail &mdash; which we find is movable by request <i>scheduling</i> (SRPF: &lambda;=5 fail&rarr;pass) yet blind to <i>caching</i> (&sect;5.6) &mdash; is the wrong lens for evaluating the cache.
 </div>
 
 <h2>1 Introduction</h2>

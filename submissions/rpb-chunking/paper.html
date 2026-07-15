@@ -217,6 +217,60 @@ reserve waste; hit-rate is the lossless check.</caption>
 <tr><td>3</td><td>6973&nbsp;ms</td><td>6300&nbsp;ms</td><td class="g">−673 (−10%)</td><td>386.7</td><td>386.7</td><td>0%</td><td>0.678→0.677</td><td class="g">PASS→PASS</td></tr>
 <tr><td>5</td><td>6580&nbsp;ms</td><td class="b">9287&nbsp;ms</td><td class="b">+2707 (+41%)</td><td>525.1</td><td class="b">480.1</td><td class="b">−8.6%</td><td>0.666→0.667</td><td class="b">PASS→FAIL</td></tr>
 </table>
+<div class="fig">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 340" font-family="Georgia,serif" font-size="12.5">
+<rect x="0" y="0" width="620" height="340" fill="white"/>
+<line x1="62" y1="286" x2="602" y2="286" stroke="#333"/>
+<line x1="62" y1="26" x2="62" y2="286" stroke="#333"/>
+<line x1="62" y1="286.0" x2="602" y2="286.0" stroke="#eee"/>
+<text x="56" y="290.0" text-anchor="end" fill="#555">0s</text>
+<line x1="62" y1="236.5" x2="602" y2="236.5" stroke="#eee"/>
+<text x="56" y="240.5" text-anchor="end" fill="#555">2s</text>
+<line x1="62" y1="187.0" x2="602" y2="187.0" stroke="#eee"/>
+<text x="56" y="191.0" text-anchor="end" fill="#555">4s</text>
+<line x1="62" y1="137.4" x2="602" y2="137.4" stroke="#eee"/>
+<text x="56" y="141.4" text-anchor="end" fill="#555">6s</text>
+<line x1="62" y1="87.9" x2="602" y2="87.9" stroke="#eee"/>
+<text x="56" y="91.9" text-anchor="end" fill="#555">8s</text>
+<line x1="62" y1="38.4" x2="602" y2="38.4" stroke="#eee"/>
+<text x="56" y="42.4" text-anchor="end" fill="#555">10s</text>
+<line x1="62" y1="87.9" x2="602" y2="87.9" stroke="#c00" stroke-width="1.5" stroke-dasharray="6,4"/>
+<text x="600" y="82.9" text-anchor="end" fill="#c00">8 s SLO</text>
+<text x="197" y="304" text-anchor="middle" fill="#333">λ = 3</text>
+<rect x="113.3" y="120.5" width="48.0" height="165.5" fill="#888" opacity="0.8"/>
+<text x="137.3" y="116.5" text-anchor="middle" fill="#333" font-size="11">6683</text>
+<line x1="137.3" y1="127.7" x2="137.3" y2="113.3" stroke="#222" stroke-width="1.2"/>
+<line x1="134.3" y1="127.7" x2="140.3" y2="127.7" stroke="#222" stroke-width="1.2"/>
+<line x1="134.3" y1="113.3" x2="140.3" y2="113.3" stroke="#222" stroke-width="1.2"/>
+<rect x="169.1" y="130.0" width="48.0" height="156.0" fill="#c0392b" opacity="0.8"/>
+<text x="193.1" y="126.0" text-anchor="middle" fill="#333" font-size="11">6300</text>
+<rect x="224.9" y="129.9" width="48.0" height="156.1" fill="#1a7f37" opacity="0.8"/>
+<text x="248.9" y="125.9" text-anchor="middle" fill="#333" font-size="11">6303</text>
+<text x="467" y="304" text-anchor="middle" fill="#333">λ = 5</text>
+<rect x="383.3" y="125.2" width="48.0" height="160.8" fill="#888" opacity="0.8"/>
+<text x="407.3" y="121.2" text-anchor="middle" fill="#333" font-size="11">6496</text>
+<line x1="407.3" y1="127.2" x2="407.3" y2="123.1" stroke="#222" stroke-width="1.2"/>
+<line x1="404.3" y1="127.2" x2="410.3" y2="127.2" stroke="#222" stroke-width="1.2"/>
+<line x1="404.3" y1="123.1" x2="410.3" y2="123.1" stroke="#222" stroke-width="1.2"/>
+<rect x="439.1" y="56.0" width="48.0" height="230.0" fill="#c0392b" opacity="0.95"/>
+<text x="463.1" y="52.0" text-anchor="middle" fill="#333" font-size="11">9287*</text>
+<rect x="494.9" y="115.3" width="48.0" height="170.7" fill="#1a7f37" opacity="0.8"/>
+<text x="518.9" y="111.3" text-anchor="middle" fill="#333" font-size="11">6894</text>
+<rect x="70" y="30" width="11" height="11" fill="#888" opacity="0.85"/>
+<text x="86" y="40" fill="#333" font-size="11.5">baseline SRPF (n=2)</text>
+<rect x="70" y="46" width="11" height="11" fill="#c0392b" opacity="0.85"/>
+<text x="86" y="56" fill="#333" font-size="11.5">fixed RPB (n=1)</text>
+<rect x="70" y="62" width="11" height="11" fill="#1a7f37" opacity="0.85"/>
+<text x="86" y="72" fill="#333" font-size="11.5">adaptive RPB (n=1)</text>
+<text x="14" y="156" text-anchor="middle" fill="#333" transform="rotate(-90 14 156)">p99 TTFT</text>
+</svg>
+<figcaption><b>The rate-dependent flip.</b> p99 TTFT by rate for baseline SRPF, fixed RPB (r=0.25), and adaptive
+(zero-waste) RPB, same node. At λ=3 all three pass and the RPB variants shave the tail ~10%. At λ=5 (the
+goodput-setting rate) fixed RPB spikes over the 8&nbsp;s SLO (9287&nbsp;ms, <code>*</code> = SLO fail) via reserve
+waste, while adaptive RPB sits at the baseline (neutral). Whiskers = min–max over same-node replicates (n shown in
+legend); regenerated from the run <code>curve.csv</code> by <code>analysis/gen_rpb_fig.py</code> (error bars fill
+in as the n=2 firming completes).</figcaption>
+</div>
 <p>
 <b>The rate-dependent flip.</b> RPB does exactly what it was designed to at λ=3 — it lowers the p99 tail 10% by
 interleaving small turns into big-document chunk-runs, with throughput <em>identical</em> (386.7 tok/s both) and

@@ -193,7 +193,7 @@ cold, unique, heavy-tailed turn-0 documents. Reducing <i>mean</i> hit misses (ra
 E[X] but leaves the cold-prefill tail — and thus the SLO knee — largely unmoved by <i>caching</i>.
 <b>[Correction, added post-submission — §2.4 and §5.6.]</b> An earlier version of this paper argued that
 shortest-remaining-first scheduling would also <i>hurt</i> "because the long documents are the p99." A direct
-same-node A/B refutes that: SRPF is a large <i>win</i> on this tail (λ=5 p99 23.9&nbsp;s→7.0&nbsp;s, 0/5→2/2
+same-node A/B refutes that: SRPF is a large <i>win</i> on this tail (λ=5 p99 23.9&nbsp;s→7.0&nbsp;s, 0/5→5/5
 pass). The tail is <i>schedulable</i> by request reordering, even though it stays beyond the reach of KV caching.
 This sharpens the thesis rather than weakening it: goodput@SLO is movable by <i>scheduling</i> yet unresolvable
 for <i>caching</i>. Crucially, because this heavy tail places the p99 <i>near the knee, right at the SLO</i>, the
@@ -227,7 +227,7 @@ can shortcut it</b>, which is this paper's point about caching.
 p99 "close to optimal" and that shortest-remaining-first (SRPF) would <i>backfire</i> "because the long
 documents are the p99." <b>That was an unverified prediction and it is wrong.</b> A direct same-node A/B
 (§5.6) shows SRPF is a large <i>win</i>: at λ=5 it cuts p99 TTFT from 23.9&nbsp;s (0/5 pass) to 7.0&nbsp;s
-(2/2 pass, Fisher p=0.048) and mean TTFT by 43%. The reason: the workload has only ~3–4 documents above
+(5/5 pass, Fisher p≈0.008) and mean TTFT by 43%. The reason: the workload has only ~3–4 documents above
 100K tokens, so the heavy documents lie <i>beyond</i> the 99th percentile; the p99 is the <b>head-of-line
 victims</b> queued behind their serialized prefill, and SRPF reorders those victims ahead (deferring the few
 heavy documents past the p99). So the tail is <i>schedulable by request reordering</i> — it is not
@@ -416,7 +416,7 @@ levers we can target do not reliably move goodput@SLO: L2→L1 movement is alrea
 p99 ≤ 8.6 ms, §5.2) so overlap has nothing to hide; and hit-rate gains land on already-sub-second follow-ups.
 <b>[Correction, added post-submission — see §5.6.]</b> An earlier version claimed <i>scheduling</i> could not
 help either — that shortest-first "backfires." A direct A/B refutes this: SRPF cleanly raises goodput@SLO at
-λ=5 (0/5→2/2 pass, p99 23.9→7.0&nbsp;s). Note this is <i>consistent</i> with, not contrary to, our σ/m
+λ=5 (0/5→5/5 pass, p99 23.9→7.0&nbsp;s). Note this is <i>consistent</i> with, not contrary to, our σ/m
 diagnostic (§4): λ=5 is in the low-variance reliable-fail regime (σ/m&lt;1), so a <i>large</i> effect is
 resolvable there; it is only <i>small</i> effects near the knee — where the caching comparisons live and
 σ/m&gt;1 — that goodput@SLO cannot resolve. The corrected claim is therefore sharper: goodput@SLO can resolve a
@@ -785,10 +785,10 @@ warm steady-state, byte-identical flags except <code>--schedule-policy srpf</cod
 <table>
 <tr><th>policy (λ=5, same node)</th><th>n</th><th>p99 TTFT median (ms)</th><th>p99 samples</th><th>mean TTFT</th><th>goodput pass</th><th>req/s</th></tr>
 <tr><td>fcfs (stock default)</td><td>5</td><td>23891</td><td>22331, 22491, 23891, 23983, 27779</td><td>2064</td><td>0/5</td><td>4.10</td></tr>
-<tr><td>srpf</td><td>2</td><td>7005</td><td>6983, 7028</td><td>1183</td><td>2/2</td><td>4.07</td></tr>
+<tr><td>srpf</td><td>5</td><td>6983</td><td>5530, 6617, 6983, 7028, 7814</td><td>1183 (med)</td><td>5/5</td><td>4.08</td></tr>
 </table>
-<p>SRPF turns λ=5 from reliable-fail (0/5) to pass (2/2), cutting p99 TTFT ~71% and mean TTFT ~43%, at equal
-request throughput (Fisher exact p=0.048). It improves the <i>whole</i> TTFT distribution (mean, p90, p99), so
+<p>SRPF turns λ=5 from reliable-fail (0/5) to pass (5/5, every replicate under the SLO), cutting p99 TTFT ~71%
+and mean TTFT ~43%, at equal request throughput (Fisher exact p≈0.008; the two distributions are disjoint). It improves the <i>whole</i> TTFT distribution (mean, p90, p99), so
 this is genuine shortest-job-first flow-time reduction, not a p99 artifact. The mechanism: with only ~3–4 turn-0
 documents above 100K tokens, the heavy documents lie beyond the 99th percentile, so the fcfs p99 is the
 head-of-line victims queued behind their serialized prefill; SRPF reorders those victims ahead (deferring the few

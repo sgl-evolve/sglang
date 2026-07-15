@@ -58,15 +58,16 @@ communication-bound&mdash;notably a 19% tensor-parallel AllReduce tax per step),
 admission block sooner, and interrupts the interleaved decode stream fewer times&mdash;so the memory-bandwidth-bound
 decode stalls less (tpot &minus;25% at equal concurrency and equal resident-KV). This is the first positive, lossless, on-contract mechanism in the series; it is orthogonal by construction to
 whole-request shortest-first scheduling (it reshapes an in-flight prefill rather than reordering the queue), so the two
-are expected&mdash;but not here shown&mdash;to compose. <b>Beyond &lambda;=3, giant acceleration raises the goodput@SLO
-frontier itself:</b> a full rate sweep passes the SLO at both &lambda;=3 (4.5&nbsp;s) and &lambda;=5 (3.4&nbsp;s,
-throughput 4.85&nbsp;req/s &mdash; stable) where stock is unstable and fails (p99 17&ndash;20&nbsp;s), lifting
-goodput@SLO from 3 to 5&nbsp;req/s (+67%) by raising the effective capacity ceiling from 4.14 to at least
-5.65&nbsp;req/s (+36%, measured at &lambda;=10). Acceleration is thus not merely a &lambda;=3 latency fix but a
-<em>capacity</em> lever&mdash;the K-lever of the
-companion frontier study&mdash;of magnitude comparable to shortest-first scheduling, via a distinct mechanism.
-A factor sweep confirms a <b>sharp optimum at f=2</b>: both under-boosting (f=1.5) and over-boosting (f=3) revert
-goodput@SLO to 3 (they raise raw capacity but lose the p99 tail), so acceleration is a tuned, not monotone, lever.
+are expected&mdash;but not here shown&mdash;to compose. <b>Beyond &lambda;=3, a full rate sweep shows acceleration
+raises the effective capacity ceiling deterministically from 4.14 to at least 5.65&nbsp;req/s (+36%, achieved throughput
+at &lambda;=10; output-token throughput +36% likewise)</b>&mdash;it is a <em>capacity</em> lever, the K-lever of the
+companion capacity law C=K/(1&minus;h), of magnitude comparable to shortest-first scheduling via a distinct mechanism.
+Whether this raised capacity translates into a higher goodput@SLO is coin-flip-limited: raising C to 5.65 brings
+&lambda;=5 within capacity and accel <em>can</em> pass it (a good-basin draw hit 3.4&nbsp;s where stock fails), but a
+replicate landed at 17.9&nbsp;s&mdash;&lambda;=5 is 1/2, a coin-flip, exactly as the companion margin&ndash;reliability
+law predicts at the small resulting margin (C&minus;&lambda;=0.65). So the firm goodput@SLO win is at &lambda;=3 (5/5
+vs stock 1/5); &lambda;=5 is made feasible but not yet reliable. A factor sweep confirms a <b>sharp optimum at f=2</b>
+(both under- and over-boosting raise raw capacity but lose the tail), so acceleration is a tuned, not monotone, lever.
 </div>
 
 <h2>1 Introduction &amp; the unified law</h2>
@@ -157,23 +158,27 @@ cached prefixes differs&mdash;the mechanism is output-lossless (misses recompute
 complete every run) but not hit-invariant. Notably the win occurs <em>despite</em> lower cache reuse, underscoring
 that the gain is from residency/decode, not caching.</p>
 
-<h2>4 Raising the goodput@SLO frontier (full sweep)</h2>
-<p>The &lambda;=3 result shows acceleration wins where stock coin-flips. A full rate sweep shows it does more&mdash;it
-moves the frontier. With <span class="mono">GIANT_ACCEL</span> on:</p>
+<h2>4 Raising the capacity ceiling (full sweep)</h2>
+<p>The &lambda;=3 result shows acceleration wins where stock coin-flips. A full rate sweep shows it also raises the
+<em>capacity ceiling</em> &mdash; deterministically &mdash; while the goodput@SLO frontier extends only as far as the
+coin-flip permits at the resulting margin. With <span class="mono">GIANT_ACCEL</span> on (accel achieved throughput;
+stock companion in parentheses):</p>
 <table>
 <thead><tr><th>offered &lambda;</th><th>accel p99 TTFT</th><th>accel throughput</th><th>SLO</th><th>stock (companion)</th></tr></thead>
 <tbody>
-<tr><td>3</td><td class="win">4.5&nbsp;s</td><td>3.02 (2.83)</td><td class="win">PASS</td><td>coin-flip 6&ndash;14&nbsp;s (goodput 0&ndash;3)</td></tr>
-<tr><td>5</td><td class="win">3.4&nbsp;s</td><td>4.85 (3.59)</td><td class="win">PASS</td><td class="fail">17&ndash;25&nbsp;s, unstable (fail)</td></tr>
+<tr><td>3</td><td class="win">4.5&nbsp;s (5/5 pass)</td><td>3.02 (2.83)</td><td class="win">PASS</td><td>coin-flip 6&ndash;14&nbsp;s (goodput 0&ndash;3)</td></tr>
+<tr><td>5</td><td>3.4&nbsp;s / 17.9&nbsp;s (1/2)</td><td>4.85 (3.59)</td><td>coin-flip</td><td class="fail">17&ndash;25&nbsp;s (fail)</td></tr>
 <tr><td>7</td><td class="fail">29.8&nbsp;s</td><td>5.20 (3.99)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
 <tr><td>10</td><td class="fail">37.9&nbsp;s</td><td>5.65 (4.14)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
 </tbody>
 </table>
 <p class="note">Throughput column: accel achieved (stock achieved, same-machine companion sweep). Both saturate below
-offered load at high &lambda;; the achieved rate <em>is</em> the effective capacity.</p>
+offered load at high &lambda;; the achieved rate <em>is</em> the effective capacity. The &lambda;=5 accel p99 shows both
+draws (3.4&nbsp;s pass / 17.9&nbsp;s fail): a replicate on a second node did <em>not</em> reproduce the pass&mdash;&lambda;=5
+is coin-flip-governed (see below), so we report it as 1/2, not a clean pass.</p>
 <figure style="margin:1.1rem 0;text-align:center">
 <svg viewBox="0 0 560 350" width="100%" style="max-width:36rem" font-family="Georgia,serif" role="img"
-     aria-label="p99 TTFT versus offered rate: acceleration stays under the 8s SLO through lambda=5; stock does not">
+     aria-label="p99 TTFT versus offered rate: acceleration reliably passes lambda=3; lambda=5 is a coin-flip; capacity ceiling raised +36%">
   <!-- axes -->
   <line x1="60" y1="300" x2="520" y2="300" stroke="#1a1a1a" stroke-width="1.2"/>
   <line x1="60" y1="300" x2="60" y2="30" stroke="#1a1a1a" stroke-width="1.2"/>
@@ -198,14 +203,18 @@ offered load at high &lambda;; the achieved rate <em>is</em> the effective capac
   <g fill="#888">
     <circle cx="60" cy="231" r="4"/><circle cx="191" cy="150" r="4"/><circle cx="323" cy="85" r="4"/><circle cx="520" cy="54" r="4"/>
   </g>
-  <!-- accel line (green): (3,4.5)(5,3.4)(7,29.8)(10,37.9) -->
+  <!-- accel line (green): (3,4.5)(5,3.4 good-basin)(7,29.8)(10,37.9) -->
   <polyline points="60,273 191,280 323,121 520,73" fill="none" stroke="#1a6a1a" stroke-width="2.4"/>
   <g fill="#1a6a1a">
     <circle cx="60" cy="273" r="4.5"/><circle cx="191" cy="280" r="4.5"/><circle cx="323" cy="121" r="4.5"/><circle cx="520" cy="73" r="4.5"/>
   </g>
-  <!-- pass markers on accel lambda 3,5 -->
+  <!-- lambda=5 coin-flip: bad-basin draw 17.9s (y=193), open red marker + dashed spread -->
+  <line x1="191" y1="280" x2="191" y2="193" stroke="#a11" stroke-width="1" stroke-dasharray="3 3"/>
+  <circle cx="191" cy="193" r="4.5" fill="#fff" stroke="#a11" stroke-width="1.8"/>
+  <text x="205" y="190" font-size="10" fill="#a11">17.9&#8201;s (replicate)</text>
+  <!-- pass marker on accel lambda=3 (reliable 5/5); lambda=5 = coin-flip -->
   <text x="60"  y="266" text-anchor="middle" font-size="11" fill="#1a6a1a" font-weight="bold">&#10003;</text>
-  <text x="191" y="273" text-anchor="middle" font-size="11" fill="#1a6a1a" font-weight="bold">&#10003;</text>
+  <text x="205" y="285" font-size="10" fill="#666">&#189; coin-flip</text>
   <!-- legend -->
   <rect x="330" y="34" width="184" height="46" fill="#fff" stroke="#dae0da" stroke-width="1"/>
   <line x1="340" y1="49" x2="366" y2="49" stroke="#1a6a1a" stroke-width="2.4"/>
@@ -213,23 +222,30 @@ offered load at high &lambda;; the achieved rate <em>is</em> the effective capac
   <line x1="340" y1="68" x2="366" y2="68" stroke="#888" stroke-width="2"/>
   <text x="372" y="72" font-size="11.5" fill="#1a1a1a">stock (companion sweep)</text>
 </svg>
-<figcaption style="font-size:.82rem;color:#666;margin-top:.2rem">Figure 1. p99 TTFT vs offered rate, same machine.
-Acceleration (green) stays under the 8&#8201;s SLO through &lambda;=5 (&#10003;), lifting goodput@SLO from 3 to 5; both
-curves diverge past their capacity ceiling (stock at &lambda;&ge;3&ndash;5, accel at &lambda;=7). Stock &lambda;=3 is a
-coin-flip (6&ndash;14&nbsp;s; the plotted 11.5&nbsp;s run is one draw).</figcaption>
+<figcaption style="font-size:.82rem;color:#666;margin-top:.2rem">Figure 1. p99 TTFT vs offered rate. Acceleration
+(green) reliably passes &lambda;=3 (&#10003;, 5/5). At &lambda;=5 it is a <b>coin-flip</b>: a good-basin draw hit
+3.4&nbsp;s (plotted) but a replicate hit 17.9&nbsp;s (open red marker)&mdash;1/2 &mdash; because the accel margin there
+(C&minus;&lambda;=0.65) is small. Both curves diverge past capacity (stock at &lambda;&ge;5, accel at &lambda;=7).
+Stock &lambda;=3 is itself a coin-flip (6&ndash;14&nbsp;s; the plotted 11.5&nbsp;s run is one draw). The robust,
+deterministic result is the capacity ceiling (achieved throughput): 4.14&rarr;&ge;5.65 (+36%).</figcaption>
 </figure>
 <div class="keyfinding">
-<b>Giant acceleration raises goodput@SLO from 3 to 5&nbsp;req/s (+67%).</b> At &lambda;=5, stock is over its capacity
-ceiling (achieved 3.59, saturating toward C&nbsp;&asymp;&nbsp;4.14) so its queue is unstable and p99 diverges to
-17&ndash;25&nbsp;s; acceleration keeps &lambda;=5 <em>stable</em> (achieved 4.85&nbsp;&asymp;&nbsp;offered) at
-3.4&nbsp;s p99. Stock saturates cleanly at <b>4.14&nbsp;req/s</b> (3.99&rarr;4.14 from &lambda;=7&rarr;10, flat), while
-accel is <em>still climbing</em> at &lambda;=10 (5.20&rarr;5.65), so acceleration <b>raises the effective capacity
-ceiling C from 4.14 to at least 5.65&nbsp;req/s (+36%)</b> (output-token throughput 530&rarr;723&nbsp;tok/s, likewise
-+36%). This is the mechanistic payoff of residency reduction: by clearing giants from the running batch faster, more
-requests flow through per unit time&mdash;acceleration is the <em>K-lever</em> (capacity) of the companion capacity law
-C=K/(1&minus;h), not merely a latency fix. &lambda;=7 becomes the new knee (offered 7 &gt; new
-C&nbsp;&ge;&nbsp;5.65). The gain magnitude is comparable to shortest-first scheduling, achieved by a fully distinct,
-composable mechanism.</div>
+<b>The solid, deterministic win is capacity: acceleration raises the ceiling C from 4.14 to &ge;5.65&nbsp;req/s
+(+36%).</b> Stock saturates cleanly at 4.14&nbsp;req/s (3.99&rarr;4.14 from &lambda;=7&rarr;10, flat), while accel is
+<em>still climbing</em> at &lambda;=10 (5.20&rarr;5.65); output-token throughput rises 530&rarr;723&nbsp;tok/s, likewise
++36%. This achieved-throughput result is deterministic (not coin-flip-sensitive), so it is the robust headline:
+acceleration is the <em>K-lever</em> of the companion capacity law C=K/(1&minus;h), by clearing giants from the running
+batch faster so more requests flow per unit time.
+<br><br><b>Does this reach goodput@SLO=5? Only as a coin-flip.</b> Raising C to 5.65 brings &lambda;=5 <em>within</em>
+capacity, and accel <em>can</em> pass &lambda;=5 (a good-basin draw hit 3.4&nbsp;s) where stock cannot. But a replicate
+(second node) landed in the bad basin at 17.9&nbsp;s: &lambda;=5 is 1/2, a coin-flip. This is exactly what the companion
+margin&ndash;reliability law predicts&mdash;at &lambda;=5 the accel margin is only C&minus;&lambda;&nbsp;=&nbsp;0.65
+(small &rArr; metastable), whereas at &lambda;=3 the margin is 2.65 (large &rArr; the reliable 5/5 win). So the honest
+statement is: <b>acceleration reliably raises capacity (+36%) and reliably wins goodput@SLO at &lambda;=3 (5/5 vs
+stock 1/5); it makes &lambda;=5 feasible but not yet reliable</b> (goodput@SLO=5 is a coin-flip at the current margin;
+reaching it dependably would need still-higher C). The earlier "3&rarr;5" single-run reading over-stated a coin-flip
+draw&mdash;replication corrected it. The gain magnitude is comparable to shortest-first scheduling, via a distinct
+mechanism.</div>
 
 <h2>5 The acceleration factor has an optimum (dose-response)</h2>
 <p>Is bigger always better? No&mdash;the boost factor <span class="mono">f</span> has a sweet spot. Sweeping
@@ -276,10 +292,13 @@ composable mechanism.</div>
 <b>sharp</b> optimum at f=2. Both under-boosting (stock, f=1.5) and over-boosting (f=3) give goodput@SLO=3; only f=2
 reaches 5. (f=1 plotted at its best-case draw, 3, of the 0&ndash;3 coin-flip.)</figcaption>
 </figure>
-<div class="keyfinding"><b>Goodput@SLO is a sharp inverted-U, peaking uniquely at f=2.</b> The optimum is narrow and
-symmetric: under-boosting (f=1.5) and over-boosting (f=3) <em>both</em> fail &lambda;=5 at nearly identical p99
-(20.7&nbsp;s vs 20.5&nbsp;s), each giving goodput@SLO=3, while only f=2 passes (3.4&nbsp;s, goodput 5). Under-boosting
-leaves giants lingering (9&nbsp;216-token chunks clear them too slowly); over-boosting is <em>also</em> harmful.
+<div class="keyfinding"><b>p99 is a sharp inverted-U in f, minimized at f=2.</b> The optimum is narrow and symmetric:
+at &lambda;=5, under-boosting (f=1.5) and over-boosting (f=3) both land at nearly identical p99 (20.7&nbsp;s vs
+20.5&nbsp;s), whereas f=2 alone reaches the good basin (3.4&nbsp;s). <b>Caveat (integrity):</b> f=2's &lambda;=5 pass is
+itself coin-flip-sensitive&mdash;a replicate hit 17.9&nbsp;s (&sect;4)&mdash;so "goodput@SLO=5 for f=2" is not reliably
+established; what <em>is</em> robust is that f=2 minimizes p99 at every rate (sharply and reliably at &lambda;=3, 5/5),
+and even f=2's bad-basin 17.9&nbsp;s beats f=1.5/f=3's ~20.5&nbsp;s. Under-boosting leaves giants lingering
+(9&nbsp;216-token chunks clear them too slowly); over-boosting is <em>also</em> harmful.
 Notably, over-acceleration is a <b>tail failure, not a throughput
 failure</b>: f=3 keeps almost the same raw saturated capacity (C&nbsp;5.46&nbsp;&asymp;&nbsp;f=2's&nbsp;5.65) but its
 <em>p99</em> craters (&lambda;=5: 3.4&nbsp;s&rarr;20.5&nbsp;s), dropping goodput@SLO from 5 to 3. The mechanism: a

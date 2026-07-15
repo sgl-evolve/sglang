@@ -646,3 +646,13 @@ pass (6580ms), not the marginal 7.8s seen on node 1-2 (v-srpf-full) — the know
 ⇒ on THIS node the RPB test is a p99-REDUCTION test (can RPB lower 6580→lower?), not a marginal→robust flip.
 The same-node A/B is still clean (RPB vs SRPF both on 1-1); a p99 reduction here would generalize to unluckier
 nodes where SRPF λ5 is marginal. v-rpb25 next (auto-submitted by the campaign driver).
+
+### RPB A/B — λ3 landed (v-rpb25 vs v-srpf-ctl4, same node 1-1)
+| rate | base p99 | RPB p99 | Δ | tok/s | hit |
+|------|----------|---------|-----|-------|-----|
+| 3 | 6973ms | **6300ms** | −673 (−9.7%) | 386.7→386.7 (0%) | 0.678→0.677 |
+★KEY: RPB lowers λ3 p99 ~10% (right direction, matches sim sign), **throughput IDENTICAL** (tok/s 386.7 both →
+NO reserve waste; the head-of-line premise holds — small turns are always waiting during big-doc runs, so the
+reserve is fully used; resolves my implementation concern, no adaptive-reserve fix needed), **LOSSLESS** (hit
+matched Δ0.001). BUT −9.7% is WITHIN same-node run-variance (±~12% at λ3) → suggestive not conclusive → n=3
+replicates needed. Effect size on GPU (−10%) < sim (−30%). λ5 (decisive) running.

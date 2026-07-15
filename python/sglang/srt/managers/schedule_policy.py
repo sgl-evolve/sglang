@@ -749,6 +749,10 @@ class PrefillAdder:
         # cannot fix once a big doc's chunking has started (the chunked_req is added before the
         # waiting queue and otherwise monopolizes the whole chunk budget). Lossless: identical tokens
         # are computed, only resliced across prefill steps; the big doc still advances >= one page/step.
+        # The cap MUST be page-aligned: a non-page-aligned in-flight chunk extent corrupts the paged
+        # KV allocator's accounting and trips the "pool memory leak detected" guard (observed
+        # reproducibly at r=0.10, where 6144-614=5530 is not a multiple of page_size=64; stock chunking
+        # always page-aligns via `// page_size * page_size`, so RPB must too).
         if (
             self.rpb_reserve_frac > 0.0
             and self.waiting_queue_len > 0
@@ -756,7 +760,8 @@ class PrefillAdder:
             and self.rem_chunk_tokens is not None
         ):
             reserved = int(self.rpb_reserve_frac * self.rem_chunk_tokens)
-            rpb_cap = max(self.page_size, self.rem_chunk_tokens - reserved)
+            rpb_cap = self.rem_chunk_tokens - reserved
+            rpb_cap = max(self.page_size, (rpb_cap // self.page_size) * self.page_size)
             _rem_tokens = min(_rem_tokens, rpb_cap)
 
         cand_extend_input_len = len(req.full_untruncated_fill_ids) - len(

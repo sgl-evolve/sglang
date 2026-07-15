@@ -799,8 +799,8 @@ knee (λ=3) the coin-flip persists; (ii) SRPF is a known technique (shortest-job
 §6), not a contribution of this paper. The load-bearing claim — that <i>KV caching</i> cannot move this tail and
 so must be evaluated on stable metrics — is unchanged and, if anything, sharpened: goodput@SLO is movable by
 scheduling yet blind to caching.</p>
-<p><b>The benefit requires deferral, not fairness.</b> SRPF's win comes from pushing the few heavy documents
-<i>behind</i> everything else — an unbounded delay for those requests. We asked whether a <i>fair,
+<p><b>The benefit requires deferral, not fairness.</b> SRPF's win comes from deferring the few heavy documents'
+<i>first-token</i> latency — their end-to-end latency is essentially unchanged (mean E2E 44.7 vs 45.0 s; E2E is decode-dominated, E2E ≫ TTFT). We asked whether a <i>fair,
 non-starving</i> alternative could capture the same p99 win without deferring the heavy documents: a
 <i>reserved short-prefill lane</i> that, while a heavy document is mid-prefill, holds back a slice of the
 per-iteration chunk budget so short waiting requests prefill alongside it (the heavy document still makes
@@ -810,10 +810,9 @@ progress every iteration). It does not work. On the same-node A/B (raw runs <cod
 <i>improving</i> the median (−19 to −25%). The reason is instructive: a thin reserve trickles a few victims
 through but keeps the heavy document occupying the pipeline (now over more iterations), so it lengthens the
 congestion window instead of clearing it. The goodput lever is therefore inseparable from <i>deferring</i>
-(starving) the heavy documents; a mechanism that keeps them progressing forfeits the benefit. This is the
+the heavy documents' first token (an E2E-neutral reordering); a mechanism that keeps them progressing every iteration forfeits the benefit. This is the
 mechanism-level counterpart to the paper's metric point: on this heavy-tailed workload, the only thing that
-moves the p99 is reordering which requests wait — and doing so trades the tail against the (few, unbounded)
-heavy-document latencies that the p99 metric conveniently hides. (The reserved-lane mechanism is our own; we
+moves the p99 is reordering which requests wait — and doing so is near-Pareto here (equal E2E and throughput); goodput@SLO, a TTFT metric, is exactly the quantity this benign reordering targets. (The reserved-lane mechanism is our own; we
 report it as a negative control, not a contribution.)</p>
 
 <h2>6 Related work</h2>

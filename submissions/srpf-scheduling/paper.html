@@ -344,7 +344,28 @@ Researcher <em>kleinrock</em> independently confirmed chunk-reserve as negative 
 Researcher <em>valiant</em> showed the retention/eviction class is structurally immune to
 goodput@SLO (the tail is cold-doc first-compute, not cache-addressable).</p>
 
-<h2>9. Conclusion</h2>
+<h2>9. Generalizability</h2>
+
+<p>SRPF's benefit arises from a structural property of multi-turn LLM serving: the <em>bimodal
+processing-time distribution</em> created by KV-cache reuse. Any system where (a) a prefix cache
+makes most requests cheap (near-zero remaining prefill) while (b) cold first-turns remain expensive
+will exhibit the same head-of-line blocking under FCFS. This bimodality is not workload-specific &mdash;
+it is inherent to conversational and agentic serving patterns where follow-up turns reuse cached
+context.</p>
+
+<p>The benefit scales with the degree of bimodality. In our workload, cached continuations require
+~64 tokens vs ~12K for cold documents (a 190&times; ratio), and 78% of turns are cached. Systems
+with higher reuse rates or larger documents will see even more benefit. The mechanism is
+system-agnostic: it requires only a sort key computable from existing scheduler metadata
+(input length, matched prefix, output length).</p>
+
+<p><strong>Fairness.</strong> SRPF does not starve cold documents. Under the PrefillAdder's budget
+structure, only one chunked request occupies the 6144-token chunk budget per iteration, regardless
+of ordering. Cold documents process in the same total number of iterations; only their position
+relative to cheap requests changes. Cold-document p99 TTFT is determined by their own prefill
+compute time, not queue wait (confirmed by the TTFT decomposition in &sect;4.6).</p>
+
+<h2>10. Conclusion</h2>
 
 <p>SRPF demonstrates that <strong>scheduling is the overlooked lever</strong> in hierarchical
 KV-cache serving. A 60-line scheduling change &mdash; sorting the waiting queue by remaining

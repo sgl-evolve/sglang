@@ -533,8 +533,9 @@ transfer; a speculative-prefetch mechanism (which we designed, "SLOP") has nothi
 transfer/compute-overlap direction is empirically dead here.</i></li>
 <li><b>Hit rate is not the bottleneck.</b> Hit rate is a stable ~0.66 and p50 is flat ~1 s across loads:
 warm follow-ups already resolve near-instantly. Raising hit rate cannot help requests that are already
-sub-second, and it cannot help the cold turn-0 documents that <i>are</i> the p99 (they are unique and
-seen for the first time). The write-back control confirms this: it raises hit +6 pp (0.67→0.73) and peak
+sub-second, and it cannot shortcut the cold turn-0 prefill that <i>drives</i> the p99 (those documents are
+unique and seen for the first time; whether they are the p99 themselves or the head-of-line work their victims
+wait behind — §5.6 — caching cannot touch it). The write-back control confirms this: it raises hit +6 pp (0.67→0.73) and peak
 throughput +18%, yet its λ=3 p99 (7.5 s) falls inside the stock band (6.8–14.1 s) — the higher hit lands on
 already-fast follow-ups, and its goodput@SLO effect is not resolvable above the variance (§3.1).</li>
 <li><b>The tail is heavy-tailed cold prefill + serialization.</b> Calibrated prefill rate P ≈ 20.5 K

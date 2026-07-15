@@ -941,3 +941,8 @@ LOF n=3 firm: p99 {26460,27521,27979} median 27.5s, 0/3 (slightly worse than fcf
 goodput lever is DEFERRAL-BY-PREFILL specifically — LOF (reorder-by-output, doesn't defer heavy docs) fails like
 fcfs; only srpf (defer) passes. Rules out "any reordering helps." srpf-on-0-0 arm (fully same-node triple) still
 running (~18:30) — will confirm; current §5.6 cites srpf 7.0s (n=5, 3x gap ≫ node variance). Committed+pushed.
+
+### Same-node triple confirmed (2026-07-15 ~17:22Z): srpf-on-0-0 rep1 = 7.4s PASS
+On node 0-0 (same as fcfs 22.7s, lof 27.5s): srpf rep1 p99 7399ms (PASS). Fully-controlled same-node
+deferral-specificity: only srpf (defer) passes; fcfs+lof (no defer) fail. Confirms cross-run srpf (7.0s n=5).
+Firming srpf to n=3, then update §5.6 to the clean same-node triple (fcfs/lof/srpf = 22.7/27.5/7.4s, n=3 each).

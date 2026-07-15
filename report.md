@@ -779,3 +779,12 @@ giant. Suggests an OPTIMAL factor near f=2 (diminishing/negative returns beyond)
 whether f=3 still reaches goodput@SLO=5 or drops. analyze_dose.py verdict currently partial-data-artifact (λ5,7 pending).
 If confirmed: dose-response finding = "acceleration has a sweet spot (~2×); over-acceleration re-introduces the very
 prefill↔decode interference it exploits" → strengthens P6 (mechanism is tuned, not monotonic) + is a clean §.
+
+## Profiler cold-JIT healthy (10:47); OPS: FLASHINFER_CACHE_DIR does NOT redirect flashinfer JIT
+Profiler node 0-3: server.log silent + GPU 0% was legit COLD JIT (cc1plus 99% CPU, ninja/nvcc compiling
+trtllm_allreduce_fusion; cache 48K→812K/20s). NOT hung. ★OPS: flashinfer JIT compiles to ~/.cache/flashinfer
+REGARDLESS of FLASHINFER_CACHE_DIR (my separate-cache mitigation didn't apply to flashinfer). => profiler shares
+~/.cache/flashinfer with the dose-response. Race risk LOW because dose-response fully warmed at startup (09:46-09:50)
+and now only SERVES (no recompile); profiler writes are unilateral. Monitoring dose-response health (λ=5 due ~11:07).
+Profiler cold compile ~10-15min → traces ~11:10-11:20. LESSON: to truly isolate flashinfer JIT, must warm serially OR
+set the flashinfer JIT dir env (not FLASHINFER_CACHE_DIR) — or accept low risk when the other run is already warmed.

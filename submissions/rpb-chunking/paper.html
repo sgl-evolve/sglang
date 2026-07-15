@@ -361,11 +361,13 @@ invariance). At λ=3 all three configs fall inside the metastable coin-flip band
 tighter (n=2 {6580, 6411}); the fixed effect (+48%) is far outside it, while the adaptive p99 (+11%, both runs
 above baseline) is a small real cost, not a reduction — and, crucially, does not change goodput (both pass). The
 node's baseline λ=5 is a comfortable pass, so this is a p99-<em>reduction</em> test: a mechanism that helped would
-show a clear drop, which neither variant delivers. Finally, one reserve-size run at r=0.10 crashed on a transient
-KV-pool accounting event (discarded; the baseline and all other RPB runs — fixed ×2, adaptive ×2 — completed
-cleanly with zero pool-leak messages, so it is a transient node event, not intrinsic to the mechanism; we did not
-complete a
-fixed-r sweep, deferring to the adaptive control as the decisive test).
+show a clear drop, which neither variant delivers. Finally, an implementation note that turned into a small finding:
+a first r=0.10 run crashed <em>reproducibly</em> (twice) with "pool memory leak detected" — the cause was that our
+in-flight-chunk cap was not page-aligned (6144&minus;⌊0.10&middot;6144⌋ = 5530, not a multiple of the 64-token page),
+and a non-page-aligned chunk extent corrupts the paged KV allocator's accounting (r=0.25 and r=0.50 give aligned
+caps, 4608 and 3072, and never crashed — so the fixed/adaptive results above are unaffected). Page-aligning the cap
+(<code>rpb_cap // page_size * page_size</code>, matching how stock chunking aligns) fixes it: the re-run completes
+cleanly (7037/7037, 0 leaks). This is not "transient" — it is a lesson that RPB's cap must respect page alignment.
 </p>
 
 <h2>6 Related work</h2>
@@ -392,13 +394,25 @@ objections, and why they do not overturn it:
 <p>
 <b>"Just tune r."</b> The reserve fraction r governs both sides of the tradeoff at once: a larger r wastes more
 capacity when the shortest waiting turn does not fit (the λ=5 loss) but also interleaves more small turns (the
-sub-knee benefit); a smaller r does less of both. Because a single budget drives both effects, no fixed r
-simultaneously maximizes the sub-knee benefit and avoids the near-knee capacity loss — the tension is structural,
-not a poorly-chosen constant. We state this as an <em>analytical</em> argument, not a measured reserve-size sweep:
-we did not obtain clean data at other r (a fixed r=0.10 run crashed on a transient KV-pool accounting event, §5,
-and we prioritized the adaptive control below over sweeping more fixed r). The decisive question is not which fixed
-r is best but whether <em>any</em> reservation can help once the waste is removed — which the adaptive control (§5)
-answers directly and empirically.
+sub-knee benefit); a smaller r does less of both. A <b>measured reserve-size sweep confirms</b> this is structural,
+not a poorly-chosen constant — λ=5 p99 (mean, same node) rises <em>monotonically</em> with r:
+</p>
+<table>
+<caption>Fixed RPB reserve-size sweep, λ=5 (same node). Harm — p99 up, throughput down — increases monotonically
+with the reserve fraction; even the smallest reserve fails, and a large reserve is unstable.</caption>
+<tr><th>reserve r</th><th>λ=5 p99</th><th>λ=5 tok/s</th><th>SLO</th></tr>
+<tr><td>0 (baseline SRPF)</td><td>6496&nbsp;ms</td><td>532</td><td class="g">PASS</td></tr>
+<tr><td>0.10</td><td>8000&nbsp;ms</td><td>512</td><td class="b">fail (borderline)</td></tr>
+<tr><td>0.25</td><td>9607&nbsp;ms</td><td>482</td><td class="b">fail</td></tr>
+<tr><td>0.50</td><td colspan="2">prefill-OOM crash (large reserve over-admits)</td><td class="b">unstable</td></tr>
+</table>
+<p>
+So <em>no</em> fixed r&gt;0 helps: even r=0.10 pushes λ=5 to the SLO boundary, r=0.25 fails outright, and r=0.50 is
+unstable — exactly the structural tension predicted (one budget, two opposed effects). (The r=0.10 point required
+the page-alignment fix of §5; r=0.50 crashed on prefill-OOM from over-aggressive concurrent admission and is an
+extreme, clearly-worse operating point we did not pursue.) The decisive question is not which fixed r is best but
+whether <em>any</em> reservation helps once the waste is removed — which the adaptive control (§5) answers: it does
+not.
 </p>
 <p>
 <b>"Use an adaptive reserve that never wastes."</b> This is the decisive control we built and ran (§5, n=2): adaptive
@@ -423,7 +437,7 @@ Base commit <code>a334877e5</code>; RPB commits on <code>evolve/floyd</code> (im
 crash-fix <code>487586613</code>). Flags: <code>--enable-rpb-chunking --rpb-reserve-frac 0.25</code> on top of
 <code>--schedule-policy srpf</code>. Versions (n=2 each): baseline <code>runs/v-srpf-ctl4</code>,
 <code>v-srpf-ctl5</code>; fixed RPB <code>v-rpb25</code>, <code>v-rpb25-r2</code>; adaptive RPB (<code>--rpb-adaptive</code>)
-<code>v-rpbA25</code>, <code>v-rpbA25-r2</code>. Sim: <code>analysis/hol_sim.py</code> (rpb policy); waste analysis:
+<code>v-rpbA25</code>, <code>v-rpbA25-r2</code>; reserve-size sweep <code>v-rpb10</code> (r=0.10, page-align-fixed), <code>v-rpb25</code> (r=0.25), <code>v-rpb50</code> (r=0.50, OOM). Sim: <code>analysis/hol_sim.py</code> (rpb policy); waste analysis:
 <code>analysis/rpb_waste.py</code>; comparison: <code>analysis/rpb_compare.py</code>; figure:
 <code>analysis/gen_rpb_fig.py</code>. Fixed eval protocol unchanged.
 </p>

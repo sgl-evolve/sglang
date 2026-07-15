@@ -530,3 +530,14 @@ finding and P1 is honest without it (cleanly excluded, qualitative hazard noted)
 caching-mirage+phase-boundary, P3 capstone-map+diagnosis+predictive-model), all survived 2 adversarial-review
 rounds, design space fully bounded, n=3-firmed headline, multi-corpus generality, honest E2E scoping,
 complete related-work, reproducible, W&B current. Supervisor decides retirement; I hold in monitor mode.
+
+## ★ Active-research find (2026-07-15): DECODE-SIDE head-of-line — unifies the diagnosis
+Rather than passive monitor mode, actively investigated the E2E catastrophe. `analysis/hol_decode.py`
+(v0-stock server.log): during big-cold-doc prefill chunks, running requests wait **24.5s between decode
+batches (p90 37s, max 182s) vs 1.8s otherwise = 13.6× decode stall**. ⇒ the SAME head-of-line mechanism
+(big cold docs monopolizing prefill) has TWO victims: (1) TTFT of waiting small turns (9.6× deeper queue,
+hol_trace), (2) decode/ITL of running requests (13.6× stall → E2E minutes). SRPF fixes the TTFT side
+(reorder) but NOT the decode stall (serializing a big cold prefill is inherent) → sharpens the case for
+context-parallel prefill (§5.1) as the full fix. Added to P3 §4 (two-victims), reconciled §8 E2E note
+(mechanism not open-loop artifact), + Fisher significance of the goodput win (λ5 p=0.018, pooled p=0.011,
+`analysis/goodput_stats.py`). All committed + pushed (evolve/floyd @ 03a21af76). Papers stronger; core intact.

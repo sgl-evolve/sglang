@@ -920,3 +920,11 @@ Paper 1 correction campaign (SRPF correction, reserve ablation, HOL attribution 
 consistency, sharpened abstract, INDEX updates) was committed but NOT pushed. Pushed all 34 commits →
 origin now at 1c2f1feaf. LESSON (matches memory warning): after committing, VERIFY push status (git ls-remote),
 don't assume; a clean working tree ≠ pushed. The corrected paper is now durable + visible to the supervisor.
+
+### program.md updated (23:45 Jul 14) → step-3 now MANDATES push-after-every-commit (2026-07-15 ~13:15Z)
+Trigger scan: program.md changed again (21:28→23:45, +267B). The change = The Loop step 3 now reads "commit AND
+push it — git push origin evolve/<name>. Push after every commit: unpushed work is local-only and unpreserved."
+(Supervisor added the push mandate — validates last turn's catch that my 34-commit correction campaign was
+unpushed.) This is an OPS mandate, not a new research direction. Already compliant: remote==local (7033ba6f2).
+STANDING RULE going forward: git push after every commit; verify remote==local each loop. No new research
+trigger, no WARNINGS/reviews/feedback, eval/protocol unchanged.

@@ -952,3 +952,11 @@ Node 0-0, λ5, n=3 each: fcfs p99 22.7s (0/3) / LOF 27.5s (0/3) / srpf 6.7s (3/3
 min 22.4). ⇒ only srpf (defer-by-remaining-prefill) passes; fcfs & LOF (no deferral) fail. The goodput lever is
 DEFERRAL-BY-PREFILL SPECIFICALLY, not reordering-in-general (LOF, a real reorder-by-output, doesn't help). §5.6
 firmed to this same-node triple (fc3245d8c, pushed). Deferral-specificity fully established + integrated.
+
+### SRPF across-λ ceiling (2026-07-15 ~20:40Z, job 19988, node 0-0)
+srpf λ7 rep1: p99 10152ms vs fcfs λ7 (n=3) median 33342ms = -70% (SAME relative cut as λ5) BUT still FAIL (>8s),
+req 4.54 (=fcfs 4.58). ⇒ SRPF's ~70% p99 reduction holds even at severe saturation (λ7), but converts to a
+goodput PASS only at λ≤5: at λ7 (offered 7 ≫ compute ceiling ~4.6 req/s) the backlog keeps p99>SLO. So SRPF's
+goodput@SLO CEILING ≈ λ5 (~4.1 req/s). Across-λ: λ3 6.7s pass / λ5 7.0s pass / λ7 10.2s fail (all -70% vs fcfs).
+The lever reduces the tail everywhere but clears the SLO only below severe saturation. n=1 (firming to n=3), then
+integrate into §5.6/§5.1.

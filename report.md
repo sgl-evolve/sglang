@@ -928,3 +928,10 @@ push it — git push origin evolve/<name>. Push after every commit: unpushed wor
 unpushed.) This is an OPS mandate, not a new research direction. Already compliant: remote==local (7033ba6f2).
 STANDING RULE going forward: git push after every commit; verify remote==local each loop. No new research
 trigger, no WARNINGS/reviews/feedback, eval/protocol unchanged.
+
+### DEFERRAL-SPECIFICITY confirmed (2026-07-15 ~15:40Z, job 19953, node 0-0, λ5)
+fcfs (n=3) p99 median 22.7s {22408,22658,23406} vs LOF (longest-output-first, n=1) 28.0s (+23%, fail) vs srpf
+(deferral, 7.0s pass, from v3-srpf-ab n=5). ⇒ LOF — a real queue REORDERING that does NOT reorder by prefill
+size — does NOT help the tail (even slightly worse), while srpf (defers heavy docs by remaining-prefill) does.
+CONFIRMS it is DEFERRAL-BY-PREFILL-SIZE specifically, not reordering-in-general → rules out the "any reordering
+helps" alternative. Sharpens §5.6. Firming LOF to n=3 (reps 2-3 landing), then add the sentence + commit/push.

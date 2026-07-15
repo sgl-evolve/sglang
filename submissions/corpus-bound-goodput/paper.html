@@ -205,12 +205,30 @@ crosses the horizon <code>H = 500</code> documents, then jumps to the full reuse
 </table>
 <p>
 So the mirage is a <em>sharp, corpus-general</em> criterion: caching has online headroom
-<b>iff a workload re-uses documents at stack-distance beyond the cache horizon</b>. Long-document QA
-serving structurally does not — the working set that a conversation re-touches (its own document, a median
-of two conversations away) is far inside the horizon — so the mirage holds for the entire class, not just
-this trace. The corollary for practitioners: measure your corpus's reuse stack-distance against
-<code>H = CAP/mean-doc</code> before investing in a smarter retention policy; below the horizon, the
-policy cannot beat LRU, and the goodput lever is elsewhere (§5).
+<b>iff a workload re-uses documents at stack-distance beyond the cache horizon</b>. To show this is not a
+property of one trace, we apply the criterion to <b>four real long-document QA corpora</b> (the eval mix and
+its constituents at their native reuse structure; offline replay, no GPU):
+</p>
+<table>
+<caption>The caching-headroom criterion on four real long-document corpora. Headroom = fraction of document
+re-uses at stack-distance &gt; the corpus's own horizon <code>H = CAP/mean-doc</code>. Every corpus is deep
+in the mirage regime (<code>analysis/phase_boundary_realcorpora.py</code>).</caption>
+<tr><th>corpus</th><th>doc-convs</th><th>unique docs</th><th>H (docs)</th><th>re-uses</th><th>stack-dist p90 / max</th><th>headroom</th><th>regime</th></tr>
+<tr><td>mooncake_mix (the eval)</td><td>1015</td><td>887</td><td>516</td><td>128</td><td>197 / 518</td><td class="b">0.8%</td><td>mirage</td></tr>
+<tr><td>LEval</td><td>537</td><td>409</td><td>638</td><td>128</td><td>15 / 19</td><td class="b">0.0%</td><td>mirage</td></tr>
+<tr><td>LooGLE longdep-QA</td><td>140</td><td>140</td><td>363</td><td>0</td><td>— (all singletons)</td><td class="b">0.0%</td><td>mirage</td></tr>
+<tr><td>LooGLE full</td><td>701</td><td>701</td><td>443</td><td>0</td><td>— (all singletons)</td><td class="b">0.0%</td><td>mirage</td></tr>
+</table>
+<p>
+All four land at ~0 headroom — long-document QA either re-uses documents at a short stack-distance (well
+inside <code>H</code>) or not at all (pure singletons), so LRU is Belady-optimal on every one. The mirage is
+thus a property of the <em>workload class</em>, predicted from corpus statistics alone, not an artifact of
+the eval trace. A corpus escapes the mirage only if its hot documents recur at stack-distance beyond the
+horizon — a large working set re-used long-range, which document-QA structurally is not (its hot document
+recurs at a median gap of six conversations, all but one re-use inside <code>H</code>). The corollary for
+practitioners: measure your corpus's reuse stack-distance against <code>H = CAP/mean-doc</code> before
+investing in a smarter retention policy; below the horizon, the policy cannot beat LRU, and the goodput
+lever is elsewhere (§5).
 </p>
 
 <h2>4 What caching fixes, and what it leaves to scheduling</h2>
@@ -378,7 +396,8 @@ workload-, not implementation-, specific.
 <code>analysis/doc_reuse.py</code> reproduces the popularity table (§2), the single-pass and 4-pass
 replay results (§3), and the cold floor; <code>analysis/reuse_distance.py</code> measures the real corpus's
 reuse stack-distance and <code>analysis/phase_boundary.py</code> validates the phase-boundary step function
-on constructed corpora (§3.4); <code>analysis/goodput_vs_hitrate.py</code> shows the p99 per-request
+on constructed corpora and <code>analysis/phase_boundary_realcorpora.py</code> confirms it across four real
+long-document corpora (§3.4); <code>analysis/goodput_vs_hitrate.py</code> shows the p99 per-request
 prefill-work floor is caching-policy-invariant. Throughput/floor constants (§4) come from the stock full
 sweep (<code>runs/v0-stock</code>) and the SRPF sweep (<code>runs/v-srpf-r1</code>)
 and server logs. The live eviction path (§3.3) is <code>UnifiedRadixCache</code> →

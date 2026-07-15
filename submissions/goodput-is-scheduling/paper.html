@@ -246,7 +246,13 @@ stock which coin-flips at λ=3 (3/5) and fails λ=5 stably (n=5, all 17–24&nbs
 22.7&nbsp;s). The λ=5 win is robust as a <em>clean separation</em>: every SRPF λ=5 run (5.85–7.46&nbsp;s) is
 2–4× below every stock λ=5 run (17–24&nbsp;s), no overlap — a gap a coin-flip cannot manufacture, and
 statistically significant (Fisher exact, SRPF 3/3 vs stock 0/5, one-tailed p=0.018; both rates pooled 6/6 vs
-3/10, p=0.011; <code>analysis/goodput_stats.py</code>). At λ=3 SRPF converts stock's 3/5 coin-flip into 3/3
+3/10, p=0.011; <code>analysis/goodput_stats.py</code>). <b>Honest scoping of this p-value:</b> the 5 stock λ=5
+runs pool the same-node control (node 0-3) with 4 runs from a second node (ondem-3), so the p=0.018 is
+<em>not</em> purely same-node (the strictly same-node comparison, SRPF 3/3 vs the single stock control 0/1, is only
+p=0.25 — too few stock runs to reach significance alone). We rely on it only because stock λ=5 fails <em>stably</em>
+on <em>both</em> nodes (all 17–24&nbsp;s, ≤1.08× spread) — so the 2–4× SRPF gap is not a cross-node artifact — and
+the same-node SRPF-vs-control pair (5.85–7.46 vs 22.7&nbsp;s) shows the identical clean separation; the pooled
+p-value quantifies a direction that is already unambiguous same-node. At λ=3 SRPF converts stock's 3/5 coin-flip into 3/3
 — here the pass-counts alone are not separable (p=0.36, stock passes λ=3 often), so the λ=3 effect is
 <em>distributional</em> (SRPF's tighter, lower tail 5.9–7.4&nbsp;s vs stock's 6.3–11.8&nbsp;s) rather than a
 pass-rate result; the significant, decisive win is at λ=5. The <b>full contract sweep</b> (λ{3,5,7,10},
@@ -311,8 +317,10 @@ re-used long-range — which long-document QA serving structurally is not (its o
 median gap of six conversations, and only ~10% of conversations re-use any document). Applying the criterion
 to <b>four real long-document corpora</b> (the eval mix, LEval, and two LooGLE variants;
 <code>analysis/phase_boundary_realcorpora.py</code>) puts <em>all four</em> in the mirage regime (≤0.8%
-headroom) — the mirage is a property of the workload class, predicted from corpus statistics, not an artifact
-of one trace (companion paper, §3.4). <b>Practitioner corollary:</b> measure your corpus's reuse stack-distance
+headroom) — though we note two of the four (the LooGLE variants) reach it <em>trivially</em> (all-singleton, no
+cross-record reuse to cache), so the non-trivial generality rests on the eval mix (0.8%) and LEval (0.0%), both
+of which have reuse yet still fall below the horizon. The mirage is thus a property of the workload class,
+predicted from corpus statistics, not an artifact of one trace (companion paper, §3.4). <b>Practitioner corollary:</b> measure your corpus's reuse stack-distance
 against <code>H = CAP/mean-doc</code> before investing in a smarter retention policy; below the horizon, no
 policy beats LRU and the goodput lever is scheduling.
 </p>
@@ -331,8 +339,9 @@ workload and hardware parameters alone, predicts goodput <em>and</em> names the 
 <li><b>Caching headroom</b> <code>h</code> = fraction of re-uses at stack-distance &gt; <code>H</code> (§6).</li>
 </ul>
 <p>
-<b>The lever decision is parameter-free</b> = compute if <code>f &gt; T</code> (even the best schedule misses
-the SLO); else caching if <code>h</code> is large (removable evicted-reuse); else, when work is bimodal and
+<b>The lever decision uses no fitted/circular constant</b> (only the measured <code>C_batch</code>, the SLO, and
+workload shape — not the back-solved <code>C_eff</code>) = compute if <code>f &gt; T</code> (even the best schedule
+misses the SLO); else caching if <code>h</code> is large (removable evicted-reuse); else, when work is bimodal and
 <code>f ≪ T</code>, scheduling (the p99 is head-of-line queue-wait, reducible by serving small turns first).
 On our workload it reads <code>f = 1.04&nbsp;s ≪ 8&nbsp;s</code>, <code>h = 0.2%</code>, top-5%-of-turns
 carry 50% of work → <b>lever = scheduling</b> — and this naming uses none of the fitted throughput
@@ -341,19 +350,19 @@ the load-bearing output of the model, and it matches what we measured (SRPF move
 do not).
 </p>
 <p>
-The <em>magnitude</em> side is weaker and we flag it honestly. The ceiling <code>g_ceil = C_eff / E[W]</code>
-is a <b>self-consistency check, not an independent prediction</b>: <code>C_eff</code> (~17&nbsp;k tok/s
-effective cold-prefill throughput) is itself backed out from the saturated run, so
-<code>g_ceil ≈ 4.7&nbsp;req/s</code> reproduces the measured raw-throughput ceiling by construction (SRPF
-completes 4.72&nbsp;req/s at λ=10; the full sweep now measures this directly, rather than extrapolating from a
-sub-knee estimate); the FLOP-side estimate (C ≈ 18–19&nbsp;k tok/s over mean cold work ≈ 4.3&nbsp;k tok)
-lands slightly lower (~4.2–4.4), so we report the ceiling as ~4.5&nbsp;req/s <em>with a sensitivity band
-4.2–4.7</em>, not as a point prediction. Two things the decomposition <em>does</em> establish: (i) the
-observed <em>raw</em> saturation is consistent with work-conservation over the measured cold-work
-distribution — the raw ceiling is a compute limit, not a policy gap; and (ii) <b>goodput@SLO (4.0) sits below
-that raw ceiling</b> — so on this metric the binding constraint is the head-of-line <em>tail</em> crossing
-the SLO (§4), not raw compute. The lever-selection above (scheduling) targets exactly that binding
-constraint.
+The <em>magnitude</em> side is weaker and we flag it honestly. The model ceiling <code>g_ceil = C_eff / E[W]</code>
+is a <b>self-consistency check, not an independent prediction</b>: with <code>C_eff ≈ 15&nbsp;k tok/s</code>
+(effective cold-prefill throughput, backed out from the saturated run) and <code>E[W] ≈ 3594&nbsp;tok</code>
+(mean cache-adjusted work), it gives <code>g_ceil ≈ 4.2&nbsp;req/s</code> — but since <code>C_eff</code> is
+calibrated to the saturation it then reproduces, this is a consistency check, not a prediction
+(<code>analysis/goodput_model.py</code>, <code>bound.py</code>). What is <em>not</em> circular is the
+<b>directly measured</b> raw ceiling: the full contract sweep has SRPF completing <b>4.72&nbsp;req/s at λ=10</b>
+(<code>runs/v-srpf-full</code>). The model estimate (~4.2) and the direct measurement (4.72) agree to within a
+sensitivity band ~4.2–4.7; the <em>load-bearing</em> ceiling is the direct measurement, and the model only shows
+the measured saturation is consistent with work-conservation, not a policy gap. The decomposition then establishes
+that <b>goodput@SLO (4.0) sits below that raw ceiling</b> — so on this metric the binding constraint is the
+head-of-line <em>tail</em> crossing the SLO (§4), not raw compute. The lever-selection above (scheduling) targets
+exactly that binding constraint.
 </p>
 <p>
 The value of the procedure is qualitative and general: flip its inputs and it names a <em>different</em>
@@ -410,8 +419,9 @@ Map evidence: <code>analysis/doc_reuse.py</code>, <code>reuse_distance.py</code>
 <code>hol_trace.py</code>, <code>hol_decode.py</code> (decode-side head-of-line), <code>hol_sim.py</code>, <code>bound.py</code>, <code>prefill_flops.py</code>
 (head-of-line + compute bounds); <code>slo_sensitivity.py</code> (SLO-threshold robustness), <code>goodput_model.py</code> (the predictive lever model of §6.1), <code>goodput_stats.py</code> (Fisher-exact significance of the n=3 win); the admission
 negative is in the CCA companion. GPU runs:
-<code>runs/v0-stock</code> (stock sweep), <code>runs/v-srpf-r1</code> (SRPF sweep), <code>runs/v-stock-srpfctl</code>
-(same-node control). SRPF is <code>--schedule-policy srpf</code> in
+<code>runs/v-srpf-full</code> (the headline SRPF full contract sweep λ{3,5,7,10}, goodput 4.0 / ceiling 4.72),
+<code>runs/v0-stock</code> (stock full sweep), <code>runs/v-srpf-r1..r3</code> (same-node SRPF λ3,5 A/B for the
+Fisher n=3), <code>runs/v-stock-srpfctl</code> (same-node stock control). SRPF is <code>--schedule-policy srpf</code> in
 <code>managers/schedule_policy.py</code>. All numbers derive from the frozen evaluation protocol; no eval
 knobs were changed, and the mechanism is lossless (only <em>when</em> prefills run changes).
 </p>

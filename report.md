@@ -923,3 +923,27 @@ accel+write_back full curve: λ3 3.7s PASS(hit .748)/λ5 15.6s FAIL/λ7 28.1s(th
 λ=5 STILL FAILED (15.6s bad basin, n=1). Capacity alone doesn't beat the knee coin-flip at moderate margin; P3 says
 reliable needs margin ~2 (write_back-alone 2/2 at margin 2.0). ⇒ TWO-REGIME picture: large-margin (λ≪C) reliable; knee
 (λ≈C) coin-flip-dominated even with stacked capacity. Fold into capstone §3 (co-design confirmed) + §6 (coin-flip robust).
+
+## SESSION 2 cont. (07-15): capstone Fig2, code-level lever-space audit, headline firming launched
+**Capstone Figure 2** added (residency-concurrency-runaway §3): bar chart of saturated C stacking — stock 4.14 →
+accel 5.65 (K-lever) → accel+write_back 6.33 (+h-lever, +53%) — visualizes the co-design result. Validated well-formed
+SVG (numeric char-refs), pushed 92729e93c.
+
+**Code-level lever-space audit (scheduler.py prefill hook, lines 2871-2908).** Re-read the exact prefill-scheduling
+hook where all three of my mechanisms live. The single governing knob is `adder.rem_chunk_tokens` (per-step prefill
+token budget for the in-flight chunked giant): accel RAISES it under occupancy>theta (K-lever, WIN, f=2 optimum);
+fair-share LOWERS it when shorts wait (P5 backfire); decode-floor shrinks chunked_prefill_size globally (P4 backfire).
+Residency = concurrency × duration; at this hook the only ways to cut residency are (1) finish the giant faster [accel,
+done], (2) finish shorts faster [already 1-chunk, impossible], (3) fewer in-flight reqs [SRPF ordering = textbook;
+admission gating = predicted backfire, shifts prefill-time to queue-wait which is IN TTFT]. Decode-side tpot is
+memory-bound (hardware constant b≈1.2ms/req) and only reducible losslessly by... nothing available in v0.31. ⇒ CONFIRMS
+at the code level: accel is THE accessible novel lossless positive; the positive-lever space is exhausted. One legitimate
+DEPTH refinement remains for P6: the accel TRIGGER is currently device-KV occupancy (`_occ>0.85`); a QUEUE-DEPTH trigger
+(fire when N shorts are HOL-blocked, P5's diagnosed signal) could gate the boost more precisely — either matches
+(robustness) or beats it (better signal). Optional future A/B; does not change the headline.
+
+**Headline firming launched (node 19990, chain_firm.sh).** The P6 reliable win is accel 4/4 vs stock 1/5 at λ=3, Fisher
+SLO-pass p=0.0397 (weakest leg; MWU tpot p=0.016 / conc p=0.008 already <0.02, coin-flip-robust). Efficient λ=3-only
+replicate loop (kill server after bench_r3, ~55min each) adds SAME-NODE paired accel/stock replicates under NEW names
+(v18_faccel1-3 / v18_fstock1-3) to push Fisher p<0.01. Theory: accel at λ=3 has margin C−λ=2.65 (large) → should pass
+reliably; stock is coin-flip. analyze_firm.py auto-folds v18_f* into the Fisher + MWU. Wall-time-guarded under the 9h hold.

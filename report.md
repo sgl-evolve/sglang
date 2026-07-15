@@ -348,7 +348,7 @@ Mean, median, σ, and throughput are indistinguishable across PASS and FAIL — 
 TTFT out of ~7037 completions) differs. The SLO outcome is decided by O(1) cold-document arrivals at the
 tail, not by any systematic difference in serving quality.
 
-**r5 and r7 p99 are UNCORRELATED across SRPF runs** (Pearson r=0.19, n=13, excluding known-negative
+**r5 and r7 p99 are UNCORRELATED across SRPF runs** (Pearson r=0.13, n=13, excluding known-negative
 mechanisms). A good r5 does not predict a good r7 — the r7 coin-flip is genuinely independent stochastic
 variation, not just "runs that are generally faster." The r7/r5 ratio varies from 1.02 to 1.46 (mean 1.27,
 σ=0.14), confirming the amplification from r5 to r7 is itself stochastic.
@@ -762,7 +762,7 @@ hardware, fewer cold documents (workload-dependent), or architectural changes (p
   exhaustive characterization of the closed KV-capacity design space; (6) exclusive device-XOR-host tiering
   mechanism (+1.7pp hit, lossless); (7) honest negatives: SRPF aging catastrophic, XTIER+WT catastrophic,
   cost-aware HOST NEG, cost-aware DEVICE neutral, QP-KV neutral, adaptive chunk INERT/neutral, QPAC neutral,
-  IBAC neutral, DBS strong negative; (8) five self-corrected over-claims + 1 inertness catch (would-be 6th) —
+  IBAC neutral, DBS strong negative, chunk-reserve strong negative; (8) five self-corrected over-claims + 1 inertness catch (would-be 6th) —
   honest throughout.
 
 ## LIMITATIONS & WHAT WOULD MOVE THE NEEDLE (updated 2026-07-15, design space CLOSED, 13/13 SRPF r5, 3 nodes)
@@ -1316,6 +1316,39 @@ is empirical — pending eval (commit 83c6009b9).
   - r7 **FAIL** (8444ms, consistent with metastability coin-flip — mean/median/std/tput identical to PASS runs)
   - Node 0-3 performance consistent with 1-2 and ondem-2 (no node effect)
   - r5 now **13/13 PASS** across 3 certified nodes; Fisher p ≈ 0.00001
+
+### v-srpf-wb-rsv2k — SRPF+WB+chunk-reserve 2048 (budget sharing)  [DONE, 0-3, job 19912, commit 2b2b664f1] ★STRONG NEGATIVE
+- **Mechanism: Chunk-Reserve (SGLANG_CHUNK_RESERVE=2048)** — caps the continuing chunked request's
+  per-iteration budget at `6144 - 2048 = 4096` tokens, reserving 2048 tokens so short waiting
+  requests (cached continuations) can co-prefill alongside the mega-document. Orthogonal to SRPF
+  (which reorders the waiting queue) — addresses inter-prefill head-of-line blocking within each
+  iteration. Guard added to prevent second chunked_req creation from the reserved tokens.
+- **Motivation (server log analysis):** 70.4% of full-chunk iterations (6144-token mega-doc mid-prefill)
+  have waiting requests blocked behind them. 1183 HOL blocking chains (consecutive blocked iterations),
+  max=390 (97.5s), p99=74 (18.5s), 55 chains >7.5s. The reserved lane successfully unblocks them:
+  22.5% of prefill batches co-schedule 2+ requests (vs ~0% without reserve).
+- Config: `--schedule-policy srpf --hicache-write-policy write_back` + `SGLANG_CHUNK_RESERVE=2048`.
+- **Partial sweep (cancelled at r5 — already proved negative):**
+  | λ | p99 TTFT | p50 TTFT | req/s | tok/s | hit | SLO |
+  |---|---------|---------|-------|-------|-----|-----|
+  | 3 | **8209ms** | — | 2.97 | — | 0.733 | **FAIL** |
+  | 5 | **10886ms** | — | 3.86 | — | 0.727 | **FAIL** |
+- **goodput@SLO = 0** — r3 and r5 both FAIL. Compare SRPF+WB without reserve: 13/13 PASS at r5.
+- **Root cause**: RESERVE=2048 increases mega-doc TTFT by **50%** (6144→4096 tokens/iter = 1.5× more
+  iterations). A 192K-token doc goes from ~8s to ~12s of pure prefill. Since the p99 is determined by
+  the **longest prefill times** (mega-docs), not by queue-blocked short continuations, the mega-doc
+  TTFT increase directly pushes p99 above the SLO — even though the reserved lane successfully
+  unblocks continuations (22.5% multi-seq batches, mean continuation TTFT improved).
+- **Key insight: p99 under SRPF is dominated by cold-document own-prefill time.** The reserved lane
+  helps median/p50 TTFT (continuations complete faster) but HURTS p99 (mega-docs take longer). Any
+  mechanism that trades mega-doc TTFT for continuation TTFT is counterproductive for goodput@SLO.
+  This fundamentally bounds the "iteration-level budget sharing" approach: even RESERVE=512 (9.1%
+  overhead) would worsen r7 p99 by ~0.7-1s, exceeding any benefit from unblocking.
+- **Design space update**: This closes the **iteration-budget-allocation** dimension, complementing
+  the previously-closed budget-optimization space (IBAC/QPAC/DBS). The chunked prefill budget is
+  not "wasted" or "monopolized" — it is the minimum needed for mega-doc progress at the rate that
+  determines p99.
+- W&B: logged as `v-srpf-wb-rsv2k` [mechanism].
 
 ## Ops notes
 - eval.sh has a path bug (computes `workspace/sgl/v0.3_ablations/base`); fixed by symlink

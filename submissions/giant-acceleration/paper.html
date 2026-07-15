@@ -313,8 +313,9 @@ rather than an arbitrary constant.</div>
 (20.5&nbsp;s = 2.5&times; the SLO) is far outside the coin-flip band and is corroborated by the systematic &lambda;=3
 degradation (f=3 worse than f=2 on p99, concurrency, and tpot), so the optimum is robust to the coin-flip.</p>
 <p class="note"><b>The goodput difference is tail-control, not capacity.</b> Every acceleration factor lifts saturated
-capacity to a similar band (f=1.5&rarr;5.44, f=2&rarr;5.65, f=3&rarr;5.46, all vs stock 4.14), yet goodput@SLO is 3/5/3:
-raw throughput is raised by <em>any</em> boost, but only f=2 also holds the p99 tail under the SLO&mdash;confirming the
+capacity to a similar band (f=1.5&rarr;5.44, f=2&rarr;5.65, f=3&rarr;5.46, all vs stock 4.14), yet only f=2 gets the p99
+tail under the SLO at &lambda;=5 (in the good basin&mdash;its &lambda;=5 pass is coin-flip, &sect;4). Raw throughput is
+raised by <em>any</em> boost; controlling the tail needs the right factor <em>and</em> a favorable basin&mdash;the
 optimum acts on the tail, not the ceiling.</p>
 
 <h2>6 Relationship to the series</h2>

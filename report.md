@@ -846,3 +846,24 @@ NOTE: NO CRASH — the reserve2048 path (my has_chunked_req fix) ran warmup + a 
 FIRMED (tight, robust). λ3 reserve0 rep1: p99 12949ms (fail side of coin-flip, but ≪ λ5's 24s), p50 1178, req
 2.79 (≈λ3 offered → less saturated). Decisive λ3 reserve2048 comparison pending (~3h; K=3 needed for coin-flip
 variance). SRPF srpf arm ~1h (triangulation: does shortest-first also fail the tail?).
+
+### ★ PIVOTAL: SRPF λ5 = fail→PASS, GENUINE (not gaming) (2026-07-15 ~03:40Z, job 19832, ondem-2, n=1)
+SRPF λ5 rep1: p99 7028ms (PASS) vs fcfs λ5 n=5 median 23891ms (0/5 fail) = -70.6%. FULL distribution (rep1):
+mean TTFT 2064→1183 (-43%), median 706→600 (-15%), P90 4103→1897 (-54%), P99 22331→7028 (-69%); req 4.11→4.08
+(flat), E2E median 7150→6690. ⇒ SRPF GENUINELY improves the WHOLE TTFT distribution (mean drops 43%) = classic
+SJF minimizing mean flow-time, NOT p99-gaming/starvation-artifact (starvation would RAISE the mean). The few
+mega-docs (~3-4 >100K) pay a fairness cost largely INVISIBLE to p99 (they fall beyond top-1%).
+TWO SERIOUS CONSEQUENCES:
+(1) ★INTEGRITY: this REFUTES Paper 1 (prefill-slo-tail) §3.3 scheduling-closure ("no serving policy moves the
+tail" / "SRPF starves the big docs = HURTS"). That was an UNMEASURED prediction; the direct A/B refutes it. MUST
+correct Paper 1 (revise §3.3: the tail IS schedulable; SRPF moves λ5 fail→pass, mean/p90/p99 all down). The
+coin-flip CORE of Paper 1 stands (variance ≠ schedulability); only the scheduling-closure sub-claim is wrong.
+(2) Paper 2 axis reassessment: prefill SCHEDULING is (a) SIBLING-OCCUPIED (base found SRPF +37-66% goodput on
+this eval) and (b) charter-DISQUALIFIED (L23: SJF/SRPF on pluggable interfaces ≠ contribution). My novel
+NON-starving twist (fair reserve) FAILS (+75% p99): a thin 2048 reserve neither serves short reqs fast enough
+NOR stops the mega-doc occupying the pipeline → worse. INSIGHT (candidate, needs care vs base): for heavy-tailed
+prefill, the p99-goodput benefit is INSEPARABLE from DEPRIORITIZING (delaying) the large docs; a fair/non-starving
+budget split forfeits it. ⇒ Paper 2 as a POSITIVE mechanism is dead (occupied+disqualified); at most a bounded
+negative ("fairness and tail-goodput are opposed in prefill scheduling"), which may be too incremental to stand
+alone → consider FOLDING the SRPF+reserve evidence into a Paper 1 REVISION (correct §3.3 + add the fair-mechanism
+boundary) rather than a weak Paper 2. DECIDE after srpf replication (n≥3, reps 2-5 landing) + λ3 + reserve ablation.

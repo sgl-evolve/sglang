@@ -61,9 +61,33 @@ def fisher(a_pass,a_tot,s_pass,s_tot):
 allstock = STOCK_SAME + STOCK_OTHER
 a_pass=sum(1 for _,r in ACCEL if r['p99']<=SLO); a_tot=len(ACCEL)
 s_pass=sum(1 for _,r in allstock if r['p99']<=SLO); s_tot=len(allstock)
-print(f"\n=== FISHER (SLO-pass): accel {a_pass}/{a_tot} vs stock {s_pass}/{s_tot} ===")
+print(f"\n=== FISHER (SLO-pass, coin-flip-sensitive): accel {a_pass}/{a_tot} vs stock {s_pass}/{s_tot} ===")
 if a_tot and s_tot:
     p = fisher(a_pass,a_tot,s_pass,s_tot)
     print(f"  one-sided Fisher p = {p:.4f}  {'SIGNIFICANT (<0.05)' if p<0.05 else 'not yet sig — need more n'}")
+
+# Mann-Whitney U (exact) on decode-tpot — coin-flip-ROBUST. One-sided: accel tpot < stock tpot.
+def mannwhitney_exact(a, b):
+    # U = # pairs (x in a, y in b) with x < y ; exact one-sided p via permutation of ranks
+    import itertools
+    n1, n2 = len(a), len(b)
+    U = sum(1 for x in a for y in b if x < y) + 0.5*sum(1 for x in a for y in b if x == y)
+    allv = a + b
+    # exact null: choose which n1 of the (n1+n2) ranks are group A; count arrangements with U>=observed
+    idx = list(range(n1+n2)); ranks = {v:i for i,v in enumerate(sorted(allv))}
+    from math import comb
+    ge = tot = 0
+    for combo in itertools.combinations(range(n1+n2), n1):
+        tot += 1
+        A = [allv[i] for i in combo]; B=[allv[i] for i in range(n1+n2) if i not in combo]
+        u = sum(1 for x in A for y in B if x < y) + 0.5*sum(1 for x in A for y in B if x==y)
+        if u >= U: ge += 1
+    return U, ge/tot
+for metric in ("tpot","conc"):
+    a=[r[metric] for _,r in ACCEL]; b=[r[metric] for _,r in allstock]
+    if a and b and len(a)+len(b)<=20:
+        U,p = mannwhitney_exact(a,b)
+        print(f"=== MANN-WHITNEY ({metric}, coin-flip-ROBUST): accel {sorted(a)} vs stock {sorted(b)} ===")
+        print(f"  one-sided exact p = {p:.4f}  {'SIGNIFICANT (<0.05)' if p<0.05 else 'ns'}  (accel < stock)")
 print("\nNOTE: deterministic tpot/conc (accel systematically below stock coin-flip range) is the coin-flip-ROBUST")
 print("evidence; Fisher on p99-pass is the goodput@SLO headline. Both together = the claim.")

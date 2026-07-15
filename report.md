@@ -753,3 +753,17 @@ negative n=2-solid. λ3 effects are within coin-flip noise (both). REMAINING: ad
 next) decides adaptive-λ5 wording — adaptive r1 λ5 6894 vs baseline mean 6496 (+6%); if r2 ≈6500 → neutral, if
 ≈6900 → small real regression. Either way the CONCLUSION holds (chunk-level reservation can't improve goodput:
 fixed robustly hurts, adaptive at best neutral).
+
+### ★★ P4 FINALIZED — n=2 complete, airtight negative (2026-07-15)
+Full n=2 same-node (node 1-1), p99 mean [runs]:
+| rate | baseline | fixed RPB | adaptive RPB |
+|------|----------|-----------|--------------|
+| λ3 | 6683 [6973,6393] | 6973 [6300,7646] | 6744 [6303,7185] — all within coin-flip noise |
+| λ5 | 6496 [6580,6411] PASS | **9607 [9287,9927] FAIL (+48%, tput −9%, ROBUST)** | 7205 [6894,7516] PASS (goodput=baseline req/s~4.1, p99 +11% small cost) |
+★CONCLUSION (n=2, airtight): chunk-level budget reservation CANNOT improve goodput@SLO over whole-request SRPF at
+ANY implementation — fixed robustly HURTS (both λ5 runs fail via ~54% reserve waste → −13% capacity), adaptive
+(zero-waste) is GOODPUT-NEUTRAL (both pass at baseline req/s, no gain, small +11% p99 cost). λ3 = coin-flip noise
+(the n=1 "−10% help" was a lucky draw — firming corrected it). Scheduling axis CLOSED at both granularities.
+Paper fully updated (abstract/intro/§5 tables+figure n=2 error bars/§7/§8), well-formed, committed 37dd7e1f6,
+W&B-logged (v-srpf-ctl5, v-rpb25-r2, v-rpbA25-r2). ⇒ P4 is now at P3's rigor (n=2 + error bars + hostile-reviewed).
+RPB DIRECTION COMPLETE. Whole lossless design space mapped+bounded across 4 papers. No remaining novel lossless lever.

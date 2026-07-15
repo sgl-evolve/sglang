@@ -914,3 +914,12 @@ accel+write_back λ=7 thr=5.86 (vs accel-alone 5.20-5.51, stock 3.99) → combin
 (15.6s, bad basin, n=1) → the metastable knee coin-flip is ROBUST to capacity increases; stacking levers does NOT
 reliably eliminate it. REINFORCES P3 (coin-flip is deep). ⇒ co-design raises the ceiling but the knee remains coin-flip-
 governed. Honest, valuable bounded result. Await λ=10 for exact combined C. Fold into capstone (co-design + coin-flip robustness).
+
+## ★★★ CO-DESIGN COMPLETE v17 λ=10 = 6.33 thr (18:29): capacity levers STACK (+53%); knee coin-flip capacity-ROBUST
+accel+write_back full curve: λ3 3.7s PASS(hit .748)/λ5 15.6s FAIL/λ7 28.1s(thr 5.86)/λ10 36.3s(thr 6.33). W&B-logged, node released.
+★FINDING 1 (POSITIVE, deterministic): CAPACITY LEVERS STACK — stock C 4.14 → accel 5.65-5.79 (K-lever) → accel+wb 6.33
+(+h-lever, hit .73). +53% over stock, +9-12% over accel-alone. CONFIRMS P2's two-lever co-design (C=K/(1-h), both K & 1/(1-h) raised, stack).
+★FINDING 2 (bounded): KNEE COIN-FLIP ROBUST TO CAPACITY — despite C=6.33 (λ=5 margin now 1.33, 2× accel-alone's 0.65),
+λ=5 STILL FAILED (15.6s bad basin, n=1). Capacity alone doesn't beat the knee coin-flip at moderate margin; P3 says
+reliable needs margin ~2 (write_back-alone 2/2 at margin 2.0). ⇒ TWO-REGIME picture: large-margin (λ≪C) reliable; knee
+(λ≈C) coin-flip-dominated even with stacked capacity. Fold into capstone §3 (co-design confirmed) + §6 (coin-flip robust).

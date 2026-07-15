@@ -502,3 +502,14 @@ verified against artifacts and fixed (no fabrication left):
   configs into one "n"; a run that took effect ≠ a run that produced a metric (check summary.json exists);
   hostile-PC subagent review is HIGH-YIELD (caught what self-review missed). FUTURE: optionally re-run
   recompute-currency capturing server.log to restore that finding; run SLRU (jobs_slru.txt) if desired.
+
+## Direction 4 SCREENED-OUT (negative, no GPU): "SRPF worsens E2E/TPOT" metric-tension — REFUTED
+Hypothesis: prefill-first + SRPF (TTFT-optimal) might starve decode → worse E2E/TPOT (a metric-tension paper).
+Fast-screen from existing run bench json (stock v0-stock vs srpf v-srpf-r1):
+- λ3: TTFT 11787→5892 (srpf better); TPOT 3465→4330 (srpf slightly WORSE); E2E 437790→322022 (srpf BETTER).
+- λ5: TTFT 17372→5850 (better); TPOT 3093→3130 (~same); E2E 410625→335694 (srpf BETTER).
+⇒ REFUTED: SRPF does NOT worsen E2E (it improves it); TPOT only marginally worse at λ3. No clean tension.
+The real observation (E2E p99 ~5-7 MIN regardless of policy) is a saturation/open-loop-rate-sweep artifact,
+OFF the fixed TTFT metric. Not a paper. Value-add: added an honest P3 limitations note that SRPF's TTFT win
+is NOT bought at E2E/TPOT's expense (preempts the reviewer "what about E2E" question). Fast-screen-before-
+build discipline again avoided a false-hypothesis paper.

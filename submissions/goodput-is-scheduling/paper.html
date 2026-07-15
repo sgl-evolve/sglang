@@ -361,6 +361,12 @@ actually in hand and reports SRPF's own λ=5 spread honestly.</li>
 <li>The compute ceiling could in principle move compute-side (context-parallel prefill, quantization), but
 prefill context-parallelism is unavailable for this hybrid model in-engine and quantization is lossy /
 contract-frozen; we treat the ceiling as fixed.</li>
+<li>We are scoped to the fixed headline metric, goodput@SLO on p99 TTFT; we do not optimize E2E latency or
+TPOT (both are saturation-dominated at these rates — p99 E2E is minutes — a property of the open-loop
+rate-sweep, not of any policy). Importantly, SRPF's TTFT win is <em>not</em> bought at their expense: from
+the same runs, SRPF's p99 E2E also improves over stock (e.g. λ=3 322&nbsp;s vs 438&nbsp;s) and its p99 TPOT
+is within noise, so reordering prefills does not starve decode relative to stock. Jointly optimizing TTFT
+and TPOT/E2E is future work.</li>
 </ul>
 
 <h2>9 Reproducibility</h2>

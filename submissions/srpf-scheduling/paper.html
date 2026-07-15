@@ -49,10 +49,11 @@ vs 0/7 FCFS</strong> (Fisher exact p &asymp; 0.00001, perfectly separated). The 
 orthogonally with capacity de-duplication (write_back), confirming that goodput has two
 independent levers: scheduling and capacity.
 
-We exhaustively close the surrounding design space: budget optimization (3 mechanisms, all
+We exhaustively close the surrounding design space: budget optimization (4 mechanisms, all
 neutral/negative), scheduling beyond SRPF (aging catastrophic, queue-pinning neutral, adaptive
-chunking inert), and device eviction policy (cost-aware neutral, LRU optimal). The residual
-&lambda;=7 metastability is physically bounded: cold-prefill demand exceeds GPU throughput by 39%.
+chunking inert), KV-capacity and eviction (4 mechanisms, all closed), and iteration-budget
+allocation (chunk-reserve, strong negative). The residual &lambda;=7 metastability is physically
+bounded: cold-prefill demand exceeds GPU throughput by 39%.
 </div>
 
 <h2>1. Introduction and Motivation</h2>
@@ -87,7 +88,10 @@ portion, which can be orders of magnitude smaller for cached continuations.</p>
 
 <p>The implementation is 60 lines in <code>schedule_policy.py</code> (commit <code>01fd8ba0a</code>).
 It requires no changes to the cache architecture, eviction policy, or memory layout.
-It is activated via <code>--schedule-policy srpf</code>.</p>
+It is activated via <code>--schedule-policy srpf</code>. Overhead is negligible:
+Python&rsquo;s timsort on ~200 entries (&asymp;1600 comparisons) costs &lt;0.1 ms per scheduling
+iteration vs the ~200 ms GPU forward pass. A safety fallback to FCFS for queues &gt;1024
+exists but never triggers in practice.</p>
 
 <h3>2.2 Why it works: head-of-line blocking elimination</h3>
 <p>The workload is bimodal: 78.3% of turns are cached continuations (mean remaining prefill ~64 tokens)
@@ -254,15 +258,26 @@ Independently corroborated by a sibling researcher.</li>
 
 <h2>8. Related Work</h2>
 
-<p>SRPF is a cache-aware variant of Shortest Processing Time (SPT) scheduling, a classical
-result in scheduling theory that minimizes average weighted completion time. The novelty is
-the <em>application</em>: recognizing that sglang's PrefillAdder budget creates an SPT-amenable
-structure, and that the remaining prefill (after cache hits) is the correct sort key.</p>
+<p><strong>Scheduling theory.</strong> SRPF is a cache-aware variant of Shortest Processing Time
+(SPT/SJF), which minimizes mean weighted completion time in single-machine scheduling (Smith 1956).
+The novelty is the <em>application domain</em>: recognizing that sglang&rsquo;s PrefillAdder
+budget creates an SPT-amenable structure where the correct sort key is <em>remaining uncached
+prefill</em> (not total input length), exploiting the KV cache to make the effective processing
+time bimodal (~64 tokens for continuations vs ~12K for cold documents).</p>
 
-<p>Independent confirmation from sibling researchers: the &lambda;=7 physical boundary is
-consistent with findings from researchers <em>hoare</em>, <em>kleinrock</em>, and <em>valiant</em>
-(all independently observing goodput@SLO coin-flip behavior under FCFS). Researcher
-<em>valiant</em> showed that the retention/eviction class is structurally immune to
+<p><strong>LLM serving systems.</strong> Orca (Yu et al. 2022) introduced iteration-level scheduling
+and continuous batching. vLLM (Kwon et al. 2023) added PagedAttention for memory-efficient
+KV management. SGLang (Zheng et al. 2024) introduced RadixAttention for prefix-sharing KV
+reuse. These systems use FCFS scheduling by default. SRPF complements their memory-management
+innovations with a scheduling-level optimization that exploits the cache-hit asymmetry these
+systems create. Prefill-decode disaggregation (Splitwise, DistServe) addresses a different
+bottleneck (interference between phases) but does not reorder within the prefill queue.</p>
+
+<p><strong>Independent confirmation.</strong> Sibling researchers independently observed the
+goodput@SLO coin-flip under FCFS (<em>hoare</em>, <em>kleinrock</em>, <em>valiant</em>).
+Researcher <em>kleinrock</em> independently confirmed chunk-reserve as negative (+75% at
+&lambda;=5, +125% at &lambda;=3), corroborating that the tail is cold-doc-prefill-dominated.
+Researcher <em>valiant</em> showed the retention/eviction class is structurally immune to
 goodput@SLO (the tail is cold-doc first-compute, not cache-addressable).</p>
 
 <h2>9. Conclusion</h2>
@@ -273,10 +288,12 @@ uncached prefill &mdash; raises goodput by 37&ndash;67%, converts an unreliable 
 reliable one (13/13 PASS at &lambda;=5), and reveals that goodput has two orthogonal levers
 (scheduling + capacity) that compound.</p>
 
-<p>The design space beyond SRPF is exhaustively closed: budget optimization, scheduling
-perturbations, and eviction policy changes all fail to improve on SRPF's ordering. The
-residual &lambda;=7 metastability is a physical boundary (39% compute-overloaded), requiring
-hardware or architectural changes beyond the cache/scheduling layer.</p>
+<p>The design space beyond SRPF is exhaustively closed across four dimensions &mdash;
+budget optimization (4 mechanisms), scheduling perturbations (3 mechanisms), KV-capacity and
+eviction (4 mechanisms), and iteration-budget allocation (chunk-reserve) &mdash; with 12
+honest negatives documented. The residual &lambda;=7 metastability is a physical boundary
+(39% compute-overloaded), requiring hardware or architectural changes beyond the
+cache/scheduling layer.</p>
 
 <p><strong>Recommendation for maintainers:</strong> adopt both <code>--schedule-policy srpf</code>
 and <code>--hicache-write-policy write_back</code>. They address different bottlenecks

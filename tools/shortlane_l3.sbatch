@@ -6,7 +6,7 @@
 # with the lambda=5 job on another node — avoids the shared flashinfer cache race). Fair: idle node, 0 pending.
 #SBATCH --job-name=kleinrock-sl-l3
 #SBATCH --partition=a3
-#SBATCH --nodelist=slurm2-a3nodeset-2
+#SBATCH --nodelist=slurm2-a3nodeset0-1
 #SBATCH --exclusive
 #SBATCH --nodes=1
 #SBATCH --time=08:00:00

@@ -160,9 +160,17 @@ prefill token throughput to three significant figures: acceleration&rsquo;s +36%
 the effective prefill rate R, this <em>is</em> the K-lever, measured directly: acceleration lifts R (hence K, hence C)
 by +36% at fixed h. And it does so not by performing more prefill work but by reclaiming decode&rsquo;s share of GPU
 wall-clock&mdash;decode time-per-token falls 561&rarr;423&nbsp;ms (&minus;25%) at essentially equal concurrency
-(247&rarr;243), so more wall-clock goes to prefill. Whether the residual ceiling (C&nbsp;&ge;&nbsp;5.65) is a
-prefill-compute or a decode-bandwidth wall requires a saturation profile (a Paper&nbsp;7 question); the theory predicts
-the latter.</div>
+(247&rarr;243), so more wall-clock goes to prefill.</div>
+<p>A GPU kernel profile at saturation (accel config, all 8 TP ranks, 149K kernel events) makes the two sides concrete.
+The <em>prefill</em> work that C is measured in is <b>compute- and communication-bound, not memory-bound</b>: of prefill
+GPU-kernel time, 39% is dense flash-attention forward (compute, O(L&sup2;) for long docs), 29% is MoE/GEMM/Mamba
+(compute), <b>19% is tensor-parallel AllReduce</b> (an often-overlooked communication tax), and only 9% is
+memory-bandwidth kernels (norm/quant/gather). The <em>decode</em> side, by contrast, is memory-bandwidth-bound (&sect;2:
+tpot linear in concurrency). The ceiling is therefore best understood as a <b>prefill compute+communication ceiling
+gated by decode-memory contention</b>: prefill is the productive, compute-bound work; decode is the parasitic,
+memory-bound load that steals GPU wall-clock; and acceleration wins by shrinking the parasitic share. (The clean
+per-stage wall-clock split needs sglang&rsquo;s <span class="mono">profile_by_stage</span>, which aborts on this build;
+the stage-separated prefill trace above and the &sect;2 decode-tpot law together carry the argument.)</p>
 
 <h2>4 The design-space partition</h2>
 <p>The law predicts a sign for every axis. We tested each; all match.</p>

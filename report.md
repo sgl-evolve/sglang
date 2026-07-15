@@ -672,3 +672,13 @@ for sub-knee tail-relief, and at the near-knee goodput rate the throughput cost 
 NEXT: reserve-size sweep (rpb10 smaller=less waste, rpb50 larger=more waste) to characterize the tradeoff +
 establish the negative rigorously across reserve sizes. Likely conclusion: chunk-level scheduling reservation
 does NOT improve goodput over whole-request SRPF (closes the last scheduling sub-axis; strengthens P3).
+
+### RPB negative — MECHANISM quantified (analysis/rpb_waste.py, server.log prefill batch sizes)
+Baseline (no RPB): big-doc prefill steps mean **6111 tok**, 97% full 6144 chunks. RPB r=0.25: big-doc steps
+mean **5320 tok**, ~50% capped ≤4700 with ~0 small turns added → **~54% of the 1536-tok reserve WASTED** on
+capped steps. ⇒ RPB cuts effective prefill capacity ~13% on big-doc steps. λ3 (slack): absorbed (overall
+tput unchanged 386.7) + small-turn interleave helps (−10% p99). λ5 (near knee): capacity loss crosses
+saturation → tput −8.6% (525→480) → queue → p99 +41% SLO FAIL. ROOT CAUSE of the negative = the reserve is
+wasted whenever the shortest waiting turn exceeds it (frequent as load rises), and the goodput-setting rate
+is exactly where you can't afford lost prefill capacity. Reserve sweep (rpb10/rpb50, running) tests the
+size tradeoff: smaller reserve = less waste = less λ5 harm; larger = more harm (expected monotonic).

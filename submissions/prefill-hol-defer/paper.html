@@ -39,7 +39,7 @@ documents that block them (tiny &lt;1K-token requests: p99 26.9&ndash;30.5&nbsp;
 the percentile (the classical shortest-remaining-prefill policy, used here only as a reference target) clears the
 SLO. The natural engineering instinct, though, is to avoid deferring anyone: keep every request making progress
 and simply <i>share</i> the prefill budget fairly. Our main result is that this instinct is <b>wrong, and
-provably so on this workload</b>. We design a fair, non-starving, opt-in, lossless mechanism &mdash; a
+demonstrably so on this workload</b>. We design a fair, non-starving, opt-in, lossless mechanism &mdash; a
 <em class="k">reserved short-prefill lane</em> that holds back a slice of the per-iteration budget so short
 requests prefill alongside an in-flight heavy document &mdash; and show it <b>fails at every reserve size</b>
 (neutral at 1024, +75% worse at 2048, n=3 same-node, monotone, no crossover), and when pushed harder collapses
@@ -64,7 +64,7 @@ swept rate. The natural assumption is that this is fundamental: a first-turn doc
 so its cold prefill alone approaches the deadline and the tail looks irreducible.</p>
 <p>That assumption is wrong, and correcting it exposes a sharp and non-obvious design boundary. We first
 <i>diagnose</i> the tail, then map the space of fixes and find that the intuitively "fair" fix is exactly the
-one that cannot work.</p>
+one that backfires.</p>
 <p><b>Contributions.</b></p>
 <ul>
 <li><b>Diagnosis (&sect;3).</b> Direct per-request attribution shows the p99 tail is not the heavy documents but
@@ -1089,7 +1089,7 @@ this is a near-Pareto reordering, not a starvation artifact. The question this p
 a <em class="k">reserved short-prefill lane</em>: while a heavy document is mid-prefill, hold back a slice
 <i>R</i> of the 6144-token per-iteration budget so short waiting requests prefill alongside it. The heavy
 document still makes progress every iteration (no starvation); the knob is opt-in and <i>R</i>=0 is byte-identical
-stock (lossless). It does not work, and a size sweep shows the failure is <b>fundamental &mdash; monotone, with
+stock (lossless). It does not work, and a size sweep shows the failure is <b>systematic &mdash; monotone, with
 no crossover</b>:</p>
 <table>
 <tr><th>reserve <i>R</i> (&lambda;=5, same node)</th><th>n</th><th>p99 TTFT med (ms)</th><th>p99 &divide; own-run stock</th><th>req/s</th><th>run</th></tr>
@@ -1114,8 +1114,8 @@ running but slower, so it occupies the prefill pipeline for proportionally <i>mo
 (&asymp;94 at <i>R</i>=4096 vs 32 at <i>R</i>=0) &mdash; the exact <i>opposite</i> of deferral, which removes it
 from the pipeline entirely. A thin reserve trickles a few victims through but lengthens the congestion window; a
 larger reserve starves the pipeline of forward progress while the backlog grows, collapsing throughput
-(3.6&rarr;2.0&nbsp;req/s) until accumulated KV exhausts memory. <b>Throttling-while-running is strictly worse than
-both FCFS and deferral.</b></div>
+(3.6&rarr;2.0&nbsp;req/s) until accumulated KV exhausts memory. <b>Throttling-while-running never beats FCFS
+(neutral at best, at the thinnest reserve) and is far worse than deferral.</b></div>
 
 <h3>4.3 The lever is deferral by prefill size, not reordering in general</h3>
 <p>Is <i>any</i> queue reordering enough, or deferral-by-prefill-size specifically? A longest-output-first (LOF)

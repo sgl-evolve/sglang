@@ -404,10 +404,39 @@ cold-prefill-compute-bound / control-invariance" claims in BOTH papers.
   gets is not a contribution). REINFORCES the papers: SRPF is the *efficient* realization of head-of-line
   relief; budget-partition variants are dominated. Fast-screen discipline (sim before GPU) paid off.
 
-### DESIGN-SPACE STATUS (goodput@SLO, this workload/eval) — closing hard
-Bounded non-levers: residency/eviction (P2 mirage, LRU=Belady), admission (P1 neg), transfer (cheap),
-Mamba-state (never binding), fast-lane chunk-partition (dominated by SRPF). Sole lever = prefill
-SCHEDULING (SRPF/SJF, textbook — excluded as a contribution), compute-ceiling-capped (~4.2 req/s).
-My contributions = the two negatives + the head-of-line DIAGNOSIS (multi-method: arithmetic+trace+sim+GPU).
-Next: after λ5 firms the papers + W&B, decide between (a) a bounded-impossibility SYNTHESIS paper, or
-(b) one genuinely orthogonal axis. Do NOT manufacture a weak mechanism; a rigorous negative is valid.
+### DIRECTION 3 (screened): hit-rate≠goodput "condition 2" — REFUTED (negative)
+- Hypothesized caching hit-rate headroom doesn't help goodput because the p99 tail is all COLD.
+  `analysis/goodput_vs_hitrate.py`: 4-pass tail is ~75% AVOIDABLE (big docs recur across passes) →
+  refuted; a better cache COULD cut big-prefill COUNT. Decoupling holds only within-rate (single-pass
+  LRU=Belady, vacuous). DROPPED. Kept the TRUE finding: p99 per-request prefill floor = largest UNIQUE
+  doc, policy-invariant (supports P2 corpus-bound).
+
+### DIRECTION 3 (real, DONE): P2 §3.4 phase-boundary VALIDATED across constructed corpora (P2 v3)
+- `analysis/phase_boundary.py`: LRU−Belady avoidable gap is a STEP FUNCTION at stack-distance = H
+  (0 below = mirage/LRU-optimal, full-reuse above = caching helps); crossover exactly at H. Makes the
+  mirage a sharp, PREDICTIVE, corpus-general criterion (addresses the #1 generality concern). Folded
+  into P2 §3.4 as a validation table (v3, committed).
+
+### DIRECTION 3 (last axis): prefill/decode split — NON-LEVER (negative)
+- `analysis/pd_schedule.py`: at saturation 99% of forward steps are PREFILL (decode starved to 1%).
+  goodput@SLO is TTFT-based → spending compute on prefill (more first-tokens) is already optimal;
+  shifting to decode lowers goodput, throttling prefill = admission (P1 neg). Throughput 4.22 ==
+  ceiling 4.2 → compute-hard, no macro-bubbles (big log gaps = protocol flushes). Added to P1 §2.4.
+
+### ★ DESIGN-SPACE MAP NOW COMPLETE (goodput@SLO, this workload/eval)
+Every KV-cache/serving axis characterized:
+| axis | verdict | evidence |
+|---|---|---|
+| residency / eviction | non-lever (mirage, LRU=Belady) | P2 §3, phase-boundary |
+| admission | negative (deferring worsens HOL) | P1 §4 (CCA) |
+| transfer (L1↔L2) | non-binding (~1.6ms) | P1 |
+| Mamba-state pool | never binding (max 0.77) | mamba_pressure.py |
+| fast-lane chunk-partition | dominated by SRPF | hol_sim (screened) |
+| prefill/decode split | TTFT-optimal (99% prefill) | pd_schedule.py |
+| **prefill SCHEDULING** | **THE lever (0/3→4.16)** | **SRPF sweep (textbook)** |
+| compute | hard ceiling ~4.2 req/s | bound.py, matches measured |
+My contributions = the two axis-negatives (P1 admission, P2 caching) + the head-of-line DIAGNOSIS
+(multi-method: arithmetic+trace+sim+GPU) + the phase-boundary generality. SRPF (the lever) is textbook,
+cited not claimed. The space is mapped; a genuine NEW lossless mechanism would have to beat the compute
+ceiling (CP/quant — lossy or contract-frozen) — none exists losslessly. Continue: firm the goodput A/B
+(campaign n=3 + same-node control in flight), keep papers bulletproof, stay honest; supervisor retires.

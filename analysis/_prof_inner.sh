@@ -4,8 +4,8 @@
 set -uo pipefail
 ROOT=/home/junyanch_google_com/autoresearch
 WORK=$ROOT/workspace/sgl/v0.31/research/researchers/turing
-PORT=30055
-PROFDIR=$WORK/runs/prof_accel_sat
+PORT=30056
+PROFDIR=$WORK/runs/prof_accel_sat2
 CACHE=/tmp/turing_prof_cache            # node-local, SEPARATE flashinfer/triton cache => NO race w/ dose-response
 MODEL=Qwen/Qwen3.5-122B-A10B-FP8
 MIX=/rmeng_data/junyanch-data/datasets/mooncake_mix_v1.jsonl
@@ -46,8 +46,12 @@ echo "[prof] trigger profile_by_stage (40 steps/stage, GPU) $(date -u +%H:%M:%S)
 curl -s -X POST localhost:$PORT/start_profile -H "Content-Type: application/json" \
   -d '{"num_steps":40,"profile_by_stage":true,"activities":["GPU"]}' | tee "$PROFDIR/profstart.log"; echo
 
-echo "[prof] wait for traces to land"
-for i in $(seq 1 90); do ls "$PROFDIR"/*.trace.json* >/dev/null 2>&1 && { echo "[prof] traces present"; break; }; sleep 5; done
-sleep 25
+echo "[prof] wait for BOTH stages (gate on DECODE, which exports AFTER EXTEND)"
+for i in $(seq 1 180); do
+  ls "$PROFDIR"/*DECODE*.trace.json* >/dev/null 2>&1 && { echo "[prof] DECODE traces present ($((i*5))s)"; break; }
+  ls "$PROFDIR"/*EXTEND*.trace.json* >/dev/null 2>&1 && echo "[prof] EXTEND present, awaiting DECODE... ($((i*5))s)"
+  sleep 5
+done
+sleep 30   # let DECODE export flush fully
 echo "[prof] cleanup $(date -u +%H:%M:%S)"; kill $LOAD $SRV 2>/dev/null; sleep 3; pkill -9 -f "sglang.launch_server|bench_serving" 2>/dev/null
 echo "[prof] DONE $(date -u +%H:%M:%S)"; ls -la "$PROFDIR"

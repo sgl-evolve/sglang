@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Goodput@SLO is a Prefill-Scheduling Problem — floyd</title>
+<style>
+body{max-width:52em;margin:2.2em auto;padding:0 1.2em;font:16px/1.55 Georgia,serif;color:#161616}
+h1{font-size:1.7em;line-height:1.25;margin:0 0 .1em}
+h2{font-size:1.22em;margin:1.7em 0 .4em;border-bottom:1px solid #ddd;padding-bottom:.15em}
+h3{font-size:1.05em;margin:1.15em 0 .3em}
+.sub{color:#555;font-style:italic;margin:.2em 0 1.2em}
+code{background:#f4f4f4;padding:.05em .35em;border-radius:3px;font:13.5px/1.4 Menlo,monospace}
+table{border-collapse:collapse;margin:1em 0;font-size:14px;width:100%}
+th,td{border:1px solid #ccc;padding:.32em .55em;text-align:left;vertical-align:top}
+th{background:#f0f0f0}
+td.b{background:#fff3f3}
+td.g{background:#f0fff0}
+.fig{margin:1.2em 0;padding:.6em;background:#fafafa;border:1px solid #eee;border-radius:5px;text-align:center}
+figcaption{font-size:13px;color:#555;margin-top:.4em;text-align:left}
+.abs{background:#f7f7f7;border-left:3px solid #888;padding:.7em 1em;margin:1em 0}
+b{color:#000}em{color:#333}
+</style></head><body>
+
+<h1>Goodput@SLO in Long-Document LLM Serving Is a Prefill-Scheduling Problem, Not a KV-Cache Problem</h1>
+<div class="sub">floyd · sglang v0.31 HiCache (Qwen3.5-122B-A10B-FP8, TP=8, 2-tier KV) · v1 · design-space characterization</div>
+
+<div class="abs">
+<b>Abstract.</b> Long-document conversational serving is widely treated as a KV-cache problem: keep the
+right key/value tensors resident, move them cheaply between GPU and host, and goodput follows. We map the
+<em>entire</em> KV-cache and serving design space against a single, fixed metric — goodput@SLO (max Poisson
+request rate with p99 TTFT ≤ 8&nbsp;s over λ∈{3,5,7,10}) on a 122B hybrid Mamba-attention model with a
+two-tier (GPU + 768&nbsp;GB host) KV cache — and find that <b>every data-movement/retention axis is a
+non-lever</b>: cache residency and eviction (LRU is Belady-optimal, a document-reuse <em>mirage</em>),
+admission control (deferring cold prefills is self-defeating), host↔device transfer (non-binding), the
+hybrid model's recurrent-state pool (never the binding capacity), and even a queue-adaptive chunk-partition
+mechanism we designed (dominated by plain reordering). The one lever is <b>prefill scheduling</b>. We
+diagnose why: below the saturation knee the p99 is <em>head-of-line blocking</em> — small conversational
+turns queued behind the back-to-back chunked prefill of a few large cold documents (fewer than 0.1% of
+turns prefill ≥6&nbsp;s, yet the p99 is 6–11&nbsp;s; the waiting queue is 9.6× deeper during big-cold-doc
+chunks) — and above the knee the GPU is compute-bound at a work-conservation ceiling of ~4.2&nbsp;req/s
+(99% of forward steps are already prefill). Serving the small turns first (SRPF, a textbook policy) moves
+goodput@SLO from the stock coin-flip (≤3&nbsp;req/s, λ=3-bound) to <b>4.16&nbsp;req/s</b> — the compute
+ceiling — purely by reordering, with cache contents untouched. Finally we give a <em>predictive criterion</em>
+for when caching <em>would</em> matter: a reuse-stack-distance-vs-cache-horizon phase boundary, validated on
+constructed corpora, that this workload class sits far inside. The contribution is the map, the head-of-line
+diagnosis, and the phase-boundary criterion — not SRPF, which is textbook and which we use only to confirm
+where the lever is. Practitioners tuning KV-cache policy for goodput on such workloads are optimizing the
+wrong axis.
+</div>
+
+<h2>1 Introduction</h2>
+<p>
+A large body of systems work makes KV-cache management the centerpiece of LLM serving efficiency: tiered
+offloading (HiCache, LMCache, AttentionStore), balanced batching (Strata), prefix-aware routing and
+retention. For <em>long-document conversational</em> workloads — where each conversation embeds a big
+document once and then asks several questions about it — the intuition is especially strong: the document
+is re-used across turns and even across conversations, so a good cache should be decisive.
+</p>
+<p>
+We test that intuition exhaustively against a single fixed metric and find it wrong. On a 122B hybrid
+Mamba-attention model with a two-tier KV cache, <b>goodput@SLO is set by how the heterogeneous prefill work
+is scheduled and by a hard compute ceiling — not by any KV-cache data-movement or retention decision.</b>
+Our contributions:
+</p>
+<ul>
+<li><b>A complete design-space map (§3).</b> We characterize every KV-cache/serving axis against
+goodput@SLO and show each data-movement/retention axis is a bounded non-lever: residency/eviction,
+admission, transfer, the recurrent-state pool, and a chunk-partition mechanism we built. Two of these are
+developed in depth in companion papers; here we place them in one framework with the newly-bounded axes.</li>
+<li><b>The head-of-line diagnosis (§4).</b> The λ=3 goodput coin-flip is not a per-request prefill floor or
+irreducible variance; it is head-of-line blocking behind a few large cold-document prefills — established
+four independent ways (arithmetic, direct trace, calibrated simulation, and a GPU A/B). This is the
+organizing insight that tells you the lever is scheduling.</li>
+<li><b>The scheduling lever, measured (§5).</b> Shortest-prefill-first (SRPF, textbook) moves goodput@SLO
+from the stock coin-flip (≤3&nbsp;req/s) to the ~4.2&nbsp;req/s compute ceiling, purely by reordering — our
+own same-node GPU sweep. We are explicit that SRPF is <em>not</em> our contribution; the contribution is
+knowing, and proving, that scheduling is where the lever is and caching is not.</li>
+<li><b>A predictive phase-boundary criterion (§6).</b> Caching has online goodput headroom iff a corpus
+re-uses documents at a stack-distance beyond the cache horizon <code>H = CAP/mean-doc</code>; we validate
+the boundary on constructed corpora and show long-document QA sits far inside the mirage regime — making
+the negative <em>general</em>, not a single-workload artifact.</li>
+</ul>
+
+<h2>2 Setup and method</h2>
+<p>
+<b>System.</b> sglang v0.31 HiCache serving <code>Qwen3.5-122B-A10B-FP8</code> (48 layers = 36 GatedDeltaNet
++ 12 full-attention, 256-expert MoE), TP=8 on one 8×H100 node. KV is two-tier: L1 GPU HBM (~2.4M tokens) +
+L2 768&nbsp;GB host DRAM (~10.7M tokens total); no disk tier. The active cache is
+<code>UnifiedRadixCache</code>; content-keyed, so an identical document re-used by another conversation is a
+hit whenever resident.
+</p>
+<p>
+<b>Fixed evaluation (never modified).</b> A Poisson open-loop rate sweep λ∈{3,5,7,10} over 1553 multiturn
+conversations (7163 turns) from a Mooncake-style long-document mix, full decode, <code>max-concurrency</code>
+256. <b>Headline metric: goodput@SLO</b> = the max sustained req/s with p99 TTFT ≤ 8&nbsp;s. Honest controls
+(peak tok/s, peak req/s) are decode-bound and ~flat by construction.
+</p>
+<p>
+<b>Method — diagnosing a variance-dominated tail metric.</b> goodput@SLO is a tail metric and, at λ=3, a
+metastable coin-flip: identical stock configurations straddle the SLO across runs. Single-run A/Bs are
+therefore void; we compare distributions on the same physical node (cross-node p99 variance is ±45%). To
+attribute the coin-flip we triangulate: an assumption-light <em>arithmetic</em> bound, a <em>direct
+trace</em> of the real run, a <em>calibrated queueing simulation</em>, and a <em>same-node GPU A/B</em>.
+Any single method can mislead (our first offline oracle over-serialized the prefill and pointed the wrong
+way); the diagnosis is the agreement of all four.
+</p>
+
+<h2>3 The design-space map</h2>
+<p>
+We evaluate each axis against goodput@SLO. The verdict is uniform across the KV-cache data-movement and
+retention layer — non-lever — and isolated to one axis, prefill scheduling.
+</p>
+<table>
+<caption>Every KV-cache/serving axis vs. goodput@SLO on the fixed workload. "Non-lever" = provably cannot
+move the metric; evidence is trace-driven, simulated, and/or a same-node GPU A/B.</caption>
+<tr><th>axis</th><th>verdict</th><th>why (evidence)</th></tr>
+<tr><td>residency / eviction</td><td class="b">non-lever (mirage)</td><td>single-pass LRU = LFU = Belady = 0 avoidable re-prefill at real capacity; live <code>--radix-eviction-policy</code> knob, LFU builds a deeper queue than LRU (§6, companion)</td></tr>
+<tr><td>admission control</td><td class="b">negative</td><td>deferring cold prefills multiplies the p99 (λ=3 → 56&nbsp;s); the deferred work <em>is</em> the tail (companion)</td></tr>
+<tr><td>host↔device transfer</td><td class="b">non-binding</td><td>L2→L1 load-back ~1.6&nbsp;ms; stock does not retract; transfer never on the critical path</td></tr>
+<tr><td>recurrent-state (Mamba) pool</td><td class="b">non-binding</td><td>Mamba-state usage never exceeds 0.77 while attention-KV saturates to 1.0 — the recurrent pool is never the binding capacity (<code>analysis/mamba_pressure.py</code>)</td></tr>
+<tr><td>chunk-partition "fast-lane"</td><td class="b">dominated</td><td>reserving chunk budget for small turns (our mechanism) is a <em>partial</em> SRPF; dominated by plain SRPF in simulation (§5)</td></tr>
+<tr><td>prefill/decode split</td><td class="b">TTFT-optimal</td><td>at saturation 99% of forward steps are already prefill; shifting to decode lowers goodput, throttling prefill = admission (<code>analysis/pd_schedule.py</code>)</td></tr>
+<tr><td><b>prefill scheduling</b></td><td class="g"><b>THE lever</b></td><td>SRPF moves goodput ≤3 → <b>4.16&nbsp;req/s</b> (§5); relieves the λ=3 head-of-line and reaches the compute ceiling</td></tr>
+<tr><td>compute</td><td>hard ceiling</td><td>~4.2&nbsp;req/s work-conservation limit (C≈18–19k tok/s cold, mean cold work ≈4.3k tok/turn) — matches the measured 4.22 saturation; movable only compute-side (lossy or contract-frozen)</td></tr>
+</table>
+<p>
+The pattern is not that we failed to find a cache mechanism; it is that the cache layer is
+<em>structurally</em> off the critical path for this metric. §4 explains why, §6 says for which corpora it
+generalizes.
+</p>
+
+<h2>4 Why scheduling is the lever: head-of-line blocking</h2>
+<p>
+Per-turn prefill work is extremely bimodal: 70% of turns are near-free prefix reuse (≤26 tokens), while the
+top 5% of turns (large first-document prefills) carry 50% of all prefill work (p99 40.6k tokens, max 191k).
+The goodput coin-flip lives entirely in how these collide.
+</p>
+<ul>
+<li><b>Arithmetic.</b> At the batched ~39k&nbsp;tok/s, the largest document is ~5&nbsp;s and
+<b>fewer than 0.1% of turns prefill ≥6&nbsp;s</b>; yet the measured λ=3 p99 is 6–11&nbsp;s. The tail
+therefore cannot be a per-request prefill floor — it is queue-wait.</li>
+<li><b>Direct trace.</b> In the stock run's log, the waiting queue is <b>9.6× deeper</b> during
+big-cold-document prefill chunks (#new-token ≥ 6144, #cached-token = 0: mean depth 11.9, p90 33, max 183)
+than during all other prefill steps (mean 1.2, p90 0) — small turns pile up specifically behind the cold
+grind (<code>analysis/hol_trace.py</code>).</li>
+<li><b>Simulation.</b> A per-step 6144-token queueing model calibrated to the coin-flip (stock λ=3 p99 mean
+7.5&nbsp;s, straddling the SLO) shows shortest-prefill-first collapses it to ~4&nbsp;s, coin-flip removed
+(<code>analysis/hol_sim.py</code>); round-robin interleaving does not.</li>
+<li><b>GPU A/B.</b> A same-node SRPF run lands λ=3 p99 at 5.9&nbsp;s (below SLO), matching the simulation.</li>
+</ul>
+<p>
+The mechanism is that a chunked large cold document runs its ceil(work/6144) chunks back-to-back
+(the scheduler continues the in-progress chunked request every step without yielding), monopolizing prefill
+while small turns wait. Above the knee the same work simply saturates the GPU: <code>full token usage</code>
+holds at 0.96–0.98 and 99% of forward steps are prefill, so the system is compute- and KV-memory-bound at
+its work-conservation ceiling. Two regimes, one physical wall.
+</p>
+
+<h2>5 The lever, measured: scheduling moves goodput to the ceiling</h2>
+<p>
+Serving the small turns first — shortest-prefill-first (SRPF/SJF), a textbook policy dropped onto the
+scheduler's existing priority interface — is the remedy the diagnosis predicts. Our own same-node GPU sweep:
+</p>
+<table>
+<caption>Same-node rate sweep, stock (FCFS) vs. SRPF. Goodput@SLO = max rate with p99 TTFT ≤ 8&nbsp;s.
+Stock at λ=3 is a coin-flip (n=5: {6.3, 6.4, 7.8, 8.1, 11.8}&nbsp;s, 3/5 pass); at λ≥5 it fails stably.</caption>
+<tr><th>rate λ</th><th>stock p99 TTFT</th><th>SRPF p99 TTFT</th><th>SRPF req/s</th><th>SLO (8&nbsp;s)</th></tr>
+<tr><td>3</td><td>6.3–11.8&nbsp;s (coin-flip)</td><td>5.9&nbsp;s</td><td>3.02</td><td class="g">SRPF passes</td></tr>
+<tr><td>5</td><td class="b">17.4&nbsp;s (stable fail)</td><td>5.85&nbsp;s</td><td><b>4.16</b></td><td class="g">SRPF passes</td></tr>
+<tr><td colspan="5"><b>goodput@SLO: stock ≤3 (λ=3-bound coin-flip) → SRPF 4.16&nbsp;req/s (the compute ceiling).</b></td></tr>
+</table>
+<p>
+SRPF passes both λ=3 and λ=5; stock fails λ=5 stably (17.4&nbsp;s, a 3× gap far outside node variance, so
+robust even at n=1 here). Goodput@SLO rises from the stock coin-flip (≤3&nbsp;req/s) to
+<b>4.16&nbsp;req/s</b> — the work-conservation ceiling of §3 — <em>with the cache contents and hit-rate
+unchanged</em> (0.673 vs 0.667). This is the clean demonstration that the lever is scheduling: reordering
+prefills, not caching or moving KV, is what moves the metric.
+</p>
+<p>
+<b>The mechanism is textbook; the finding is where it belongs.</b> SRPF/SJF is classical and, dropped onto a
+pluggable interface, is explicitly <em>not</em> a research contribution. Our contribution is the map and the
+diagnosis that make SRPF the <em>right</em> tool here — and that rule out the KV-cache alternatives everyone
+reaches for first. We also built a genuinely new mechanism, a queue-adaptive chunk-budget "fast-lane" that
+reserves part of each prefill chunk for waiting small turns without reordering; in simulation it beats stock
+(4/5 vs 3/5 at λ=3) but is <em>strictly dominated</em> by plain SRPF (5/5), because it is a partial SRPF that
+converges to SRPF only as the reserve grows to the whole budget. We report it as a bounded negative — the
+efficient realization of head-of-line relief is reordering, not budget-partitioning.
+</p>
+
+<h2>6 When caching <em>would</em> matter: a phase-boundary criterion</h2>
+<p>
+The caching non-lever is not a coincidence of one trace; it follows a sharp, measurable boundary. An LRU
+document cache captures a re-use exactly when its <em>stack-distance</em> — the number of distinct documents
+touched since the document was last used — is below the cache horizon <code>H = CAP / mean-doc-size</code>
+(in documents). Online caching headroom is exactly the fraction of re-uses with stack-distance &gt; H. We
+validate this on constructed corpora (<code>analysis/phase_boundary.py</code>): the avoidable-work gap
+between LRU and the clairvoyant Belady optimum is a <b>step function at stack-distance = H</b>.
+</p>
+<table>
+<caption>Constructed-corpus sweep (horizon H = 500 docs): the LRU−Belady avoidable gap is zero until reuse
+stack-distance crosses H, then jumps to the full reuse volume.</caption>
+<tr><th>reuse stack-distance</th><th>/ H</th><th>LRU−Belady avoidable gap</th><th>regime</th></tr>
+<tr><td>229</td><td>0.46</td><td class="b"><b>0.0M</b></td><td>mirage (LRU = Belady)</td></tr>
+<tr><td>489</td><td>0.98</td><td class="b"><b>0.0M</b></td><td>mirage (LRU = Belady)</td></tr>
+<tr><td>509</td><td>1.02</td><td>1.8M</td><td>caching helps</td></tr>
+<tr><td>1529</td><td>3.06</td><td>1.8M</td><td>caching helps</td></tr>
+</table>
+<p>
+The fixed workload sits deep in the mirage regime: its reuse stack-distance is p50 = 2, p90 = 11, max = 519
+against <code>H ≈ 517</code>, so <b>99.8% of re-uses are LRU-captured</b> and headroom is ~0. A corpus escapes
+the mirage only if its hot documents recur at stack-distance beyond the horizon — a large working set re-used
+long-range — which long-document QA serving structurally is not (a conversation re-touches its own document a
+median of two conversations away). <b>Practitioner corollary:</b> measure your corpus's reuse stack-distance
+against <code>H = CAP/mean-doc</code> before investing in a smarter retention policy; below the horizon, no
+policy beats LRU and the goodput lever is scheduling.
+</p>
+
+<h2>7 Related work</h2>
+<p>
+<b>HiCache / LMCache / AttentionStore</b> optimize KV residency and host↔device movement; we show that for
+this workload class residency is Belady-saturated and movement is non-binding, so these help hit-rate and
+memory pressure but not goodput@SLO. <b>Strata</b> targets balanced batching; <b>Mooncake</b> sheds load
+under overload — sound when shed work is dispensable, but here the "expensive" cold prefills are the
+SLO-defining tail. <b>SRPF/SJF and prefill-priority scheduling</b> are classical; our role is not to propose
+them but to prove, by eliminating every KV-cache alternative and diagnosing the head-of-line mechanism, that
+prefill scheduling is the goodput lever for long-document serving — and to bound when caching would instead
+matter. Cache-replacement theory (Belady, LRU stack-distance) supplies the phase-boundary criterion.
+</p>
+
+<h2>8 Limitations</h2>
+<ul>
+<li>Results are for one model family (122B hybrid Mamba-attention), one two-tier KV budget, and one
+long-document multiturn corpus. The phase-boundary criterion (§6) is our generality argument, but a direct
+cross-workload GPU sweep is out of scope of the fixed protocol.</li>
+<li>goodput@SLO is variance-dominated at λ=3; all comparisons are same-node and distributional. The λ=5 SRPF
+win is n=1 but against a stable stock failure (3× gap); a same-node stock control and SRPF replicates are in
+flight to firm it.</li>
+<li>The compute ceiling could in principle move compute-side (context-parallel prefill, quantization), but
+prefill context-parallelism is unavailable for this hybrid model in-engine and quantization is lossy /
+contract-frozen; we treat the ceiling as fixed.</li>
+</ul>
+
+<h2>9 Reproducibility</h2>
+<p>
+Base <code>a334877e5</code> (stock v0.31), all analysis and the SRPF policy on <code>evolve/floyd</code>.
+Map evidence: <code>analysis/doc_reuse.py</code>, <code>reuse_distance.py</code>, <code>phase_boundary.py</code>
+(caching); <code>mamba_pressure.py</code> (recurrent pool); <code>pd_schedule.py</code> (prefill/decode);
+<code>hol_trace.py</code>, <code>hol_sim.py</code>, <code>bound.py</code>, <code>prefill_flops.py</code>
+(head-of-line + compute bounds); the admission negative is in the CCA companion. GPU runs:
+<code>runs/v0-stock</code> (stock sweep), <code>runs/v-srpf-r1</code> (SRPF sweep), <code>runs/v-stock-srpfctl</code>
+(same-node control). SRPF is <code>--schedule-policy srpf</code> in
+<code>managers/schedule_policy.py</code>. All numbers derive from the frozen evaluation protocol; no eval
+knobs were changed, and the mechanism is lossless (only <em>when</em> prefills run changes).
+</p>
+
+</body>
+</html>

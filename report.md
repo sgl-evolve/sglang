@@ -554,3 +554,42 @@ thr=3.02 hit=0.6766. vs v8_fair (fair-share ON, same node): p99=37058 conc=187 t
 100% the MECHANISM, not node/coin-flip. Paper 5 bounded-negative is airtight. (v9_stock2 p99 14.2s itself = a bad-basin
 coin-flip draw → 3rd stock λ=3 point {6.2,11.5,14.2}s for Paper 3 firming; conc 78 low avg but tail high = giant-blocked
 tail events.) NOTE hit invariant by construction (per-step budget only); completed differs so hit computed over diff sets.
+
+## PAPER 6 v10_accel λ=3 EARLY (01:16, partial) — accel FIRING, outcome uncertain
+- Boost firing 58.7% of λ=3 steps (nt=12288=2×6144); 77% of giant-steps boosted; giants ~58K pending → 2× chunk
+  finishes in ~5 vs ~10 steps. Mechanism works as designed; 0 crashes/OOM. Gate correct (fires at occ≥0.85).
+- ★CONCURRENCY signal CONFOUNDED: v10_accel running-req median 162 vs v9_stock2 (same node) 57 — but v9_stock2 was a
+  LOW-basin coin-flip draw (median 57 yet p99 14.2s!), and v10 is partial/early (ramp). Instantaneous running-req is
+  basin/coin-flip/phase-dependent → NOT a clean deterministic metric here (unlike Paper-5 HOL-step fraction).
+- ★KEY PHYSICS CAVEAT (reconsidered): accel halves giant STEPS but if prefill is COMPUTE-bound each step gets ~2×
+  longer → giant WALL-CLOCK residency UNCHANGED → no concurrency relief → no p99 help (may hurt via lumpier decode
+  interference). Accel only helps if step-time is DECODE/MEMORY-bound (extra prefill tokens "free" under the decode
+  stall). This is exactly what the p99 tests. So prior is now uncertain (could be NEG: "residency is wall-clock-bound,
+  chunk-size irrelevant" → completes the dichotomy that the tail is capacity/whole-req-bound).
+- VERDICT = v10_accel λ=3 p99 vs same-node v9_stock2 14.2s (~01:55). WIN if clearly <14.2s + completed 7037.
+
+## ★★★ PAPER 6 v10_accel λ=3 — STRONG POSITIVE WIN SIGNAL (giant acceleration) (01:48)
+SAME-NODE A/B (node 19833): v10_accel (GIANT_ACCEL=1 θ=0.85 factor=2.0) vs v9_stock2 (stock):
+  metric        stock(v9)   accel(v10)
+  p99 TTFT      14216ms     **7041ms (PASS 8s SLO!)**  2.0× better, goodput@SLO flips 0→3
+  p50           567         549
+  tpot(decode)  561         **333** (−40%, BELOW stock coin-flip range 392-468 → systematic, not a draw)
+  concurrency   78          **57** (−27%)
+  completed     7037        7037 (NO starvation — lossless liveness ✓, unlike fair-share 4255)
+  throughput    3.02        3.02
+  hit           0.6766      0.6511 (−2.5pp ⚠️)
+★MECHANISM CONFIRMED = the POSITIVE DUAL of the unified law: accelerating giants (2× chunk under occ>0.85) → giants
+EXIT faster → concurrency ↓ (57 vs 78) → memory-bound decode ↓ (tpot 333 vs 561, −40%) → p99 HALVED (7.0 vs 14.2s),
+crossing the SLO. This VALIDATES the law's prediction: if slowing giants backfires (P4/P5), speeding them up helps.
+The wall-clock-residency worry (that bigger chunks = longer steps) is REFUTED: tpot DROPPED → step-time is decode/
+memory-bound so extra prefill tokens ARE "free" under the decode stall → giant finishes in fewer same-length steps →
+lower residency. First POSITIVE intra-step mechanism.
+★★CAVEATS (must firm before claiming goodput@SLO win):
+ (1) p99 is n=1 each, COIN-FLIP-SENSITIVE — 7.0s sits near stock good-basin (band {6.2,11.5,14.2}). Could a lucky
+     good-basin draw explain it? tpot 333 (below coin-flip range) + conc 57 CORROBORATE mechanism, but the p99-PASS
+     headline needs REPLICATION (n≥3 accel all-pass vs stock coin-flip, Fisher-style like base's SRPF 9/9 vs 0/7).
+ (2) hit −2.5pp: mechanism changes eviction TIMING (bigger per-step KV commits) → different prefix-match set →
+     hit not invariant. OUTPUT-lossless (misses recompute identically; completed=7037) but NOT hit-invariant. Disclose.
+     Note: p99 won DESPITE lower hit → win is from concurrency/decode, not caching (makes it more impressive).
+NEXT: REPLICATE on warm node 19833 (v10b_accel) + more stock, n≥3 each, same-node → Fisher test on SLO-pass. This is
+the campaign's FIRST POSITIVE and a candidate goodput@SLO win — firm rigorously before claiming.

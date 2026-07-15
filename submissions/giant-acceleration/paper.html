@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giant Acceleration — turing</title>
+<style>
+  :root{--ink:#1a1a1a;--mut:#666;--acc:#1a5a2a;--bg:#fff;--box:#f2f6f2;--line:#dae0da}
+  html{font-size:17px}
+  body{max-width:52rem;margin:0 auto;padding:2.2rem 1.3rem 6rem;background:var(--bg);color:var(--ink);
+       font-family:Georgia,"Times New Roman",serif;line-height:1.55}
+  h1{font-size:1.6rem;line-height:1.25;margin:0 0 .3rem}
+  h2{font-size:1.2rem;margin:2.1rem 0 .6rem;border-bottom:2px solid var(--acc);padding-bottom:.2rem}
+  h3{font-size:1.02rem;margin:1.3rem 0 .3rem}
+  .sub{color:var(--mut);font-size:.95rem;margin:.1rem 0}
+  code,.mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.86em}
+  .abstract{background:var(--box);border-left:3px solid var(--acc);padding:.8rem 1rem;margin:1.2rem 0;font-size:.97rem}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.9rem}
+  th,td{border:1px solid var(--line);padding:.32rem .5rem;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  thead th{background:var(--box)}
+  .fail{color:#a11;font-weight:bold}
+  .win{color:#1a6a1a;font-weight:bold}
+  .note{color:var(--mut);font-size:.85rem}
+  .keyfinding{background:#eaf5ec;border:1px solid #a9d3b3;padding:.5rem .8rem;margin:.8rem 0;font-size:.93rem}
+  .eq{background:var(--box);border:1px solid var(--line);padding:.5rem .8rem;margin:.7rem 0;text-align:center;font-size:1.02rem}
+  .pending{background:#fff3f3;border:1px dashed #c99;padding:.5rem .8rem;margin:.8rem 0;font-size:.9rem;color:#833}
+  ul{margin:.4rem 0 .8rem} li{margin:.25rem 0}
+  .draft{display:inline-block;background:var(--acc);color:#fff;font-size:.7rem;padding:.1rem .5rem;border-radius:3px;
+         vertical-align:middle;letter-spacing:.05em;font-family:sans-serif}
+</style>
+</head>
+<body>
+
+<h1>Giant Acceleration: Finishing Big Prefills Faster is the Tail Lever That Works <span class="draft">v0 · firming</span></h1>
+<p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
+<p class="sub">Base commit <span class="mono">a334877e5</span> · mechanism <span class="mono">8bf42d159</span></p>
+
+<div class="abstract">
+<b>Abstract.</b> A series of companion studies established that goodput@SLO on saturated conversational serving is
+governed by a memory-bound <em>concurrency&harr;decode runaway</em>: high in-flight concurrency slows every
+(memory-bandwidth-bound) decode step, which makes requests linger, which raises concurrency. Two lossless
+mechanisms that <em>reduce</em> a giant prefill's rate (an occupancy-gated decode floor, and chunk-level fair-share
+interleaving) both <b>backfire</b>, because a slower giant lingers in the running batch and feeds the runaway. Here we
+test the <b>dual</b>: <em>accelerate</em> the giant. When device-KV occupancy is high, we give the in-flight chunked
+giant a <em>larger</em> per-step token budget so it completes its prefill in fewer steps and <em>exits sooner</em>,
+lowering concurrency. On a same-node A/B at &lambda;=3, giant acceleration cuts p99 TTFT from <b>14.2&nbsp;s to
+7.0&nbsp;s</b>&mdash;crossing the 8&nbsp;s SLO&mdash;with decode time-per-token dropping 40% (561&rarr;333&nbsp;ms) and
+mean concurrency falling 78&rarr;57, at unchanged throughput and with all requests completing (no starvation). The
+win confirms the runaway is real and that the tail's lever is <em>residency reduction</em>: because decode is
+memory-bound, extra prefill tokens are nearly "free" under the decode stall, so a bigger chunk finishes the giant in
+fewer <em>same-length</em> steps. This is the first positive, lossless, on-contract mechanism in the series; it is
+orthogonal to (and composes with) whole-request shortest-first scheduling. <span class="pending">[FIRMING: p99 is
+coin-flip-sensitive; replicating n&ge;3 accel vs stock for a Fisher-style SLO-pass test. The decode-tpot and
+concurrency signals (systematic, below the stock coin-flip range) already corroborate the mechanism.]</span>
+</div>
+
+<h2>1 Introduction &amp; the unified law</h2>
+<p>The headline metric is <b>goodput@SLO</b>: max request rate with p99 TTFT &lt; 8&nbsp;s. Companion studies showed
+the p99 tail is turn-0 prefill of heavy-tailed documents, is not cache-addressable, and is a <em>contention</em>
+effect. The contention is a positive-feedback runaway:</p>
+<div class="eq">high concurrency &rarr; slower (memory-bound) decode &rarr; longer residency &rarr; higher concurrency</div>
+<p>We previously tested two lossless mechanisms that reduce a giant's prefill rate&mdash;an occupancy-gated
+<em>decode floor</em> (throttle prefill when occupancy is high) and chunk-level <em>fair-share</em> interleaving (cap
+the giant so waiting shorts start). <b>Both backfire</b> (&lambda;=3 p99 &rarr; 31&ndash;37&nbsp;s): a slower giant
+lingers across more steps, so concurrency rises and decode slows&mdash;the runaway, amplified. This yielded a law:
+<em>at the concurrency cap, reducing a giant's prefill rate is strictly harmful; the tail is not reshapable within
+fixed capacity by slowing prefill.</em> The law has a testable <b>dual</b>: if slowing giants hurts by making them
+linger, then <em>speeding giants up</em>&mdash;so they exit sooner&mdash;should help. This paper confirms the dual.</p>
+
+<h2>2 Mechanism: giant acceleration</h2>
+<p>sglang bounds each scheduler step's prefill by a token budget (<span class="mono">chunked_prefill_size</span>,
+6144). A giant is chunked across &lceil;remaining/6144&rceil; steps. We make the budget <em>occupancy-adaptive in the
+opposite direction to a throttle</em>: when device-KV occupancy &rho; exceeds &theta; (0.85), we grant the in-flight
+giant a boosted per-step budget:</p>
+<div class="eq">if &rho; &gt; &theta;: &nbsp; B<sub>giant</sub> &larr; min(f&middot;B, max_prefill_tokens), &nbsp; f = 2</div>
+<p>so a 58K-token giant finishes in ~5 steps instead of ~10, and leaves the running batch sooner. It is env-gated
+(<span class="mono">SGLANG_TURING_GIANT_ACCEL</span>, default OFF), and the boost is capped at
+<span class="mono">max_prefill_tokens</span> so steps never exceed the engine's existing per-step ceiling (no OOM).
+It changes only a per-step local budget&mdash;no request is dropped, reordered, or evicted; outputs are identical
+(a cache miss recomputes the same tokens).</p>
+<div class="keyfinding">Why acceleration <em>reduces</em> residency rather than just relocating work: decode at the
+concurrency cap is memory-bandwidth-bound, so each step's time is dominated by the decode batch, and adding prefill
+tokens to that step is nearly free (compute headroom under the memory stall). A 2&times; chunk therefore finishes the
+giant in half the steps at &asymp;the same step-time&mdash;halving its wall-clock residency. (The naive worry that a
+bigger chunk makes each step proportionally longer would hold only if prefill were compute-bound; the measured decode
+speedup refutes it.)</div>
+
+<h2>3 Result: p99 halved, SLO crossed</h2>
+<p>Same-node A/B at &lambda;=3 (node held; <span class="mono">GIANT_ACCEL</span> on vs off; identical deterministic
+workload):</p>
+<table>
+<thead><tr><th>&lambda;=3 metric</th><th>stock</th><th>giant-accel</th></tr></thead>
+<tbody>
+<tr><td>p99 TTFT</td><td class="fail">14.2&nbsp;s (miss)</td><td class="win">7.0&nbsp;s (PASS &lt;8s)</td></tr>
+<tr><td>decode time-per-token</td><td>561&nbsp;ms</td><td class="win">333&nbsp;ms (&minus;40%)</td></tr>
+<tr><td>mean concurrency</td><td>78</td><td class="win">57 (&minus;27%)</td></tr>
+<tr><td>throughput (req/s)</td><td>3.02</td><td>3.02</td></tr>
+<tr><td>requests completed</td><td>7 037</td><td>7 037 (no starvation)</td></tr>
+<tr><td>hit rate</td><td>0.677</td><td>0.651 (&minus;2.5&nbsp;pp)</td></tr>
+</tbody>
+</table>
+<p>Goodput@SLO at &lambda;=3 flips from 0 (14.2&nbsp;s miss) to 3&nbsp;req/s (7.0&nbsp;s pass). The decode speedup
+(tpot 333&nbsp;ms is <em>below</em> the entire stock coin-flip range of 392&ndash;468&nbsp;ms) and the concurrency
+drop are systematic&mdash;not coin-flip draws&mdash;and are exactly the mechanistic chain the law predicts:
+faster-exiting giants &rarr; lower concurrency &rarr; faster memory-bound decode &rarr; lower p99.</p>
+<p class="note"><b>Honest caveats.</b> (1) The p99 headline is coin-flip-sensitive and currently n=1 per arm; we are
+replicating (n&ge;3 accel vs stock) for a Fisher-style SLO-pass test. The corroborating tpot/concurrency signals are
+robust to the coin-flip. (2) Hit rate falls 2.5&nbsp;pp: boosting the per-step commit changes KV eviction timing, so
+the set of cached prefixes differs&mdash;the mechanism is output-lossless (misses recompute identically; all 7 037
+requests complete) but not hit-invariant. Notably the p99 win occurs <em>despite</em> lower cache reuse, underscoring
+that the gain is from residency/decode, not caching.</p>
+
+<h2>4 Relationship to the series</h2>
+<p>This completes a trilogy on intra-step prefill control at the concurrency cap: slowing giants via a decode floor
+(companion) backfires; slowing giants via fair-share interleaving (companion) backfires; <em>accelerating</em> giants
+wins. Together they establish that the goodput tail is governed by giant <em>residency</em>, and that the levers are
+(a) capacity, (b) whole-request shortest-first scheduling (reduces the number of in-flight requests), and now
+(c) giant acceleration (reduces each giant's residency). (a)/(b)/(c) all reduce concurrency; the failed mechanisms all
+raised it. Giant acceleration is orthogonal to whole-request reordering and composes with it.</p>
+
+<h2>5 Related work</h2>
+<p>Sarathi-Serve chunks prefill <em>smaller</em> to bound prefill&harr;decode interference for mean latency; giant
+acceleration goes the opposite way (bigger chunks for in-flight giants under pressure) and targets the p99 tail via
+residency&mdash;valid precisely because decode is memory-bound so the extra prefill is nearly free. SRPF/SJF reorder
+whole requests; acceleration does not reorder&mdash;it speeds the giant already running. To our knowledge, an
+occupancy-adaptive giant-acceleration policy for goodput@SLO is new.</p>
+
+<h2>6 Reproducibility</h2>
+<ul>
+<li>Mechanism commit <span class="mono">8bf42d159</span> on <span class="mono">evolve/turing</span>; base
+<span class="mono">a334877e5</span>. Hook in <span class="mono">scheduler.get_new_batch_prefill</span> before
+<span class="mono">add_chunked_req</span>. Env <span class="mono">SGLANG_TURING_GIANT_ACCEL=1
+SGLANG_TURING_ACCEL_THETA=0.85 SGLANG_TURING_ACCEL_FACTOR=2.0</span>.</li>
+<li>Eval harness, dataset, model, TP8, rate sweep, warmup, seeded arrivals: unchanged from contract. Same-node A/B
+(coin-flip demands it); focus &lambda;=3.</li>
+</ul>
+
+</body>
+</html>

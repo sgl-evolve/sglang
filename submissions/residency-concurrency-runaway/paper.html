@@ -158,9 +158,10 @@ saturation (&lambda;=10, identical workload of 99.9M input tokens) the measured 
 prefill token throughput to three significant figures: acceleration&rsquo;s +36% in req/s (4.14&rarr;5.65) equals its
 +36% in prefill throughput (58.8K&rarr;80.2K tok/s). Since K&nbsp;=&nbsp;R&middot;N/P<sub>total</sub> is proportional to
 the effective prefill rate R, this <em>is</em> the K-lever, measured directly: acceleration lifts R (hence K, hence C)
-by +36% at fixed h. And it does so not by performing more prefill work but by reclaiming decode&rsquo;s share of GPU
-wall-clock&mdash;decode time-per-token falls 561&rarr;423&nbsp;ms (&minus;25%) at essentially equal concurrency
-(247&rarr;243), so more wall-clock goes to prefill.</div>
+by +36% at fixed h. And it does so not by performing more prefill work but by cutting prefill&harr;decode
+<em>interference</em>: a giant chunked into fewer, larger steps interrupts the interleaved decode stream fewer times, so
+both sides speed up&mdash;decode time-per-token falls 561&rarr;423&nbsp;ms (&minus;25%) at essentially equal concurrency
+(247&rarr;243) <em>and</em> equal resident-KV footprint (0.33), while effective prefill throughput rises +36%.</div>
 <p>A GPU kernel profile at saturation (accel config, all 8 TP ranks, 149K kernel events) makes the two sides concrete.
 The <em>prefill</em> work that C is measured in is <b>compute- and communication-bound, not memory-bound</b>: of prefill
 GPU-kernel time, 39% is dense flash-attention forward (compute, O(L&sup2;) for long docs), 29% is MoE/GEMM/Mamba
@@ -214,8 +215,9 @@ token budget (f&times;, capped at the engine's per-step ceiling) so a 58K-token 
 identical tokens). Why a bigger prefill chunk does not merely relocate the work: prefill runs as its own
 compute+communication-bound steps (&sect;3 profile), so the win is per-<em>step</em>, not per-token&mdash;a 2&times;
 chunk roughly halves the giant's prefill-step count, which amortizes the ~19%-per-step AllReduce and launch overhead,
-releases sglang's single-chunked-request admission block sooner, and clears the giant's large KV footprint earlier;
-the smaller resident KV then speeds the memory-bandwidth-bound decode, cutting residency.</p>
+releases sglang's single-chunked-request admission block sooner, and interrupts the interleaved decode stream fewer
+times; the memory-bandwidth-bound decode then stalls less (tpot &minus;25% at equal concurrency and equal resident-KV),
+cutting residency.</p>
 <div class="keyfinding"><b>Confirmed, doubly.</b> Same-node A/B at &lambda;=3 (the coin-flip point): acceleration passes
 the 8&nbsp;s SLO in 4/4 runs (p99 7.0/4.6/5.5/4.8&nbsp;s) vs stock 1/5, with decode time-per-token and concurrency
 distributions near-perfectly separated. The coin-flip-sensitive SLO-pass is significant (one-sided Fisher

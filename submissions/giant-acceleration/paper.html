@@ -55,8 +55,8 @@ speeds memory-bound decode as the law predicts; and the coin-flip-sensitive SLO-
 win establishes that the tail's lever is <em>residency reduction</em>: a bigger chunk roughly halves the number of
 prefill steps a giant needs, which amortizes fixed per-step overhead (a kernel profile shows prefill is compute- and
 communication-bound&mdash;notably a 19% tensor-parallel AllReduce tax per step), releases the single-chunked-request
-admission block sooner, and clears the giant's large KV footprint earlier&mdash;so the memory-bandwidth-bound decode
-speeds up (tpot &minus;25%). This is the first positive, lossless, on-contract mechanism in the series; it is orthogonal by construction to
+admission block sooner, and interrupts the interleaved decode stream fewer times&mdash;so the memory-bandwidth-bound
+decode stalls less (tpot &minus;25% at equal concurrency and equal resident-KV). This is the first positive, lossless, on-contract mechanism in the series; it is orthogonal by construction to
 whole-request shortest-first scheduling (it reshapes an in-flight prefill rather than reordering the queue), so the two
 are expected&mdash;but not here shown&mdash;to compose. <b>Beyond &lambda;=3, giant acceleration raises the goodput@SLO
 frontier itself:</b> a full rate sweep passes the SLO at both &lambda;=3 (4.5&nbsp;s) and &lambda;=5 (3.4&nbsp;s,
@@ -100,11 +100,13 @@ a 2&times; chunk roughly halves the number of prefill steps a giant needs (~10&r
 compounds three ways. (i) <b>Overhead amortization</b>: the ~19% AllReduce and kernel-launch cost is roughly fixed
 per step, so fewer steps cut it proportionally. (ii) <b>Shorter admission block</b>: sglang allows only one chunked
 request in flight, so while the giant chunks it blocks every waiting request from starting prefill; fewer steps release
-that block sooner. (iii) <b>Earlier KV clearance</b>: the giant finishes and frees its large KV footprint sooner,
-shrinking the running batch's resident KV and thereby speeding the memory-bandwidth-bound <em>decode</em> (measured:
-tpot 561&rarr;423&nbsp;ms at essentially equal request concurrency&mdash;a footprint effect, not a batch-size effect).
-The net is residency reduction via step-count amortization and KV clearance, yielding +36% effective prefill throughput
-(&sect;4) and the &minus;25% decode speedup.</div>
+that block sooner. (iii) <b>Less decode interference</b>: prefill and decode steps interleave, so each prefill step
+interrupts the decode stream; fewer, larger prefill steps interrupt it fewer times, so the memory-bandwidth-bound decode
+stalls less and its mean time-per-token falls (measured: tpot 561&rarr;423&nbsp;ms at essentially equal request
+concurrency <em>and</em> equal resident-KV footprint&mdash;0.33 vs 0.33&mdash;so this is an interference/scheduling
+effect, not a batch-size or KV-footprint effect). The net is residency reduction via step-count amortization and reduced
+prefill&harr;decode interference, yielding +36% effective prefill throughput (&sect;4) and the &minus;25% decode
+speedup.</div>
 <p><b>Why occupancy-gating, not a larger global chunk?</b> One might ask whether simply raising
 <span class="mono">chunked_prefill_size</span> from 6144 to 16384 everywhere would do the same. It would not, for two reasons.
 First, an unconditional larger chunk enlarges <em>every</em> prefill step, worsening prefill&harr;decode interference in

@@ -699,3 +699,10 @@ Adaptive big-chunk mean **5993 tok (89% full 6144)** vs fixed-rpb25's 5320 (44% 
 of big-chunk steps (only when a small turn fits the reserve), so prefill capacity is ~PRESERVED (5993 vs
 baseline 6111, −2% vs fixed-rpb's −13%). ⇒ adaptive should AVOID the λ5 throughput-loss SLO-fail. Open Q: does
 the selective interleave (the ~11% p99-relevant cases) still HELP the tail (WIN) or is it NEUTRAL? GPU deciding.
+
+### Adaptive RPB λ3 landed — captures the benefit, strictly beats fixed (v-rpbA25, node 1-1)
+adaptive λ3 p99 **6303ms** ≈ fixed-rpb25 6300 (both −10% vs base 6973); tput identical (386.65); lossless
+(hit 0.6755). Adaptive gets the SAME λ3 benefit with only ~11% capping (vs fixed's 56%) → the beneficial
+interleaves ARE the selective ~11% (small turn waiting behind big doc); fixed-rpb's extra 45% capping was pure
+waste. ⇒ adaptive strictly dominates fixed at λ3. DECISIVE λ5 running (fixed failed there via waste; adaptive
+should preserve tput — WIN if p99<6580, neutral if ≈6580).

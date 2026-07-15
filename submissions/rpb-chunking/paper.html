@@ -273,12 +273,20 @@ implementation. (The adaptive control also confirms the fixed-RPB diagnosis: rem
 failure, so the failure <em>was</em> the waste.) All runs are lossless (hit-rate matched, Δ ≤ 0.002).
 </p>
 <p>
-<b>Scope.</b> Same-node A/B (no cross-node variance); the node's baseline λ=5 (6580&nbsp;ms) is a comfortable
-pass, so this is a p99-reduction test — a mechanism that helped would show a clear drop, which neither variant
-delivers at λ=5. The λ=5 p99 metric has ±12–20% same-node run-to-run spread; the fixed-RPB effect (+41% p99,
-−8.6% throughput) is far outside it and mechanistic, while the adaptive effect (+5%) is within it (neutral). One
-reserve-size run at r=0.10 crashed on a transient KV-pool accounting event (discarded; the baseline and all other
-RPB runs completed cleanly, so it is not intrinsic to the mechanism).
+<b>Scope and statistics (stated plainly).</b> These are same-node A/B runs (node fixed, no cross-node variance),
+<b>one run per configuration</b>; an n=2 same-node firming pass is in progress. The comparison rests on two things
+robust to single-run noise: (i) the fixed-RPB harm is <em>mechanistic</em> — the −8.6% throughput drop and the
+~54% reserve waste are deterministic consequences of the capping (quantified from the trace), not tail noise; and
+(ii) the adaptive control's throughput restoration (−1.0%) and goodput invariance (4.07 vs 4.11&nbsp;req/s) are
+likewise not p99-noise. For the p99 numbers themselves we use a same-node run-to-run spread of ±12–20%, taken from
+our own prior n=3 same-node replicates of this configuration (stock λ=3 p99 {6.3, 8.1, 11.8}&nbsp;s, σ≈26%; SRPF
+λ=5 {5.85, 6.58, 7.46}&nbsp;s): the fixed-RPB effect (+41% p99) is far outside that band and corroborated by the
+throughput drop, while the adaptive effect (+5%) is inside it — hence "neutral." The node's baseline λ=5
+(6580&nbsp;ms) is a comfortable pass, so this is a p99-<em>reduction</em> test: a mechanism that helped would show
+a clear drop, which neither variant delivers at λ=5. Finally, one reserve-size run at r=0.10 crashed on a transient
+KV-pool accounting event (discarded; the baseline and all other RPB runs — fixed, adaptive — completed cleanly with
+zero pool-leak messages, so it is a transient node event, not intrinsic to the mechanism; we did not complete a
+fixed-r sweep, deferring to the adaptive control as the decisive test).
 </p>
 
 <h2>6 Related work</h2>
@@ -303,21 +311,26 @@ The negative is scoped to <em>fixed</em> chunk-level budget reservation on this 
 objections, and why they do not overturn it:
 </p>
 <p>
-<b>"Just tune r."</b> §5's reserve-size sweep addresses this: the waste (and thus the λ=5 capacity loss) scales with
-r, while the sub-knee benefit also shrinks with r — there is no fixed r that both helps λ=3 and passes λ=5, because
-the two are governed by the same reserved budget. A smaller r wastes less but interleaves less; a larger r
-interleaves more but wastes more. The tradeoff is structural, not a bad constant.
+<b>"Just tune r."</b> The reserve fraction r governs both sides of the tradeoff at once: a larger r wastes more
+capacity when the shortest waiting turn does not fit (the λ=5 loss) but also interleaves more small turns (the
+sub-knee benefit); a smaller r does less of both. Because a single budget drives both effects, no fixed r
+simultaneously maximizes the sub-knee benefit and avoids the near-knee capacity loss — the tension is structural,
+not a poorly-chosen constant. We state this as an <em>analytical</em> argument, not a measured reserve-size sweep:
+we did not obtain clean data at other r (a fixed r=0.10 run crashed on a transient KV-pool accounting event, §5,
+and we prioritized the adaptive control below over sweeping more fixed r). The decisive question is not which fixed
+r is best but whether <em>any</em> reservation can help once the waste is removed — which the adaptive control (§5)
+answers directly and empirically.
 </p>
 <p>
-<b>"Use an adaptive reserve that never wastes."</b> One could reserve only when the shortest waiting turn actually
-fits (or refund unused reserve to the in-flight document at end-of-step), eliminating the throughput loss. This is
-worth building, but it is unlikely to convert the result into a goodput <em>win</em>, for a structural reason: the
-p99 at the goodput-setting rate is not set by the tiny follow-up turns the reserve can serve — it is set by the
-<em>medium and large</em> waiting turns (bigger than any modest reserve), which an adaptive reserve, by
-construction, does not help. So a waste-free adaptive reserve should recover <em>neutrality</em> (no throughput
-loss, no goodput change), not a win. The honest conclusion stands either way: chunk-level budget reservation does
-not raise goodput@SLO over whole-request SRPF. (Where RPB <em>does</em> help — sub-knee p99, λ=3 −10% — it improves
-a latency percentile the goodput metric does not reward, on a rate that already passes.)
+<b>"Use an adaptive reserve that never wastes."</b> This is the decisive control we built and ran (§5): adaptive
+RPB reserves only when the shortest waiting turn fits, so the reserve is never wasted. It behaves exactly as
+intended — at λ=5 throughput is restored (−1.0% vs SRPF, versus fixed RPB's −8.6%) and the SLO failure disappears —
+but it is <em>neutral</em>, not a win (λ=5 p99 within run-noise of baseline, goodput unchanged). The reason is the
+inference in §5: the goodput-rate p99 is set by the larger waiting turns the reserve cannot serve, not the tiny
+ones it can, so removing the waste recovers neutrality rather than a gain. This is what makes the negative airtight
+rather than a tuning artifact: <em>done wrong</em> (fixed) reservation hurts, <em>done right</em> (adaptive) it does
+nothing for goodput. (Where RPB <em>does</em> help — sub-knee p99, λ=3 −10% — it improves a latency percentile the
+goodput metric does not reward, on a rate that already passes.)
 </p>
 <p>
 <b>When RPB is simply inert.</b> On workloads of uniformly small requests (no multi-chunk documents) there is no

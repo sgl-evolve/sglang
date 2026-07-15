@@ -682,3 +682,14 @@ saturation → tput −8.6% (525→480) → queue → p99 +41% SLO FAIL. ROOT CA
 wasted whenever the shortest waiting turn exceeds it (frequent as load rises), and the goodput-setting rate
 is exactly where you can't afford lost prefill capacity. Reserve sweep (rpb10/rpb50, running) tests the
 size tradeoff: smaller reserve = less waste = less λ5 harm; larger = more harm (expected monotonic).
+
+### RPB reserve sweep — rpb10 CRASHED (transient pool leak), rpb25 clean stands (2026-07-15)
+rpb10 (r=0.10) crashed mid-λ3: `pool memory leak detected! total=2347648 available=2112 evictable=2345728`
+→ server Killed → partial run (4255/7037 turns, 1886s) → curve garbage (req/s 2.26, p99 7679, hit 0.000). **DISCARD.**
+★INTEGRITY: the leak hit ONLY rpb10 — baseline (v-srpf-ctl4) and rpb25 had **0 leak messages** and completed
+cleanly (7037 turns, EVAL_DONE). So the main negative (rpb25 λ5 +41%/−8.6% tput) is a CLEAN run, NOT confounded.
+The crash is likely TRANSIENT (not deterministic-RPB): rpb25 caps MORE aggressively (4608 vs 5530 → more chunk
+boundaries) yet was clean, and r=0.10 has FEWER boundaries — opposite of a capping-induced leak; matches the
+intermittent pool/NCCL events seen on long node runs (node 1-1 ran ~5h continuously). rpb50 (r=0.50) running =
+leak-robustness check at the MOST-capping config (if clean → confirms transient). Then adaptive RPB (decisive).
+Reserve sweep now = rpb25 (clean) + rpb50 (pending); rpb10 point lost to the crash (re-run optional).

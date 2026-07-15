@@ -840,3 +840,9 @@ CAVEAT: λ5 is SATURATED (I predicted mega-doc-floor dominance here). The possib
 where HOL victims may dominate the tail & the queue doesn't grow unboundedly). Launching a λ3 A/B to complete the
 story. n=1 for reserve2048 (reps 2-3 landing ~02:00/02:30 to confirm; +76% ≫ reserve0's ~15% band → direction clear).
 NOTE: NO CRASH — the reserve2048 path (my has_chunked_req fix) ran warmup + a full 1553-req λ5 sweep cleanly.
+
+### λ5 firmed + λ3 baseline (2026-07-15 ~02:40Z)
+λ5 reserve2048 n=2: p99 {42359,42554} median 42456 (+75.3% vs reserve0 24226), p50 -18%, req/tok -8% → NEGATIVE
+FIRMED (tight, robust). λ3 reserve0 rep1: p99 12949ms (fail side of coin-flip, but ≪ λ5's 24s), p50 1178, req
+2.79 (≈λ3 offered → less saturated). Decisive λ3 reserve2048 comparison pending (~3h; K=3 needed for coin-flip
+variance). SRPF srpf arm ~1h (triangulation: does shortest-first also fail the tail?).

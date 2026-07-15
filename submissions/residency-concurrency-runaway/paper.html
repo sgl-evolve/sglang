@@ -211,10 +211,11 @@ batch sooner&mdash;must help. We stated this prediction before building the mech
 acceleration</b>: when device-KV occupancy &rho; exceeds &theta;, grant the in-flight chunked giant a larger per-step
 token budget (f&times;, capped at the engine's per-step ceiling) so a 58K-token giant finishes in ~5 steps instead of
 ~10 and leaves sooner. It is env-gated, drops/reorders/evicts nothing, and is output-lossless (a cache miss recomputes
-identical tokens). The counterintuitive part&mdash;why a bigger prefill chunk does not just relocate the work&mdash;is
-itself explained by the theory: because decode is memory-bound, the extra prefill tokens ride nearly free under the
-decode stall, so a 2&times; chunk finishes the giant in half the steps at &asymp;the same step-time, halving its
-wall-clock residency.</p>
+identical tokens). Why a bigger prefill chunk does not merely relocate the work: prefill runs as its own
+compute+communication-bound steps (&sect;3 profile), so the win is per-<em>step</em>, not per-token&mdash;a 2&times;
+chunk roughly halves the giant's prefill-step count, which amortizes the ~19%-per-step AllReduce and launch overhead,
+releases sglang's single-chunked-request admission block sooner, and clears the giant's large KV footprint earlier;
+the smaller resident KV then speeds the memory-bandwidth-bound decode, cutting residency.</p>
 <div class="keyfinding"><b>Confirmed, doubly.</b> Same-node A/B at &lambda;=3 (the coin-flip point): acceleration passes
 the 8&nbsp;s SLO in 4/4 runs (p99 7.0/4.6/5.5/4.8&nbsp;s) vs stock 1/5, with decode time-per-token and concurrency
 distributions near-perfectly separated. The coin-flip-sensitive SLO-pass is significant (one-sided Fisher

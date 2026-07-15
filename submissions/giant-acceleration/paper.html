@@ -52,9 +52,11 @@ distributions are near-perfectly separated (one-sided Mann-Whitney U exact p&nbs
 0.008 for concurrency)&mdash;coin-flip-robust, significant confirmation that the mechanism reduces residency and
 speeds memory-bound decode as the law predicts; and the coin-flip-sensitive SLO-pass is <em>also</em> significant
 (accel 4/4 vs stock 1/5, one-sided Fisher p&nbsp;=&nbsp;0.040). The
-win establishes that the tail's lever is <em>residency reduction</em>: because decode is memory-bound, extra prefill
-tokens are nearly "free" under the decode stall, so a bigger chunk finishes the giant in fewer <em>same-length</em>
-steps. This is the first positive, lossless, on-contract mechanism in the series; it is orthogonal by construction to
+win establishes that the tail's lever is <em>residency reduction</em>: a bigger chunk roughly halves the number of
+prefill steps a giant needs, which amortizes fixed per-step overhead (a kernel profile shows prefill is compute- and
+communication-bound&mdash;notably a 19% tensor-parallel AllReduce tax per step), releases the single-chunked-request
+admission block sooner, and clears the giant's large KV footprint earlier&mdash;so the memory-bandwidth-bound decode
+speeds up (tpot &minus;25%). This is the first positive, lossless, on-contract mechanism in the series; it is orthogonal by construction to
 whole-request shortest-first scheduling (it reshapes an in-flight prefill rather than reordering the queue), so the two
 are expected&mdash;but not here shown&mdash;to compose. <b>Beyond &lambda;=3, giant acceleration raises the goodput@SLO
 frontier itself:</b> a full rate sweep passes the SLO at both &lambda;=3 (4.5&nbsp;s) and &lambda;=5 (3.4&nbsp;s,
@@ -89,12 +91,20 @@ giant a boosted per-step budget:</p>
 <span class="mono">max_prefill_tokens</span> so steps never exceed the engine's existing per-step ceiling (no OOM).
 It changes only a per-step local budget&mdash;no request is dropped, reordered, or evicted; outputs are identical
 (a cache miss recomputes the same tokens).</p>
-<div class="keyfinding">Why acceleration <em>reduces</em> residency rather than just relocating work: decode at the
-concurrency cap is memory-bandwidth-bound, so each step's time is dominated by the decode batch, and adding prefill
-tokens to that step is nearly free (compute headroom under the memory stall). A 2&times; chunk therefore finishes the
-giant in half the steps at &asymp;the same step-time&mdash;halving its wall-clock residency. (The naive worry that a
-bigger chunk makes each step proportionally longer would hold only if prefill were compute-bound; the measured decode
-speedup refutes it.)</div>
+<div class="keyfinding">Why acceleration <em>reduces</em> residency rather than just relocating work. A GPU kernel
+profile at saturation (accel config, all 8 TP ranks, 149K kernel events) shows prefill runs as its <em>own</em> steps
+and is <b>compute- and communication-bound</b> (39% flash-attention-forward, 29% MoE/GEMM, 19% tensor-parallel
+AllReduce, 9% memory), so a
+bigger chunk is <em>not</em> "free"&mdash;it does more compute per step. The win is not per-token but per-<em>step</em>:
+a 2&times; chunk roughly halves the number of prefill steps a giant needs (~10&rarr;~5 for a 58K giant), and that
+compounds three ways. (i) <b>Overhead amortization</b>: the ~19% AllReduce and kernel-launch cost is roughly fixed
+per step, so fewer steps cut it proportionally. (ii) <b>Shorter admission block</b>: sglang allows only one chunked
+request in flight, so while the giant chunks it blocks every waiting request from starting prefill; fewer steps release
+that block sooner. (iii) <b>Earlier KV clearance</b>: the giant finishes and frees its large KV footprint sooner,
+shrinking the running batch's resident KV and thereby speeding the memory-bandwidth-bound <em>decode</em> (measured:
+tpot 561&rarr;423&nbsp;ms at essentially equal request concurrency&mdash;a footprint effect, not a batch-size effect).
+The net is residency reduction via step-count amortization and KV clearance, yielding +36% effective prefill throughput
+(&sect;4) and the &minus;25% decode speedup.</div>
 <p><b>Why occupancy-gating, not a larger global chunk?</b> One might ask whether simply raising
 <span class="mono">chunked_prefill_size</span> from 6144 to 16384 everywhere would do the same. It would not, for two reasons.
 First, an unconditional larger chunk enlarges <em>every</em> prefill step, worsening prefill&harr;decode interference in
@@ -253,7 +263,8 @@ queue order); whether the two residency levers compose additively is a natural b
 <h2>7 Related work</h2>
 <p>Sarathi-Serve chunks prefill <em>smaller</em> to bound prefill&harr;decode interference for mean latency; giant
 acceleration goes the opposite way (bigger chunks for in-flight giants under pressure) and targets the p99 tail via
-residency&mdash;valid precisely because decode is memory-bound so the extra prefill is nearly free. SRPF/SJF reorder
+residency&mdash;valid not because prefill is cheap (our profile shows it is compute+communication-bound) but because
+<em>fewer, larger</em> prefill steps amortize per-step overhead and clear the giant's KV sooner. SRPF/SJF reorder
 whole requests; acceleration does not reorder&mdash;it speeds the giant already running. To our knowledge, an
 occupancy-adaptive giant-acceleration policy for goodput@SLO is new.</p>
 

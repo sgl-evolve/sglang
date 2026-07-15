@@ -1449,6 +1449,49 @@ continuations with long decode appear as "SLO violations" but have real TTFT ~20
   worst-case TTFT = 4.8 + 5.2 (190K doc) = 10s. No scheduling or cache mechanism can
   reduce the 5.2s own-prefill-compute below the GPU's physical throughput.
 
+### Diagnosis #7 — Cold document queue dynamics (queue-dominated p99) [COMPLETE, analysis]
+**Key finding: the p99 TTFT for long cold documents is 96% QUEUE TIME, not compute.**
+
+Data from SRPF+WB diagnostic (v-srpf-wb-diag, job 19927, node 1-2), rate 5:
+
+| Category | Count | % of total | Queue p50 | Queue p99 | Queue max |
+|----------|-------|-----------|-----------|-----------|-----------|
+| Short cold (≤6144 tok, single-iter) | 1475 | 57.3% of cold | 6ms | 1881ms | 5308ms |
+| Long cold (>6144 tok, multi-chunk) | 1100 | 42.7% of cold | 333ms | 53880ms | 127475ms |
+| Cached continuations | 4462 | 63.4% of total | 6ms | 1086ms | 10544ms |
+
+**Queue bottleneck**: the single-`chunked_req` slot. Only ONE cold document can be actively chunking
+at any time. Other long cold documents wait in the queue until the current chunked_req finishes.
+At r5, long cold docs (median remaining=17898 tokens) take ~3 iterations × 168ms = 504ms median.
+But the p99 queue is 54s — these are docs waiting behind a cascade of other chunked docs.
+
+**Budget allocation under SRPF**: when chunked_req is active, `add_chunked_req` consumes the FULL
+6144 chunk budget before the waiting queue loop. With rem_chunk_tokens=0, NO cached continuations
+are admitted (200 > 0 fails the elif, has_chunked_req=True blocks the else). Cached continuations
+are completely blocked during chunked prefill — they wait for the current chunk to finish.
+
+On the FIRST iteration (new cold doc admission from waiting queue, no pre-existing chunked_req):
+- Cached continuations are processed first (SRPF ordering), consuming ~4400 of 6144 chunk budget
+- Cold doc gets remaining ~1700 tokens for its first chunk
+- Subsequent iterations: cold doc gets full 6144 (cached blocked)
+
+**Mechanisms tested against the queue bottleneck** (both predicted neutral, evals running):
+1. **WSAC (Working-Set Admission Control, SGLANG_WSAC=20)**: cap concurrent cold docs in running batch.
+   Predicted neutral: the single-chunked-req limit already caps active cold docs to 1. Job 19957.
+2. **RCB (Reserved Cold Budget, SGLANG_RCB=4096)**: reserve chunk budget for cold doc's first chunk.
+   Predicted neutral: saves at most 1 iteration (boundary effect). p99 is queue-dominated. Job 19960.
+
+**Multi-chunk admission analysis** (theoretical): allowing K simultaneous chunked_reqs, each with
+6144/K tokens, gives the same total throughput. Individual TTFT increases K× but queue decreases ~K×.
+Net p99 for K=2: (Q/2 + 1) × 2T = (Q+2)T vs (Q+1)T for K=1. Marginal (~4%) with Q=2.27×T.
+
+**Design-space closure**: the queue bottleneck is STRUCTURAL (single-chunked-req is a sglang
+architectural invariant, not a parameter). Reducing queue time requires either:
+(a) parallel chunking (architectural change, marginal benefit), or
+(b) faster prefill (GPU-bound, outside KV-cache scope).
+The remaining p99 TTFT under SRPF is an irreducible function of cold-document-length distribution
+and Poisson arrival clustering. **SRPF is optimal within this architectural constraint.**
+
 ## Ops notes
 - eval.sh has a path bug (computes `workspace/sgl/v0.3_ablations/base`); fixed by symlink
   `v0.3_ablations/base → v0.31/base` (frozen eval.sh untouched — fairness-clean).

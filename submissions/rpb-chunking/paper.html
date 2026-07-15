@@ -251,19 +251,36 @@ below them, at the chunk-budget granularity, and is preemption-free.
 of the chunked-prefill loop, realized losslessly and TP-safely.
 <b>Serving systems.</b> Strata (balanced batching), Mooncake (KVCache-centric disaggregation, overload rejection),
 HiCache/LMCache/AttentionStore (KV tiering) target data movement and admission — the axes our companion papers show
-are non-levers here; RPB targets the scheduling lever.
+are non-levers here. RPB probes the finest scheduling granularity (the chunk budget); our result is that this
+granularity, unlike whole-request reordering, does not yield a goodput lever.
 </p>
 
-<h2>7 Limitations &amp; when it fails</h2>
+<h2>7 Scope of the negative &amp; the adaptive-reserve question</h2>
 <p>
-RPB helps only where a chunk-level residual exists: a workload with large multi-chunk documents interleaved with
-small turns, at loads where arrivals overlap chunk-runs. On workloads of uniformly small requests (no multi-chunk
-documents) there is no in-flight monopoly to break, and RPB is inert. Above the saturation knee (λ&ge;7 here) the
-system is genuinely overloaded and no lossless scheduling — RPB included — can meet the SLO. The reserve can be
-wasted if every waiting turn is larger than r&middot;budget while a document is mid-chunk; if §5 shows a
-throughput drop, the fix is an <em>adaptive</em> reserve that returns unused budget to the in-flight document
-(reserve only when the shortest waiting turn fits, or refund at end-of-step). r is a single tunable knob trading
-small-turn relief against large-document slowdown 1/(1&minus;r); §5's sweep picks it.
+The negative is scoped to <em>fixed</em> chunk-level budget reservation on this workload/hardware. Two natural
+objections, and why they do not overturn it:
+</p>
+<p>
+<b>"Just tune r."</b> §5's reserve-size sweep addresses this: the waste (and thus the λ=5 capacity loss) scales with
+r, while the sub-knee benefit also shrinks with r — there is no fixed r that both helps λ=3 and passes λ=5, because
+the two are governed by the same reserved budget. A smaller r wastes less but interleaves less; a larger r
+interleaves more but wastes more. The tradeoff is structural, not a bad constant.
+</p>
+<p>
+<b>"Use an adaptive reserve that never wastes."</b> One could reserve only when the shortest waiting turn actually
+fits (or refund unused reserve to the in-flight document at end-of-step), eliminating the throughput loss. This is
+worth building, but it is unlikely to convert the result into a goodput <em>win</em>, for a structural reason: the
+p99 at the goodput-setting rate is not set by the tiny follow-up turns the reserve can serve — it is set by the
+<em>medium and large</em> waiting turns (bigger than any modest reserve), which an adaptive reserve, by
+construction, does not help. So a waste-free adaptive reserve should recover <em>neutrality</em> (no throughput
+loss, no goodput change), not a win. The honest conclusion stands either way: chunk-level budget reservation does
+not raise goodput@SLO over whole-request SRPF. (Where RPB <em>does</em> help — sub-knee p99, λ=3 −10% — it improves
+a latency percentile the goodput metric does not reward, on a rate that already passes.)
+</p>
+<p>
+<b>When RPB is simply inert.</b> On workloads of uniformly small requests (no multi-chunk documents) there is no
+in-flight monopoly to break. Above the saturation knee (λ&ge;7 here) the system is genuinely overloaded and no
+lossless scheduling — RPB included — can meet the SLO.
 </p>
 
 <h2>8 Reproducibility</h2>

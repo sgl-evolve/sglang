@@ -656,3 +656,19 @@ NO reserve waste; the head-of-line premise holds — small turns are always wait
 reserve is fully used; resolves my implementation concern, no adaptive-reserve fix needed), **LOSSLESS** (hit
 matched Δ0.001). BUT −9.7% is WITHIN same-node run-variance (±~12% at λ3) → suggestive not conclusive → n=3
 replicates needed. Effect size on GPU (−10%) < sim (−30%). λ5 (decisive) running.
+
+### ★ RPB A/B COMPLETE — DECISIVE (v-rpb25 vs v-srpf-ctl4, same node 1-1, screen λ3,5)
+| rate | base p99 | RPB p99 | Δp99 | base tok/s | RPB tok/s | Δtok | SLO |
+|------|----------|---------|------|-----------|-----------|------|-----|
+| 3 | 6973 | 6300 | −673 (−10%) | 386.7 | 386.7 | 0% | PASS→PASS |
+| 5 | 6580 | **9287** | **+2707 (+41%)** | 525.1 | 480.1 | **−8.6%** | **PASS→FAIL** |
+★★RPB is a NEGATIVE at the goodput-setting rate λ5: p99 +41% CROSSES the SLO, throughput −8.6% (req/s
+4.11→3.75). OPPOSITE of λ3 (where it helped −10%, throughput-neutral). MECHANISM (clear, important): at higher
+load the waiting queue holds MEDIUM turns (> the 1536-tok reserve); the crash-guard correctly refuses to
+truncate them, so the reserved slice goes UNUSED → wasted budget → throughput loss; near the saturation knee
+(λ5) that throughput loss pushes the tail over the SLO. At λ3 the queue is tiny-turn-dominated (fit reserve) →
+no waste → helps. hit matched (lossless holds). ⇒ FIXED-fraction chunk-level reservation trades throughput
+for sub-knee tail-relief, and at the near-knee goodput rate the throughput cost DOMINATES → net negative.
+NEXT: reserve-size sweep (rpb10 smaller=less waste, rpb50 larger=more waste) to characterize the tradeoff +
+establish the negative rigorously across reserve sizes. Likely conclusion: chunk-level scheduling reservation
+does NOT improve goodput over whole-request SRPF (closes the last scheduling sub-axis; strengthens P3).

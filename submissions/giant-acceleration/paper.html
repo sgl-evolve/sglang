@@ -58,8 +58,9 @@ steps. This is the first positive, lossless, on-contract mechanism in the series
 with) whole-request shortest-first scheduling. <b>Beyond &lambda;=3, giant acceleration raises the goodput@SLO
 frontier itself:</b> a full rate sweep passes the SLO at both &lambda;=3 (4.5&nbsp;s) and &lambda;=5 (3.4&nbsp;s,
 throughput 4.85&nbsp;req/s &mdash; stable) where stock is unstable and fails (p99 17&ndash;20&nbsp;s), lifting
-goodput@SLO from 3 to 5&nbsp;req/s (+67%) by raising the effective capacity ceiling from &sim;4.14 to &sim;5.2&nbsp;req/s
-(+26%). Acceleration is thus not merely a &lambda;=3 latency fix but a <em>capacity</em> lever&mdash;the K-lever of the
+goodput@SLO from 3 to 5&nbsp;req/s (+67%) by raising the effective capacity ceiling from 4.14 to at least
+5.65&nbsp;req/s (+36%, measured at &lambda;=10). Acceleration is thus not merely a &lambda;=3 latency fix but a
+<em>capacity</em> lever&mdash;the K-lever of the
 companion frontier study&mdash;of magnitude comparable to shortest-first scheduling, via a distinct mechanism.
 </div>
 
@@ -138,21 +139,26 @@ moves the frontier. With <span class="mono">GIANT_ACCEL</span> on:</p>
 <table>
 <thead><tr><th>offered &lambda;</th><th>accel p99 TTFT</th><th>accel throughput</th><th>SLO</th><th>stock (companion)</th></tr></thead>
 <tbody>
-<tr><td>3</td><td class="win">4.5&nbsp;s</td><td>3.02</td><td class="win">PASS</td><td>coin-flip 6&ndash;14&nbsp;s (goodput 0&ndash;3)</td></tr>
-<tr><td>5</td><td class="win">3.4&nbsp;s</td><td>4.85 (&asymp;offered, stable)</td><td class="win">PASS</td><td class="fail">17&ndash;20&nbsp;s, unstable (fail)</td></tr>
-<tr><td>7</td><td class="fail">29.8&nbsp;s</td><td>5.20 (&lt;offered, saturated)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
+<tr><td>3</td><td class="win">4.5&nbsp;s</td><td>3.02 (2.83)</td><td class="win">PASS</td><td>coin-flip 6&ndash;14&nbsp;s (goodput 0&ndash;3)</td></tr>
+<tr><td>5</td><td class="win">3.4&nbsp;s</td><td>4.85 (3.59)</td><td class="win">PASS</td><td class="fail">17&ndash;25&nbsp;s, unstable (fail)</td></tr>
+<tr><td>7</td><td class="fail">29.8&nbsp;s</td><td>5.20 (3.99)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
+<tr><td>10</td><td class="fail">37.9&nbsp;s</td><td>5.65 (4.14)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
 </tbody>
 </table>
+<p class="note">Throughput column: accel achieved (stock achieved, same-machine companion sweep). Both saturate below
+offered load at high &lambda;; the achieved rate <em>is</em> the effective capacity.</p>
 <div class="keyfinding">
 <b>Giant acceleration raises goodput@SLO from 3 to 5&nbsp;req/s (+67%).</b> At &lambda;=5, stock is over its capacity
-ceiling (C&nbsp;&asymp;&nbsp;4.14, companion frontier study) so its queue is unstable and p99 diverges to 17&ndash;20&nbsp;s;
-acceleration keeps &lambda;=5 <em>stable</em> (achieved 4.85&nbsp;&asymp;&nbsp;offered) at 3.4&nbsp;s p99. The accel
-throughput saturates near <b>5.2&nbsp;req/s</b> (the &lambda;=7 achieved rate), i.e. acceleration <b>raises the
-effective capacity ceiling C by &sim;26%</b> (4.14&rarr;5.2). This is the mechanistic payoff of residency reduction: by
-clearing giants from the running batch faster, more requests flow through per unit time&mdash;acceleration is the
-<em>K-lever</em> (capacity) of the companion capacity law C=K/(1&minus;h), not merely a latency fix. &lambda;=7 becomes
-the new knee (offered 7 &gt; new C&nbsp;&asymp;&nbsp;5.2). The gain magnitude is comparable to shortest-first
-scheduling, achieved by a fully distinct, composable mechanism.</div>
+ceiling (achieved 3.59, saturating toward C&nbsp;&asymp;&nbsp;4.14) so its queue is unstable and p99 diverges to
+17&ndash;25&nbsp;s; acceleration keeps &lambda;=5 <em>stable</em> (achieved 4.85&nbsp;&asymp;&nbsp;offered) at
+3.4&nbsp;s p99. Stock saturates cleanly at <b>4.14&nbsp;req/s</b> (3.99&rarr;4.14 from &lambda;=7&rarr;10, flat), while
+accel is <em>still climbing</em> at &lambda;=10 (5.20&rarr;5.65), so acceleration <b>raises the effective capacity
+ceiling C from 4.14 to at least 5.65&nbsp;req/s (+36%)</b> (output-token throughput 530&rarr;723&nbsp;tok/s, likewise
++36%). This is the mechanistic payoff of residency reduction: by clearing giants from the running batch faster, more
+requests flow through per unit time&mdash;acceleration is the <em>K-lever</em> (capacity) of the companion capacity law
+C=K/(1&minus;h), not merely a latency fix. &lambda;=7 becomes the new knee (offered 7 &gt; new
+C&nbsp;&ge;&nbsp;5.65). The gain magnitude is comparable to shortest-first scheduling, achieved by a fully distinct,
+composable mechanism.</div>
 
 <h2>5 Relationship to the series</h2>
 <p>This completes a trilogy on intra-step prefill control at the concurrency cap: slowing giants via a decode floor

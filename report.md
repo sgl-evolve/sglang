@@ -711,3 +711,13 @@ SYNTHESIS.md (P6 entry + design-map row + contributions). Awaiting λ=10 (satura
   craters, exactly P1). Lossless deferral would need to PIN deferred nodes vs eviction => device fills with un-backed KV
   => same L1-full problem. => bandwidth-aware backup deferral likely re-derives P1's "eager backup necessary." HOLD;
   let dose-response pick the real Paper 7 (candidate: compose accel+own-SRPF to test if C~5.2 is reachable/breakable).
+
+## λ=10 LANDED — capacity gain is BIGGER (+36%, data-driven upward correction) (09:40)
+v13_accelfull COMPLETE (summary.json written, W&B logged, node 19916 released). λ=10: p99=37.9s FAIL, thr=5.65, conc=243.
+★KEY: accel achieved thr KEEPS CLIMBING 5.20(λ7)→5.65(λ10) while stock is FLAT 3.99→4.14 (v1_stock full sweep). So the
+saturated capacity ceiling C(accel) ≥ 5.65 (still rising at λ10, so a lower bound) vs stock C=4.14 → **+36%** (not the
++26% I wrote from λ7's 5.20 — that wasn't saturation). Out-tok throughput 530→723 tok/s (+36%, consistent).
+goodput@SLO=5 UNCHANGED (λ3,5 PASS; λ7,10 FAIL). Propagated the +36% + λ=10 row to: P6 §4 table+abstract+keyfinding,
+capstone §5 table+abstract+§3+conclusion, INDEX, SYNTHESIS, memory. All HTML validated, no stale 26%/5.2 left.
+Integrity: analyze_firm.py reconfirmed Fisher 0.0397/MWU tpot 0.0159/conc 0.0079 match paper; also fixed understated
+stock tpot range (392→319-607) + a dropped §5 heading in P6.

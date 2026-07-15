@@ -49,7 +49,7 @@ floor backfires; chunk-level prefill fair-share backfires) and, decisively, it f
 then confirmed: if slowing a giant prefill hurts by making it linger, then <em>accelerating</em> it must help. Giant
 acceleration&mdash;granting the in-flight chunked giant a larger per-step token budget under memory pressure so it exits
 sooner&mdash;is the first novel, lossless, on-contract mechanism in the series to raise goodput@SLO, lifting the
-frontier from 3 to 5&nbsp;req/s (+67%) and the effective capacity ceiling +26%. We also give the quantitative backbone
+frontier from 3 to 5&nbsp;req/s (+67%) and the effective capacity ceiling +36%. We also give the quantitative backbone
 (a capacity law <span class="mono">C=K/(1&minus;h)</span> with an intrinsic-feasibility floor showing every SLO
 violation is contention, not service time) and a methodological result (goodput@SLO on a <em>deterministic</em>
 workload is a coin-flip&mdash;metastable occupancy-basin selection&mdash;so single runs are void and per-step
@@ -153,13 +153,17 @@ it <b>moves the frontier</b>:</p>
 <tbody>
 <tr><td>3</td><td class="win">4.5&nbsp;s</td><td>3.02</td><td class="win">PASS</td><td>coin-flip 6&ndash;14&nbsp;s</td></tr>
 <tr><td>5</td><td class="win">3.4&nbsp;s</td><td>4.85 (stable)</td><td class="win">PASS</td><td class="fail">17&ndash;20&nbsp;s (fail)</td></tr>
-<tr><td>7</td><td class="fail">29.8&nbsp;s</td><td>5.20 (saturated)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
+<tr><td>7</td><td class="fail">29.8&nbsp;s</td><td>5.20 (3.99)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
+<tr><td>10</td><td class="fail">37.9&nbsp;s</td><td>5.65 (4.14)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
 </tbody>
 </table>
+<p class="note">Throughput: accel achieved (stock achieved). Stock saturates flat at 4.14; accel is still rising at
+&lambda;=10 (5.65), so the accel capacity ceiling is &ge;5.65 (+36%).</p>
 <p>Acceleration lifts goodput@SLO from 3 to 5&nbsp;req/s (+67%). At &lambda;=5 stock is over its capacity ceiling
 (C&nbsp;&asymp;&nbsp;4.14) so its queue is unstable and p99 diverges; acceleration keeps &lambda;=5 <em>stable</em>
-(achieved 4.85&nbsp;&asymp;&nbsp;offered) at 3.4&nbsp;s. Achieved throughput saturates near 5.2&nbsp;req/s, i.e.
-acceleration raises the effective capacity ceiling C by &sim;26% (4.14&rarr;5.2). This closes the loop with &sect;3:
+(achieved 4.85&nbsp;&asymp;&nbsp;offered) at 3.4&nbsp;s. Stock saturates cleanly at 4.14&nbsp;req/s while accel is
+still climbing at &lambda;=10 (achieved 5.20&rarr;5.65 from &lambda;=7&rarr;10), i.e.
+acceleration raises the effective capacity ceiling C by &ge;36% (4.14&rarr;5.65). This closes the loop with &sect;3:
 <b>residency reduction is empirically the K-lever of the capacity law</b>&mdash;by clearing giants from the running
 batch faster, more requests flow per unit time. The magnitude rivals whole-request shortest-first scheduling, achieved
 by a fully distinct, composable mechanism (no reordering).</p>
@@ -196,7 +200,7 @@ That single fact organizes the design space into a clean partition (every effect
 backfire raises it), explains why the intuitive cures fail, quantifies the ceiling (C=K/(1&minus;h), all violations
 contention), disciplines the measurements (coin-flip; use deterministic per-step metrics), and&mdash;the real
 test&mdash;predicted a novel positive mechanism (giant acceleration) that raises the frontier +67% and the capacity
-ceiling +26%. The practical takeaway for serving-system designers is compact: <b>stop optimizing hit rate and prefill
+ceiling +36%. The practical takeaway for serving-system designers is compact: <b>stop optimizing hit rate and prefill
 fairness for the tail; measure and minimize residency.</b></p>
 
 <h2>9 Reproducibility</h2>

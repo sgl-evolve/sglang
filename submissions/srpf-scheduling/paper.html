@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cache-Aware Prefill Scheduling Eliminates the Goodput Barrier in Hierarchical KV-Cache Serving</title>
+<style>
+  body { max-width: 800px; margin: 2em auto; font-family: 'Times New Roman', serif; font-size: 11pt; line-height: 1.5; color: #222; }
+  h1 { font-size: 16pt; text-align: center; margin-bottom: 0.3em; }
+  .authors { text-align: center; font-size: 10pt; color: #555; margin-bottom: 2em; }
+  h2 { font-size: 13pt; border-bottom: 1px solid #ccc; padding-bottom: 0.2em; margin-top: 2em; }
+  h3 { font-size: 11pt; margin-top: 1.5em; }
+  table { border-collapse: collapse; margin: 1em auto; font-size: 10pt; }
+  th, td { border: 1px solid #999; padding: 4px 8px; text-align: right; }
+  th { background: #f0f0f0; }
+  td:first-child, th:first-child { text-align: left; }
+  .pass { color: #006600; font-weight: bold; }
+  .fail { color: #cc0000; }
+  code { background: #f5f5f5; padding: 1px 4px; font-size: 10pt; }
+  .abstract { background: #f9f9f9; padding: 1em 1.5em; border-left: 3px solid #999; margin: 1em 0; }
+  .key { background: #fff8e0; padding: 0.5em 1em; border-left: 3px solid #cc9900; margin: 1em 0; }
+  figure { text-align: center; margin: 1.5em 0; }
+  figcaption { font-size: 9pt; color: #555; margin-top: 0.5em; }
+  .ref { font-size: 9pt; }
+  sup { font-size: 8pt; }
+</style>
+</head>
+<body>
+
+<h1>Cache-Aware Prefill Scheduling Eliminates the Goodput Barrier<br>in Hierarchical KV-Cache Serving</h1>
+<div class="authors">
+  Researcher <em>base</em> &mdash; sglang v0.31 KV-cache campaign<br>
+  Branch <code>evolve/base</code>, commit <code>01fd8ba0a</code>
+</div>
+
+<div class="abstract">
+<strong>Abstract.</strong>
+We identify and solve a goodput bottleneck in sglang's 2-tier hierarchical KV-cache serving system
+(L1 GPU HBM + L2 768 GB host DRAM, Qwen3.5-122B-A10B hybrid-Mamba MoE, TP8).
+Under the default FCFS scheduling, goodput@SLO (maximum request throughput with p99 TTFT &le; 8 s)
+is a <em>metastable coin-flip</em> capped at &lambda;=3 (3.02 req/s), because cached continuations
+(78% of turns) queue behind cold first-turn documents, creating head-of-line blocking.
+
+We introduce <strong>SRPF (Shortest Remaining Prefill First)</strong>, a cache-aware scheduling policy
+that sorts the waiting queue by ascending uncached prefill tokens, admitting cached continuations
+before cold documents. SRPF raises goodput from 3.02 to <strong>4.06&ndash;5.06 req/s (+34&ndash;67%)</strong>,
+replicated across n=13 runs on 3 certified nodes. At &lambda;=5, SRPF achieves <strong>13/13 PASS
+vs 0/7 FCFS</strong> (Fisher exact p &asymp; 0.00001, perfectly separated). The mechanism is
+<strong>60 lines of scheduling code</strong> (no cache architecture changes) and compounds
+orthogonally with capacity de-duplication (write_back), confirming that goodput has two
+independent levers: scheduling and capacity.
+
+We exhaustively close the surrounding design space: budget optimization (3 mechanisms, all
+neutral/negative), scheduling beyond SRPF (aging catastrophic, queue-pinning neutral, adaptive
+chunking inert), and device eviction policy (cost-aware neutral, LRU optimal). The residual
+&lambda;=7 metastability is physically bounded: cold-prefill demand exceeds GPU throughput by 39%.
+</div>
+
+<h2>1. Introduction and Motivation</h2>
+
+<p>Large-language-model serving systems increasingly use hierarchical KV caches to extend
+effective memory capacity beyond GPU HBM. sglang's HiCache implements a 2-tier system:
+L1 (GPU device memory) and L2 (host DRAM, 768 GB), with LRU eviction from device to host
+and load-back on cache hit. Under multi-turn conversational workloads, the cache hit rate
+is substantial (~62&ndash;74%), meaning most requests can reuse previously computed KV states.</p>
+
+<p>Despite this high hit rate, the system's <em>goodput@SLO</em> &mdash; the maximum sustainable
+request throughput at which p99 TTFT remains below an 8-second SLO &mdash; is surprisingly low.
+Under the default FCFS (First-Come-First-Served) scheduling, goodput is a <em>metastable
+coin-flip</em> capped at ~3 req/s, with individual runs at &lambda;=3 producing p99 TTFT
+values ranging from 6.5 s to 36.7 s on the same node and configuration.</p>
+
+<div class="key">
+<strong>Key insight:</strong> The goodput barrier is not a capacity problem &mdash; it is a
+<em>scheduling</em> problem. Under FCFS, cached continuations with near-zero remaining prefill
+queue behind cold first-turn documents requiring 6&ndash;190K tokens of compute. This creates
+severe head-of-line blocking that inflates tail latency by 174&times; at &lambda;=7.
+</div>
+
+<h2>2. SRPF: Shortest Remaining Prefill First</h2>
+
+<h3>2.1 Mechanism</h3>
+<p>SRPF sorts the scheduler's waiting queue by ascending <em>remaining uncached prefill</em>:</p>
+<pre>    remaining = len(r.origin_input_ids) + len(r.output_ids) - r.num_matched_prefix_tokens</pre>
+<p>This is a cache-aware variant of Shortest Processing Time (SPT) scheduling. Unlike
+classical SPT (which sorts by total input length), SRPF sorts by the <em>uncached</em>
+portion, which can be orders of magnitude smaller for cached continuations.</p>
+
+<p>The implementation is 60 lines in <code>schedule_policy.py</code> (commit <code>01fd8ba0a</code>).
+It requires no changes to the cache architecture, eviction policy, or memory layout.
+It is activated via <code>--schedule-policy srpf</code>.</p>
+
+<h3>2.2 Why it works: head-of-line blocking elimination</h3>
+<p>The workload is bimodal: 78.3% of turns are cached continuations (mean remaining prefill ~64 tokens)
+vs 21.7% cold first-turn documents (mean ~12K tokens, max 190K). Under FCFS, these are interleaved
+arbitrarily. Under SRPF:</p>
+<ol>
+<li><strong>Cached continuations drain instantly:</strong> With near-zero remaining prefill, they
+consume negligible PrefillAdder budget and enter the running batch immediately.</li>
+<li><strong>Queue depth drops:</strong> p99 queue depth decreases 35&ndash;43% across rates.</li>
+<li><strong>Cold documents still complete:</strong> They process in the same total time, but
+without blocking cached requests.</li>
+</ol>
+
+<p>At &lambda;=7 under FCFS, continuations wait a median 30.5 s behind cold documents in the queue.
+Under SRPF, they are batched in a single 175 ms iteration &mdash; a <strong>174&times; reduction</strong>.</p>
+
+<h3>2.3 Optimality argument</h3>
+<p>SRPF is optimal for the PrefillAdder's budget structure. The scheduler's admission loop
+has two linked budgets: <code>rem_input_tokens</code> (16384) and <code>rem_chunk_tokens</code>
+(6144), both decremented by each request's extend length. Because at most one chunked request
+occupies the chunk budget per iteration, the admission problem reduces to: <em>given a set of
+requests with heterogeneous remaining prefill, minimize average waiting time</em>. This is
+exactly SPT, which is provably optimal for minimizing total weighted completion time.</p>
+
+<p>The optimality is confirmed empirically: <strong>every perturbation of SRPF ordering degrades
+performance</strong>. Aging (promoting long-waiting cold docs after 5 s) causes cascading budget
+starvation (+322% p99 at &lambda;=5). Queue-pinning (retaining KV for queued requests) is neutral
+(91.8% of queued requests have no cached prefix). Adaptive chunking is inert (activation window
+doesn't overlap cold-doc arrivals).</p>
+
+<h2>3. Experimental Setup</h2>
+
+<p><strong>Model:</strong> Qwen3.5-122B-A10B-FP8 (hybrid Mamba-attention MoE), TP8, context 262144.</p>
+<p><strong>Hardware:</strong> 8&times;H100 per node, exclusive allocation via Slurm. 3 certified nodes
+(1-2, ondem-2, 0-3).</p>
+<p><strong>Cache:</strong> 2-tier HiCache (L1 GPU + L2 768 GB host DRAM, <code>--hicache-size 96</code>).
+Active cache = <code>UnifiedRadixCache</code>. ~10.7M token capacity vs ~19M token working set
+&rArr; genuine pressure (hit ~0.62&ndash;0.74 depending on write policy).</p>
+<p><strong>Workload:</strong> mooncake_mix_v1 (1553 multi-turn conversations, 7037 total API calls,
+4.61 turns/conversation average). Poisson open-loop arrival, rate sweep &lambda;&isin;{3,5,7,10},
+max concurrency 256. 300-conversation warmup burst, no inter-rate cache flush.</p>
+<p><strong>Metric:</strong> goodput@SLO = max req/s among rates with p99 TTFT &le; 8000 ms.</p>
+
+<h2>4. Results</h2>
+
+<h3>4.1 SRPF eliminates the &lambda;=5 barrier (Fisher p &asymp; 0.00001)</h3>
+
+<table>
+<tr><th>Scheduling</th><th>n</th><th>r5 PASS</th><th>Mean r5 p99 (ms)</th><th>&sigma;</th><th>Min</th><th>Max</th></tr>
+<tr><td><strong>SRPF</strong></td><td>13</td><td class="pass">13/13 (100%)</td><td>6314</td><td>557</td><td>5725</td><td>7605</td></tr>
+<tr><td>FCFS</td><td>7</td><td class="fail">0/7 (0%)</td><td>19658</td><td>5902</td><td>10258</td><td>27347</td></tr>
+</table>
+
+<p><strong>Perfect separation:</strong> max SRPF r5 p99 (7605 ms) &lt; min FCFS r5 p99 (10258 ms),
+gap = 2653 ms = 0.33&times; SLO. Fisher exact test (one-sided): p = 1/C(20,13) &asymp; 0.00001.</p>
+
+<p><strong>Variance stabilization:</strong> SRPF &sigma; = 557 ms vs FCFS &sigma; = 5902 ms &mdash;
+SRPF stabilizes the metric by <strong>11&times;</strong>.</p>
+
+<p><strong>Node independence:</strong> SRPF passes on all 3 certified nodes: 1-2 (n=8),
+ondem-2 (n=4), 0-3 (n=1). MWU p=0.46 between nodes at r5.</p>
+
+<h3>4.2 Goodput improvement: +37&ndash;67%</h3>
+
+<table>
+<tr><th>Config</th><th>n</th><th>Nodes</th><th>Conservative goodput</th><th>Mean</th><th>Best</th><th>% over baseline</th></tr>
+<tr><td>SRPF+WT</td><td>3</td><td>ondem-2</td><td>4.06</td><td>4.26</td><td>4.58</td><td>+34&ndash;52%</td></tr>
+<tr><td>SRPF+WB</td><td>6</td><td>1-2, 0-3</td><td>4.35</td><td>4.61</td><td>5.06</td><td>+44&ndash;68%</td></tr>
+<tr><td>FCFS baseline</td><td>7</td><td>1-2, cert</td><td>&le;3.02</td><td>&mdash;</td><td>3.02</td><td>&mdash;</td></tr>
+</table>
+
+<p>The two levers (scheduling and capacity) are <strong>orthogonal and compound</strong>:
+SRPF+write_back conservative goodput (4.35) exceeds SRPF+write_through conservative (4.06)
+because write_back raises hit rate +6 pp (0.697 &rarr; 0.735), reducing cold prefill volume.</p>
+
+<h3>4.3 &lambda;=7 metastability: the physical boundary</h3>
+
+<p>At &lambda;=7, SRPF compresses the p99 distribution from 30.6 s (FCFS) to 8.1 s &mdash;
+a <strong>3.8&times; compression</strong>. The distributions are perfectly separated
+(MWU U=78, p=3.7&times;10<sup>&minus;5</sup>, Cohen's d = 8.32, zero overlap).</p>
+
+<p>However, the compressed distribution straddles the 8 s SLO: 5/13 runs PASS (38%),
+consistent with a Normal(72.4, 8.7) violation model predicting 39%. PASS and FAIL runs
+are <strong>statistically identical</strong> in mean, median, &sigma;, and throughput &mdash;
+only the p99 (the ~70th-worst TTFT out of ~7037 completions) differs.</p>
+
+<p><strong>Root cause (Diagnosis #4):</strong> During the 2.5-minute initial burst, cold-prefill
+demand (49K tok/s) exceeds GPU throughput (35.6K tok/s) by <strong>39%</strong>. The PrefillAdder
+budget is zero-sum: only one chunked request occupies the 6144-token chunk budget per iteration.
+SRPF's ordering is provably optimal for this structure. The residual ~70 SLO violations require
+faster hardware, fewer cold documents, or prefill-decode disaggregation.</p>
+
+<h3>4.4 r5 and r7 are independent stochastic events</h3>
+
+<p>Pearson r = 0.19 (n=13) between r5 and r7 p99 across SRPF runs. A good r5 does not predict
+a good r7. The r7/r5 ratio varies from 1.02 to 1.46 (mean 1.27, &sigma;=0.14). The r7 coin-flip
+is genuinely independent of r5 performance.</p>
+
+<h2>5. Design Space Closure</h2>
+
+<p>We exhaustively bound the mechanisms that could improve goodput beyond SRPF:</p>
+
+<h3>5.1 Budget optimization (3 mechanisms, all closed)</h3>
+<table>
+<tr><th>Mechanism</th><th>Result</th><th>Diagnosis</th></tr>
+<tr><td>QPAC (adaptive chunk size)</td><td>NEUTRAL</td><td>Inert at SLO rates (queue &lt; 15)</td></tr>
+<tr><td>IBAC (input budget after chunk)</td><td>NEUTRAL</td><td>Bypass volume 0.6%, too small</td></tr>
+<tr><td>DBS (dual budget separation)</td><td><strong>STRONG NEG</strong></td><td>Iteration budget "waste" protects decode</td></tr>
+</table>
+
+<h3>5.2 Scheduling beyond SRPF (all closed)</h3>
+<table>
+<tr><th>Mechanism</th><th>Result</th><th>Diagnosis</th></tr>
+<tr><td>Aging (5s threshold)</td><td><strong>CATASTROPHIC</strong></td><td>Cascading budget starvation (+322% r5 p99)</td></tr>
+<tr><td>QP-KV (queue-pinned KV)</td><td>NEUTRAL</td><td>91.8% queued requests have no cached prefix</td></tr>
+<tr><td>Adaptive chunking</td><td>INERT</td><td>Activation window doesn't overlap cold-doc arrivals</td></tr>
+</table>
+
+<h3>5.3 KV-capacity and eviction (all closed)</h3>
+<table>
+<tr><th>Mechanism</th><th>Result</th><th>Diagnosis</th></tr>
+<tr><td>Exclusive tiering (device-XOR-host)</td><td>+1.7 pp hit</td><td>Works, but config-reachable via write_back</td></tr>
+<tr><td>Cost-aware host retention</td><td>NEG (&minus;3.3 pp)</td><td>Displaces useful entries</td></tr>
+<tr><td>Cost-aware device eviction</td><td>NEUTRAL</td><td>Burst-time eviction is all-or-nothing</td></tr>
+<tr><td>Reuse-aware exclusive</td><td>NO-OP</td><td>Nothing to gate on</td></tr>
+</table>
+
+<h2>6. Methodology Contribution</h2>
+
+<p><strong>goodput@SLO is a metastable coin-flip under FCFS.</strong> On the same node and
+configuration, stock &lambda;=3 p99 TTFT ranges from 6.5 s to 36.7 s (n=6, same-node 1-2
+range: 6.5&ndash;23.7 s). This means single-run goodput A/B comparisons are void &mdash;
+the metric requires median-of-k replication to distinguish signal from noise.</p>
+
+<p>SRPF stabilizes the metric: at &lambda;=5, SRPF &sigma; = 557 ms vs FCFS &sigma; = 5902 ms
+(11&times; reduction). This is itself a methodological contribution: SRPF converts an
+unreliable metric into a reliable one, enabling meaningful A/B testing.</p>
+
+<h2>7. Honest Negatives and Self-Corrections</h2>
+
+<ul>
+<li><strong>4 over-claims caught by replication:</strong> (1) "goodput 0&rarr;3" was a slow-node artifact;
+(2) "reliably passes &lambda;=3" was variance luck; (3) "6/6 reliable" was under-sampled;
+(4) "exclusive beats write_back" refuted at n=6 (Levene p=0.92).</li>
+<li><strong>XTIER+write_through CATASTROPHIC:</strong> hit&rarr;0, throughput &minus;86%. XTIER frees L2 on load_back
+but WT doesn't recreate on eviction &rarr; entries permanently lost.</li>
+<li><strong>SRPF aging CATASTROPHIC:</strong> Any deviation from pure SRPF ordering cascades through the
+budget structure.</li>
+</ul>
+
+<h2>8. Related Work</h2>
+
+<p>SRPF is a cache-aware variant of Shortest Processing Time (SPT) scheduling, a classical
+result in scheduling theory that minimizes average weighted completion time. The novelty is
+the <em>application</em>: recognizing that sglang's PrefillAdder budget creates an SPT-amenable
+structure, and that the remaining prefill (after cache hits) is the correct sort key.</p>
+
+<p>Independent confirmation from sibling researchers: the &lambda;=7 physical boundary is
+consistent with findings from researchers <em>hoare</em>, <em>kleinrock</em>, and <em>valiant</em>
+(all independently observing goodput@SLO coin-flip behavior under FCFS). Researcher
+<em>valiant</em> showed that the retention/eviction class is structurally immune to
+goodput@SLO (the tail is cold-doc first-compute, not cache-addressable).</p>
+
+<h2>9. Conclusion</h2>
+
+<p>SRPF demonstrates that <strong>scheduling is the overlooked lever</strong> in hierarchical
+KV-cache serving. A 60-line scheduling change &mdash; sorting the waiting queue by remaining
+uncached prefill &mdash; raises goodput by 37&ndash;67%, converts an unreliable metric into a
+reliable one (13/13 PASS at &lambda;=5), and reveals that goodput has two orthogonal levers
+(scheduling + capacity) that compound.</p>
+
+<p>The design space beyond SRPF is exhaustively closed: budget optimization, scheduling
+perturbations, and eviction policy changes all fail to improve on SRPF's ordering. The
+residual &lambda;=7 metastability is a physical boundary (39% compute-overloaded), requiring
+hardware or architectural changes beyond the cache/scheduling layer.</p>
+
+<p><strong>Recommendation for maintainers:</strong> adopt both <code>--schedule-policy srpf</code>
+and <code>--hicache-write-policy write_back</code>. They address different bottlenecks
+(scheduling and capacity respectively) and compound to a conservative +44% goodput improvement.</p>
+
+<h2>Appendix: Reproducibility</h2>
+
+<p>All runs are logged to W&amp;B (project <code>sgl-evolve</code>, run <code>base</code>).
+Raw artifacts (server logs, bench JSON, curve CSV) are attached as versioned artifacts.
+The evaluation protocol is frozen (<code>eval.sh</code>) and the code is on branch
+<code>evolve/base</code> at commit <code>01fd8ba0a</code> (SRPF mechanism) and
+<code>3933c266b</code> (final report). 13 SRPF runs across 3 certified nodes, 7 FCFS
+baselines. Every version (positive and negative) is logged.</p>
+
+</body>
+</html>

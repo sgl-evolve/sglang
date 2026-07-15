@@ -739,3 +739,12 @@ analysis/decode_memory_bound.py: tpot = a + b*concurrency, b≈1.2ms/req (accel 
 Slope SHARED across policies = hardware constant (per-req KV-streaming cost); compute-bound decode would amortize→flat.
 = direct evidence for the runaway premise (concurrency→linearly-slower-decode). Added to capstone §2 (was assertion-only).
 Note: this evidences the DECODE STEP is memory-bound; the CEILING C compute-vs-memory attribution still needs a profiler (§3, Paper 7).
+
+## Paper 7 profiler experiment SCOPED (feasible) (10:06)
+sglang HTTP endpoints /start_profile /stop_profile (http_server.py:1034) + scheduler.init_profiler.
+★ProfileReq.profile_by_stage: bool → SEPARATES prefill-stage vs decode-stage kernel time = EXACTLY the
+compute-vs-memory C-ceiling attribution Paper 7 needs. Recipe: launch server (srun, held node) → drive saturation load
+(bench λ=10) → at steady-state POST /start_profile {num_steps~20, profile_by_stage:true, activities:["GPU"],
+output_dir} (auto-stops after num_steps) → analyze trace: prefill GPU-time vs decode GPU-time. Theory predicts decode-BW
+dominates at saturation. Build harness when node frees (~after dose-response ~16:40); low marginal value to write now.
+Existing-data nucleus already strong (C=prefill-throughput assumption-free; profiler = the definitive kernel-level confirm).

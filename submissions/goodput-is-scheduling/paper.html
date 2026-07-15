@@ -379,14 +379,38 @@ is inert here yet could be decisive elsewhere.
 
 <h2>7 Related work</h2>
 <p>
-<b>HiCache / LMCache / AttentionStore</b> optimize KV residency and host↔device movement; we show that for
-this workload class residency is Belady-saturated and movement is non-binding, so these help hit-rate and
-memory pressure but not goodput@SLO. <b>Strata</b> targets balanced batching; <b>Mooncake</b> sheds load
-under overload — sound when shed work is dispensable, but here the "expensive" cold prefills are the
-SLO-defining tail. <b>SRPF/SJF and prefill-priority scheduling</b> are classical; our role is not to propose
-them but to prove, by eliminating every KV-cache alternative and diagnosing the head-of-line mechanism, that
-prefill scheduling is the goodput lever for long-document serving — and to bound when caching would instead
-matter. Cache-replacement theory (Belady, LRU stack-distance) supplies the phase-boundary criterion.
+<b>KV residency and movement.</b> <b>HiCache / LMCache / AttentionStore</b> optimize KV residency and
+host↔device movement; we show that for this workload class residency is Belady-saturated and movement is
+non-binding, so these help hit-rate and memory pressure but not goodput@SLO. <b>Marconi</b> manages prefix
+caching for hybrid SSM–attention models (the model class we study); consistent with our result that the
+recurrent-state pool never binds here, attention-KV capacity is the only residency pressure — and it is
+Belady-saturated. Cache-replacement theory (<b>Belady</b>, <b>LRU stack-distance</b>) supplies our
+phase-boundary criterion (§6).
+</p>
+<p>
+<b>Serving scheduling.</b> <b>Orca</b> introduced iteration-level (continuous) batching, the substrate our
+reordering acts on; <b>Sarathi-Serve</b> introduced chunked prefill and stall-free prefill/decode mixing — the
+very mechanism whose interaction with heterogeneous document sizes we diagnose (a few large cold documents
+monopolize the chunked-prefill budget and block small turns, §4). <b>FastServe</b> is the closest prior art:
+it attacks head-of-line blocking in LLM serving with preemptive, skip-join multi-level-feedback scheduling.
+Two distinctions. First, FastServe schedules against an <em>unknown</em> job size — decode length is
+unobservable, so it approximates job size with a feedback queue; our lever is <em>prefill</em> heterogeneity,
+whose size is <em>known exactly at arrival</em> (the input token count), so shortest-prefill-first is an exact,
+non-speculative order needing no preemption or feedback queue. Second, and centrally, our contribution is not
+the scheduling policy (SRPF/SJF is textbook, and we say so) but the <em>design-space map</em> proving
+scheduling — not caching, admission, transfer, the recurrent-state pool, or chunk-level reservation — is the
+goodput lever for this workload class, the head-of-line <em>diagnosis</em> that explains why, and the
+phase-boundary criterion for when caching would instead matter. <b>Strata</b> targets balanced batching;
+<b>Mooncake</b> sheds load under overload — sound when shed work is dispensable, but here the "expensive" cold
+prefills <em>are</em> the SLO-defining tail and cannot be shed.
+</p>
+<p>
+<b>Prefill/decode disaggregation.</b> <b>DistServe</b> and <b>Splitwise</b> physically separate the prefill and
+decode phases onto different resources to remove their interference. Our §3 shows that within a single
+co-located two-tier engine the prefill/decode split is already TTFT-optimal for this metric (≈99% of forward
+steps at saturation are prefill), so disaggregation does not move goodput@SLO here — though it is orthogonal
+and could relax the compute ceiling by giving prefill its own devices, which we note as future work alongside
+context-parallel prefill (§8).
 </p>
 
 <h2>8 Limitations</h2>
@@ -413,7 +437,8 @@ Importantly, SRPF's TTFT win is <em>not</em> bought at their expense: from the s
 <em>improves</em> over stock (λ=3 322&nbsp;s vs 438&nbsp;s) and its p99 TPOT is within noise — reordering
 does not worsen decode. But reordering cannot <em>fix</em> the decode stall either (a big cold prefill is
 serialized whichever request goes first); a full fix needs the compute-side lever (parallelizing the
-single big prefill, i.e. context-parallel — §5.1), motivating that as the highest-value future work.</li>
+single big prefill, i.e. context-parallel prefill, unavailable in-engine for this hybrid model — see above),
+motivating that as the highest-value future work.</li>
 </ul>
 
 <h2>9 Reproducibility</h2>

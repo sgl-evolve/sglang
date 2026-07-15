@@ -48,9 +48,10 @@ lowering concurrency. On a same-node A/B at &lambda;=3 (n=4 replicates each), gi
 SLO in <b>4/4 runs</b> (p99 TTFT 7.0/4.6/5.5/4.8&nbsp;s) vs stock 1/4 (14.2/11.1/11.5/6.2&nbsp;s), with decode
 time-per-token dropping to 146&ndash;333&nbsp;ms (stock 392&ndash;607) and mean concurrency to 21&ndash;57 (stock
 74&ndash;166), at unchanged throughput and all requests completing (no starvation). The decode-tpot and concurrency
-distributions are <b>perfectly separated</b> across all 8 runs (one-sided Mann-Whitney U exact p&nbsp;=&nbsp;0.014 for
-both)&mdash;a coin-flip-robust, significant confirmation that the mechanism reduces residency and speeds memory-bound
-decode as the law predicts; the SLO-pass 4/4-vs-1/4 corroborates (Fisher p&nbsp;=&nbsp;0.07, coin-flip-inflated). The
+distributions are near-perfectly separated (one-sided Mann-Whitney U exact p&nbsp;=&nbsp;0.016 for tpot,
+0.008 for concurrency)&mdash;coin-flip-robust, significant confirmation that the mechanism reduces residency and
+speeds memory-bound decode as the law predicts; and the coin-flip-sensitive SLO-pass is <em>also</em> significant
+(accel 4/4 vs stock 1/5, one-sided Fisher p&nbsp;=&nbsp;0.040). The
 win establishes that the tail's lever is <em>residency reduction</em>: because decode is memory-bound, extra prefill
 tokens are nearly "free" under the decode stall, so a bigger chunk finishes the giant in fewer <em>same-length</em>
 steps. This is the first positive, lossless, on-contract mechanism in the series; it is orthogonal to (and composes
@@ -92,27 +93,29 @@ speedup refutes it.)</div>
 <p>Same-node A/B at &lambda;=3 (<span class="mono">GIANT_ACCEL</span> on vs off; identical deterministic workload;
 n=4 giant-accel replicates vs n=4 stock, all λ=3):</p>
 <table>
-<thead><tr><th>&lambda;=3 (per-run)</th><th>giant-accel &times;4</th><th>stock &times;4</th></tr></thead>
+<thead><tr><th>&lambda;=3 (per-run)</th><th>giant-accel &times;4</th><th>stock &times;5</th></tr></thead>
 <tbody>
-<tr><td>p99 TTFT (s)</td><td class="win">7.0, 4.6, 5.5, 4.8 &nbsp;(<b>4/4 PASS</b>)</td><td class="fail">14.2, 11.1, 11.5, 6.2 &nbsp;(1/4)</td></tr>
-<tr><td>decode tpot (ms)</td><td class="win">333, 223, 190, 146</td><td>561, 607, 468, 392</td></tr>
-<tr><td>mean concurrency</td><td class="win">57, 31, 25, 21</td><td>78, 74, 166, 124</td></tr>
+<tr><td>p99 TTFT (s)</td><td class="win">7.0, 4.6, 5.5, 4.8 &nbsp;(<b>4/4 PASS</b>)</td><td class="fail">14.2, 11.1, 11.5, 8.1, 6.2 &nbsp;(1/5)</td></tr>
+<tr><td>decode tpot (ms)</td><td class="win">333, 223, 190, 146</td><td>561, 607, 468, 319, 392</td></tr>
+<tr><td>mean concurrency</td><td class="win">57, 31, 25, 21</td><td>78, 74, 166, 109, 124</td></tr>
 <tr><td>throughput (req/s)</td><td>~3.02</td><td>~3.02</td></tr>
 <tr><td>requests completed</td><td>7 037 (all)</td><td>7 037 (all)</td></tr>
 </tbody>
 </table>
+<p class="note">Statistics: SLO-pass one-sided Fisher exact <b>p = 0.040</b> (accel 4/4 vs stock 1/5). Coin-flip-robust
+deterministic metrics: one-sided Mann-Whitney U exact <b>p = 0.016</b> (decode-tpot), <b>p = 0.008</b> (concurrency).
+Both the goodput headline and the causal mechanism metrics are significant.</p>
 <div class="keyfinding">
 <b>Goodput@SLO at &lambda;=3 flips 0&rarr;3.</b> Two statistics, one coin-flip-robust and one coin-flip-sensitive:
 <ul>
-<li><b>Deterministic metric (coin-flip-ROBUST) &mdash; SIGNIFICANT.</b> The giant-accel decode-tpot values
-{146,190,223,333} and concurrencies {21,25,31,57} are <em>entirely below</em> the stock ranges (tpot
-{392&hellip;607}, concurrency {74&hellip;166})&mdash;<b>perfect separation across all 8 runs</b>. One-sided
-Mann-Whitney U (exact) p = <b>0.014</b> for both tpot and concurrency. Because tpot/concurrency are not subject to
-the goodput coin-flip, this is direct, significant evidence the mechanism reduces residency and speeds
-memory-bound decode as the law predicts.</li>
-<li><b>SLO-pass (coin-flip-sensitive) &mdash; corroborating.</b> giant-accel passes 4/4; stock 1/4 (one lucky
-good-basin draw). One-sided Fisher p = 0.07 (n=4 each; the coin-flip inflates the variance of this metric, which is
-exactly why the deterministic metric above is the primary evidence).</li>
+<li><b>Deterministic metric (coin-flip-ROBUST) &mdash; SIGNIFICANT.</b> The giant-accel concurrencies {21,25,31,57}
+are <em>entirely below</em> the stock range {74&hellip;166} and decode-tpot {146,190,223,333} nearly so vs stock
+{319,392,468,561,607}. One-sided Mann-Whitney U (exact): p = <b>0.008</b> (concurrency), p = <b>0.016</b> (tpot).
+Because tpot/concurrency are not subject to the goodput coin-flip, this is direct, significant evidence the mechanism
+reduces residency and speeds memory-bound decode as the law predicts.</li>
+<li><b>SLO-pass (coin-flip-sensitive) &mdash; ALSO SIGNIFICANT.</b> giant-accel passes 4/4; stock 1/5 (one lucky
+good-basin draw). One-sided Fisher exact p = <b>0.040</b>. Even the coin-flip-inflated headline metric reaches
+significance at n=4 vs n=5.</li>
 </ul>
 The causal chain is measured end-to-end: bigger chunk &rarr; giant exits in fewer steps &rarr; concurrency down
 (21&ndash;57 vs 74&ndash;166) &rarr; memory-bound decode faster (tpot 146&ndash;333 vs 392&ndash;607) &rarr; p99 down

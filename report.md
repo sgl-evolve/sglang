@@ -648,3 +648,12 @@ capstone. Theory: goodput tail = memory-bound concurrency↔decode runaway; resi
 (capacity, whole-req SRPF, giant-accel=novel positive), concurrency-raising ones backfire (caching-admission,
 prefill-throttle P4, fair-share P5). First positive mechanism P6 achieves goodput@SLO 0→3, lossless, on-contract.
 NEXT: P6 robustness (accel factor {1.5,3}/θ sweep, λ=5 reach) OR capstone paper.html OR new axis. Node ~07:24 timeout.
+
+## ★★★ PAPER 6 FIRMING COMPLETE — DOUBLY SIGNIFICANT (07:03)
+v12_stock4 λ=3: p99=8107 FAIL (just over SLO), tpot=319, conc=109 → stock 1/5. FINAL:
+  accel 4/4 PASS (p99 7.0/4.6/5.5/4.8) | stock 1/5 (14.2/11.1/11.5/8.1/6.2, only v1b 6.2 PASS)
+  ★ Fisher SLO-pass (accel 4/4 vs stock 1/5): p=0.0397 SIGNIFICANT (goodput headline)
+  ★ Mann-Whitney tpot: p=0.0159 SIGNIFICANT | conc: p=0.0079 SIGNIFICANT (coin-flip-robust)
+BOTH the goodput@SLO win AND the causal mechanism metrics are statistically significant. Paper 6 updated (n=5 stock,
+both stats), INDEX, all W&B-logged. Giant-acceleration is a rigorously-established positive mechanism.
+=== FINAL PORTFOLIO: 5 SUBMITTED papers + SYNTHESIS.md capstone. P6 = first positive mechanism, doubly-sig goodput win.

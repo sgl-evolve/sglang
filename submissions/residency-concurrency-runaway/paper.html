@@ -48,8 +48,9 @@ It correctly forecast three negatives before we built them (hierarchical caching
 floor backfires; chunk-level prefill fair-share backfires) and, decisively, it forecast a <b>positive dual</b> that we
 then confirmed: if slowing a giant prefill hurts by making it linger, then <em>accelerating</em> it must help. Giant
 acceleration&mdash;granting the in-flight chunked giant a larger per-step token budget under memory pressure so it exits
-sooner&mdash;is the first novel, lossless, on-contract mechanism in the series to raise goodput@SLO, lifting the
-frontier from 3 to 5&nbsp;req/s (+67%) and the effective capacity ceiling +36%. We also give the quantitative backbone
+sooner&mdash;is the first novel, lossless, on-contract mechanism in the series to raise goodput@SLO: it reliably wins at
+&lambda;=3 (5/5 vs stock 1/5) and raises the effective capacity ceiling +36% (deterministic); the extension to a higher
+goodput frontier is coin-flip-limited (&lambda;=5 is 1/2), exactly as the margin law predicts at small margin. We also give the quantitative backbone
 (a capacity law <span class="mono">C=K/(1&minus;h)</span> with an intrinsic-feasibility floor showing every SLO
 violation is contention, not service time) and a methodological result (goodput@SLO on a <em>deterministic</em>
 workload is a coin-flip&mdash;metastable occupancy-basin selection&mdash;so single runs are void and per-step
@@ -223,27 +224,29 @@ the 8&nbsp;s SLO in 4/4 runs (p99 7.0/4.6/5.5/4.8&nbsp;s) vs stock 1/5, with dec
 distributions near-perfectly separated. The coin-flip-sensitive SLO-pass is significant (one-sided Fisher
 p&nbsp;=&nbsp;0.040) and&mdash;more importantly&mdash;so are the coin-flip-<em>robust</em> deterministic metrics
 (one-sided Mann-Whitney U exact: tpot p&nbsp;=&nbsp;0.016, concurrency p&nbsp;=&nbsp;0.008).</div>
-<p>The full-sweep result is the theory's quantitative payoff. Acceleration does not merely fix the &lambda;=3 coin-flip;
-it <b>moves the frontier</b>:</p>
+<p>The full-sweep result is the theory's quantitative payoff. Acceleration raises the <em>capacity ceiling</em>
+deterministically:</p>
 <table>
 <thead><tr><th>offered &lambda;</th><th>accel p99 TTFT</th><th>accel throughput</th><th>SLO</th><th>stock (companion)</th></tr></thead>
 <tbody>
-<tr><td>3</td><td class="win">4.5&nbsp;s</td><td>3.02</td><td class="win">PASS</td><td>coin-flip 6&ndash;14&nbsp;s</td></tr>
-<tr><td>5</td><td class="win">3.4&nbsp;s</td><td>4.85 (stable)</td><td class="win">PASS</td><td class="fail">17&ndash;20&nbsp;s (fail)</td></tr>
+<tr><td>3</td><td class="win">4.5&nbsp;s (5/5)</td><td>3.02</td><td class="win">PASS</td><td>coin-flip 6&ndash;14&nbsp;s</td></tr>
+<tr><td>5</td><td>3.4&nbsp;s / 17.9&nbsp;s</td><td>4.85</td><td>coin-flip (1/2)</td><td class="fail">17&ndash;25&nbsp;s (fail)</td></tr>
 <tr><td>7</td><td class="fail">29.8&nbsp;s</td><td>5.20 (3.99)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
 <tr><td>10</td><td class="fail">37.9&nbsp;s</td><td>5.65 (4.14)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
 </tbody>
 </table>
 <p class="note">Throughput: accel achieved (stock achieved). Stock saturates flat at 4.14; accel is still rising at
 &lambda;=10 (5.65), so the accel capacity ceiling is &ge;5.65 (+36%).</p>
-<p>Acceleration lifts goodput@SLO from 3 to 5&nbsp;req/s (+67%). At &lambda;=5 stock is over its capacity ceiling
-(C&nbsp;&asymp;&nbsp;4.14) so its queue is unstable and p99 diverges; acceleration keeps &lambda;=5 <em>stable</em>
-(achieved 4.85&nbsp;&asymp;&nbsp;offered) at 3.4&nbsp;s. Stock saturates cleanly at 4.14&nbsp;req/s while accel is
-still climbing at &lambda;=10 (achieved 5.20&rarr;5.65 from &lambda;=7&rarr;10), i.e.
-acceleration raises the effective capacity ceiling C by &ge;36% (4.14&rarr;5.65). This closes the loop with &sect;3:
-<b>residency reduction is empirically the K-lever of the capacity law</b>&mdash;by clearing giants from the running
-batch faster, more requests flow per unit time. The magnitude rivals whole-request shortest-first scheduling, achieved
-by a fully distinct, composable mechanism (no reordering).</p>
+<p><b>The robust, deterministic result is capacity: acceleration raises C from 4.14 to &ge;5.65&nbsp;req/s (+36%)</b>
+(accel is still climbing at &lambda;=10, 5.20&rarr;5.65; output-token throughput +36% likewise), while stock saturates
+flat at 4.14. This closes the loop with &sect;3: <b>residency reduction is empirically the K-lever of the capacity
+law</b>&mdash;clearing giants faster lets more requests flow per unit time; the magnitude rivals whole-request
+shortest-first, via a distinct mechanism. Whether the raised capacity yields a higher goodput@SLO is <em>coin-flip-limited</em>
+(&sect;6): raising C to 5.65 brings &lambda;=5 within capacity and accel <em>can</em> pass it (a good-basin draw hit
+3.4&nbsp;s where stock fails), but a replicate hit 17.9&nbsp;s&mdash;&lambda;=5 is 1/2. This is precisely the
+margin&ndash;reliability law: the accel margin at &lambda;=5 is only C&minus;&lambda;=0.65 (metastable), versus 2.65 at
+&lambda;=3 (reliable 5/5). So the firm goodput@SLO win is at &lambda;=3; &lambda;=5 is made feasible but not yet
+reliable&mdash;a single-run reading of "3&rarr;5" over-stated a coin-flip and replication corrected it.</p>
 
 <h2>6 Methodology: goodput@SLO is a coin-flip</h2>
 <p>A theory of the tail is only as trustworthy as its measurements, and the tail here is treacherous. On the
@@ -262,8 +265,13 @@ margin&ndash;reliability law makes a prediction: because giant acceleration rais
 widens the &lambda;=3 margin (C&minus;&lambda; 1.14&rarr;2.65, +132%) and should <em>tighten</em> the p99 basin. It
 does: across same-node &lambda;=3 replicates, acceleration's p99 is 4.6&ndash;7.0&nbsp;s (&sigma;&nbsp;=&nbsp;0.94&nbsp;s,
 4/4 pass) versus stock's coin-flip 6.2&ndash;14.2&nbsp;s (&sigma;&nbsp;=&nbsp;2.79&nbsp;s, 1/5 pass)&mdash;a 3.0&times;
-variance reduction <em>and</em> a shift under the SLO. Reducing residency thus buys reliability, not just mean
-latency&mdash;another confirmed prediction of the theory (P6 &times; P3).</div>
+variance reduction <em>and</em> a shift under the SLO. The law is confirmed at <em>both</em> ends of the margin: at
+&lambda;=5, acceleration's margin is only C&minus;&lambda;=0.65 (small), and there its goodput@SLO is a coin-flip
+(1/2: a good-basin 3.4&nbsp;s vs a replicate's 17.9&nbsp;s)&mdash;a direct, if humbling, confirmation that <em>even a
+capacity-raising mechanism inherits the metastable coin-flip when its margin is thin</em>. Reducing residency thus buys
+reliability where the margin is large (&lambda;=3) but not where it is small (&lambda;=5); this both confirms the theory
+(P6 &times; P3) and bounds the mechanism's headline&mdash;acceleration reliably raises capacity, but converting that
+into reliable goodput@SLO needs margin, i.e. C comfortably above &lambda;.</div>
 
 <h2>7 Related work</h2>
 <p>Sarathi-Serve chunks prefill <em>smaller</em> to bound prefill&harr;decode interference for mean latency; the
@@ -283,9 +291,10 @@ dynamical instability&mdash;a memory-bound concurrency&harr;decode runaway&mdash
 That single fact organizes the design space into a clean partition (every effective lever reduces residency; every
 backfire raises it), explains why the intuitive cures fail, quantifies the ceiling (C=K/(1&minus;h), all violations
 contention), disciplines the measurements (coin-flip; use deterministic per-step metrics), and&mdash;the real
-test&mdash;predicted a novel positive mechanism (giant acceleration) that raises the frontier +67% and the capacity
-ceiling +36%. The practical takeaway for serving-system designers is compact: <b>stop optimizing hit rate and prefill
-fairness for the tail; measure and minimize residency.</b></p>
+test&mdash;predicted a novel positive mechanism (giant acceleration) that raises the capacity ceiling +36%
+(deterministic) and reliably wins goodput@SLO at &lambda;=3, while the higher-rate goodput extension remains
+coin-flip-limited exactly as the margin law says. The practical takeaway for serving-system designers is compact:
+<b>stop optimizing hit rate and prefill fairness for the tail; measure and minimize residency.</b></p>
 
 <h2>9 Reproducibility</h2>
 <ul>

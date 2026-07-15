@@ -143,6 +143,16 @@ for even the largest 191K-token document is 6.95&nbsp;s&nbsp;&lt;&nbsp;8&nbsp;s&
 so <em>every</em> SLO violation is contention, not service time. Offline goodput therefore equals C, and the gap between
 measured goodput and C is a pure contention factor (&asymp;6.7&times; between contended and solo prefill rate). The
 runaway <em>is</em> that contention.</p>
+<div class="keyfinding"><b>C is the effective prefill throughput, and the residency lever pulls it directly.</b> At
+saturation (&lambda;=10, identical workload of 99.9M input tokens) the measured request throughput tracks the measured
+prefill token throughput to three significant figures: acceleration&rsquo;s +36% in req/s (4.14&rarr;5.65) equals its
++36% in prefill throughput (58.8K&rarr;80.2K tok/s). Since K&nbsp;=&nbsp;R&middot;N/P<sub>total</sub> is proportional to
+the effective prefill rate R, this <em>is</em> the K-lever, measured directly: acceleration lifts R (hence K, hence C)
+by +36% at fixed h. And it does so not by performing more prefill work but by reclaiming decode&rsquo;s share of GPU
+wall-clock&mdash;decode time-per-token falls 561&rarr;423&nbsp;ms (&minus;25%) at essentially equal concurrency
+(247&rarr;243), so more wall-clock goes to prefill. Whether the residual ceiling (C&nbsp;&ge;&nbsp;5.65) is a
+prefill-compute or a decode-bandwidth wall requires a saturation profile (a Paper&nbsp;7 question); the theory predicts
+the latter.</div>
 
 <h2>4 The design-space partition</h2>
 <p>The law predicts a sign for every axis. We tested each; all match.</p>

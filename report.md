@@ -721,3 +721,15 @@ goodput@SLO=5 UNCHANGED (λ3,5 PASS; λ7,10 FAIL). Propagated the +36% + λ=10 r
 capstone §5 table+abstract+§3+conclusion, INDEX, SYNTHESIS, memory. All HTML validated, no stale 26%/5.2 left.
 Integrity: analyze_firm.py reconfirmed Fisher 0.0397/MWU tpot 0.0159/conc 0.0079 match paper; also fixed understated
 stock tpot range (392→319-607) + a dropped §5 heading in P6.
+
+## PAPER 7 NUCLEUS (from existing data, no GPU): C = effective prefill throughput; accel's +36% IS the K-lever measured directly (10:00)
+analysis/prefill_ceiling.py (bench_r10.json, saturation λ=10, same 99.9M-token workload):
+- ★C = EFFECTIVE PREFILL TOKEN THROUGHPUT: accel/stock req ratio 1.364 == prefill-throughput ratio 1.364 (to 3 sig figs;
+  input_throughput accel 80,190 vs stock 58,806 tok/s). Workload is prefill-throughput-bound at saturation.
+- ★K-LEVER MEASURED DIRECTLY: K=R·N/P_total ∝ R (effective prefill rate). accel raises R +36% → K +36% → C +36% at
+  fixed h. Unifies P2 (K∝R) + P6 (accel=K-lever) QUANTITATIVELY.
+- ★MECHANISM at throughput level: accel reclaims decode's GPU wall-clock share — decode tpot 561→423ms (−25%) at ~equal
+  concurrency (247→243) → more wall-clock for prefill → +36% prefill throughput. NOT more prefill work.
+- Compute-vs-memory ceiling attribution: linear-prefill MFU ~7-10% BUT attention-score FLOPs for 191K-tail are large →
+  back-of-envelope CANNOT settle it → needs a saturation profiler (prefill-kernel vs decode-kernel wall-clock share) =
+  the clean Paper 7 experiment. Theory predicts decode-BW wall. Added as capstone §3 keyfinding.

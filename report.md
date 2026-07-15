@@ -867,3 +867,11 @@ budget split forfeits it. ⇒ Paper 2 as a POSITIVE mechanism is dead (occupied+
 negative ("fairness and tail-goodput are opposed in prefill scheduling"), which may be too incremental to stand
 alone → consider FOLDING the SRPF+reserve evidence into a Paper 1 REVISION (correct §3.3 + add the fair-mechanism
 boundary) rather than a weak Paper 2. DECIDE after srpf replication (n≥3, reps 2-5 landing) + λ3 + reserve ablation.
+
+### λ3 reserve NEGATIVE + srpf λ5 n=3 (2026-07-15 ~05:01Z)
+λ3 reserve2048 rep1: p99 18197ms vs reserve0 λ3 median 8093 = +125% WORSE (p50 -11%, req -8%). ⇒ the fair
+reserve FAILS at BOTH λ3 (+125%) AND λ5 (+75%) — never helps goodput, only median. NOT load-specific. Completes
+the boundary: capturing SRPF's benefit REQUIRES deferring the heavy docs; a fair non-starving budget split
+forfeits it (too thin to clear the HOL backlog, and slows the mega-doc → extends congestion). srpf λ5 n=3: 3/3
+pass {5530,6983,7028} median 6983 (-70.8% vs fcfs), Fisher p=0.018 — correction rock-solid. FOLDING the
+reserve-fails boundary into Paper 1 §5.6 (the fair alternative to SRPF fails → benefit requires deferral).

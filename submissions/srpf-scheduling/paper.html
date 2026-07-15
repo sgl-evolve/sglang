@@ -116,7 +116,8 @@ exactly SPT, which is provably optimal for minimizing total weighted completion 
 performance</strong>. Aging (promoting long-waiting cold docs after 5 s) causes cascading budget
 starvation (+322% p99 at &lambda;=5). Queue-pinning (retaining KV for queued requests) is neutral
 (91.8% of queued requests have no cached prefix). Adaptive chunking is inert (activation window
-doesn't overlap cold-doc arrivals).</p>
+doesn't overlap cold-doc arrivals). Chunk-reserve (sharing the iteration budget with short requests)
+worsens p99 because the tail is mega-doc own-prefill, not HOL-blocked continuations.</p>
 
 <h2>3. Experimental Setup</h2>
 
@@ -190,13 +191,23 @@ is genuinely independent of r5 performance.</p>
 
 <p>We exhaustively bound the mechanisms that could improve goodput beyond SRPF:</p>
 
-<h3>5.1 Budget optimization (3 mechanisms, all closed)</h3>
+<h3>5.1 Budget optimization (4 mechanisms, all closed)</h3>
 <table>
 <tr><th>Mechanism</th><th>Result</th><th>Diagnosis</th></tr>
 <tr><td>QPAC (adaptive chunk size)</td><td>NEUTRAL</td><td>Inert at SLO rates (queue &lt; 15)</td></tr>
 <tr><td>IBAC (input budget after chunk)</td><td>NEUTRAL</td><td>Bypass volume 0.6%, too small</td></tr>
 <tr><td>DBS (dual budget separation)</td><td><strong>STRONG NEG</strong></td><td>Iteration budget "waste" protects decode</td></tr>
+<tr><td>Chunk-reserve (iteration-budget sharing)</td><td><strong>STRONG NEG</strong></td><td>p99 is mega-doc own-prefill, not HOL victims</td></tr>
 </table>
+<p><strong>Chunk-reserve insight:</strong> Reserving 2048 tokens of the 6144-token chunked-prefill budget
+for short waiting requests (SGLANG_CHUNK_RESERVE) helps continuations (22.5% multi-sequence batches)
+but <em>increases</em> mega-document TTFT by capping their per-iteration progress to 4096 tokens.
+Under SRPF, p99 is determined by cold-document own-prefill time, not queue-blocked continuations.
+Server log analysis confirms: 70.4% of full-chunk iterations exhibit head-of-line blocking (1183 chains,
+max 390 iterations), but PASS/FAIL runs have structurally identical blocking patterns &mdash; the outcome
+is determined by mega-doc prefill speed, not by how fairly budget is shared.
+Result: r3 p99 8209 ms (FAIL), r5 p99 10886 ms (FAIL) &mdash; both rates PASS under baseline SRPF+WB.
+Independently corroborated by sibling researcher (kleinrock: +75% at &lambda;=5, +125% at &lambda;=3).</p>
 
 <h3>5.2 Scheduling beyond SRPF (all closed)</h3>
 <table>
@@ -236,6 +247,9 @@ unreliable metric into a reliable one, enabling meaningful A/B testing.</p>
 but WT doesn't recreate on eviction &rarr; entries permanently lost.</li>
 <li><strong>SRPF aging CATASTROPHIC:</strong> Any deviation from pure SRPF ordering cascades through the
 budget structure.</li>
+<li><strong>Chunk-reserve STRONG NEGATIVE:</strong> Budget-sharing between mega-doc chunked prefill and short
+waiting requests is counterproductive &mdash; p99 is mega-doc-TTFT-dominated, not HOL-victim-dominated.
+Independently corroborated by a sibling researcher.</li>
 </ul>
 
 <h2>8. Related Work</h2>

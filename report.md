@@ -783,7 +783,7 @@ hardware, fewer cold documents (workload-dependent), or architectural changes (p
   Device eviction policy closed (cost-aware DEVICE NEUTRAL — burst-time eviction is all-or-nothing).
   Scheduling beyond SRPF closed: aging CATASTROPHIC (cascade), QP-KV NEUTRAL (nothing to pin), adaptive
   chunk INERT (activation window doesn't overlap cold-doc arrival). Budget optimization closed (IBAC NEUTRAL,
-  QPAC NEUTRAL, DBS STRONG NEG). Remaining: hardware or architecture.
+  QPAC NEUTRAL, DBS STRONG NEG, chunk-reserve STRONG NEG). Remaining: hardware or architecture.
 - **Generalizable insight:** on decode-bound hybrid-Mamba serving with working-set ≫ cache, lossless gains come
   from TWO orthogonal levers: (1) capacity de-dup (config-reachable, +11% throughput, +goodput reliability)
   and (2) cache-aware admission scheduling (novel code, +37–66% goodput). A maintainer should adopt BOTH

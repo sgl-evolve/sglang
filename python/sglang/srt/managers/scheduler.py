@@ -1005,6 +1005,11 @@ class Scheduler(
         self._turing_giant_accel = os.environ.get("SGLANG_TURING_GIANT_ACCEL", "0") == "1"
         self._turing_accel_theta = float(os.environ.get("SGLANG_TURING_ACCEL_THETA", "0.85"))
         self._turing_accel_factor = float(os.environ.get("SGLANG_TURING_ACCEL_FACTOR", "2.0"))
+        # trigger-signal ablation (default "occ" == original behavior, byte-identical): which pressure
+        # signal gates the boost — device-KV occupancy ("occ"), waiting-queue depth ("queue", P5's HOL
+        # signal), or "either". qthresh = min #waiting reqs to fire the queue trigger.
+        self._turing_accel_signal = os.environ.get("SGLANG_TURING_ACCEL_SIGNAL", "occ")
+        self._turing_accel_qthresh = int(os.environ.get("SGLANG_TURING_ACCEL_QTHRESH", "2"))
         uses_transformers_backend = (
             get_resolved_model_impl(self.model_config) == ModelImpl.TRANSFORMERS
         )
@@ -2885,7 +2890,16 @@ class Scheduler(
                     _occ = 1.0 - _alloc.available_size() / _alloc.size
                 except Exception:
                     _occ = 0.0
-                if _occ > self._turing_accel_theta:
+                # trigger-signal ablation: which pressure signal fires the boost.
+                _sig = getattr(self, "_turing_accel_signal", "occ")
+                _occ_hot = _occ > self._turing_accel_theta
+                if _sig == "queue":          # P5's HOL signal: fire when shorts are waiting
+                    _fire = len(self.waiting_queue) >= self._turing_accel_qthresh
+                elif _sig == "either":       # occupancy OR queue-depth
+                    _fire = _occ_hot or (len(self.waiting_queue) >= self._turing_accel_qthresh)
+                else:                        # "occ" (default) — original byte-identical behavior
+                    _fire = _occ_hot
+                if _fire:
                     _boost = int(adder.rem_chunk_tokens * self._turing_accel_factor)
                     adder.rem_chunk_tokens = min(_boost, self.max_prefill_tokens)
             # turing Paper-5: fair-share chunk interleaving (env-gated, lossless).

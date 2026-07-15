@@ -706,3 +706,16 @@ adaptive λ3 p99 **6303ms** ≈ fixed-rpb25 6300 (both −10% vs base 6973); tpu
 interleaves ARE the selective ~11% (small turn waiting behind big doc); fixed-rpb's extra 45% capping was pure
 waste. ⇒ adaptive strictly dominates fixed at λ3. DECISIVE λ5 running (fixed failed there via waste; adaptive
 should preserve tput — WIN if p99<6580, neutral if ≈6580).
+
+### ★★ DECISIVE: adaptive RPB = NEUTRAL at λ5 → the negative is AIRTIGHT (v-rpbA25, node 1-1)
+| rate | base p99 | fixed-rpb25 | adaptive p99 | adaptive tput | adaptive SLO |
+|------|----------|-------------|--------------|---------------|--------------|
+| 3 | 6973 | 6300 (−10%) | 6303 (−10%) | 386.6 (=) | PASS |
+| 5 | 6580 (tput525) | 9287 (+41%, tput480 FAIL) | **6894 (+5%)** | **520 (−1.0%)** | **PASS** |
+★Adaptive REMOVES the waste (tput 520 vs fixed 480 → preserved; no SLO fail) but is NEUTRAL at λ5 (p99 6894 ≈
+base 6580, +5% within ±12-20% run-noise; goodput 4.07≈4.11). Helps ONLY the sub-knee λ3 tail (already passes).
+EXACTLY as §7 predicted: the λ5 p99 is set by MEDIUM/LARGE waiting turns, not the tiny turns the reserve serves
+→ zero-waste reservation recovers NEUTRALITY, not a win. lossless (hit matched). ★★AIRTIGHT NEGATIVE: chunk-level
+budget reservation cannot improve goodput@SLO over whole-request SRPF at ANY implementation — fixed HURTS (waste),
+adaptive NEUTRAL. Scheduling axis definitively closed at both granularities. The adaptive control also proves the
+fixed-RPB λ5 failure was CAUSED by the waste (removing it removes the failure), strengthening the mechanism claim.

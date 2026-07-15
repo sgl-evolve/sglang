@@ -54,8 +54,9 @@ speeds memory-bound decode as the law predicts; and the coin-flip-sensitive SLO-
 (accel 4/4 vs stock 1/5, one-sided Fisher p&nbsp;=&nbsp;0.040). The
 win establishes that the tail's lever is <em>residency reduction</em>: because decode is memory-bound, extra prefill
 tokens are nearly "free" under the decode stall, so a bigger chunk finishes the giant in fewer <em>same-length</em>
-steps. This is the first positive, lossless, on-contract mechanism in the series; it is orthogonal to (and composes
-with) whole-request shortest-first scheduling. <b>Beyond &lambda;=3, giant acceleration raises the goodput@SLO
+steps. This is the first positive, lossless, on-contract mechanism in the series; it is orthogonal by construction to
+whole-request shortest-first scheduling (it reshapes an in-flight prefill rather than reordering the queue), so the two
+are expected&mdash;but not here shown&mdash;to compose. <b>Beyond &lambda;=3, giant acceleration raises the goodput@SLO
 frontier itself:</b> a full rate sweep passes the SLO at both &lambda;=3 (4.5&nbsp;s) and &lambda;=5 (3.4&nbsp;s,
 throughput 4.85&nbsp;req/s &mdash; stable) where stock is unstable and fails (p99 17&ndash;20&nbsp;s), lifting
 goodput@SLO from 3 to 5&nbsp;req/s (+67%) by raising the effective capacity ceiling from 4.14 to at least
@@ -94,6 +95,15 @@ tokens to that step is nearly free (compute headroom under the memory stall). A 
 giant in half the steps at &asymp;the same step-time&mdash;halving its wall-clock residency. (The naive worry that a
 bigger chunk makes each step proportionally longer would hold only if prefill were compute-bound; the measured decode
 speedup refutes it.)</div>
+<p><b>Why occupancy-gating, not a larger global chunk?</b> One might ask whether simply raising
+<span class="mono">chunked_prefill_size</span> from 6144 to 16384 everywhere would do the same. It would not, for two reasons.
+First, an unconditional larger chunk enlarges <em>every</em> prefill step, worsening prefill&harr;decode interference in
+the common (unsaturated) case&mdash;precisely the mean-latency cost that motivated Sarathi-Serve to chunk
+<em>smaller</em>. Our boost fires only when device-KV occupancy &rho;&nbsp;&gt;&nbsp;&theta; (0.85), i.e. only when a
+giant is actually feeding the runaway; below &theta; the schedule is byte-for-byte stock, so there is no common-case
+penalty. The policy is thus <em>state-dependent</em> and reproducible by no single static chunk size: small when the
+system is healthy, large exactly when a giant must be cleared. Second, <span class="mono">chunked_prefill_size</span> is
+a frozen contract knob; the contribution is the occupancy-adaptive control law, not a re-tuned constant.</p>
 
 <h2>3 Result: p99 halved, SLO crossed, statistically significant</h2>
 <p>Same-node A/B at &lambda;=3 (<span class="mono">GIANT_ACCEL</span> on vs off; identical deterministic workload;
@@ -213,7 +223,8 @@ composable mechanism.</div>
 wins. Together they establish that the goodput tail is governed by giant <em>residency</em>, and that the levers are
 (a) capacity, (b) whole-request shortest-first scheduling (reduces the number of in-flight requests), and now
 (c) giant acceleration (reduces each giant's residency). (a)/(b)/(c) all reduce concurrency; the failed mechanisms all
-raised it. Giant acceleration is orthogonal to whole-request reordering and composes with it.</p>
+raised it. Giant acceleration is orthogonal to whole-request reordering (intra-step chunk budget vs inter-request
+queue order); whether the two residency levers compose additively is a natural but untested extension.</p>
 
 <h2>6 Related work</h2>
 <p>Sarathi-Serve chunks prefill <em>smaller</em> to bound prefill&harr;decode interference for mean latency; giant

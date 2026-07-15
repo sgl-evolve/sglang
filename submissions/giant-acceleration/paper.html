@@ -240,6 +240,36 @@ composable mechanism.</div>
 <tr><td>3</td><td class="win">5.2&nbsp;s</td><td class="fail">20.5&nbsp;s</td><td class="fail">3</td><td>5.46</td></tr>
 </tbody>
 </table>
+<figure style="margin:1rem 0;text-align:center">
+<svg viewBox="0 0 460 300" width="100%" style="max-width:30rem" font-family="Georgia,serif" role="img"
+     aria-label="goodput@SLO versus acceleration factor f: an inverted-U peaking at f=2">
+  <line x1="70" y1="260" x2="420" y2="260" stroke="#1a1a1a" stroke-width="1.2"/>
+  <line x1="70" y1="260" x2="70" y2="40" stroke="#1a1a1a" stroke-width="1.2"/>
+  <!-- y ticks 0,3,5 -->
+  <line x1="66" y1="150" x2="420" y2="150" stroke="#eee" stroke-width="1"/>
+  <line x1="66" y1="77" x2="420" y2="77" stroke="#eee" stroke-width="1"/>
+  <text x="60" y="264" text-anchor="end" font-size="11" fill="#666">0</text>
+  <text x="60" y="154" text-anchor="end" font-size="11" fill="#666">3</text>
+  <text x="60" y="81" text-anchor="end" font-size="11" fill="#666">5</text>
+  <text x="22" y="150" text-anchor="middle" font-size="12" fill="#1a1a1a" transform="rotate(-90 22 150)">goodput@SLO (req/s)</text>
+  <!-- bars: f=1 stock ->3, f=2 ->5 (peak), f=3 ->3 -->
+  <rect x="100" y="150" width="60" height="110" fill="#888"/>
+  <rect x="215" y="77"  width="60" height="183" fill="#1a6a1a"/>
+  <rect x="330" y="150" width="60" height="110" fill="#888"/>
+  <text x="130" y="144" text-anchor="middle" font-size="12" fill="#666" font-weight="bold">3</text>
+  <text x="245" y="71"  text-anchor="middle" font-size="12" fill="#1a6a1a" font-weight="bold">5</text>
+  <text x="360" y="144" text-anchor="middle" font-size="12" fill="#666" font-weight="bold">3</text>
+  <text x="245" y="57"  text-anchor="middle" font-size="11" fill="#1a6a1a">&#9650; optimum</text>
+  <!-- x labels -->
+  <text x="130" y="276" text-anchor="middle" font-size="11" fill="#666">f=1 (stock)</text>
+  <text x="245" y="276" text-anchor="middle" font-size="11" fill="#1a6a1a" font-weight="bold">f=2</text>
+  <text x="360" y="276" text-anchor="middle" font-size="11" fill="#666">f=3</text>
+  <text x="245" y="292" text-anchor="middle" font-size="12" fill="#1a1a1a">acceleration factor f</text>
+</svg>
+<figcaption style="font-size:.82rem;color:#666;margin-top:.2rem">Figure 2. goodput@SLO vs acceleration factor: an
+inverted-U peaking at f=2. Under-boosting (stock) and over-boosting (f=3) both give goodput@SLO=3; f=2 reaches 5.
+(f=1 plotted at its best-case draw, 3, of the 0&ndash;3 coin-flip; f=1.5 point pending.)</figcaption>
+</figure>
 <div class="keyfinding"><b>Goodput@SLO is an inverted-U in f, peaking at f=2.</b> Under-boosting (stock, f=1) lets giants
 linger; over-boosting (f=3) is <em>also</em> harmful. Notably, over-acceleration is a <b>tail failure, not a throughput
 failure</b>: f=3 keeps almost the same raw saturated capacity (C&nbsp;5.46&nbsp;&asymp;&nbsp;f=2's&nbsp;5.65) but its

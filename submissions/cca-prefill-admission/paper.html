@@ -204,7 +204,8 @@ TTFT-optimal and not a further lever (shifting steps to decode would only lower 
 deep queue is now meaningful: shortest-prefill-first (SRPF/SJF, a classic scheduling policy) raises
 throughput to the ~4.2&nbsp;req/s work-conservation ceiling of §2.3. Our own same-node SRPF sweep confirms
 it at both regimes: <b>λ=5 p99 TTFT 5.85&nbsp;s at 4.16&nbsp;req/s</b> (below the SLO), versus stock's
-17.4&nbsp;s stable failure — so goodput@SLO rises from the λ=3 coin-flip (≤3&nbsp;req/s) to
+stable λ=5 failure (17–24&nbsp;s across runs; the same-node control drew 22.7&nbsp;s) — so goodput@SLO rises
+from the λ=3 coin-flip (≤3&nbsp;req/s) to
 <b>4.16&nbsp;req/s</b>, the compute ceiling. No reordering crosses that ceiling — the remaining gap is the
 compute wall, not a policy we have failed to find. (SRPF is textbook; the contribution is the
 head-of-line diagnosis and the admission negative that together show scheduling — not admission or

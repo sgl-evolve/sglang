@@ -745,3 +745,11 @@ draw. HONEST n=2 reframe: fixed RPB has NO robust sub-knee benefit; the only rob
 the goodput rate). Must update P4 §5: soften "helps λ3 −10%" → "λ3 within coin-flip noise (no robust effect)".
 Awaiting fixed r2 λ5 (confirms the robust harm) + adaptive r2 (framing decider). NOTE λ3 metastability was my
 own core thesis — single-run λ3 comparisons unreliable — so this is expected, not surprising.
+
+### n=2 firming — fixed-RPB λ5 HARM CONFIRMED robust (2026-07-15)
+fixed RPB λ5 n=2: {9287, 9927} (mean 9607, BOTH fail 8s SLO), tput {480, 485} vs baseline {6580,6411}/{525,539}.
+⇒ the +48% p99 / −9% throughput harm is ROBUST (not a fluke) — both fixed runs fail via reserve waste. Core
+negative n=2-solid. λ3 effects are within coin-flip noise (both). REMAINING: adaptive replicate (v-rpbA25-r2,
+next) decides adaptive-λ5 wording — adaptive r1 λ5 6894 vs baseline mean 6496 (+6%); if r2 ≈6500 → neutral, if
+≈6900 → small real regression. Either way the CONCLUSION holds (chunk-level reservation can't improve goodput:
+fixed robustly hurts, adaptive at best neutral).

@@ -8,8 +8,8 @@ best schedule can't beat a request's own prefill time); above it stock catches u
 compute-bound at the ~4.2 ceiling). If 8s sits inside a wide window, the conclusion is robust.
 
 Measured p99 TTFT (ms), same-node where available:
-  stock: λ3 7612 (this control; a passing coin-flip draw — λ3 spans {6327..11786}), λ5 17372,
-         λ7 33961, λ10 41334  (λ5/7/10 from runs/v0-stock; λ5 stock is stable-fail)
+  stock: λ3 7612, λ5 22746 (SAME-NODE control runs/v-stock-srpfctl, node 0-3; λ5 stable-fail),
+         λ7 33961, λ10 41334  (λ7/10 from runs/v0-stock, overload/node-insensitive)
   srpf : λ3 5892, λ5 5850     (runs/v-srpf-r1; λ7/10 not measured — arrival>capacity ~4.2 => overload
          => p99 grows unboundedly => treated as FAIL, conservative for SRPF)
 """

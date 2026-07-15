@@ -226,7 +226,8 @@ efficient realization of head-of-line relief is reordering, not budget-partition
 <b>The result is robust to the SLO threshold, not an artifact of 8&nbsp;s.</b> Sweeping the threshold
 <code>T</code> over the measured curves (<code>analysis/slo_sensitivity.py</code>), scheduling is the lever
 — SRPF's achieved goodput strictly exceeds stock's — for <code>T</code> across the entire practical range
-≈[6, 41]&nbsp;s (+38% at the 8&nbsp;s SLO, narrowing to +4% by 40&nbsp;s). Only below ~6&nbsp;s does the
+≈[6, 41]&nbsp;s (+38% from the 8&nbsp;s SLO out to ~22&nbsp;s, then narrowing to ~1% by 34&nbsp;s as stock's
+slow rates begin to clear). Only below ~6&nbsp;s does the
 gap close because even SRPF's λ=3 (5.9&nbsp;s) hits a request's own prefill floor — a policy-invariant
 compute limit that <em>no</em> KV-cache or scheduling decision can cross — and only above ~41&nbsp;s does it
 close because stock's slow rates finally clear the loose SLO and both converge to the ~4.2&nbsp;req/s

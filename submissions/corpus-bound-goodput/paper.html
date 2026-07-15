@@ -35,14 +35,15 @@ which no eviction or retention policy can remove. The only "avoidable" re-prefil
 benchmark artifact of sweeping four request rates over the same conversation set, and even that is
 un-capturable by any online policy (LFU ≈ LRU; only a clairvoyant oracle recovers it). The eviction
 policy is a live, pluggable knob on the active cache, but since LRU is already Belady-optimal here no
-policy can beat it — a partial LFU rate-sweep corroborated this, building a <em>deeper</em> prefill queue
-than LRU (degrading, not improving). <b>Caching is thus a mirage for this workload: no eviction or
-retention policy improves goodput.</b> But that does not mean goodput is fixed — it means the lever is
+policy can beat it — the dispositive evidence is the LRU=Belady proof itself; a live LFU run is consistent
+(it builds a ~3× deeper prefill queue than LRU at λ=3). <b>Caching is thus a mirage for this workload: no
+eviction or retention policy improves goodput.</b> But that does not mean goodput is fixed — it means the lever is
 elsewhere. We show the actual bottleneck is <em>scheduling</em>: the few large cold-document prefills run
 back-to-back and cause <em>head-of-line blocking</em> (the p99 TTFT of 6–11&nbsp;s is queue-wait, since
 &lt;0.1% of turns prefill ≥6&nbsp;s), and shortest-prefill-first scheduling relieves it (in a calibrated
-simulation the λ=3 coin-flip collapses from mean 7.5&nbsp;s, straddling the SLO, to ~4&nbsp;s all-passing,
-and a same-node GPU run of SRPF at λ=3 lands at p99 5.9&nbsp;s, below the SLO). The takeaway inverts the
+simulation non-preemptive SRPF — the deployed policy — brings the λ=3 coin-flip from mean 7.5&nbsp;s to
+~6&nbsp;s all-passing; a preemptive idealization reaches ~4&nbsp;s), and a same-node GPU run of SRPF at λ=3
+lands at p99 5.9&nbsp;s, below the SLO, matching the non-preemptive simulation. The takeaway inverts the
 intuition: on a workload that looks caching-shaped, <b>cache retention is a non-lever and scheduling of
 the heavy cold prefills is the lever</b> — the reuse is corpus-fixed, but the goodput is schedulable.
 </div>
@@ -65,12 +66,14 @@ re-use a document another already prefilled. Naively even that concentration sig
 <li><b>The mirage, proven (§3).</b> Replaying the real trace through the cache, single-pass LRU is
 Belady-optimal — LRU = LFU = Belady = <b>0 avoidable re-prefill</b> at the real capacity. Hot documents
 are trivially resident (hot-doc recurs at median gap 6, inside the horizon); singleton documents have no reuse to capture. Eviction
-policy is a live but non-improving knob (a live LFU/SLRU A/B degrades, not helps).</li>
+policy is a live but non-improving knob — dispositively by the LRU=Belady proof, and a live LFU run is
+consistent (it builds a ~3× deeper prefill queue than LRU).</li>
 <li><b>The real lever is scheduling, not caching (§4–5).</b> The goodput bottleneck is head-of-line
 blocking: the few large cold-document prefills run back-to-back and stall small turns (the λ=3 p99 of
 6–11&nbsp;s is queue-wait — &lt;0.1% of turns prefill ≥6&nbsp;s). Shortest-prefill-first scheduling relieves
-it (a calibrated simulation collapses the λ=3 coin-flip from mean 7.5&nbsp;s to ~4&nbsp;s all-passing, and a
-same-node GPU run of SRPF at λ=3 lands at p99 5.9&nbsp;s, below the SLO), while caching and admission cannot.
+it (a calibrated simulation brings the λ=3 coin-flip from mean 7.5&nbsp;s to ~6&nbsp;s all-passing under
+non-preemptive SRPF — the deployed policy; a preemptive idealization reaches ~4&nbsp;s — and a same-node GPU
+run of SRPF at λ=3 lands at p99 5.9&nbsp;s, below the SLO), while caching and admission cannot.
 SRPF/SJF is a classic policy; our contribution is the diagnosis that it — not cache retention — is the
 goodput lever here. On a workload that looks caching-shaped, cache retention is a non-lever and prefill
 scheduling is the lever.</li>
@@ -115,6 +118,14 @@ tokens) and measure, for LRU, LFU, and the clairvoyant Belady optimum, the work 
 (first-ever sight of a document — irreducible) and <b>avoidable</b> (a document evicted and later
 re-prefilled — the only work a better policy could remove). The stock radix cache keys on token content,
 so an identical document re-used by another conversation is a hit whenever it is resident.
+</p>
+<p style="font-size:14px;color:#555">
+The "doc-hit" below (13%) is the fraction of <em>document-bearing conversations</em> served from cache — a
+<em>cross-conversation</em> quantity. It is deliberately much smaller than the server's reported token
+hit-rate (~0.68), which is dominated by <em>within-conversation</em> turn-1..N prefix reuse (each turn reuses
+its own conversation's accumulated context). That intra-conversation reuse is trivially cached and
+orthogonal to the retention question; the mirage is specifically that the <em>cross-conversation</em>
+document reuse — the only kind a smarter global retention policy could add — is near-zero.
 </p>
 <table>
 <caption>Trace-driven document-cache replay at CAP = 10.7M tokens, over the 1015 document-bearing
@@ -163,19 +174,25 @@ The eviction policy <em>is</em> a live, pluggable knob on the active cache: the 
 <code>--radix-eviction-policy {lru,lfu,slru,priority,…}</code> (default LRU). So a policy A/B is
 meaningful, not a no-op. But §3.1 already settles the outcome: since single-pass LRU is Belady-optimal
 (zero avoidable re-prefill), <em>no</em> eviction policy can beat LRU on this workload — the only thing a
-different policy can do is match it or do worse. This is dispositive by proof, so we do not spend a full
-confirmatory sweep on it; a partial LFU rate-sweep corroborates the direction — at λ=3, where stock LRU
-keeps the prefill queue near-empty, LFU instead builds a deep queue (queue-depth p50≈7, p90≈91),
-<em>degrading</em> rather than improving (consistent with prior reports that frequency-based eviction is
-neutral-to-catastrophic on this serving workload). Eviction policy is thus a non-lever for
+different policy can do is match it or do worse. This is dispositive by proof, so we do not rely on a policy
+sweep. A partial live LFU run is <em>consistent</em> with it but is not itself load-bearing: the LFU
+benchmark did not complete a clean p99 (we report no LFU goodput number), and from its server log LFU builds
+a markedly deeper prefill queue than stock LRU at λ=3 — overall queue-depth mean 24.7 (p50 7, p90 91) versus
+stock's overall mean 7.8 (p50 1, p90 16), a ~3× deeper queue. That is directional corroboration only (deeper
+queue, no measured goodput gain), in line with prior reports that frequency-based eviction is
+neutral-to-catastrophic on serving workloads; the <em>proof</em>, not this run, is what establishes the
+result. Eviction policy is thus a non-lever for
 <em>improving</em> goodput — dispositively by the LRU=Belady proof, and corroborated empirically.</p>
 <h3>3.4 Generalization: a caching-headroom phase boundary</h3>
 <p>
-The mirage generalizes through a simple, measurable boundary. LRU captures a re-use exactly when its
-<em>stack-distance</em> — the number of <em>distinct</em> documents touched since the document was last
-used — is below the cache horizon <code>H = CAP / mean-doc-size</code> (in documents); a re-use with
-stack-distance above <code>H</code> is evicted by LRU and is the only kind a popularity-aware policy could
-keep. So the online caching headroom of <em>any</em> corpus is exactly the fraction of its re-uses with
+The mirage generalizes through a simple, measurable boundary — the classic LRU <em>stack-distance</em>
+property (Mattson et&nbsp;al. 1970; Denning's working-set theory), which we apply at <em>document</em>
+granularity to the goodput question. LRU captures a re-use exactly when its stack-distance — the number of
+<em>distinct</em> documents touched since the document was last used — is below the cache horizon
+<code>H = CAP / mean-doc-size</code> (in documents); a re-use with stack-distance above <code>H</code> is
+evicted by LRU and is the only kind a popularity-aware policy could keep. Our contribution is not the
+stack-distance result itself but its use as a corpus-statistics-only predictor of whether the KV-cache is a
+goodput lever. So the online caching headroom of <em>any</em> corpus is exactly the fraction of its re-uses with
 stack-distance &gt; H. Here <code>H ≈ 516</code> documents while the re-use stack-distance is small
 (p50 = 10, p90 = 197, max = 518): <b>127 of the 128 document re-uses (99.2%) fall within the horizon</b> and
 are LRU-captured, leaving ~0.8% headroom — one re-use at stack-distance 518, just past H
@@ -220,10 +237,14 @@ in the mirage regime (<code>analysis/phase_boundary_realcorpora.py</code>).</cap
 <tr><td>LooGLE full</td><td>701</td><td>701</td><td>443</td><td>0</td><td>— (all singletons)</td><td class="b">0.0%</td><td>mirage</td></tr>
 </table>
 <p>
-All four land at ~0 headroom — long-document QA either re-uses documents at a short stack-distance (well
-inside <code>H</code>) or not at all (pure singletons), so LRU is Belady-optimal on every one. The mirage is
-thus a property of the <em>workload class</em>, predicted from corpus statistics alone, not an artifact of
-the eval trace. A corpus escapes the mirage only if its hot documents recur at stack-distance beyond the
+All four land at ~0 headroom, but honestly they exercise the boundary to differing degrees: mooncake and
+LEval have real document reuse (128 re-uses each) and it sits well inside <code>H</code>, while the two
+LooGLE corpora are <em>pure singletons</em> (0 re-uses) — trivially mirage, with no reuse to capture. So the
+evidence is "two long-doc corpora with reuse, both short-distance, plus two with none," and these are the
+eval mix's own constituents rather than fully independent workloads. Within that scope the mirage is a
+property of the <em>workload class</em>, predicted from corpus statistics alone, not an artifact of a single
+trace; establishing it on an <em>independent</em> corpus engineered to have long-range reuse (which the
+criterion predicts <em>would</em> escape the mirage) is the natural next test. A corpus escapes the mirage only if its hot documents recur at stack-distance beyond the
 horizon — a large working set re-used long-range, which document-QA structurally is not (its hot document
 recurs at a median gap of six conversations, all but one re-use inside <code>H</code>). The corollary for
 practitioners: measure your corpus's reuse stack-distance against <code>H = CAP/mean-doc</code> before
@@ -235,9 +256,14 @@ lever is elsewhere (§5).
 <p>
 With caching at its optimum, two corpus-and-hardware quantities frame the metric — but neither is the
 whole story. <b>(1) Throughput ceiling (a hard cap).</b> No policy can sustain a request rate whose prefill
-work exceeds the GPU's prefill throughput C: goodput ≤ C / mean-unique-document-work. On the measured
-system C ≈ 18–19 k tok/s and the mean cold-document work is ≈ 4.3 k tok/turn, giving a ceiling of
-~4.2 req/s — exactly the measured saturation. This cap is corpus/hardware-set and caching cannot raise it.
+work exceeds the GPU's prefill throughput C: goodput ≤ C / mean-cache-adjusted-work. With the mean
+cache-adjusted work of 3594 tok/turn (§2's LRU replay) and the effective cold-prefill throughput
+C_eff ≈ 15 k tok/s <em>backed out from the saturated stock run</em>, the ceiling is ~4.2 req/s. This is a
+<em>self-consistency check, not an independent prediction</em> — C_eff is calibrated to the saturation, so
+the ceiling reproduces the measured ~4.2 by construction; a FLOP-side estimate (C ≈ 18–19 k tok/s over the
+larger cold-only mean) lands in the same 3.6–5.6 req/s band from different constants. The takeaway is only
+that saturation is consistent with work-conservation — the cap is corpus/hardware-set and caching cannot
+raise it.
 <b>(2) Per-request prefill floor (a loose lower bound).</b> A request's TTFT cannot be below its own
 prefill time; even the largest document (190.9 k tok) is only ~5 s at the batched ~39 k tok/s, and the p99
 unique-document <em>work</em> (~41 k tok) is ~1–2 s. So the floor is <em>well under</em> the 8 s SLO for
@@ -311,7 +337,7 @@ shortest-prefill-first (green) stays flat at ~5.9&nbsp;s through λ=5, lifting g
 </div>
 <ul>
 <li><b>Caching / retention (this paper) — non-lever.</b> LRU is single-pass Belady-optimal; document reuse
-is already captured; the residual is an un-capturable benchmark artifact; a live LFU/SLRU A/B degrades
+is already captured; the residual is an un-capturable benchmark artifact; a live LFU run builds a deeper queue (not better)
 rather than helps. Zero headroom.</li>
 <li><b>Admission (companion result) — non-lever.</b> Deferring expensive prefills cannot help; it
 <em>worsens</em> the head-of-line blocking below (deferred cold prefills run later and block more turns:
@@ -323,8 +349,10 @@ the waiting queue is 9.6× deeper during big-cold-document prefill chunks</b> (m
 during other prefill steps (mean 1.2, p90 0) (<code>analysis/hol_trace.py</code>) — turns pile up
 specifically behind the big cold docs. A calibrated prefill-schedule simulation
 (<code>analysis/hol_sim.py</code>) reproduces the stock coin-flip (p99 mean 7.5&nbsp;s, straddling the SLO)
-and shows <b>shortest-prefill-first collapses it to ~4&nbsp;s with the coin-flip removed</b> (all seeds
-pass), while round-robin interleaving does not. A same-node GPU SRPF sweep confirms this at both regimes:
+and shows <b>non-preemptive shortest-prefill-first (the deployed policy) brings it to ~6&nbsp;s with the
+coin-flip removed</b> (all seeds pass; a preemptive idealization reaches ~4&nbsp;s), while round-robin
+interleaving does not. The simulator is calibrated at λ=3 and over-serializes above the knee, so we use it
+only for the λ=3 diagnosis. A same-node GPU SRPF sweep confirms this at both regimes:
 <b>λ=3 p99 TTFT 5.9&nbsp;s</b> (p50 519&nbsp;ms) and <b>λ=5 p99 5.85&nbsp;s at 4.16&nbsp;req/s</b>, both below
 the 8&nbsp;s SLO — versus stock's λ=3 coin-flip (mean 8.1&nbsp;s) and λ=5 stable failure (17.4&nbsp;s). So
 <b>goodput@SLO rises from ≤3 (stock, λ=3-bound) to 4.16&nbsp;req/s</b> — the compute ceiling of §4 — purely
@@ -403,7 +431,8 @@ sweep (<code>runs/v0-stock</code>) and the SRPF sweep (<code>runs/v-srpf-r1</cod
 and server logs. The live eviction path (§3.3) is <code>UnifiedRadixCache</code> →
 <code>unified_cache_components/full_component.py</code> (<code>drive_eviction</code> orders by
 <code>eviction_strategy.get_priority</code>), with the strategy selected from
-<code>--radix-eviction-policy</code>; the LFU/SLRU vs LRU A/B runs are in <code>runs/v-evict-*</code>. All
+<code>--radix-eviction-policy</code>; the live LFU run (server-log queue-depth; benchmark did not complete a
+p99) is in <code>runs/v-evict-lfu</code> — the LRU=Belady proof, not this run, is the load-bearing evidence. All
 numbers derive from the frozen evaluation protocol; no eval knobs were changed.
 </p>
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """floyd paper-2: cross-request DOCUMENT reuse analysis for goodput@SLO.
 
-Discovery: the fixed workload is NOT 1553 distinct documents. It is 888 unique
+Discovery: of 1553 conversations, 1015 carry a document (538 are document-free chat). The 1015 are 887 unique
 documents across 1553 conversations, with a heavily skewed popularity (one document
-is the turn-0 context of 538 conversations, another of 100). Naively this looks like
-an enormous caching opportunity (665 conversations re-use a document some other
+is the turn-0 context of 100 conversations, a long tail of singletons). Naively this looks like
+a caching opportunity (~10% of conversations re-use a document some other
 conversation already prefilled). This script shows the headroom is a MIRAGE:
 
   (1) The stock radix cache is keyed on token content, so cross-conversation reuse
@@ -12,7 +12,7 @@ conversation already prefilled). This script shows the headroom is a MIRAGE:
   (2) SINGLE-PASS (one traversal of the 1553-conversation workload) LRU is Belady-
       OPTIMAL: LRU = LFU = Belady = 0 avoidable re-prefill at the real 2-tier
       capacity. Hot documents stay resident (touched constantly); the only misses
-      are first-sight prefills of the 888 unique documents -- irreducibly cold.
+      are first-sight prefills of the 887 unique documents -- irreducibly cold.
   (3) The eval sweeps 4 rates over the SAME conversation set with no flush. Only
       this 4x REPLAY creates avoidable re-prefill (55M tok under LRU) -- and it is
       a benchmark artifact that NO online policy captures (LFU=LRU=54-55M; only the

@@ -10,7 +10,7 @@ in principle be kept by a frequency-/popularity-aware policy.
 
 This makes the "document-reuse mirage" a quantitative, workload-general statement:
 - headroom fraction = fraction of reuses with stack-distance > horizon.
-For the fixed Mooncake-mix workload this fraction is ~0 (99.8% of reuses are within the
+For the fixed Mooncake-mix workload this fraction is ~0 (99.2% of reuses are within the
 horizon), so LRU is optimal and no retention policy helps. A different corpus (large
 working set, long-range reuse) would have a nonzero headroom fraction — the boundary
 predicts which.

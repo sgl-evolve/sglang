@@ -4,7 +4,7 @@
 P2 §3.4 states the boundary: an LRU document cache captures a reuse iff its STACK-DISTANCE
 (distinct docs touched since the last use) is below the horizon H = CAP / mean-doc-size (docs);
 online caching headroom = fraction of reuses with stack-distance > H. The real Mooncake-mix
-workload sits deep in the mirage (reuse stack-distance p90=11 << H≈517 => ~0 headroom).
+workload sits deep in the mirage (reuse stack-distance p90=197 < H≈516 => 0.8% headroom).
 
 The reviewer's question: "does this boundary GENERALIZE, or is it a quirk of one workload?"
 Here we CONSTRUCT synthetic corpora with a tunable reuse stack-distance D and show:
@@ -80,7 +80,7 @@ def main():
         print(f"{fillers:>8} {sd:>11} {sd/H:>5.2f} {la:>12.2f} {ba:>15.2f} {gap:>14.2f}M {regime:>20}")
     print(f"\n=> The LRU-Belady avoidable GAP is 0 for stack-distance < H={H} (MIRAGE: LRU already optimal)")
     print(f"   and jumps positive exactly as stack-distance crosses H — the P2 §3.4 boundary, validated")
-    print(f"   on constructed corpora (not one workload). Real Mooncake-mix: stack-distance p90=11 << H≈517")
+    print(f"   on constructed corpora (not one workload). Real Mooncake-mix: stack-distance p90=197 < H≈516")
     print(f"   => deep in the mirage. A corpus escapes the mirage only if hot docs recur at stack-distance")
     print(f"   > H (large working set, long-range reuse) — which long-document QA corpora structurally are not.")
 

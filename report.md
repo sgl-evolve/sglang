@@ -573,3 +573,68 @@ provides the *rigorous* λ3,5 comparison + Fisher significance; v-srpf-full (nod
 raw ceiling ~4.7 measured, goodput SLO-tail-bound below it. Figure regenerated data-driven from
 `runs/v-srpf-full/curve.csv` (`analysis/gen_curve_svg.py`). W&B logged (v-srpf-full, tag=mechanism).
 All papers re-verified well-formed. Committed + pushed to evolve/floyd.
+
+## ★ NEW DIRECTION (Paper 4): RPB — Reserved-Prefill-Budget chunking (2026-07-15)
+A paper is a checkpoint, not the end. My P3 map bounds *whole-request* scheduling (SRPF, textbook) and the
+FCFS *fast-lane* (dominated). The ONE scheduling sub-axis it does NOT close — and the exact thing a skeptical
+PC would poke at the impossibility claim — is **chunk-level / preemptive** prefill scheduling.
+
+**The residual SRPF leaves.** `--schedule-policy srpf` sorts only the WAITING queue. But the scheduler adds
+the in-flight `chunked_req` to the batch FIRST every step (scheduler.py:2904; `add_chunked_req`,
+schedule_policy.py:727), and it takes `min(cand_len, rem_chunk_tokens)` = the whole per-batch chunk budget.
+So once a big cold doc's chunking starts, it runs ~31 chunks (190K/6144) back-to-back and small turns
+arriving *mid-prefill* still head-of-line block — SRPF cannot preempt an in-flight chunk. This residual GROWS
+with rate (more arrivals land during a big-doc chunk-run), i.e. it bites hardest at λ5 (the goodput-setting
+rate, where deployed SRPF is a marginal 7.8s pass).
+
+**Mechanism (RPB).** When a big doc is mid-chunk AND requests are waiting, cap the in-flight chunk at
+(1−r)·budget and reserve r·budget for the shortest waiting turn(s) (the waiting queue is SRPF-sorted just
+before the adder). Bounds BOTH tails with no starvation: small-turn TTFT ≤ ~1 chunk-time; big-doc slowdown =
+1/(1−r) (bounded). Distinct from pure preemptive SRPT (starves big docs) and my screened FCFS fast-lane
+(no in-flight cap, FCFS bigs). Flags `--enable-rpb-chunking --rpb-reserve-frac` (default 0.25).
+
+**Novelty (config-equivalence check PASSED).** Not a flag: `add_chunked_req` gives the in-flight doc the whole
+budget; `enable_mixed_chunk` mixes *decode* into prefill (not waiting prefills); `enable_dynamic_chunking`
+tunes chunk *size* and is gated `pp_size>1` (we run PP=1 → off); `chunked_prefill_size` is a global knob (a
+smaller value slows everyone, doesn't reserve for smalls). TP-safe (static frac + deterministic SRPF sort →
+identical across ranks; learned from the CCA wall-clock desync hang). Lossless (identical tokens, resliced).
+
+**Impl:** server_args.py (2 flags) + schedule_policy.py (PrefillAdder param + the cap in add_chunked_req) +
+scheduler.py (thread param). +34 lines. py_compile OK. Commit 04940e7cd, pushed.
+
+**Sim screen (`hol_sim.py`, calibrated @λ3):** RPB25 λ3 p99 **6205→4340ms (−30% vs deployed srpf_np)**,
+matching the preemptive-SRPF idealization (4031) WITHOUT full preemption — i.e. RPB captures the benefit
+whole-request SRPF leaves on the table. rpb50 4846 (r=0.25 better — less big-doc slowdown). λ5 sim
+over-serializes (documented artifact) → GPU is the arbiter. Since srpf_np already PASSES λ3 (5.9s GPU), the
+λ3 win is a margin/robustness gain; the test that matters is whether the same ~30% reduction at λ5 turns the
+marginal 7.8s pass into a robust pass.
+
+**GPU A/B (in flight, job 19915→v-rpb25, node 1-1, screen λ3,5):** baseline `--schedule-policy srpf`
+(v-srpf-ctl4) vs `srpf + RPB25` (v-rpb25), same node, serial. DELTA = the RPB mechanism (srpf held fixed).
+Decision rule: RPB lowers λ5 p99 meaningfully (→robust pass) = firm to Paper 4; RPB ≈ srpf = rigorous
+NEGATIVE that closes chunk-level scheduling (strengthens P3 into an airtight impossibility). VERDICT: TBD.
+
+### RPB prior-art positioning + honest novelty assessment (2026-07-15, pre-result)
+Web search blocked (org policy); positioning from knowledge (cutoff Jan 2026 covers these).
+- **Sarathi-Serve (OSDI'24)** — chunked prefill + stall-free batching fills the leftover per-batch budget
+  with *decodes* (= sglang `enable_mixed_chunk`). Targets prefill-blocks-DECODE, NOT big-prefill-blocks-
+  small-PREFILL. RPB fills the reserved slice with waiting *prefills*. Orthogonal/complementary.
+- **FastServe (2023)** — MLFQ, whole-request iteration-level PREEMPTION for head-of-line. RPB does not
+  preempt (no starvation, no re-prefill cost); it co-progresses a budget fraction. Different point in the
+  design space (reservation vs preemption).
+- **WFQ / DRR / GPS (classic fair-queueing)** — reserve bandwidth per flow. This is RPB's closest ancestor:
+  RPB reserves prefill-token-budget for the "short-job flow." So the IDEA (reservation) is classic.
+- **SRPF/SJF** — textbook whole-request reordering (my P3 result; a stock `--schedule-policy` flag).
+
+**Honest novelty verdict (governs how I write this up):** RPB's core idea = fair-share/reservation applied
+to the chunked-prefill token budget. The charter excludes "textbook policies dropped onto EXISTING pluggable
+interfaces" (e.g. SJF via --schedule-policy) — RPB is more than that (a NEW engine mechanism in add_chunked_req,
+not an existing interface, motivated by the specific chunk-level HOL diagnosis that whole-request SRPF leaves
+a residual). Systems venues DO accept classic-scheduling-applied-to-new-systems-problem when the diagnosis is
+sharp + mechanism well-engineered + eval convincing (FastServe=MLFQ→LLM, Sarathi=chunking→LLM). So the
+DECISION on standalone-Paper-4 vs fold-into-P3 depends on the GPU magnitude:
+  - RPB wins BIG at λ5 (marginal→robust, clear curve shift): candidate standalone systems paper, framed as
+    "diagnosing + closing chunked-prefill head-of-line," with fair-queueing cited as the mechanism ancestor
+    (honest) and the DIAGNOSIS + engine mechanism + curve as the contribution.
+  - RPB wins marginally / neutral: fold into P3 as the completion of the scheduling axis (positive refinement
+    OR bounded negative) — NOT an over-claimed standalone novelty. Integrity first.

@@ -1,0 +1,4 @@
+# RPB reserve-fraction sweep (only run if v-rpb25 wins the A/B). Same-node, screen λ3,5.
+# Finds the r that best balances small-turn relief vs big-doc slowdown 1/(1-r).
+v-rpb10:--schedule-policy srpf --enable-rpb-chunking --rpb-reserve-frac 0.10
+v-rpb50:--schedule-policy srpf --enable-rpb-chunking --rpb-reserve-frac 0.50

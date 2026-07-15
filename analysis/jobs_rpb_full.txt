@@ -1,0 +1,2 @@
+# RPB full contract sweep (headline number), REAL eval.sh λ{3,5,7,10}. Only after screen win.
+v-rpb25-full:--schedule-policy srpf --enable-rpb-chunking --rpb-reserve-frac 0.25

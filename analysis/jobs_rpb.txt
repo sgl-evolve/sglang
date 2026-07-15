@@ -1,0 +1,6 @@
+# Paper 4 GPU A/B: does RPB (reserved-prefill-budget chunking) beat whole-request SRPF on the
+# head-of-line residual? Same-node, serial, screen λ3,5. Baseline = --schedule-policy srpf
+# (my P3 result, λ5 p99 ~7.8s marginal). Treatment = srpf + RPB25. Sim @λ3: 6205->4340ms.
+# DELTA isolates the RPB engine mechanism (budget reservation), holding the srpf config fixed.
+v-srpf-ctl4:--schedule-policy srpf
+v-rpb25:--schedule-policy srpf --enable-rpb-chunking --rpb-reserve-frac 0.25

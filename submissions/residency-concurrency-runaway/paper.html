@@ -173,6 +173,14 @@ gated by decode-memory contention</b>: prefill is the productive, compute-bound 
 memory-bound load that steals GPU wall-clock; and acceleration wins by shrinking the parasitic share. (The clean
 per-stage wall-clock split needs sglang&rsquo;s <span class="mono">profile_by_stage</span>, which aborts on this build;
 the stage-separated prefill trace above and the &sect;2 decode-tpot law together carry the argument.)</p>
+<div class="keyfinding"><b>The two capacity levers compose&mdash;confirmed empirically.</b> C=K/(1&minus;h) has two
+independent handles: the <em>K</em>-lever (acceleration, &sect;raises effective prefill rate) and the <em>h</em>-lever
+(caching hit rate, via <span class="mono">1/(1&minus;h)</span>). Stacking both&mdash;giant acceleration <em>and</em> a
+write-back (exclusive-tiering) cache that lifts hit 0.65&rarr;0.73&mdash;raises the saturated capacity to
+<b>C=6.33&nbsp;req/s</b>, versus 5.65&ndash;5.79 for acceleration alone and 4.14 for stock: <b>+53% over stock, and
+higher than either lever by itself</b>. The levers thus co-design as the capacity law predicts&mdash;a mechanism
+(acceleration, raising K) and a configuration (caching, raising h) that multiply through C=K/(1&minus;h). Capacity is
+genuinely stackable.</div>
 
 <h2>4 The design-space partition</h2>
 <p>The law predicts a sign for every axis. We tested each; all match.</p>
@@ -271,7 +279,13 @@ variance reduction <em>and</em> a shift under the SLO. The law is confirmed at <
 capacity-raising mechanism inherits the metastable coin-flip when its margin is thin</em>. Reducing residency thus buys
 reliability where the margin is large (&lambda;=3) but not where it is small (&lambda;=5); this both confirms the theory
 (P6 &times; P3) and bounds the mechanism's headline&mdash;acceleration reliably raises capacity, but converting that
-into reliable goodput@SLO needs margin, i.e. C comfortably above &lambda;.</div>
+into reliable goodput@SLO needs margin, i.e. C comfortably above &lambda;. <b>Stacking capacity does not shortcut
+this.</b> Co-designing both levers (acceleration + write-back cache) lifts C to 6.33, so the &lambda;=5 margin doubles
+to 1.33&mdash;yet &lambda;=5 still landed in the bad basin (15.6&nbsp;s). Even a large capacity gain does not buy
+knee-rate reliability at moderate margin; reliability arrives only when C sits well above &lambda; (the write-back
+config's margin&nbsp;&asymp;&nbsp;2.0 was the first to give 2/2). The knee is coin-flip-governed almost independently of
+how the capacity was raised&mdash;a two-regime picture: <em>large-margin</em> (&lambda;&nbsp;&ll;&nbsp;C) reliably
+served, <em>knee</em> (&lambda;&nbsp;&asymp;&nbsp;C) metastable regardless of the lever.</div>
 
 <h2>7 Related work</h2>
 <p>Sarathi-Serve chunks prefill <em>smaller</em> to bound prefill&harr;decode interference for mean latency; the

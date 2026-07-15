@@ -298,7 +298,7 @@ queue order); whether the two residency levers compose additively is a natural b
 <p>Sarathi-Serve chunks prefill <em>smaller</em> to bound prefill&harr;decode interference for mean latency; giant
 acceleration goes the opposite way (bigger chunks for in-flight giants under pressure) and targets the p99 tail via
 residency&mdash;valid not because prefill is cheap (our profile shows it is compute+communication-bound) but because
-<em>fewer, larger</em> prefill steps amortize per-step overhead and clear the giant's KV sooner. SRPF/SJF reorder
+<em>fewer, larger</em> prefill steps amortize per-step overhead and interrupt the interleaved decode fewer times. SRPF/SJF reorder
 whole requests; acceleration does not reorder&mdash;it speeds the giant already running. To our knowledge, an
 occupancy-adaptive giant-acceleration policy for goodput@SLO is new.</p>
 

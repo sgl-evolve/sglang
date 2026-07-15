@@ -748,3 +748,13 @@ compute-vs-memory C-ceiling attribution Paper 7 needs. Recipe: launch server (sr
 output_dir} (auto-stops after num_steps) → analyze trace: prefill GPU-time vs decode GPU-time. Theory predicts decode-BW
 dominates at saturation. Build harness when node frees (~after dose-response ~16:40); low marginal value to write now.
 Existing-data nucleus already strong (C=prefill-throughput assumption-free; profiler = the definitive kernel-level confirm).
+
+## Paper 7 profiler harness — server config captured (10:14; build when node frees ~14:00)
+Frozen launch (from eval.sh, reuse VERBATIM to avoid contract drift):
+  python3 -m sglang.launch_server --model-path $MODEL --tp 8 --trust-remote-code --context-length 262144
+    --chunked-prefill-size 6144 --mem-fraction-static 0.85 --enable-hierarchical-cache --hicache-size 96
+    --page-size 64 --hicache-io-backend direct --hicache-mem-layout page_first_direct
+    --hicache-write-policy write_through --enable-metrics --enable-cache-report --port $PORT
+Recipe: launch (+SGLANG_TURING_GIANT_ACCEL=1) → bench_serving λ=10 saturation load → once conc~250 POST /start_profile
+{num_steps~30, profile_by_stage:true, activities:["GPU"], output_dir} (auto-stops) → sum prefill-stage vs decode-stage
+GPU-kernel time from trace. Build+test when node free (dose-response holds it to ~14:00). Existing nucleus already strong.

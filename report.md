@@ -767,3 +767,16 @@ ANY implementation — fixed robustly HURTS (both λ5 runs fail via ~54% reserve
 Paper fully updated (abstract/intro/§5 tables+figure n=2 error bars/§7/§8), well-formed, committed 37dd7e1f6,
 W&B-logged (v-srpf-ctl5, v-rpb25-r2, v-rpbA25-r2). ⇒ P4 is now at P3's rigor (n=2 + error bars + hostile-reviewed).
 RPB DIRECTION COMPLETE. Whole lossless design space mapped+bounded across 4 papers. No remaining novel lossless lever.
+
+### ★ RPB page-alignment BUG fixed + reserve-size tradeoff MEASURED (2026-07-15)
+★BUG: r=0.10 crashed REPRODUCIBLY (2/2) with "pool memory leak detected" — root cause = my RPB cap wasn't
+page-aligned (6144−int(0.10·6144)=5530, 5530%64=26 → non-page-aligned chunk extent corrupts the paged KV
+allocator accounting). r=0.25 (4608) & r=0.50 (3072) are %64-aligned by luck → clean, so rpb25/adaptive results
+UNAFFECTED. FIX = page-align the cap (rpb_cap//page_size*page_size), commit 46ca24f72. ⇒ the paper's "transient
+crash" claim is WRONG — it's a fixed alignment bug. Validated: fixed rpb10 completes 7037/7037 clean, 0 leaks.
+★MEASURED r-TRADEOFF λ5 (n=1 each, + throughput monotonicity = robust): baseline 6496ms/532tput (PASS) →
+r=0.10 8000ms/512 (borderline fail, +23%) → r=0.25 9607ms/482 (FAIL, +48%) → r=0.50 (pending). Harm scales
+MONOTONICALLY with r (p99 up, tput down) — confirms §7's analytical argument EMPIRICALLY. Even the smallest
+reserve (r=0.10) hits the SLO boundary ⇒ NO fixed r>0 avoids the λ5 harm (only zero reserve=baseline, or
+adaptive zero-waste=neutral). Strengthens the negative. TODO: rpb50 completes curve; then correct P4 §5
+(transient→alignment-bug) + upgrade §7 (analytical→measured) + regen figure.

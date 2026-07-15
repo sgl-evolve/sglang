@@ -842,3 +842,18 @@ itself a major node-dependence finding. Serial via campaign.sh (TIMEOUT=4:00:00 
 **Committed** `6e1c2ecf3` (zero-GPU corrections across P3/P1/P2 + goodput_stats.py + campaign.sh + jobs file;
 pushed). P4 references de-counted. This is completeness/integrity strengthening of the flagship headline, on
 free-node GPU — not a new lossless direction (none remains). Charter-faithful "survive a skeptical PC".
+
+### 2026-07-15 (waiting-turn QA while controls run): related-work + reproducibility + cross-ref audit
+While job 20005 (same-node stock controls) runs, did non-GPU submission-hardening:
+- **P3 §7 related work STRENGTHENED** (commit 47977bf4d) — was thin for a top-venue systems paper.
+  Added scheduling prior art (Orca=iteration batching substrate; Sarathi-Serve=chunked prefill, the exact
+  mechanism §4 diagnoses; **FastServe**=closest prior art, preemptive MLFQ for head-of-line) with crisp
+  positioning: FastServe schedules against UNKNOWN decode length (feedback-queue approx); our lever is
+  prefill heterogeneity KNOWN exactly at arrival → exact non-speculative SRPF, no preemption. Plus Marconi
+  (hybrid SSM-attn prefix caching = our model class) and DistServe/Splitwise (P/D disaggregation; our §3
+  co-located split already TTFT-optimal). Contribution reiterated = map + diagnosis + criterion, NOT the policy.
+- **Fixed a dangling §5.1 cross-ref** in P3 §8 (P3 has no §5.1; P2's real §5.1 left intact).
+- **Cross-ref audit (all 4 papers): CLEAN** — every §N ref resolves (P3 §3.4 is a valid *companion-paper* ref).
+- **Reproducibility spot-check:** all 25 cited scripts/engine-paths exist; hol_sim.py/phase_boundary.py/
+  goodput_stats.py run (rc=0) and reproduce their paper claims.
+- P1/P2/P4 related-work confirmed appropriately focused (admission/caching/chunk axes) — no gaps.

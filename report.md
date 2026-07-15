@@ -827,3 +827,16 @@ p50 679ms, req 4.12, hit .672. reserve0 on node 1-1 = p99 26.5s, p50 1395ms, req
 ONLY same-node (reserve2048 vs reserve0 both on 1-1; srpf vs fcfs both on ondem-2); NEVER cross-node. Also
 req<λ on both ⇒ λ5 SATURATES both nodes → reserve (slightly slows mega-docs) may trade throughput for victim-p99
 at λ5; clean goodput win likelier at λ3. Decisive shortlane data (reserve2048@1-1) ~2.5h out; SRPF srpf arm ~4h.
+
+### SHORT-LANE λ5 result — MECHANISM NEGATIVE at saturation (2026-07-15 ~01:31Z, job 19836, node 1-1)
+Same-node A/B, λ5: reserve0 (n=3) p99 median 24226ms {22339,24226,26539}, p50 1145, req 3.51, tok 449, hit .663
+vs reserve2048 (n=1) p99 42554ms (+75.7% WORSE), p50 944 (-17.6% BETTER), req 3.18 (-9.4%), tok 406, hit .680.
+INTERPRETATION: the reserve does its designed job — helps SHORT reqs (p50 down 17.6%) — but at λ5 the p99 tail is
+NOT HOL victims; it is the mega-docs' OWN prefill. The reserve caps the mega-doc's chunk (6144→4096) → ~1.5×
+more iterations per mega-doc → under saturation (req 3.2-3.8 ≪ λ5) this EXTENDS the congestion window → the tail
+gets WORSE. ⇒ At saturation, inter-prefill fair-sharing backfires on the p99. This CORROBORATES Paper 1 at the
+MECHANISM level: the goodput tail is cold-doc-prefill-bound (irreducible K·t), not schedulable by fair-sharing.
+CAVEAT: λ5 is SATURATED (I predicted mega-doc-floor dominance here). The possible WIN is at λ3 (moderate load,
+where HOL victims may dominate the tail & the queue doesn't grow unboundedly). Launching a λ3 A/B to complete the
+story. n=1 for reserve2048 (reps 2-3 landing ~02:00/02:30 to confirm; +76% ≫ reserve0's ~15% band → direction clear).
+NOTE: NO CRASH — the reserve2048 path (my has_chunked_req fix) ran warmup + a full 1553-req λ5 sweep cleanly.

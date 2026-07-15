@@ -29,8 +29,10 @@ request rate with p99 TTFT ≤ 8&nbsp;s over λ∈{3,5,7,10}) on a 122B hybrid M
 two-tier (GPU + 768&nbsp;GB host) KV cache — and find that <b>every data-movement/retention axis is a
 non-lever</b>: cache residency and eviction (LRU is Belady-optimal, a document-reuse <em>mirage</em>),
 admission control (deferring cold prefills is self-defeating), host↔device transfer (non-binding), the
-hybrid model's recurrent-state pool (never the binding capacity), and even a queue-adaptive chunk-partition
-mechanism we designed (dominated by plain reordering). The one lever is <b>prefill scheduling</b>. We
+hybrid model's recurrent-state pool (never the binding capacity), and even a chunk-level budget-reservation
+mechanism we designed and GPU-tested (a bounded negative — it helps below the knee but <em>hurts</em> the
+goodput-setting rate; companion paper). The one lever is <b>prefill scheduling</b>, and only at whole-request
+granularity. We
 diagnose why: below the saturation knee the p99 is <em>head-of-line blocking</em> — small conversational
 turns queued behind the back-to-back chunked prefill of a few large cold documents (fewer than 0.1% of
 turns prefill ≥6&nbsp;s, yet the p99 is 6–11&nbsp;s; the waiting queue is 9.6× deeper during big-cold-doc
@@ -60,19 +62,20 @@ is re-used across turns and even across conversations, so a good cache should be
 We test that intuition exhaustively against a single fixed metric and find it wrong. On a 122B hybrid
 Mamba-attention model with a two-tier KV cache, <b>goodput@SLO is set by how the heterogeneous prefill work
 is scheduled and by a hard compute ceiling — not by any KV-cache data-movement or retention decision.</b>
-Two of the eight axes (caching-residency and admission) are treated in depth in companion papers; this paper's
-own contributions are the <em>unifying framework</em> that places all eight axes on one metric (including four
-axes bounded here for the first time — transfer, the recurrent-state pool, the prefill/decode split, and a
-chunk-partition mechanism we designed), the four-way head-of-line diagnosis that explains <em>why</em>
-scheduling is the lever, and the parameter-free lever-selection procedure with its multi-corpus phase
-boundary. It is a map-and-mechanism-of-the-map paper, not a restatement of the two axis studies. Our
-contributions:
+Three of the eight axes (caching-residency, admission, and chunk-level scheduling) are treated in depth in
+companion papers; this paper's own contributions are the <em>unifying framework</em> that places all eight axes
+on one metric (including three axes bounded here for the first time — transfer, the recurrent-state pool, and the
+prefill/decode split), the four-way head-of-line diagnosis that explains <em>why</em> scheduling is the lever
+(and why only at whole-request granularity — the chunk-level companion shows finer granularity backfires), and
+the parameter-free lever-selection procedure with its multi-corpus phase boundary. It is a
+map-and-mechanism-of-the-map paper, not a restatement of the axis studies. Our contributions:
 </p>
 <ul>
 <li><b>A complete design-space map (§3).</b> We characterize every KV-cache/serving axis against
 goodput@SLO and show each data-movement/retention axis is a bounded non-lever: residency/eviction,
-admission, transfer, the recurrent-state pool, and a chunk-partition mechanism we built. Two of these are
-developed in depth in companion papers; here we place them in one framework with the newly-bounded axes.</li>
+admission, transfer, the recurrent-state pool, and chunk-level scheduling (a reservation mechanism we built and
+GPU-tested — a bounded negative). Three of these are developed in depth in companion papers; here we place them
+in one framework with the newly-bounded axes.</li>
 <li><b>The head-of-line diagnosis (§4).</b> The λ=3 goodput coin-flip is not a per-request prefill floor or
 irreducible variance; it is head-of-line blocking behind a few large cold-document prefills — established
 four independent ways (arithmetic, direct trace, calibrated simulation, and a GPU A/B). This is the
@@ -129,7 +132,7 @@ an unconditional proof for every row.</caption>
 <tr><td>admission control</td><td class="b">negative</td><td>deferring cold prefills multiplies the p99 (λ=3 → 56&nbsp;s); the deferred work <em>is</em> the tail (companion)</td></tr>
 <tr><td>host↔device transfer</td><td class="b">non-binding</td><td>L2→L1 load-back ~1.6&nbsp;ms; stock does not retract; transfer never on the critical path</td></tr>
 <tr><td>recurrent-state (Mamba) pool</td><td class="b">non-binding</td><td>Mamba-state usage never exceeds 0.77 while attention-KV saturates to 1.0 — the recurrent pool is never the binding capacity (<code>analysis/mamba_pressure.py</code>)</td></tr>
-<tr><td>chunk-partition "fast-lane"</td><td class="b">dominated</td><td>reserving chunk budget for small turns (our mechanism) is a <em>partial</em> SRPF; dominated by plain SRPF in simulation (§5)</td></tr>
+<tr><td>chunk-level reservation (RPB)</td><td class="b">negative (GPU-confirmed)</td><td>reserving in-flight chunk budget for waiting turns (our mechanism) helps below the knee (λ=3 −10% p99) but <em>hurts</em> the goodput-setting rate (λ=5 +41% p99, SLO fail): the reserve is wasted when waiting turns exceed it (~54% unused → −13% prefill capacity), fatal near saturation. Same-node A/B; companion paper <em>rpb-chunking</em></td></tr>
 <tr><td>prefill/decode split</td><td class="b">TTFT-optimal</td><td>at saturation 99% of forward steps are already prefill; shifting to decode lowers goodput, throttling prefill = admission (<code>analysis/pd_schedule.py</code>)</td></tr>
 <tr><td><b>prefill scheduling</b></td><td class="g"><b>THE lever</b></td><td>SRPF moves goodput ≤3 → <b>4.0&nbsp;req/s</b> (λ=5; §5); relieves the λ=3 head-of-line</td></tr>
 <tr><td>compute</td><td>hard ceiling</td><td>raw peak throughput ~4.7&nbsp;req/s (measured within-run: SRPF completes 4.72&nbsp;req/s at λ=10 overload); goodput@SLO (4.0) sits below it — SLO/tail-bound, not throughput-bound; the ceiling moves only compute-side (lossy or contract-frozen)</td></tr>

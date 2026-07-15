@@ -17,7 +17,7 @@ source "$MAIN/.venv/bin/activate"
 export PYTHONPATH="$SRPFWT/python"                                 # <-- SRPF-capable engine for BOTH phases
 cd "$SRPFWT"
 export TRITON_CACHE_DIR="$MAIN/.cache/triton" CUDA_CACHE_PATH="$MAIN/.cache/nv" FLASHINFER_CACHE_DIR="$MAIN/.cache/flashinfer" XDG_CACHE_HOME="$MAIN/.cache"; mkdir -p "$MAIN/.cache"
-OUT="$MAIN/runs/v3-srpf-ab"; mkdir -p "$OUT"; PORT=${PORT:-30037}
+OUT="$MAIN/${SRPF_OUT:-runs/v3-srpf-ab}"; mkdir -p "$OUT"; PORT=${PORT:-30037}
 NUMP=1553; WARMUP_NUMP=300; MAXC=256; SLO_MS=8000
 MODEL=Qwen/Qwen3.5-122B-A10B-FP8; MIX=/rmeng_data/junyanch-data/datasets/mooncake_mix_v1.jsonl
 NODE=$(hostname -s 2>/dev/null || hostname)
@@ -88,8 +88,11 @@ PY
 }
 
 SPECS=${SRPF_SPECS:-"5:5 3:3"}     # decisive lambda=5 (K5) first, then knee lambda=3 (K3), per phase
-echo "==== SRPF-AB START node=$NODE srpf_commit=$SRPF_COMMIT $(date -u) | specs=[$SPECS] ===="
-run_phase "fcfs" ""                       $SPECS    # Phase A: default scheduler (what the fixed eval uses)
-run_phase "srpf" "--schedule-policy srpf" $SPECS    # Phase B: SRPF scheduler
+POLICIES=${SRPF_POLICIES:-"srpf"}  # policies to test vs fcfs baseline (space-sep). e.g. "lof srpf" for deferral-specificity
+echo "==== SRPF-AB START node=$NODE srpf_commit=$SRPF_COMMIT $(date -u) | specs=[$SPECS] policies=[$POLICIES] ===="
+run_phase "fcfs" "" $SPECS         # Phase A: default scheduler (what the fixed eval uses)
+for P in $POLICIES; do
+  run_phase "$P" "--schedule-policy $P" $SPECS
+done
 echo "==== SRPF-AB DONE $(date -u) — srpf_ab.csv in $OUT ===="
 column -t -s, "$OUT/srpf_ab.csv" 2>/dev/null || cat "$OUT/srpf_ab.csv"

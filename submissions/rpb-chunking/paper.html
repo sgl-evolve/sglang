@@ -256,9 +256,14 @@ big-chunk 5993 vs fixed's 5320 tokens), so throughput at λ=5 is <em>preserved</
 versus fixed RPB's −8.6%) and the SLO failure is gone. But the λ=5 p99 is <b>not improved</b> — 6894&nbsp;ms,
 statistically indistinguishable from the 6580&nbsp;ms baseline (+5%, well inside the ±12–20% same-node run-to-run
 spread of this metric), and goodput is unchanged (4.07 vs 4.11&nbsp;req/s). Adaptive RPB helps only the
-<em>sub-knee</em> tail (λ=3, −10%), a rate that already passes. This is the crux of the negative: <b>the p99 at
-the goodput-setting rate is not set by the tiny turns the reserve can serve</b> — it is set by medium and large
-waiting turns, which no modest reserve helps. Removing the waste recovers <em>neutrality</em>, not a win.
+<em>sub-knee</em> tail (λ=3, −10%), a rate that already passes. The adaptive control lets us <em>infer</em> what
+sets the goodput-rate p99: adaptive serves every tiny waiting turn (one that fits the 1536-token reserve) from the
+reserve at no throughput cost, so if the λ=5 p99 request were such a tiny turn, its TTFT — and the p99 — would
+drop; it does not. <b>Therefore the p99 at the goodput-setting rate is not one of the tiny turns the reserve can
+serve.</b> This is consistent with the workload (per-turn cache-adjusted work is p50=26 but p90=17.4k tokens, far
+above the reserve) and with the companion head-of-line diagnosis (the p99 is queue-wait, not own-prefill): the tail
+is dominated by the <em>larger</em> waiting turns that no modest reserve can shortcut. Removing the waste recovers
+<em>neutrality</em>, not a win.
 </p>
 <p>
 <b>The two controls together close the axis.</b> Fixed RPB <em>hurts</em> goodput (reserve waste → capacity loss

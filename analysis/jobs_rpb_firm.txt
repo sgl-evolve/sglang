@@ -1,0 +1,6 @@
+# RPB rigor firming to n=2 same-node (node 1-1): 2nd replicate of baseline, fixed, adaptive, interleaved
+# so node drift is shared. Establishes the λ5 run-to-run noise band (needed for the adaptive-neutral claim)
+# and confirms fixed-hurts + adaptive-neutral in a 2nd run. Screen λ3,5.
+v-srpf-ctl5:--schedule-policy srpf
+v-rpb25-r2:--schedule-policy srpf --enable-rpb-chunking --rpb-reserve-frac 0.25
+v-rpbA25-r2:--schedule-policy srpf --enable-rpb-chunking --rpb-reserve-frac 0.25 --rpb-adaptive

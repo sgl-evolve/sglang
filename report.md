@@ -447,3 +447,33 @@ My contributions = the two axis-negatives (P1 admission, P2 caching) + the head-
 cited not claimed. The space is mapped; a genuine NEW lossless mechanism would have to beat the compute
 ceiling (CP/quant — lossy or contract-frozen) — none exists losslessly. Continue: firm the goodput A/B
 (campaign n=3 + same-node control in flight), keep papers bulletproof, stay honest; supervisor retires.
+
+## ★★ INTEGRITY CORRECTION (2026-07-15): empty-doc-hash bug inflated document-popularity stats
+Found while building `analysis/phase_boundary_realcorpora.py` (multi-corpus generality) + an adversarial
+PC self-review of P3 (via subagent). TWO issues fixed:
+
+**(A) Adversarial-review integrity fixes to P3** (commit e-review): (1) the "predictive model" was CIRCULAR
+— `C_eff=15000` is back-solved from the measured ~4.2 saturation (`bound.py` "back out the effective rate"),
+so `g_ceil=C_eff/E[W]` reproduces 4.2 by construction. Deleted the "genuine cross-validation not a tautology"
+claim; reframed g_ceil as a SELF-CONSISTENCY check; promoted the PARAMETER-FREE lever decision (f<T, h, bimodal)
+as the real contribution. (2) SRPF is n=1 — removed language implying r2/r3 data exists; headline now rests on
+stock λ5 STABLE-fail (n=5, 17-24s) vs single SRPF pass 5.85s (3-4× gap a coin-flip can't fake). (3) goodput
+∈[4.16,<7) not "=ceiling". (4) "provably"→per-row evidence strength. (5) sim is λ3-only scope.
+
+**(B) empty-doc-hash bug** (commit 14e59304b): `reuse_distance.py`/`doc_reuse.py` hashed the 538 empty-`input`
+ShareGPT chat records to ONE fixed md5 → counted as 538 spurious "reuses of one document." This produced the
+WRONG "2 hot docs serve 41%", "45% shared", "888 unique", "reuse distance median 2" claims in P2/P3.
+- FIX: `if not doc: continue` (document-reuse analysis is doc-bearing convs only).
+- TRUE structure: 1553 convs = **1015 doc-bearing (887 unique) + 538 chat (no doc)**. **ONE** hot doc (100
+  convs = 6% of all / 10% of doc-bearing), NOT two serving 41%. 97% singletons (was correct). Only **~10% of
+  convs re-use a document** (4% of turn-0 work), NOT 45%. Reuse stack-dist p50=10/p90=197/max=518 vs H=516 →
+  **99.2% captured, 0.8% headroom** (was p50=2/p90=11/99.8%). Hot-doc recur gap median 6. doc-hit 13% single /
+  13-14-51% 4-pass (was 43/68%, inflated).
+- **CORE MIRAGE UNCHANGED & STRONGER**: single-pass LRU=LFU=Belady=0 avoidable STILL holds; cold floor 18.4M
+  unchanged; 4-pass online-uncapturable still holds. The workload has even LESS real cross-doc reuse than
+  claimed → caching is even more of a mirage.
+- Corrected P2 abstract/§1/§2/§3/§3.1/§3.4 + P3 abstract-bullet/§6. Added `phase_boundary_realcorpora.py`:
+  **4 real long-doc corpora (mooncake/LEval/LooGLE×2) ALL in mirage** (≤0.8% headroom) → generality is now
+  multi-corpus, not n=1 (answers the #1 reviewer concern). This multi-corpus analysis is what caught the bug.
+- LESSON: hashing a possibly-empty field silently collapses all empties to one key → spurious reuse. Always
+  guard `if not <field>`. Multi-corpus/cross-check analyses catch single-trace artifacts.

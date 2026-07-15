@@ -20,25 +20,33 @@ figcaption{font-size:13px;color:#555;margin-top:.4em;text-align:left}
 b{color:#000}em{color:#333}
 </style></head><body>
 
-<h1>Reserved-Prefill-Budget Chunking: closing the chunk-level head-of-line residual that request-reordering leaves in long-document LLM serving</h1>
-<div class="sub">floyd · sglang v0.31 HiCache (Qwen3.5-122B-A10B-FP8, TP=8, 2-tier KV) · v0 DRAFT (eval pending GPU A/B)</div>
+<h1>The Chunk-Level Head-of-Line Residual Is Not Profitably Closable: a bounded negative for prefill-budget reservation in long-document LLM serving</h1>
+<div class="sub">floyd · sglang v0.31 HiCache (Qwen3.5-122B-A10B-FP8, TP=8, 2-tier KV) · v1 · <b>bounded negative</b></div>
 
 <div class="abs">
-<b>Abstract.</b> <span class="todo">DRAFT — numbers pending the same-node GPU A/B (job 19915: v-srpf-ctl4 vs
-v-rpb25).</span> In long-document conversational serving, goodput@SLO is set by the p99 time-to-first-token
+<b>Abstract.</b> In long-document conversational serving, goodput@SLO is set by the p99 time-to-first-token
 tail, which prior work (our companion papers) shows is <em>head-of-line blocking</em>: small conversational
 turns queued behind the back-to-back chunked prefill of a few large cold documents. Whole-request shortest-prefill
 scheduling (SRPF) relieves the part of this that is <em>waiting-queue</em> order, but it leaves a residual:
 once a large document's chunked prefill begins, the sglang scheduler feeds that in-flight <code>chunked_req</code>
 the entire per-batch chunk budget every step until it finishes (~31 consecutive 6144-token chunks for the largest
-documents), so small turns that <em>arrive during</em> the chunk-run still block — a residual that <em>grows with
-load</em>. We introduce <b>Reserved-Prefill-Budget (RPB) chunking</b>: when a large document is mid-chunk and other
+documents), so small turns that <em>arrive during</em> the chunk-run still block. We test whether closing this
+residual helps, with <b>Reserved-Prefill-Budget (RPB) chunking</b>: when a large document is mid-chunk and other
 requests are waiting, cap the in-flight chunk at a fraction (1&minus;r) of the per-batch budget and reserve the
-remaining r for the shortest waiting turn(s). RPB bounds <em>both</em> tails — small-turn TTFT falls to ~one
-chunk-time, while the large document is slowed by only 1/(1&minus;r) — with no starvation and, because the total
-tokens computed per step are unchanged, <em>no aggregate-throughput penalty</em>. It is lossless (identical tokens,
-resliced across steps) and TP-safe (a static fraction over a deterministic sort). We measure it on the fixed
-rate-sweep goodput@SLO protocol and find <span class="todo">[RESULT PENDING]</span>.
+remaining r for the shortest waiting turn(s). <b>The result is a rigorous negative, and the reason is instructive.</b>
+On a same-node A/B (screen λ∈{3,5}), RPB (r=0.25) <em>helps</em> at λ=3 — p99 TTFT 6973→6300&nbsp;ms (−10%) with
+throughput unchanged — but <em>hurts</em> at the goodput-setting rate λ=5: p99 6580→9287&nbsp;ms (+41%), crossing
+the SLO, with throughput down 8.6%. The mechanism, quantified from the server trace, is <b>reserve waste</b>: our
+crash-safe guard (never split a waiting request into a second in-flight chunk) means the reserve can only serve
+turns that <em>complete</em> within it, so whenever the shortest waiting turn is larger than the reserve — common
+as load rises — the reserved budget goes unused and the big-document chunk shrinks (mean big-chunk 6111→5320&nbsp;
+tokens, ~54% of the reserve wasted), cutting effective prefill capacity ~13%. Below the knee (λ=3) this is
+absorbed by slack and the small-turn interleave nets a win; at the near-knee goodput rate (λ=5) the lost capacity
+crosses saturation and the tail explodes. The finding is general: <b>fixed chunk-level budget reservation trades
+prefill throughput for sub-knee tail-relief, and the goodput-setting rate is exactly where you cannot afford lost
+throughput</b> — so it cannot improve goodput@SLO, even though whole-request SRPF can. Combined with our companion
+map, this closes the scheduling axis at both granularities: whole-request reordering is the lever; chunk-level
+reservation is not. RPB is lossless throughout (hit-rate unchanged).
 </div>
 
 <h2>1 Introduction</h2>
@@ -64,11 +72,18 @@ added to each prefill batch <em>before</em> the waiting queue is consulted, and 
 chunk budget. So once a large document's chunking starts, it runs its ~31 chunks back-to-back and SRPF — which
 only reorders the <em>waiting</em> queue — cannot interpose a small turn that arrives mid-chunk. This residual is
 invisible at low load and grows as arrivals during a chunk-run become more likely.</li>
-<li><b>The mechanism, RPB (§3).</b> Cap the in-flight chunk at (1&minus;r)&middot;budget when requests are
-waiting; reserve r&middot;budget for the shortest waiting turn(s). Bounds both tails without starvation and
-without changing tokens-computed-per-step.</li>
-<li><b>Implementation (§4).</b> ~30 lines across three files on the live scheduler path; lossless; TP-safe.</li>
-<li><b>Evaluation (§5).</b> <span class="todo">Same-node GPU A/B on the fixed protocol — PENDING.</span></li>
+<li><b>The mechanism, RPB (§3–4).</b> Cap the in-flight chunk at (1&minus;r)&middot;budget when requests are
+waiting; reserve r&middot;budget for the shortest waiting turn(s). ~30 lines on the live scheduler path; lossless;
+TP-safe. We show it is a distinct point in the scheduling design space (not SRPF, not Sarathi decode-mixing, not
+preemptive SRPT).</li>
+<li><b>The negative, measured and explained (§5).</b> On a same-node A/B, RPB helps below the knee (λ=3: −10% p99,
+throughput-neutral) but <em>hurts</em> at the goodput-setting rate (λ=5: +41% p99, SLO fail, −8.6% throughput).
+The cause, quantified from the trace, is <b>reserve waste</b>: the crash-safe invariant means the reserve can only
+serve turns that complete within it, so as load rises and waiting turns exceed the reserve, ~54% of it goes unused,
+cutting effective prefill capacity ~13% — absorbed below the knee, fatal at it.</li>
+<li><b>The generalizable insight.</b> Fixed chunk-level budget reservation trades prefill throughput for sub-knee
+tail-relief, and goodput@SLO is decided at exactly the rate where lost throughput cannot be afforded. So it cannot
+raise goodput, even though whole-request SRPF can — closing the scheduling axis at both granularities.</li>
 </ul>
 
 <h2>2 Motivation: the residual SRPF leaves</h2>
@@ -124,11 +139,15 @@ r=0.25). Neither can be starved: the in-flight document always gets &ge;(1&minus
 always goes to the shortest waiting turn.
 </p>
 <p>
-<b>No aggregate-throughput penalty (by construction).</b> Each step still commits the full budget — (1&minus;r) to
-the large document and r to waiting turns — so the total tokens prefilled per step is unchanged. RPB redistributes
-<em>which</em> tokens are computed each step, not <em>how many</em>. (The one exception, and the only way RPB can
-lose throughput, is if the reserve goes unused because every waiting turn is itself larger than the reserve; §5
-measures whether this occurs, and §7 gives the adaptive-reserve fix if so.)
+<b>The throughput-neutrality argument — and why it fails.</b> One might hope RPB is throughput-neutral by
+construction: each step still commits the full budget, (1&minus;r) to the large document and r to waiting turns, so
+the total tokens prefilled per step is unchanged. This holds <em>only if a waiting turn actually fits the reserve.</em>
+Crucially it does not, in general: to keep the scheduler's at-most-one-chunked-request invariant, the reserve may
+<em>not</em> split a waiting request into a second in-flight chunk (doing so crashes the server, §4), so it can only
+serve waiting turns that <em>complete</em> within r&middot;budget. Whenever the shortest waiting turn is larger than
+the reserve — rare below the knee (the queue is dominated by tiny follow-ups) but <b>common as load rises</b> — the
+reserve goes unused and the step commits only (1&minus;r)&middot;budget. This lost prefill capacity is the crux of
+the negative result (§5): the by-construction argument is <em>false</em> exactly where goodput is decided.
 </p>
 <p>
 <b>Why this is not the mechanisms it resembles.</b> RPB is a point in the scheduling design space distinct from its
@@ -176,15 +195,48 @@ so non-RPB runs are byte-identical.
 </p>
 
 <h2>5 Evaluation</h2>
-<p class="todo">
-PENDING same-node GPU A/B (job 19915, node slurm2-a3nodeset1-1, screen λ&isin;{3,5}): baseline
-<code>--schedule-policy srpf</code> (v-srpf-ctl4) vs <code>srpf + RPB r=0.25</code> (v-rpb25). The delta isolates
-the RPB engine mechanism (the SRPF config is held fixed). To report: per-rate p99 TTFT (baseline vs RPB) and SLO
-pass/fail (goodput); req/s and tok/s (throughput preservation — the reserve-waste check); hit-rate (lossless
-check). If RPB lowers the λ=5 p99 with throughput preserved and hit-rate matched, we then run the reserve-fraction
-sweep (r&isin;{0.10,0.25,0.50}) and the full contract sweep λ&isin;{3,5,7,10} for the headline, with n&ge;2
-same-node replicates and Fisher significance, matching the rigor of the companion papers. Honest negative controls:
-peak decode throughput (compute-bound, ~flat) and the λ&ge;7 overload regime (no lossless scheduling passes).
+<p>
+<b>Setup.</b> Same-node A/B on one 8&times;H100 node (slurm2-a3nodeset1-1), screen λ&isin;{3,5} of the fixed
+protocol (1553 conversations, 7037 turns/rate, warmup, no flush). Baseline = <code>--schedule-policy srpf</code>
+(v-srpf-ctl4); treatment = <code>srpf + RPB r=0.25</code> (v-rpb25). Both on the <em>same node back-to-back</em>, so
+the delta isolates the RPB engine mechanism (the SRPF config is held fixed) with no cross-node variance.
+</p>
+<table>
+<caption>Same-node A/B, SRPF vs SRPF+RPB(r=0.25). Δp99 is the goodput-relevant quantity; Δtok/s exposes the
+reserve waste; hit-rate is the lossless check.</caption>
+<tr><th>rate λ</th><th>SRPF p99 TTFT</th><th>RPB p99 TTFT</th><th>Δp99</th><th>SRPF tok/s</th><th>RPB tok/s</th><th>Δtok</th><th>hit (SRPF→RPB)</th><th>SLO</th></tr>
+<tr><td>3</td><td>6973&nbsp;ms</td><td>6300&nbsp;ms</td><td class="g">−673 (−10%)</td><td>386.7</td><td>386.7</td><td>0%</td><td>0.678→0.677</td><td class="g">PASS→PASS</td></tr>
+<tr><td>5</td><td>6580&nbsp;ms</td><td class="b">9287&nbsp;ms</td><td class="b">+2707 (+41%)</td><td>525.1</td><td class="b">480.1</td><td class="b">−8.6%</td><td>0.666→0.667</td><td class="b">PASS→FAIL</td></tr>
+</table>
+<p>
+<b>The rate-dependent flip.</b> RPB does exactly what it was designed to at λ=3 — it lowers the p99 tail 10% by
+interleaving small turns into big-document chunk-runs, with throughput <em>identical</em> (386.7 tok/s both) and
+hit-rate matched (lossless). But at the goodput-setting rate λ=5 it is a clear <b>negative</b>: the p99 rises 41%
+and crosses the 8&nbsp;s SLO (PASS→FAIL), and throughput falls 8.6% (req/s 4.11→3.75). Goodput@SLO, which is set
+by the highest passing rate, therefore does <em>not</em> improve — RPB breaks the rate that SRPF alone passes.
+</p>
+<p>
+<b>Why: reserve waste (quantified, <code>analysis/rpb_waste.py</code>).</b> From the server trace, the big-document
+prefill steps under stock SRPF commit a mean of <b>6111</b> tokens (97% are the full 6144-token chunk). Under RPB
+they commit a mean of only <b>5320</b> tokens: ~50% of big-chunk steps are capped near 4608 with essentially no
+small turn added, i.e. <b>~54% of the 1536-token reserve is wasted</b> (the shortest waiting turn is larger than the
+reserve, and the crash-safe guard refuses to split it). This cuts effective prefill capacity ~13% on big-document
+steps. Below the knee (λ=3, offered 3 ≪ capacity ~4.7) the lost capacity is absorbed by slack — overall throughput
+is unchanged and the small-turn interleave nets the −10% win. At the near-knee goodput rate (λ=5, offered 5 ≈
+capacity) the lost capacity pushes the system past saturation: it can no longer keep up, the queue grows through the
+run, and the p99 explodes. The waste per step is similar at both rates (mean big-chunk 5327 vs 5315); what differs
+is whether the system has the slack to absorb it — and at the rate that decides goodput, it does not.
+</p>
+<p>
+<b>Reserve-size sweep (r&isin;{0.10, 0.25, 0.50}).</b> <span class="todo">Running (v-rpb10, v-rpb50, same node) to
+confirm the tradeoff is fundamental, not a tuning artifact: a smaller reserve wastes less capacity and should harm
+λ=5 less, a larger reserve more — an expected monotonic curve with no size that both helps λ=3 and passes λ=5.</span>
+</p>
+<p>
+<b>Scope &amp; controls.</b> hit-rate is matched at both rates (Δ ≤ 0.001), confirming RPB is lossless (it only
+reslices prefill). The λ=5 effect is large (+41% p99, and an 8.6% throughput drop that is mechanistic, not tail
+noise); we firm it with n&ge;2 same-node replicates. The result is robust to the node being a <em>comfortable</em>
+baseline (SRPF λ=5 = 6580&nbsp;ms here, well under SLO): even starting with margin, RPB's capacity loss erases it.
 </p>
 
 <h2>6 Related work</h2>

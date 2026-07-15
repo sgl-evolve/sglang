@@ -257,6 +257,13 @@ the series: (i) a single-run A/B is void; same-node, median-of-k comparison is m
 per-step metrics&mdash;decode tpot, mean concurrency, per-step head-of-line fraction&mdash;are <em>coin-flip-robust</em>
 and are the currency in which mechanism effects are proven (e.g. P6's Mann-Whitney separation), with the
 coin-flip-sensitive SLO-pass reported alongside via Fisher's exact test.</p>
+<div class="keyfinding"><b>A residency lever is therefore also a reliability lever&mdash;confirmed.</b> The
+margin&ndash;reliability law makes a prediction: because giant acceleration raises capacity (C 4.14&rarr;5.65), it
+widens the &lambda;=3 margin (C&minus;&lambda; 1.14&rarr;2.65, +132%) and should <em>tighten</em> the p99 basin. It
+does: across same-node &lambda;=3 replicates, acceleration's p99 is 4.6&ndash;7.0&nbsp;s (&sigma;&nbsp;=&nbsp;0.94&nbsp;s,
+4/4 pass) versus stock's coin-flip 6.2&ndash;14.2&nbsp;s (&sigma;&nbsp;=&nbsp;2.79&nbsp;s, 1/5 pass)&mdash;a 3.0&times;
+variance reduction <em>and</em> a shift under the SLO. Reducing residency thus buys reliability, not just mean
+latency&mdash;another confirmed prediction of the theory (P6 &times; P3).</div>
 
 <h2>7 Related work</h2>
 <p>Sarathi-Serve chunks prefill <em>smaller</em> to bound prefill&harr;decode interference for mean latency; the

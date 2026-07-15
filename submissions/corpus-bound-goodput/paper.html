@@ -173,6 +173,34 @@ regime whenever its popular documents recur at short stack-distance (here: the t
 distance ≈ 2) with a singleton tail — and the boundary says exactly when caching <em>would</em> pay off
 instead: a large working set re-used at stack-distance &gt; H, which this document-QA corpus is far from.
 </p>
+<p>
+<b>The boundary is predictive, not a single-workload observation.</b> We validate it on
+<em>constructed</em> corpora (<code>analysis/phase_boundary.py</code>): 30 hot documents each re-used four
+times, embedded in a fresh-singleton stream whose length we vary to sweep the realized reuse
+stack-distance across the horizon <code>H</code> (here 500 docs). The avoidable-work gap between LRU and
+the clairvoyant Belady optimum is a <b>step function at stack-distance = H</b> — it is exactly zero below
+the horizon (LRU <em>is</em> Belady, the mirage) and jumps positive the moment reuse stack-distance
+exceeds it:
+</p>
+<table>
+<caption>Constructed-corpus sweep: the LRU–Belady avoidable gap is zero until reuse stack-distance
+crosses the horizon <code>H = 500</code> documents, then jumps to the full reuse volume.</caption>
+<tr><th>reuse stack-distance</th><th>stack-dist / H</th><th>LRU avoidable</th><th>Belady avoidable</th><th>LRU−Belady gap</th><th>regime</th></tr>
+<tr><td>229</td><td>0.46</td><td>0.0M</td><td>0.0M</td><td class="b"><b>0.0M</b></td><td>mirage (LRU=Belady)</td></tr>
+<tr><td>489</td><td>0.98</td><td>0.0M</td><td>0.0M</td><td class="b"><b>0.0M</b></td><td>mirage (LRU=Belady)</td></tr>
+<tr><td>509</td><td>1.02</td><td>1.8M</td><td>0.0M</td><td>1.8M</td><td>caching helps</td></tr>
+<tr><td>629</td><td>1.26</td><td>1.8M</td><td>0.0M</td><td>1.8M</td><td>caching helps</td></tr>
+<tr><td>1529</td><td>3.06</td><td>1.8M</td><td>0.0M</td><td>1.8M</td><td>caching helps</td></tr>
+</table>
+<p>
+So the mirage is a <em>sharp, corpus-general</em> criterion: caching has online headroom
+<b>iff a workload re-uses documents at stack-distance beyond the cache horizon</b>. Long-document QA
+serving structurally does not — the working set that a conversation re-touches (its own document, a median
+of two conversations away) is far inside the horizon — so the mirage holds for the entire class, not just
+this trace. The corollary for practitioners: measure your corpus's reuse stack-distance against
+<code>H = CAP/mean-doc</code> before investing in a smarter retention policy; below the horizon, the
+policy cannot beat LRU, and the goodput lever is elsewhere (§5).
+</p>
 
 <h2>4 What caching fixes, and what it leaves to scheduling</h2>
 <p>
@@ -300,8 +328,11 @@ workload-, not implementation-, specific.
 <h2>8 Reproducibility</h2>
 <p>
 <code>analysis/doc_reuse.py</code> reproduces the popularity table (§2), the single-pass and 4-pass
-replay results (§3), and the cold floor; <code>analysis/reuse_distance.py</code> reproduces the phase
-boundary (§3.4). Throughput/floor constants (§4) come from the stock full sweep (<code>runs/v0-stock</code>)
+replay results (§3), and the cold floor; <code>analysis/reuse_distance.py</code> measures the real corpus's
+reuse stack-distance and <code>analysis/phase_boundary.py</code> validates the phase-boundary step function
+on constructed corpora (§3.4); <code>analysis/goodput_vs_hitrate.py</code> shows the p99 per-request
+prefill-work floor is caching-policy-invariant. Throughput/floor constants (§4) come from the stock full
+sweep (<code>runs/v0-stock</code>) and the SRPF sweep (<code>runs/v-srpf-r1</code>)
 and server logs. The live eviction path (§3.3) is <code>UnifiedRadixCache</code> →
 <code>unified_cache_components/full_component.py</code> (<code>drive_eviction</code> orders by
 <code>eviction_strategy.get_priority</code>), with the strategy selected from

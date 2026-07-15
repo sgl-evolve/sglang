@@ -323,11 +323,13 @@ input (wall clock, RNG, unsynchronized state) in a TP scheduling decision will h
 <p>
 <b>Mooncake</b> (FAST'25) and overload-oriented serving reject/shed load under saturation; that is
 sound when the shed work is dispensable, but here the "expensive" work is the SLO-defining tail, so
-deferral backfires. <b>Strata</b> and the <b>HiCache</b> two-tier hierarchy target cache efficiency /
-balanced batching; we show residency is near-optimal and not the goodput lever. SRPF/SJF reorder by
-prefill length; here they would defer the cold prefills that are the tail. Our contribution is the
-characterization (cold-prefill-compute bound, 0-retract metastability) and the bounded negative for the
-deferring-admission-control family, plus the TP-determinism lesson.</p>
+deferral backfires. <b>Strata</b> and the <b>HiCache</b> two-tier hierarchy, and KV-offload/reuse systems
+(<b>LMCache</b>, <b>AttentionStore</b>), target cache efficiency, residency, and balanced batching; we show
+residency is near-optimal and not the goodput lever here, so the admission question is orthogonal to them.
+SRPF/SJF reorder by prefill length (the right tool — they serve the small turns first); admission by
+contrast <em>defers</em> the cold prefills that are the tail. Our contribution is the characterization
+(head-of-line blocking, 0-retract metastability) and the bounded negative for the deferring-admission-control
+family, plus the TP-determinism lesson.</p>
 
 <h2>7 Limitations &amp; when a positive might exist</h2>
 <ul>

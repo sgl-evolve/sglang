@@ -401,9 +401,10 @@ unavailable here.
 
 <h2>6 Related work</h2>
 <p>
-Prefix/KV caching (SGLang RadixAttention, vLLM prefix caching), hierarchical offload (HiCache, Mooncake,
-Strata), and eviction theory (LRU/LFU/2Q/GDSF, Belady) all assume re-use exists to capture. Cache-aware
-scheduling and admission variants likewise presume policy headroom. Our contribution is orthogonal and
+Prefix/KV caching (SGLang RadixAttention, vLLM prefix caching), hierarchical offload and KV reuse (HiCache,
+Mooncake, Strata, LMCache, AttentionStore), and eviction theory (LRU/LFU/2Q/GDSF, Belady; Mattson
+stack-distance) all assume re-use exists to capture. Cache-aware scheduling and admission variants likewise
+presume policy headroom. Our contribution is orthogonal and
 cautionary: on a realistic long-document workload the re-use is either trivially captured or
 benchmark-induced, and the metric is corpus-determined. This complements popularity-skew studies (which
 motivate retention) by identifying the regime — few hot items with short reuse distance plus a singleton

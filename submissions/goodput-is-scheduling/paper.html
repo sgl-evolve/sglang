@@ -261,10 +261,12 @@ conclusion does not hinge on the exact threshold.
 
 <h2>6 When caching <em>would</em> matter: a phase-boundary criterion</h2>
 <p>
-The caching non-lever is not a coincidence of one trace; it follows a sharp, measurable boundary. An LRU
-document cache captures a re-use exactly when its <em>stack-distance</em> — the number of distinct documents
-touched since the document was last used — is below the cache horizon <code>H = CAP / mean-doc-size</code>
-(in documents). Online caching headroom is exactly the fraction of re-uses with stack-distance &gt; H. We
+The caching non-lever is not a coincidence of one trace; it follows a sharp, measurable boundary — the
+classic LRU <em>stack-distance</em> property (Mattson et&nbsp;al. 1970; Denning's working-set theory),
+applied here at <em>document</em> granularity. An LRU document cache captures a re-use exactly when its
+stack-distance — the number of distinct documents touched since the document was last used — is below the
+cache horizon <code>H = CAP / mean-doc-size</code> (in documents). Online caching headroom is exactly the
+fraction of re-uses with stack-distance &gt; H. We
 validate this on constructed corpora (<code>analysis/phase_boundary.py</code>): the avoidable-work gap
 between LRU and the clairvoyant Belady optimum is a <b>step function at stack-distance = H</b>.
 </p>

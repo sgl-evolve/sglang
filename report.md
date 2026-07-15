@@ -968,3 +968,32 @@ deferral triple 22.7/27.5/6.7 (n=3, 0-0); srpf λ7 33.3→9.6 (-71%); HOL tiny 2
 baseline varies 22.7-24.2s across comparisons = node heterogeneity (each A/B same-node-internally-consistent, no
 within-comparison contradiction). Integrity mandate satisfied (numbers match raw runs). No fixes needed. Paper 1
 submission-ready. remote==local (bfdf28b52).
+
+### ★ PAPER 2 registered — `prefill-hol-defer` (2026-07-15 ~) — bounded-negative + diagnosis
+Charter says a submitted paper is a MILESTONE, open the next direction; and it EXPLICITLY (a) disqualifies
+"SJF/SRPF dropped onto pluggable interfaces" and (b) welcomes "a rigorously-established negative/impossibility".
+So the scheduling story (which had ballooned §5.6 to 970 lines) becomes its own paper — but reframed to respect
+the disqualification: **NOT** "SRPF wins" (SRPF is classical + a sibling already owns that result), instead a
+**bounded-NEGATIVE + HOL-diagnosis** paper. Contributions: (1) per-request HOL diagnosis (n=15549: tiny <1K-tok
+victims p99 26.9/30.5s > heavy-doc blockers 20.4/23.3s — victims suffer more than blockers); (2) a fair,
+non-starving, lossless **reserved-short-prefill-lane** mechanism (MY own) shown to **FAIL at every reserve size**
+— normalized to own-run stock: 1024=0.96× (neutral), 2048=1.75× (+75%, n=3 disjoint), 4096=4.30× (catastrophic,
+throughput 3.6→2.0 req/s, server OOM-killed, n=1) — because throttling MAXIMIZES the blocking window (≈32→94
+iters), the opposite of deferral; (3) deferral-specificity (LOF reorder-by-output fails 27.5s vs deferral 6.7s,
+same-node triple) → the lever is deferral-BY-PREFILL-SIZE. Principle: **defer, don't throttle**. SRPF appears
+ONLY as a 1-row cited reference-target (§4.1, disclaimed, not claimed as a contribution). Across-λ bound: the
+scheduling lever's goodput ceiling ≈λ5 (λ7 backlog-bound).
+- **§5.6 slimmed 970→34 lines**: now a compact correction (SRPF fail→pass 2-row table + per-req HOL) that
+  sharpens Paper 1's thesis (goodput@SLO movable-by-scheduling yet blind-to-caching) + pointer to Paper 2. This
+  DE-BLOATS Paper 1 and removes duplication (the two papers are now non-overlapping: P1=metric-critique,
+  P2=mechanism/negative).
+- Removed superseded unregistered draft `prefill-hol-lane` (it wrongly framed the lane as a "mitigation"; it
+  actually fails → contradicted the honest finding).
+- **Number audit**: all Paper 2 tabled numbers re-checked vs raw runs v3–v8 (E2E mean-of-runs 45.3/45.1s — the
+  old "44.7/45.0" was imprecise; reserve ratios normalized to own-run stock since 2048 is from v4/24.2s while
+  1024/4096 are from v6/23.3s; LOF median 22658). Match.
+- **Honest standalone assessment**: this is a legitimate SECOND contribution because its claims (HOL diagnosis +
+  the reserved-lane bounded negative + defer-don't-throttle necessary-condition) are NOT SRPF and NOT the
+  metric-critique — it is the "rigorously-established negative" the charter names as valid. Had I kept it as
+  "SRPF wins" it would have been an incremental re-slice of a disqualified/sibling-owned result → I reframed
+  instead of folding back.

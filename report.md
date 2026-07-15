@@ -638,3 +638,11 @@ DECISION on standalone-Paper-4 vs fold-into-P3 depends on the GPU magnitude:
     (honest) and the DIAGNOSIS + engine mechanism + curve as the contribution.
   - RPB wins marginally / neutral: fold into P3 as the completion of the scheduling axis (positive refinement
     OR bounded negative) — NOT an over-claimed standalone novelty. Integrity first.
+
+### RPB A/B — baseline landed (2026-07-15, node slurm2-a3nodeset1-1, screen λ3,5)
+Same-node SRPF baseline (v-srpf-ctl4): λ3 p99 **6973ms** (req/s 3.02, hit 0.678) PASS; λ5 p99 **6580ms**
+(req/s 4.11, hit 0.666) PASS with **1.4s margin**. ★NODE-VARIANCE NOTE: node 1-1's SRPF λ5 is a COMFORTABLE
+pass (6580ms), not the marginal 7.8s seen on node 1-2 (v-srpf-full) — the known ±45% cross-node p99 variance.
+⇒ on THIS node the RPB test is a p99-REDUCTION test (can RPB lower 6580→lower?), not a marginal→robust flip.
+The same-node A/B is still clean (RPB vs SRPF both on 1-1); a p99 reduction here would generalize to unluckier
+nodes where SRPF λ5 is marginal. v-rpb25 next (auto-submitted by the campaign driver).

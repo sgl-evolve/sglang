@@ -746,7 +746,9 @@ class PrefillAdder:
         if self.dllm_config is not None:
             _rem_tokens = self._get_dllm_remain_tokens()
         else:
-            _rem_tokens = min(self.rem_chunk_tokens, int(self.rem_total_tokens))
+            chunk_reserve = int(os.environ.get("SGLANG_CHUNK_RESERVE", "0"))
+            chunk_budget = max(self.rem_chunk_tokens - chunk_reserve, 1)
+            _rem_tokens = min(chunk_budget, int(self.rem_total_tokens))
             if self.is_hybrid_swa:
                 # alloc_extend needs extend_num_tokens + page_size per request,
                 # so reserve one page here to avoid OOM

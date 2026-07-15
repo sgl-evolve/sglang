@@ -157,8 +157,8 @@ grind (<code>analysis/hol_trace.py</code>).</li>
 (<code>analysis/hol_sim.py</code>); round-robin interleaving does not. The simulator is calibrated and used
 <em>only at λ=3</em> (the coin-flip regime); it over-serializes above the knee, so no λ≥5 claim rests on it
 (an earlier trace oracle that over-serialized pointed the wrong way — §2 — a mistake this scope limit avoids).</li>
-<li><b>GPU A/B.</b> Same-node SRPF runs (λ=3 n=2) land p99 at 5.9 and 6.0&nbsp;s (both below SLO, tight —
-unlike stock's coin-flip), matching the non-preemptive simulation.</li>
+<li><b>GPU A/B.</b> Same-node SRPF runs (λ=3 n=3) land p99 at 5.9, 6.0, 7.4&nbsp;s — all below the SLO (3/3),
+vs stock's 3/5 coin-flip — matching the non-preemptive simulation.</li>
 </ul>
 <p>
 The mechanism is that a chunked large cold document runs its ceil(work/6144) chunks back-to-back
@@ -215,20 +215,20 @@ scheduler's existing priority interface — is the remedy the diagnosis predicts
 ≤ 8&nbsp;s. Stock at λ=3 is a coin-flip (n=5 {6.3, 6.4, 7.8, 8.1, 11.8}&nbsp;s, 3/5 pass; the same-node
 control drew 7.6&nbsp;s); at λ=5 it fails stably.</caption>
 <tr><th>rate λ</th><th>stock p99 TTFT (same node)</th><th>SRPF p99 TTFT</th><th>SRPF req/s</th><th>SLO (8&nbsp;s)</th></tr>
-<tr><td>3</td><td>7.6&nbsp;s (coin-flip 6.3–11.8)</td><td>5.9, 6.0&nbsp;s (n=2)</td><td>3.02</td><td class="g">both pass; SRPF stable, not a coin-flip</td></tr>
-<tr><td>5</td><td class="b">22.7&nbsp;s (stable fail)</td><td>5.85, 7.46&nbsp;s (n=2)</td><td><b>4.05–4.16</b></td><td class="g">both pass, stock fails</td></tr>
-<tr><td colspan="5"><b>goodput@SLO: stock ≤3 (λ=3-bound coin-flip) → SRPF ≥4.05&nbsp;req/s (SRPF n=2 at both rates, all 4 runs pass: λ=3 {5.9,6.0}s, λ=5 {5.85,7.46}s; stock λ=5 n=5, all 17–24&nbsp;s fail).</b></td></tr>
+<tr><td>3</td><td>7.6&nbsp;s (coin-flip 6.3–11.8, 3/5 pass)</td><td>5.9, 6.0, 7.4&nbsp;s (n=3)</td><td>3.02</td><td class="g">3/3 pass; SRPF clears the coin-flip (stock 3/5)</td></tr>
+<tr><td>5</td><td class="b">22.7&nbsp;s (stable fail)</td><td>5.85, 7.46&nbsp;s (n=2)</td><td><b>4.05–4.16</b></td><td class="g">2/2 pass, stock 0/5</td></tr>
+<tr><td colspan="5"><b>goodput@SLO: stock ≤3 (λ=3-bound coin-flip) → SRPF ~4.1&nbsp;req/s. All 5 SRPF runs clear the SLO (λ=3 {5.9,6.0,7.4}s ×3, λ=5 {5.85,7.46}s ×2; range 5.85–7.46&nbsp;s); stock coin-flips at λ=3 (3/5) and fails λ=5 stably (0/5, 17–24&nbsp;s).</b></td></tr>
 </table>
 <p>
 This is a clean <em>same-node</em> A/B (both on node 0-3, so no cross-node variance confound).
-<b>Scope of evidence, stated plainly:</b> SRPF is n=2 at both rates and <em>all four runs pass</em>: λ=3
-{5.9, 6.0}&nbsp;s (tight — stable, not a coin-flip) and λ=5 {5.85, 7.46}&nbsp;s (more spread, but both under
-8&nbsp;s). Stock λ=5 is a stable failure (n=5 across the campaign, all 17–24&nbsp;s; the same-node control
-drew 22.7&nbsp;s). The λ=5 win is robust because it is a <em>clean separation</em>: every SRPF λ=5 run
-(5.85–7.46&nbsp;s) is 2–4× below every stock λ=5 run (17–24&nbsp;s), with no overlap — a gap a coin-flip
-(whose signature is <em>straddling</em> 8&nbsp;s) cannot manufacture. (A third replicate is running for n=3;
-we note SRPF's own λ=5 spread honestly — r2's 7.46&nbsp;s clears the SLO by only 0.5&nbsp;s, so the goodput
-is "passes λ=5," not "comfortably.") Goodput@SLO thus rises from the stock coin-flip (≤3&nbsp;req/s) to SRPF
+<b>Scope of evidence, stated plainly:</b> SRPF is n=3 at λ=3 and n=2 at λ=5, and <em>all five runs clear the
+8&nbsp;s SLO</em>: λ=3 {5.9, 6.0, 7.4}&nbsp;s (3/3) and λ=5 {5.85, 7.46}&nbsp;s (2/2), overall range
+5.85–7.46&nbsp;s. SRPF has real run-to-run spread (its worst run, 7.46&nbsp;s, clears the SLO by only
+0.5&nbsp;s — reported honestly, goodput is "passes," not "comfortably"), <em>but every run passes</em>, unlike
+stock which coin-flips at λ=3 (3/5) and fails λ=5 stably (n=5, all 17–24&nbsp;s; the same-node control drew
+22.7&nbsp;s). The λ=5 win is robust as a <em>clean separation</em>: every SRPF λ=5 run (5.85–7.46&nbsp;s) is
+2–4× below every stock λ=5 run (17–24&nbsp;s), no overlap — a gap a coin-flip cannot manufacture; and at λ=3
+SRPF converts stock's 3/5 coin-flip into 3/3. Goodput@SLO thus rises from the stock coin-flip (≤3&nbsp;req/s) to SRPF
 passing λ=5 at <b>4.05–4.16&nbsp;req/s</b>; because SRPF clears λ=5 (both runs) and the next swept rate is
 λ=7 (overloaded), the sweep bounds SRPF goodput to <b>[4.05, &lt;7)&nbsp;req/s</b> — the ~4.2&nbsp;req/s
 work-conservation estimate of §3 (a range, not a point) says it is near the compute ceiling but the λ grid
@@ -355,11 +355,12 @@ matter. Cache-replacement theory (Belady, LRU stack-distance) supplies the phase
 long-document multiturn corpus. The phase-boundary criterion (§6) is our generality argument, but a direct
 cross-workload GPU sweep is out of scope of the fixed protocol.</li>
 <li>goodput@SLO is variance-dominated at λ=3; all comparisons are same-node and distributional. <b>SRPF is
-n=2 at both rates, all four runs pass: λ=3 {5.9, 6.0}&nbsp;s (tight), λ=5 {5.85, 7.46}&nbsp;s (more spread,
-one clears the SLO by only 0.5&nbsp;s).</b> The λ=5 win is robust as a <em>clean separation</em>: every SRPF
-λ=5 run (5.85–7.46&nbsp;s) is 2–4× below every stock λ=5 run (n=5, 17–24&nbsp;s), no overlap — which a
-coin-flip cannot produce. A third SRPF replicate is running for n=3; this paper states every claim at the n
-actually in hand and reports SRPF's own λ=5 spread honestly.</li>
+n=3 at λ=3 and n=2 at λ=5; all five runs clear the SLO: λ=3 {5.9, 6.0, 7.4}&nbsp;s (3/3), λ=5
+{5.85, 7.46}&nbsp;s (2/2), overall range 5.85–7.46&nbsp;s.</b> SRPF has genuine run-to-run spread (worst run
+7.46&nbsp;s, only 0.5&nbsp;s under the SLO — reported honestly), but every run passes, unlike stock (λ=3
+coin-flip 3/5; λ=5 stable-fail 0/5, 17–24&nbsp;s). The λ=5 win is a <em>clean separation</em> (every SRPF
+run 2–4× below every stock run, no overlap); the λ=3 win is 3/3 vs 3/5. We report SRPF's own spread
+honestly rather than cherry-picking its best run.</li>
 <li>The compute ceiling could in principle move compute-side (context-parallel prefill, quantization), but
 prefill context-parallelism is unavailable for this hybrid model in-engine and quantization is lossy /
 contract-frozen; we treat the ceiling as fixed.</li>

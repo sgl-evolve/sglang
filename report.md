@@ -997,3 +997,15 @@ scheduling lever's goodput ceiling ≈λ5 (λ7 backlog-bound).
   metric-critique — it is the "rigorously-established negative" the charter names as valid. Had I kept it as
   "SRPF wins" it would have been an incremental re-slice of a disqualified/sibling-owned result → I reframed
   instead of folding back.
+
+### IN FLIGHT — defer-knee (P1↔P2 bridge) (2026-07-15, job 20018, node 0-2, ~7-8h)
+NEW direction after 2 papers: does DEFERRAL collapse the goodput@SLO COIN-FLIP at the knee (P1) or merely SHIFT
+it? Same-node K=5 fcfs vs srpf (deferral REFERENCE — characterization probe, NOT a mechanism claim) at λ3.
+runs/v9-defer-knee/srpf_ab.csv. Motivation: existing n=3 is ambiguous — srpf λ3 {6158,6744,8086} = 2/3 (one
+GRAZED SLO at 8.086s) vs fcfs λ3 {10815,20126,34216} 0/3. ★Analyzer (ab_analyze.py) now reports σ/m (P1
+diagnostic) + variance verdict; existing data already shows the variance-reduction is KNEE-SPECIFIC (λ3 σ/m
+0.54→0.14 under deferral; λ5 FLAT 0.09→0.12 = deferral only shifts all-fail→all-pass, doesn't tighten). New job
+firms whether srpf λ3 reliably PASSES (variance collapsed → reliable goodput, bridges P1+P2) or keeps straddling
+(coin-flip scheduling-robust, strengthens P1). RESUME: `python3 tools/ab_analyze.py runs/v9-defer-knee/srpf_ab.csv`;
+if job 20018 dead + csv incomplete, resubmit tools/defer_knee.sbatch on any idle a3 node (NOT slurm2-a3nodeset-2 =
+GPU-less). Either outcome integrates into P2 (§ deferral & the knee variance) with honest framing; commit+push.

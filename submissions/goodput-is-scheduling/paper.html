@@ -269,11 +269,13 @@ stack-distance crosses H, then jumps to the full reuse volume.</caption>
 <tr><td>1529</td><td>3.06</td><td>1.8M</td><td>caching helps</td></tr>
 </table>
 <p>
-The fixed workload sits deep in the mirage regime: its reuse stack-distance is p50 = 2, p90 = 11, max = 519
-against <code>H ≈ 517</code>, so <b>99.8% of re-uses are LRU-captured</b> and headroom is ~0. A corpus escapes
-the mirage only if its hot documents recur at stack-distance beyond the horizon — a large working set re-used
-long-range — which long-document QA serving structurally is not (a conversation re-touches its own document a
-median of two conversations away). <b>Practitioner corollary:</b> measure your corpus's reuse stack-distance
+The fixed workload sits deep in the mirage regime: across its 1015 document-bearing conversations the reuse
+stack-distance is p50 = 10, p90 = 197, max = 518 against <code>H ≈ 516</code>, so <b>127 of 128 document
+re-uses (99.2%) are LRU-captured</b> and headroom is ~0.8% (one re-use at distance 518, just past H). A corpus
+escapes the mirage only if its hot documents recur at stack-distance beyond the horizon — a large working set
+re-used long-range — which long-document QA serving structurally is not (its one hot document recurs at a
+median gap of six conversations, and only ~10% of conversations re-use any document). <b>Practitioner
+corollary:</b> measure your corpus's reuse stack-distance
 against <code>H = CAP/mean-doc</code> before investing in a smarter retention policy; below the horizon, no
 policy beats LRU and the goodput lever is scheduling.
 </p>

@@ -22,12 +22,13 @@ b{color:#000}em{color:#333}
 
 <div class="abs">
 <b>Abstract.</b> Long-document conversational serving looks like an ideal target for KV-cache retention:
-in the fixed Mooncake-mix workload, <b>41% of conversations are served by just two documents</b>, and
-45% involve a document shared across conversations (43% are non-first re-uses). We show this
-apparent caching goldmine is a <em>mirage</em>. The reuse concentration is degenerate — <b>97% of the
-888 unique documents are used exactly once</b>, and the most popular document has a median reuse distance
-of two conversations, so the stock content-keyed radix cache holds the hot documents resident with a
-trivial footprint and captures <em>all</em> of their reuse for free. We prove, by replaying the real trace
+in the fixed Mooncake-mix workload a single document is the context of 100 conversations and some documents
+recur across conversations, suggesting a cross-conversation caching win. We show this apparent goldmine is a
+<em>mirage</em>. Of the 1553 conversations, 1015 carry a document (538 are document-free chat); across those,
+<b>97% of the 887 unique documents are used exactly once</b>, only <b>10% of conversations re-use a document
+another already prefilled</b> (4% of turn-0 work), and re-used documents recur at a small stack-distance, so
+the stock content-keyed radix cache holds them resident with a trivial footprint and captures <em>all</em>
+of their reuse for free. We prove, by replaying the real trace
 through the KV cache, that single-pass LRU is <b>Belady-optimal</b> (LRU = LFU = Belady = 0 avoidable
 re-prefill at the real two-tier capacity): every miss is the first-sight prefill of a unique document,
 which no eviction or retention policy can remove. The only "avoidable" re-prefill we can find is a
@@ -57,12 +58,13 @@ two-tier HiCache), evaluated by <b>goodput@SLO</b> (max Poisson request rate wit
 </p>
 <p>It does not. Our contributions:</p>
 <ul>
-<li><b>A characterization of the reuse structure (§2).</b> The workload is 888 unique documents across
-1553 conversations, with degenerate popularity: two documents serve 41% of conversations, while 97% of
-documents are used exactly once. Naively this signals large caching headroom.</li>
+<li><b>A characterization of the reuse structure (§2).</b> The workload is 1553 conversations — 1015 carry
+a document (887 unique), 538 are document-free chat. Popularity is degenerate: one document is the context
+of 100 conversations while <b>97% of documents are used exactly once</b>, and only ~10% of conversations
+re-use a document another already prefilled. Naively even that concentration signals caching headroom.</li>
 <li><b>The mirage, proven (§3).</b> Replaying the real trace through the cache, single-pass LRU is
 Belady-optimal — LRU = LFU = Belady = <b>0 avoidable re-prefill</b> at the real capacity. Hot documents
-are trivially resident (reuse distance ≈ 2); singleton documents have no reuse to capture. Eviction
+are trivially resident (hot-doc recurs at median gap 6, inside the horizon); singleton documents have no reuse to capture. Eviction
 policy is a live but non-improving knob (a live LFU/SLRU A/B degrades, not helps).</li>
 <li><b>The real lever is scheduling, not caching (§4–5).</b> The goodput bottleneck is head-of-line
 blocking: the few large cold-document prefills run back-to-back and stall small turns (the λ=3 p99 of
@@ -76,28 +78,34 @@ scheduling is the lever.</li>
 
 <h2>2 The workload's document structure</h2>
 <p>
-Each conversation's turn-0 embeds an entire document plus a question; turns 1..N re-use it. We hash each
-document's text and tabulate popularity and size (tokens ≈ chars/4). The picture is not Zipfian; it is
-<b>two hot documents plus a long tail of singletons</b>:
+Each document-bearing conversation's turn-0 embeds an entire document plus a question; turns 1..N re-use it.
+(Of the 1553 conversations, 538 are document-free chat — ShareGPT turns with no <code>input</code> document —
+and are excluded from the document-reuse analysis; they contribute cold chat-context prefill, counted in the
+compute analysis of §4, but have no cross-conversation document to cache.) We hash each document's text and
+tabulate popularity and size (tokens ≈ chars/4). The picture is <b>one hot document plus a long tail of
+singletons</b>:
 </p>
 <table>
-<caption>Document popularity and size across 1553 conversations (888 unique documents).</caption>
+<caption>Document popularity and size across the 1015 document-bearing conversations (887 unique documents;
+the other 538 conversations are document-free chat).</caption>
 <tr><th>quantity</th><th>value</th></tr>
-<tr><td>unique documents</td><td>888 (of 1553 conversations)</td></tr>
+<tr><td>document-bearing conversations</td><td>1015 (of 1553; 538 are chat, no document)</td></tr>
+<tr><td>unique documents</td><td>887</td></tr>
 <tr><td>documents used exactly once</td><td><b>858 (97%)</b></td></tr>
-<tr><td>documents used 2–3×</td><td>28</td></tr>
-<tr><td>documents used &gt;10×</td><td><b>2</b> (538× and 100×)</td></tr>
-<tr><td>conversations served by the top-2 documents</td><td><b>638 / 1553 (41%)</b></td></tr>
-<tr><td>hot-doc (538×) reuse distance (conversations)</td><td>min 1, <b>median 2</b>, max 15</td></tr>
+<tr><td>documents used 2–3×</td><td>28 (27 twice, 1 thrice)</td></tr>
+<tr><td>documents used &gt;10×</td><td><b>1</b> (100×)</td></tr>
+<tr><td>conversations re-using an already-seen document</td><td><b>157 / 1015 (15% of doc-convs; ~10% of all)</b></td></tr>
+<tr><td>conversations served by the top document</td><td>100 / 1553 (6%)</td></tr>
+<tr><td>hot-doc (100×) reuse distance (conversations)</td><td>min 1, <b>median 6</b>, max 47</td></tr>
 <tr><td>unique-document size (tokens)</td><td>p50 18.7k · p90 33.2k · p99 67.2k · max <b>190.9k</b> · mean 20.7k</td></tr>
 </table>
 <p>
-Two facts about this structure drive everything below. First, the <em>hot</em> documents are re-used
-almost immediately (median gap of two conversations), so any reasonable cache keeps them resident — and
-their footprint is negligible relative to the 10.7M-token two-tier capacity. Second, the <em>bulk</em> of
-distinct documents (97%) are used once; their prefill is irreducibly cold, and there is simply no reuse
-for a cache to exploit. The 41% "reuse concentration" is real but is carried entirely by the two hot
-documents, which are already free to serve from cache.
+Two facts about this structure drive everything below. First, the <em>one</em> hot document is re-used at a
+short gap (median 6 conversations, max 47) so any reasonable cache keeps it resident — and its footprint is
+negligible relative to the 10.7M-token two-tier capacity. Second, the <em>bulk</em> of distinct documents
+(97%) are used once; their prefill is irreducibly cold, and there is simply no reuse for a cache to exploit.
+Cross-conversation document reuse touches only ~10% of conversations (4% of turn-0 work) and is carried by a
+handful of documents that are already free to serve from cache.
 </p>
 
 <h2>3 Why the reuse is a mirage</h2>
@@ -109,25 +117,27 @@ re-prefilled — the only work a better policy could remove). The stock radix ca
 so an identical document re-used by another conversation is a hit whenever it is resident.
 </p>
 <table>
-<caption>Trace-driven document-cache replay at CAP = 10.7M tokens. Single-pass = one traversal of the
-1553-conversation workload; 4-pass = the eval's four-rate sweep over the same set (no flush).</caption>
+<caption>Trace-driven document-cache replay at CAP = 10.7M tokens, over the 1015 document-bearing
+conversations. Single-pass = one traversal; 4-pass = the eval's four-rate sweep over the same set (no
+flush). doc-hit is the fraction of document-bearing conversations served from cache.</caption>
 <tr><th>scenario</th><th>policy</th><th>doc-hit</th><th>cold (irreducible)</th><th>avoidable</th></tr>
-<tr><td rowspan="3">single pass (the real workload)</td><td>LRU</td><td>43%</td><td>18.4M tok</td><td class="b"><b>0.0M</b></td></tr>
-<tr><td>LFU</td><td>43%</td><td>18.4M tok</td><td class="b"><b>0.0M</b></td></tr>
-<tr><td>Belady (optimal)</td><td>43%</td><td>18.4M tok</td><td class="b"><b>0.0M</b></td></tr>
-<tr><td rowspan="3">4× rate-sweep replay (benchmark artifact)</td><td>LRU</td><td>43%</td><td>18.4M</td><td>55.1M</td></tr>
-<tr><td>LFU</td><td>44%</td><td>18.4M</td><td>54.0M</td></tr>
-<tr><td>Belady (optimal)</td><td>68%</td><td>18.4M</td><td>23.1M</td></tr>
+<tr><td rowspan="3">single pass (the real workload)</td><td>LRU</td><td>13%</td><td>18.4M tok</td><td class="b"><b>0.0M</b></td></tr>
+<tr><td>LFU</td><td>13%</td><td>18.4M tok</td><td class="b"><b>0.0M</b></td></tr>
+<tr><td>Belady (optimal)</td><td>13%</td><td>18.4M tok</td><td class="b"><b>0.0M</b></td></tr>
+<tr><td rowspan="3">4× rate-sweep replay (benchmark artifact)</td><td>LRU</td><td>13%</td><td>18.4M</td><td>55.1M</td></tr>
+<tr><td>LFU</td><td>14%</td><td>18.4M</td><td>54.0M</td></tr>
+<tr><td>Belady (optimal)</td><td>51%</td><td>18.4M</td><td>23.1M</td></tr>
 </table>
 <h3>3.1 Single-pass LRU is Belady-optimal</h3>
 <p>
 On the real workload (one pass), <b>LRU = LFU = Belady = 0 avoidable re-prefill</b>. This is not a
 coincidence of capacity; it is structural. A document is either (i) a singleton — first-sight, cold, and
-never re-used, so caching it or not is irrelevant to hits — or (ii) hot, re-used within a median of two
-conversations, so LRU never evicts it before its next use. There is no third case in which a policy could
+never re-used, so caching it or not is irrelevant to hits — or (ii) re-used at a short stack-distance
+(the hot document recurs at a median gap of six conversations, well inside the cache horizon), so LRU never
+evicts it before its next use. There is no third case in which a policy could
 help: the workload contains no document that is re-used <em>far</em> enough in the future to be evicted
 by LRU yet <em>often</em> enough to be worth keeping. Every cache miss is therefore a first-sight
-prefill of one of the 888 unique documents. <b>The cold floor is 18.4M tokens and is policy-invariant.</b>
+prefill of one of the 887 unique documents. <b>The cold floor is 18.4M tokens and is policy-invariant.</b>
 (A coarser conversation-prefix model that treats all 1553 conversations as simultaneously active —
 a round-robin over the full set — reports up to ~24% "avoidable" recompute; that is an upper bound
 induced by the all-active assumption. The document-keyed, arrival-ordered analysis here shows the
@@ -166,11 +176,12 @@ The mirage generalizes through a simple, measurable boundary. LRU captures a re-
 used — is below the cache horizon <code>H = CAP / mean-doc-size</code> (in documents); a re-use with
 stack-distance above <code>H</code> is evicted by LRU and is the only kind a popularity-aware policy could
 keep. So the online caching headroom of <em>any</em> corpus is exactly the fraction of its re-uses with
-stack-distance &gt; H. Here <code>H ≈ 517</code> documents while the re-use stack-distance is tiny
-(p50 = 2, p90 = 11, max = 519): <b>99.8% of all 665 re-uses fall within the horizon</b> and are
-LRU-captured, leaving ~0% headroom (<code>analysis/reuse_distance.py</code>). A corpus is in the mirage
-regime whenever its popular documents recur at short stack-distance (here: the two hot documents at
-distance ≈ 2) with a singleton tail — and the boundary says exactly when caching <em>would</em> pay off
+stack-distance &gt; H. Here <code>H ≈ 516</code> documents while the re-use stack-distance is small
+(p50 = 10, p90 = 197, max = 518): <b>127 of the 128 document re-uses (99.2%) fall within the horizon</b> and
+are LRU-captured, leaving ~0.8% headroom — one re-use at stack-distance 518, just past H
+(<code>analysis/reuse_distance.py</code>). A corpus is in the mirage
+regime whenever its popular documents recur at short stack-distance (here: the hot document at
+median gap 6, all but one re-use inside the horizon) with a singleton tail — and the boundary says exactly when caching <em>would</em> pay off
 instead: a large working set re-used at stack-distance &gt; H, which this document-QA corpus is far from.
 </p>
 <p>
@@ -222,7 +233,7 @@ SLO is a <em>scheduling</em> phenomenon, not a caching one.
   <text x="10" y="16" fill="#333">Prefill work (tokens) — where goodput's budget goes</text>
   <!-- irreducible cold -->
   <rect x="60" y="40" width="360" height="34" fill="#e46" opacity="0.8"/>
-  <text x="240" y="62" text-anchor="middle" fill="#fff">cold: 888 unique first-prefills = 18.4M (irreducible)</text>
+  <text x="240" y="62" text-anchor="middle" fill="#fff">cold: 887 unique first-prefills = 18.4M (irreducible)</text>
   <!-- avoidable single pass -->
   <rect x="420" y="40" width="4" height="34" fill="#2a2"/>
   <text x="430" y="62" fill="#2a2">avoidable (single-pass) = 0</text>

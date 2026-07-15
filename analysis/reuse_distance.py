@@ -27,6 +27,7 @@ def main():
     with open(TRACE) as f:
         for line in f:
             r = json.loads(line); doc = r.get("input", "")
+            if not doc: continue   # skip empty-doc chat records (ShareGPT); DOCUMENT-reuse only
             dh = hashlib.md5(doc.encode()).hexdigest()
             try: qa = ast.literal_eval(r["qa_pairs"]) if r.get("qa_pairs") else []
             except Exception: qa = []

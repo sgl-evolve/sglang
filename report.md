@@ -827,3 +827,16 @@ run-2 crashed (profile_by_stage SIGABRT). run-3 crashed (NCCL TCPStore timeout d
 ~1.5h). Decode kernel trace NOT obtained; papers stand honestly on prefill anatomy + the §2 tpot∝conc decode-memory-bound
 law (capstone §3 already caveats profile_by_stage aborts). Net profiler value HIGH despite the decode miss.
 OPS: future profiler needs --dist-timeout 3600 (cold FlashInfer NCCL init); profile_by_stage broken on this build → plain.
+
+## Next-direction scoping (12:03): AllReduce-tax lever RULED OUT (intrinsic); adaptive-f = limited upside
+Profiler showed 19% prefill AllReduce tax → is it a reducible K-lever? Scoped sglang allreduce backends
+(custom_all_reduce, quick_all_reduce, flashinfer-allreduce-fusion, torch_symm_mem):
+- Custom AR IS active (62.7ms two_shot = small-tensor allreduce). The dominant 386ms is NCCL RING for LARGE prefill
+  allreduces (6144-16384 tok) → RING is bandwidth-optimal for that size; no faster stable option.
+- flashinfer-allreduce-fusion (the one path that could overlap/hide it) is exactly what CRASHED on this build (SIGABRT /
+  auto-disabled in run-3). Infeasible.
+⇒ the 19% AllReduce tax is largely INTRINSIC to TP=8 w/ large prefill allreduces; not losslessly reducible on frozen
+config (would need TP-degree/interconnect change = out of scope). NOT a clean lever. (Could be a thin bounded-negative.)
+- Adaptive-f controller: limited upside — f=2 already reaches goodput 5 near ceiling C~5.65; headroom small.
+⇒ Accessible novel-mechanism space is largely EXHAUSTED (design-space map complete). Next value = DEPTH/rigor/polish on
+the strong existing 6-paper portfolio (finalize P6 §5 dose-figure w/ f=1.5; firm replicates) rather than a forced thin paper.

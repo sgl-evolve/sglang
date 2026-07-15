@@ -43,8 +43,8 @@ is a <em>metastable coin-flip</em> capped at &lambda;=3 (3.02 req/s), because ca
 We introduce <strong>SRPF (Shortest Remaining Prefill First)</strong>, a cache-aware scheduling policy
 that sorts the waiting queue by ascending uncached prefill tokens, admitting cached continuations
 before cold documents. SRPF raises goodput from 3.02 to <strong>4.06&ndash;5.06 req/s (+34&ndash;67%)</strong>,
-replicated across n=13 runs on 3 certified nodes. At &lambda;=5, SRPF achieves <strong>13/13 PASS
-vs 0/7 FCFS</strong> (Fisher exact p &asymp; 0.00001, perfectly separated). The mechanism is
+replicated across n=17 runs on 3 certified nodes. At &lambda;=5, SRPF achieves <strong>17/17 PASS
+vs 0/16 FCFS</strong> (Fisher exact p = 8.6&times;10<sup>&minus;10</sup>, perfectly separated). The mechanism is
 <strong>60 lines of scheduling code</strong> (no cache architecture changes) and compounds
 orthogonally with capacity de-duplication (write_back), confirming that goodput has two
 independent levers: scheduling and capacity.
@@ -134,6 +134,12 @@ Active cache = <code>UnifiedRadixCache</code>. ~10.7M token capacity vs ~19M tok
 <p><strong>Workload:</strong> mooncake_mix_v1 (1553 multi-turn conversations, 7037 total API calls,
 4.61 turns/conversation average). Poisson open-loop arrival, rate sweep &lambda;&isin;{3,5,7,10},
 max concurrency 256. 300-conversation warmup burst, no inter-rate cache flush.</p>
+<p><strong>Workload bimodality.</strong> The workload creates a stark processing-time bimodality:
+turn-0 (first turn of each conversation) requires cold prefill of the entire document
+(mean ~12K tokens, max 190K). Turns 1&ndash;N reuse the cached document prefix, requiring only
+~64 tokens of new prefill. With 4.61 turns/conversation on average, <strong>78.3%</strong> of
+API calls are cached continuations (near-free) and <strong>21.7%</strong> are cold first-turns
+(expensive). The scheduler batches 91% prefill, 9% decode (32K prefill batches vs 3K decode).</p>
 <p><strong>Metric:</strong> goodput@SLO = max req/s among rates with p99 TTFT &le; 8000 ms.</p>
 
 <h2>4. Results</h2>
@@ -142,17 +148,17 @@ max concurrency 256. 300-conversation warmup burst, no inter-rate cache flush.</
 
 <table>
 <tr><th>Scheduling</th><th>n</th><th>r5 PASS</th><th>Mean r5 p99 (ms)</th><th>&sigma;</th><th>Min</th><th>Max</th></tr>
-<tr><td><strong>SRPF</strong></td><td>13</td><td class="pass">13/13 (100%)</td><td>6314</td><td>557</td><td>5725</td><td>7605</td></tr>
-<tr><td>FCFS</td><td>7</td><td class="fail">0/7 (0%)</td><td>19658</td><td>5902</td><td>10258</td><td>27347</td></tr>
+<tr><td><strong>SRPF</strong></td><td>17</td><td class="pass">17/17 (100%)</td><td>6380</td><td>574</td><td>5490</td><td>7605</td></tr>
+<tr><td>FCFS</td><td>16</td><td class="fail">0/16 (0%)</td><td>19485</td><td>4388</td><td>9672</td><td>24484</td></tr>
 </table>
 
-<p><strong>Perfect separation:</strong> max SRPF r5 p99 (7605 ms) &lt; min FCFS r5 p99 (10258 ms),
-gap = 2653 ms = 0.33&times; SLO. Fisher exact test (one-sided): p = 1/C(20,13) &asymp; 0.00001.</p>
+<p><strong>Perfect separation:</strong> max SRPF r5 p99 (7605 ms) &lt; min FCFS r5 p99 (9672 ms),
+gap = 2067 ms = 0.26&times; SLO. Fisher exact test (one-sided): p = 8.6&times;10<sup>&minus;10</sup>.</p>
 
-<p><strong>Variance stabilization:</strong> SRPF &sigma; = 557 ms vs FCFS &sigma; = 5902 ms &mdash;
-SRPF stabilizes the metric by <strong>11&times;</strong>.</p>
+<p><strong>Variance stabilization:</strong> SRPF &sigma; = 574 ms vs FCFS &sigma; = 4388 ms &mdash;
+SRPF stabilizes the metric by <strong>8&times;</strong>.</p>
 
-<p><strong>Node independence:</strong> SRPF passes on all 3 certified nodes: 1-2 (n=8),
+<p><strong>Node independence:</strong> SRPF passes on all 3 certified nodes: 1-2 (n=12),
 ondem-2 (n=4), 0-3 (n=1). MWU p=0.46 between nodes at r5.</p>
 
 <h3>4.2 Goodput improvement: +37&ndash;67%</h3>
@@ -168,13 +174,36 @@ ondem-2 (n=4), 0-3 (n=1). MWU p=0.46 between nodes at r5.</p>
 SRPF+write_back conservative goodput (4.35) exceeds SRPF+write_through conservative (4.06)
 because write_back raises hit rate +6 pp (0.697 &rarr; 0.735), reducing cold prefill volume.</p>
 
-<h3>4.3 &lambda;=7 metastability: the physical boundary</h3>
+<p><strong>Capacity alone does not suffice (control):</strong> FCFS+exclusive-tiering+write_back
+achieves the <em>highest</em> hit rate in the study (0.755&ndash;0.783) but goodput remains 3.02
+(n=4, same as stock). Adding 10+ pp of hit via capacity optimization cannot substitute for
+scheduling. Conversely, SRPF+write_through (hit 0.684) reaches goodput 4.06&ndash;4.58 despite
+lower hit. This confirms scheduling is the <strong>necessary</strong> lever.</p>
 
-<p>At &lambda;=7, SRPF compresses the p99 distribution from 30.6 s (FCFS) to 8.1 s &mdash;
-a <strong>3.8&times; compression</strong>. The distributions are perfectly separated
-(MWU U=78, p=3.7&times;10<sup>&minus;5</sup>, Cohen's d = 8.32, zero overlap).</p>
+<h3>4.3 Full rate-sweep comparison (same node 1-2)</h3>
 
-<p>However, the compressed distribution straddles the 8 s SLO: 5/13 runs PASS (38%),
+<table>
+<tr><th>Rate (&lambda;)</th><th colspan="2">SRPF+WB (n=5)</th><th colspan="2">FCFS+WB (n=1)</th><th>p99 compression</th></tr>
+<tr><th></th><th>p99 TTFT (ms)</th><th>req/s</th><th>p99 TTFT (ms)</th><th>req/s</th><th></th></tr>
+<tr><td>3</td><td>5685 &plusmn; 201</td><td>3.02</td><td>6972</td><td>3.02</td><td>1.2&times;</td></tr>
+<tr><td>5</td><td>6291 &plusmn; 475</td><td>4.39</td><td>20650</td><td>4.42</td><td><strong>3.3&times;</strong></td></tr>
+<tr><td>7</td><td>8654 &plusmn; 897</td><td>5.04</td><td>32208</td><td>4.83</td><td><strong>3.7&times;</strong></td></tr>
+<tr><td>10</td><td>15486 &plusmn; 818</td><td>5.27</td><td>43268</td><td>5.09</td><td><strong>2.8&times;</strong></td></tr>
+</table>
+
+<p>At every rate from &lambda;=5 onward, SRPF compresses p99 TTFT by <strong>2.8&ndash;3.7&times;</strong>
+while maintaining comparable throughput. The compression is most dramatic at &lambda;=7 (the
+rate where SRPF approaches the SLO boundary), consistent with the head-of-line blocking
+mechanism: at higher arrival rates, more cold documents accumulate in the queue, and SRPF's
+reordering benefit grows.</p>
+
+<h3>4.4 &lambda;=7 metastability: the physical boundary</h3>
+
+<p>At &lambda;=7, SRPF compresses the p99 distribution from 31.4 s (FCFS mean, n=16) to 8.5 s
+(SRPF mean, n=17) &mdash; a <strong>3.7&times; compression</strong>. The distributions are
+perfectly separated (MWU U=0, p=5.3&times;10<sup>&minus;7</sup>, Cohen's d = 10.7, zero overlap).</p>
+
+<p>However, the compressed distribution straddles the 8 s SLO: 6/17 runs PASS (35%),
 consistent with a Normal(72.4, 8.7) violation model predicting 39%. PASS and FAIL runs
 are <strong>statistically identical</strong> in mean, median, &sigma;, and throughput &mdash;
 only the p99 (the ~70th-worst TTFT out of ~7037 completions) differs.</p>
@@ -185,13 +214,13 @@ budget is zero-sum: only one chunked request occupies the 6144-token chunk budge
 SRPF's ordering is provably optimal for this structure. The residual ~70 SLO violations require
 faster hardware, fewer cold documents, or prefill-decode disaggregation.</p>
 
-<h3>4.4 r5 and r7 are independent stochastic events</h3>
+<h3>4.5 r5 and r7 are independent stochastic events</h3>
 
 <p>Pearson r = 0.13 (n=13) between r5 and r7 p99 across SRPF runs. A good r5 does not predict
 a good r7. The r7/r5 ratio varies from 1.02 to 1.46 (mean 1.27, &sigma;=0.14). The r7 coin-flip
 is genuinely independent of r5 performance.</p>
 
-<h3>4.5 Per-request TTFT decomposition: the tail is compute, not queueing</h3>
+<h3>4.6 Per-request TTFT decomposition: the tail is compute, not queueing</h3>
 
 <p>We instrumented the server (<code>--enable-request-time-stats-logging</code>) to decompose
 every request&rsquo;s latency into <em>queue wait</em> (time in the waiting queue) and
@@ -210,6 +239,21 @@ requests are cold documents. Under SRPF, cached continuations receive near-insta
 (median 5.6 ms queue), and the tail is entirely determined by cold-document prefill compute.
 This directly explains why chunk-reserve (which trades mega-doc TTFT for continuation queue time)
 is counterproductive: there is no queue-time problem for SRPF to solve at the tail.</p>
+
+<h3>4.7 SRPF is pure latency reshaping, not a throughput increase</h3>
+
+<p>A critical control: SRPF does not increase peak throughput. At &lambda;=10 (saturation),
+SRPF+WB and FCFS+WB achieve nearly identical performance:</p>
+
+<table>
+<tr><th>Metric</th><th>SRPF+WB (n=7)</th><th>FCFS+WB (n=2)</th><th>&Delta;</th></tr>
+<tr><td>Peak tok/s</td><td>672 &plusmn; 7</td><td>661 &plusmn; 10</td><td>+1.7%</td></tr>
+<tr><td>Peak req/s (&lambda;=10)</td><td>5.28 &plusmn; 0.07</td><td>5.17 &plusmn; 0.08</td><td>+2.1%</td></tr>
+</table>
+
+<p>The goodput improvement comes entirely from <strong>latency redistribution</strong>: SRPF
+converts the same total compute into a latency-SLO-compliant arrangement by processing cheap
+cached continuations first. The GPU does the same total work; only the <em>order</em> changes.</p>
 
 <h2>5. Design Space Closure</h2>
 
@@ -305,7 +349,7 @@ goodput@SLO (the tail is cold-doc first-compute, not cache-addressable).</p>
 <p>SRPF demonstrates that <strong>scheduling is the overlooked lever</strong> in hierarchical
 KV-cache serving. A 60-line scheduling change &mdash; sorting the waiting queue by remaining
 uncached prefill &mdash; raises goodput by 37&ndash;67%, converts an unreliable metric into a
-reliable one (13/13 PASS at &lambda;=5), and reveals that goodput has two orthogonal levers
+reliable one (17/17 PASS at &lambda;=5), and reveals that goodput has two orthogonal levers
 (scheduling + capacity) that compound.</p>
 
 <p>The design space beyond SRPF is exhaustively closed across four dimensions &mdash;
@@ -325,8 +369,9 @@ and <code>--hicache-write-policy write_back</code>. They address different bottl
 Raw artifacts (server logs, bench JSON, curve CSV) are attached as versioned artifacts.
 The evaluation protocol is frozen (<code>eval.sh</code>) and the code is on branch
 <code>evolve/base</code> at commit <code>01fd8ba0a</code> (SRPF mechanism) and
-<code>3933c266b</code> (final report). 13 SRPF runs across 3 certified nodes, 7 FCFS
-baselines. Every version (positive and negative) is logged.</p>
+<code>68c398520</code> (final report). <strong>37 total evaluation runs:</strong> 17 SRPF-based
+(pure ordering + neutral ablations), 2 SRPF-modified (aging, chunk-reserve = strong negatives),
+16 FCFS variants, 2 broken. Every version (positive and negative) is logged with full server logs.</p>
 
 </body>
 </html>

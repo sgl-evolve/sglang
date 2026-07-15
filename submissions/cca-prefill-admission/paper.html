@@ -203,10 +203,10 @@ engine already spends nearly all compute on new first-tokens, so the prefill/dec
 TTFT-optimal and not a further lever (shifting steps to decode would only lower goodput). Reordering the
 deep queue is now meaningful: shortest-prefill-first (SRPF/SJF, a classic scheduling policy) raises
 throughput to the ~4.2&nbsp;req/s work-conservation ceiling of §2.3. Our own same-node SRPF sweep confirms
-it at both regimes: <b>λ=5 p99 TTFT 5.85&nbsp;s at 4.16&nbsp;req/s</b> (below the SLO), versus stock's
-stable λ=5 failure (17–24&nbsp;s across runs; the same-node control drew 22.7&nbsp;s) — so goodput@SLO rises
-from the λ=3 coin-flip (≤3&nbsp;req/s) to
-<b>4.16&nbsp;req/s</b>, the compute ceiling. No reordering crosses that ceiling — the remaining gap is the
+it at both regimes: <b>λ=5 p99 TTFT 5.85 and 7.46&nbsp;s (n=2, both below the SLO) at ~4.1&nbsp;req/s</b>,
+versus stock's stable λ=5 failure (17–24&nbsp;s across n=5; the same-node control drew 22.7&nbsp;s) — a clean
+separation — so goodput@SLO rises from the λ=3 coin-flip (≤3&nbsp;req/s) to
+<b>~4.1&nbsp;req/s</b>, near the compute ceiling. No reordering crosses that ceiling — the remaining gap is the
 compute wall, not a policy we have failed to find. (SRPF is textbook; the contribution is the
 head-of-line diagnosis and the admission negative that together show scheduling — not admission or
 caching — is the lever.)</li>
@@ -293,7 +293,7 @@ straddles 8&nbsp;s). Admission is the wrong tool for a head-of-line problem; reo
 This paper's scope is admission (a clean negative); the reordering lever is the classic SRPF/SJF policy,
 which we corroborate directly on the GPU with a <em>same-node</em> A/B (both on node 0-3, so no cross-node
 confound): non-preemptive SRPF lands λ=3 p99 <b>5.9&nbsp;s</b> vs the same-node stock control's 7.6&nbsp;s,
-and λ=5 <b>5.85&nbsp;s</b> vs the control's 22.7&nbsp;s (stock fails) — matching the non-preemptive
+and λ=5 <b>{5.85, 7.46}&nbsp;s (n=2, both pass)</b> vs the control's 22.7&nbsp;s (stock fails) — matching the non-preemptive
 simulation (~6&nbsp;s) — so reordering relieves the head-of-line tail exactly as diagnosed. (SRPF is a
 textbook policy, not this paper's contribution; our contribution is the head-of-line <em>diagnosis</em> and
 the admission <em>negative</em>. SRPF is n=1, corroborative; the diagnosis itself rests on the arithmetic

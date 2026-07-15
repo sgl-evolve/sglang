@@ -35,9 +35,10 @@ diagnose why: below the saturation knee the p99 is <em>head-of-line blocking</em
 turns queued behind the back-to-back chunked prefill of a few large cold documents (fewer than 0.1% of
 turns prefill ≥6&nbsp;s, yet the p99 is 6–11&nbsp;s; the waiting queue is 9.6× deeper during big-cold-doc
 chunks) — and above the knee the GPU is compute-bound at a work-conservation ceiling of ~4.2&nbsp;req/s
-(99% of forward steps are already prefill). Serving the small turns first (SRPF, a textbook policy) moves
-goodput@SLO from the stock coin-flip (≤3&nbsp;req/s, λ=3-bound) to <b>4.16&nbsp;req/s</b> — the compute
-ceiling — purely by reordering, with cache contents untouched. Finally we give a <em>predictive criterion</em>
+(99% of forward steps are already prefill). Serving the small turns first (SRPF, a textbook policy) turns
+stock's stable λ=5 failure (17–24&nbsp;s, n=5) into a pass (5.85&nbsp;s), lifting goodput@SLO from the
+stock coin-flip (≤3&nbsp;req/s, λ=3-bound) to <b>≥4.16&nbsp;req/s</b> (near the ~4.2&nbsp;req/s compute
+ceiling) — purely by reordering, with cache contents untouched. Finally we give a <em>predictive criterion</em>
 for when caching <em>would</em> matter: a reuse-stack-distance-vs-cache-horizon phase boundary, validated on
 constructed corpora, that this workload class sits far inside. The contribution is the map, the head-of-line
 diagnosis, and the phase-boundary criterion — not SRPF, which is textbook and which we use only to confirm
@@ -75,9 +76,9 @@ knowing, and proving, that scheduling is where the lever is and caching is not.<
 <li><b>A predictive phase-boundary criterion (§6).</b> Caching has online goodput headroom iff a corpus
 re-uses documents at a stack-distance beyond the cache horizon <code>H = CAP/mean-doc</code>; we validate
 the boundary on constructed corpora, and compose it with the compute and head-of-line bounds into a
-<em>predictive goodput-lever model</em> (§6.1) that reproduces the measured goodput (4.17 vs 4.16&nbsp;req/s)
-and names the lever from workload+hardware parameters — making the result <em>general</em>, not a
-single-workload artifact.</li>
+<em>parameter-free lever-selection procedure</em> (§6.1) that names the goodput lever from workload shape
+alone (here: scheduling), generalizing the result beyond this single workload. (The procedure's ceiling
+<em>magnitude</em> is a self-consistency check, not an independent prediction — we say so in §6.1.)</li>
 </ul>
 
 <h2>2 Setup and method</h2>
@@ -110,8 +111,11 @@ We evaluate each axis against goodput@SLO. The verdict is uniform across the KV-
 retention layer — non-lever — and isolated to one axis, prefill scheduling.
 </p>
 <table>
-<caption>Every KV-cache/serving axis vs. goodput@SLO on the fixed workload. "Non-lever" = provably cannot
-move the metric; evidence is trace-driven, simulated, and/or a same-node GPU A/B.</caption>
+<caption>Every KV-cache/serving axis vs. goodput@SLO on the fixed workload. Evidence strength varies by row
+and is stated in the last column — <em>proof</em> (LRU=Belady), <em>measurement</em> (admission A/B),
+<em>bound/utilization</em> (transfer, Mamba pool — non-binding under this KV budget), or <em>simulation</em>
+(fast-lane, GPU-unconfirmed); "non-lever" means it does not move the metric under the evidence shown, not
+an unconditional proof for every row.</caption>
 <tr><th>axis</th><th>verdict</th><th>why (evidence)</th></tr>
 <tr><td>residency / eviction</td><td class="b">non-lever (mirage)</td><td>single-pass LRU = LFU = Belady = 0 avoidable re-prefill at real capacity; live <code>--radix-eviction-policy</code> knob, LFU builds a deeper queue than LRU (§6, companion)</td></tr>
 <tr><td>admission control</td><td class="b">negative</td><td>deferring cold prefills multiplies the p99 (λ=3 → 56&nbsp;s); the deferred work <em>is</em> the tail (companion)</td></tr>
@@ -144,8 +148,10 @@ than during all other prefill steps (mean 1.2, p90 0) — small turns pile up sp
 grind (<code>analysis/hol_trace.py</code>).</li>
 <li><b>Simulation.</b> A per-step 6144-token queueing model calibrated to the coin-flip (stock λ=3 p99 mean
 7.5&nbsp;s, straddling the SLO) shows shortest-prefill-first collapses it to ~4&nbsp;s, coin-flip removed
-(<code>analysis/hol_sim.py</code>); round-robin interleaving does not.</li>
-<li><b>GPU A/B.</b> A same-node SRPF run lands λ=3 p99 at 5.9&nbsp;s (below SLO), matching the simulation.</li>
+(<code>analysis/hol_sim.py</code>); round-robin interleaving does not. The simulator is calibrated and used
+<em>only at λ=3</em> (the coin-flip regime); it over-serializes above the knee, so no λ≥5 claim rests on it
+(an earlier trace oracle that over-serialized pointed the wrong way — §2 — a mistake this scope limit avoids).</li>
+<li><b>GPU A/B.</b> A same-node SRPF run (n=1) lands λ=3 p99 at 5.9&nbsp;s (below SLO), matching the simulation.</li>
 </ul>
 <p>
 The mechanism is that a chunked large cold document runs its ceil(work/6144) chunks back-to-back
@@ -204,15 +210,22 @@ control drew 7.6&nbsp;s); at λ=5 it fails stably.</caption>
 <tr><th>rate λ</th><th>stock p99 TTFT (same node)</th><th>SRPF p99 TTFT</th><th>SRPF req/s</th><th>SLO (8&nbsp;s)</th></tr>
 <tr><td>3</td><td>7.6&nbsp;s (coin-flip 6.3–11.8)</td><td>5.9&nbsp;s</td><td>3.02</td><td class="g">both pass (SRPF safer)</td></tr>
 <tr><td>5</td><td class="b">22.7&nbsp;s (stable fail)</td><td>5.85&nbsp;s</td><td><b>4.16</b></td><td class="g">SRPF passes, stock fails</td></tr>
-<tr><td colspan="5"><b>goodput@SLO: stock ≤3 (λ=3-bound coin-flip) → SRPF 4.16&nbsp;req/s (the compute ceiling).</b></td></tr>
+<tr><td colspan="5"><b>goodput@SLO: stock ≤3 (λ=3-bound coin-flip) → SRPF ≥4.16&nbsp;req/s (SRPF n=1; stock λ=5 n=5, all fail).</b></td></tr>
 </table>
 <p>
-This is a clean <em>same-node</em> A/B (both on node 0-3, so no cross-node variance confound). SRPF passes
-both λ=3 and λ=5; stock fails λ=5 stably at <b>22.7&nbsp;s</b> — a <b>3.9× gap</b> that dwarfs the ±45%
-cross-node variance, and the independent reference full sweep agrees (v0-stock λ=5 = 17.4&nbsp;s). Goodput@SLO
-rises from the stock coin-flip (≤3&nbsp;req/s) to <b>4.16&nbsp;req/s</b> — the work-conservation ceiling of
-§3 — <em>with the cache contents and hit-rate unchanged</em> (0.66 both). This is the clean demonstration
-that the lever is scheduling: reordering prefills, not caching or moving KV, is what moves the metric.
+This is a clean <em>same-node</em> A/B (both on node 0-3, so no cross-node variance confound).
+<b>Scope of evidence, stated plainly:</b> the SRPF sweep is a single run (n=1); stock λ=5 is a stable
+failure (n=5 across the campaign, all in 17–24&nbsp;s; the same-node control drew 22.7&nbsp;s). The λ=5 win
+is therefore robust despite n=1 on the SRPF side — a single SRPF pass at 5.85&nbsp;s is a 3–4× gap below a
+failure mode that never lands under 17&nbsp;s, which a coin-flip (whose signature is <em>straddling</em>
+8&nbsp;s, not landing at 5.85) cannot manufacture. The λ=3 SRPF number (5.9&nbsp;s) is corroborative only
+(n=1, and λ=3 is itself a coin-flip); an n=3 SRPF replication is in progress to firm λ=3. Goodput@SLO thus
+rises from the stock coin-flip (≤3&nbsp;req/s) to SRPF passing λ=5 at <b>4.16&nbsp;req/s</b>; because SRPF
+clears λ=5 with 2.2&nbsp;s of SLO headroom and the next swept rate is λ=7 (overloaded), the sweep bounds
+SRPF goodput to <b>[4.16, &lt;7)&nbsp;req/s</b> — the ~4.2&nbsp;req/s work-conservation estimate of §3 (a
+range, not a point) says it is near the compute ceiling but the λ grid cannot resolve the exact value. The
+gain comes <em>with cache contents and hit-rate unchanged</em> (≈0.66 both): the lever is scheduling —
+reordering prefills, not caching or moving KV — is what moves the metric.
 </p>
 <p>
 <b>The mechanism is textbook; the finding is where it belongs.</b> SRPF/SJF is classical and, dropped onto a
@@ -279,22 +292,33 @@ workload and hardware parameters alone, predicts goodput <em>and</em> names the 
 <li><b>Caching headroom</b> <code>h</code> = fraction of re-uses at stack-distance &gt; <code>H</code> (§6).</li>
 </ul>
 <p>
-<b>Lever</b> = compute if <code>f &gt; T</code> (even the best schedule misses the SLO); else caching if
-<code>h</code> is large (removable evicted-reuse); else, when work is bimodal and <code>f ≪ T</code>,
-scheduling (the p99 is head-of-line queue-wait, reducible by serving small turns first). <b>Predicted
-goodput:</b> SRPF ≈ <code>g_ceil</code>; FCFS a sub-knee coin-flip below it. On our workload the procedure
-computes <code>g_ceil = 15000/3594 = 4.17&nbsp;req/s</code>, <code>f = 1.04&nbsp;s ≪ 8&nbsp;s</code>, and
-<code>h = 0.2%</code> → <b>lever = scheduling</b>, predicted SRPF goodput <b>4.17&nbsp;req/s</b> — matching
-the measured 4.16 to within 0.2% — while FCFS is a coin-flip below it. (<code>C_eff</code> and
-<code>C_batch</code> are hardware throughputs measured independently in §3 — derived two agreeing ways —
-not fit to the goodput, so the match is a genuine cross-validation, not a tautology; and the
-<em>lever</em> decision uses only the parameter-free comparisons <code>f&lt;T</code>, <code>h≈0</code>,
-and bimodality, so naming the lever does not depend on <code>C_eff</code> at all.) The model both reproduces the
-measurement and, by flipping its inputs, names a <em>different</em> lever for a different regime (reuse
-beyond the horizon → caching; a lone document with <code>P99(W)/C_batch &gt; T</code> → compute; near-uniform
-small work → no head-of-line, so neither caching nor scheduling helps). The goodput lever is thus a function
-of <em>(work distribution, reuse locality, throughput, SLO)</em> — not a fixed property of KV-cache serving —
-which is why the KV-cache axis is inert here yet could be decisive elsewhere.
+<b>The lever decision is parameter-free</b> = compute if <code>f &gt; T</code> (even the best schedule misses
+the SLO); else caching if <code>h</code> is large (removable evicted-reuse); else, when work is bimodal and
+<code>f ≪ T</code>, scheduling (the p99 is head-of-line queue-wait, reducible by serving small turns first).
+On our workload it reads <code>f = 1.04&nbsp;s ≪ 8&nbsp;s</code>, <code>h = 0.2%</code>, top-5%-of-turns
+carry 50% of work → <b>lever = scheduling</b> — and this naming uses none of the fitted throughput
+constants, only the measured <code>C_batch</code> (for <code>f</code>), the SLO, and workload shape. It is
+the load-bearing output of the model, and it matches what we measured (SRPF moves goodput; caching/admission
+do not).
+</p>
+<p>
+The <em>magnitude</em> side is weaker and we flag it honestly. The ceiling <code>g_ceil = C_eff / E[W]</code>
+is a <b>self-consistency check, not an independent prediction</b>: <code>C_eff</code> (~15&nbsp;k tok/s
+effective cold-prefill throughput) is itself backed out from the saturated stock run, so
+<code>g_ceil ≈ 4.2&nbsp;req/s</code> reproduces the measured saturation by construction; the FLOP-side
+estimate (C ≈ 18–19&nbsp;k tok/s over mean cold work ≈ 4.3&nbsp;k tok) lands in the same ~4.2&nbsp;req/s
+band but from different constants, so we report the ceiling as ~4.2&nbsp;req/s <em>with a sensitivity range</em>,
+not as a 0.2%-accurate prediction. What the decomposition <em>does</em> establish is that the observed
+saturation is consistent with work-conservation over the measured cold-work distribution — i.e. the ceiling
+is a compute limit, not a policy gap.
+</p>
+<p>
+The value of the procedure is qualitative and general: flip its inputs and it names a <em>different</em>
+lever for a different regime — reuse beyond the horizon (<code>h</code> large) → caching; a lone document
+with <code>P99(W)/C_batch &gt; T</code> → compute; near-uniform small work → no head-of-line, so neither
+caching nor scheduling helps. The goodput lever is thus a function of <em>(work distribution, reuse
+locality, throughput, SLO)</em> — not a fixed property of KV-cache serving — which is why the KV-cache axis
+is inert here yet could be decisive elsewhere.
 </p>
 
 <h2>7 Related work</h2>
@@ -314,10 +338,13 @@ matter. Cache-replacement theory (Belady, LRU stack-distance) supplies the phase
 <li>Results are for one model family (122B hybrid Mamba-attention), one two-tier KV budget, and one
 long-document multiturn corpus. The phase-boundary criterion (§6) is our generality argument, but a direct
 cross-workload GPU sweep is out of scope of the fixed protocol.</li>
-<li>goodput@SLO is variance-dominated at λ=3; all comparisons are same-node and distributional. The λ=5 SRPF
-win is a same-node A/B (stock 22.7&nbsp;s fail vs SRPF 5.85&nbsp;s pass, a 3.9× gap dwarfing the ±45%
-cross-node variance); stock λ=5 is a stable failure (independent reference sweep 17.4&nbsp;s agrees), so the
-result is robust at this n. SRPF replicates (r2, r3) are running to further firm λ=3.</li>
+<li>goodput@SLO is variance-dominated at λ=3; all comparisons are same-node and distributional. <b>The SRPF
+sweep is n=1</b>; the λ=5 win is nonetheless robust because it is a same-node A/B against a <em>stable</em>
+stock failure (stock λ=5 is n=5, all 17–24&nbsp;s; the same-node control drew 22.7&nbsp;s), and a single
+SRPF pass at 5.85&nbsp;s is a 3–4× gap below a failure mode that never lands under 17&nbsp;s — which the
+λ=3-style coin-flip cannot produce. The λ=3 SRPF point is corroborative only (n=1). An n=3 SRPF
+replication is in progress (r2 running, r3 queued) to firm λ=3; this paper states every claim at the n
+actually in hand and does not treat the coin-flip caveat as discharged for λ=3.</li>
 <li>The compute ceiling could in principle move compute-side (context-parallel prefill, quantization), but
 prefill context-parallelism is unavailable for this hybrid model in-engine and quantization is lossy /
 contract-frozen; we treat the ceiling as fixed.</li>

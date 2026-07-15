@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""floyd: a PREDICTIVE goodput-lever model — given workload+hardware+SLO, predict goodput AND which
-axis (compute / caching / scheduling) is the lever. Unifies the paper's three findings into one
-decision procedure and validates it reproduces the MEASURED stock/SRPF goodput.
+"""floyd: a goodput-LEVER-SELECTION procedure — given workload+hardware+SLO, name which axis
+(compute / caching / scheduling) is the lever. Unifies the paper's findings into one decision procedure.
+★HONEST SCOPE: the LEVER decision is parameter-free and matches the measurement (scheduling here). The
+ceiling MAGNITUDE g_ceil=C_eff/E[W] is a SELF-CONSISTENCY check (C_eff is backed out from the saturated
+run, so g_ceil reproduces ~4.2 by construction) — NOT an independent prediction. Do not claim 0.2% accuracy.
 
 The procedure (a 'roofline for goodput@SLO'):
   Inputs: per-turn cold-adjusted work distribution W (trace @ LRU cache), effective cold-prefill
@@ -81,11 +83,14 @@ def main():
     else: lever="none clear"
     print(f"\n  => PREDICTED LEVER = {lever}")
     print(f"  => PREDICTED goodput: SRPF ~ g_ceil = {g_ceil:.2f} req/s ; FCFS ~ coin-flip < ceiling (head-of-line)")
-    print(f"\nMEASURED (same-node GPU): FCFS/stock = coin-flip ~3 (λ3-bound; λ5 fail 22.7s);"
-          f" SRPF = 4.16 req/s (passes λ5).")
-    print(f"VALIDATION: predicted lever=scheduling ✓ (matches: SRPF moves goodput, caching/admission don't);"
-          f" predicted SRPF goodput {g_ceil:.1f} ≈ measured 4.16 ✓; floor {floor:.0f}ms << SLO ✓"
-          f" (so the coin-flip is schedulable, not a floor).")
+    print(f"\nMEASURED (same-node GPU, n=1 SRPF): FCFS/stock = coin-flip ~3 (λ3-bound; λ5 fail 17-24s);"
+          f" SRPF passes λ5 at 5.85s => goodput in [4.16, <7) req/s.")
+    print(f"VALIDATION (honest): the LEVER decision is parameter-free (f<T, h≈0, bimodal) => scheduling ✓,"
+          f" matching the measurement (SRPF moves goodput; caching/admission don't). The MAGNITUDE g_ceil"
+          f"={g_ceil:.1f} is a SELF-CONSISTENCY check, NOT an independent prediction: C_eff was backed out")
+    print(f"  from the saturated run, so g_ceil reproduces ~4.2 by construction (FLOP-side 18-19k/4.3k lands"
+          f" in the same band). Report ceiling as ~4.2 req/s with a sensitivity range. floor {floor:.0f}ms"
+          f" << SLO (parameter-free) => the coin-flip is schedulable, not a per-request floor.")
     print("\nGENERALITY: flip the inputs and the procedure names a different lever — e.g. reuse stack-distance")
     print(">H (h large) => CACHING; a lone huge doc with P99(W)/C_batch > T => COMPUTE (CP/quant); uniform")
     print("small work (top5% low) => no head-of-line => neither caching nor scheduling helps. The lever is a")

@@ -857,3 +857,19 @@ While job 20005 (same-node stock controls) runs, did non-GPU submission-hardenin
 - **Reproducibility spot-check:** all 25 cited scripts/engine-paths exist; hol_sim.py/phase_boundary.py/
   goodput_stats.py run (rc=0) and reproduce their paper claims.
 - P1/P2/P4 related-work confirmed appropriately focused (admission/caching/chunk axes) — no gaps.
+
+### 2026-07-15 (cont.): same-node significance FIRMED — caveat CLOSED (p=0.029, zero pooling)
+The same-node stock controls on node 0-3 (jobs 20005/20019) completed 2 of 3 runs (stopped after #2 —
+p=0.029 already resolves the caveat; released the node rather than hold it ~2.5h for #3's marginal p=0.014):
+- **control-1** full sweep: λ3=31922 / λ5=23540 / λ7=34390 / λ10=41041 ms (all FAIL; λ7/λ10 match v0-stock's
+  34/41s cross-node). λ3=31.9s diagnosed = clean metastable queue-95 blowup, 0 retracts, healthy warmup 5.1s.
+  Curve NON-monotonic (λ3 31.9 > λ5 23.5) = textbook λ3-coin-flip bad draw, corroborates metastability thesis.
+- **control-2**: λ3=23514 / λ5=23464 ms (both FAIL; cancelled λ7/λ10 — had the λ5 I needed).
+- ⇒ **STRICTLY same-node (node 0-3, ZERO cross-node pooling): SRPF 4/4 (5850/6576/7457/7823) vs stock 0/3
+  (22746/23540/23464) → Fisher one-tailed p=0.029.** Closes the flagship's last methodological caveat with
+  real same-node data. The extra controls also strengthen the POOLED λ5 to 6/6 vs 0/7 (p=0.0006, was 0/5
+  p=0.0022) and both-rates-pooled 12/12 vs 4/15 (p=0.0001). λ3 stock pooled → 4/8 (the 2 controls drew into
+  the metastable tail), p=0.07, still coin-flip/distributional (decisive win stays λ5).
+- Integrated across P3/P1/P2 + goodput_stats.py (reproducible source of truth). Commit 764008f36, pushed.
+- OPS lesson: `pkill/pgrep -f <pattern>` where the pattern appears in the current command line SELF-MATCHES
+  and kills the running shell (exit 144). Use a regex bracket trick (`campaign[.]sh`) or kill by explicit PID.

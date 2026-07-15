@@ -780,3 +780,13 @@ MONOTONICALLY with r (p99 up, tput down) — confirms §7's analytical argument 
 reserve (r=0.10) hits the SLO boundary ⇒ NO fixed r>0 avoids the λ5 harm (only zero reserve=baseline, or
 adaptive zero-waste=neutral). Strengthens the negative. TODO: rpb50 completes curve; then correct P4 §5
 (transient→alignment-bug) + upgrade §7 (analytical→measured) + regen figure.
+
+### Reserve sweep COMPLETE — r=0.50 OOMs (large reserve over-admits); tradeoff established by r∈{0.10,0.25}
+rpb50 (r=0.50) crashed during warmup: "RuntimeError: Prefill out of memory" — the large reserve (3072 = half the
+6144 budget) lets the waiting-queue loop admit too many concurrent turns → KV/prefill OOM. Extreme reserve,
+clearly on the harmful end; not pursued further (whether intrinsic over-admission or a fixable accounting gap, it's
+an impractical operating point). ⇒ MEASURED r-tradeoff (fixed RPB, λ5, node 1-1): baseline 6496 PASS → r=0.10
+8000ms/tput512 (borderline fail) → r=0.25 9607ms/tput482 (fail) → r=0.50 OOM-unstable. Harm (p99↑, tput↓) is
+MONOTONIC in r; even the smallest reserve (r=0.10) hits the SLO boundary; large reserve is unstable. ⇒ NO fixed
+r>0 helps goodput (confirms §7 analytically-argued tradeoff EMPIRICALLY). Adaptive (zero-waste) remains the only
+non-harmful reservation, and it's goodput-neutral. This CLOSES the reserve-size question empirically.

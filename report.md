@@ -875,3 +875,10 @@ the boundary: capturing SRPF's benefit REQUIRES deferring the heavy docs; a fair
 forfeits it (too thin to clear the HOL backlog, and slows the mega-doc → extends congestion). srpf λ5 n=3: 3/3
 pass {5530,6983,7028} median 6983 (-70.8% vs fcfs), Fisher p=0.018 — correction rock-solid. FOLDING the
 reserve-fails boundary into Paper 1 §5.6 (the fair alternative to SRPF fails → benefit requires deferral).
+
+### srpf λ3 fixes the KNEE too + reserve λ3 firmed (2026-07-15 ~06:19Z)
+srpf λ3 rep1: p99 6158ms (PASS) vs fcfs λ3 (n=3) {10815,20126,34216} median 20126 (0/3, coin-flip). ⇒ SRPF helps
+at BOTH loads: λ5 saturation (5/5, -71%) AND λ3 knee (1/1 so far, likely STABILIZES the coin-flip via
+deterministic short-first serving; n=1, firming reps 2-3). λ3 reserve n=2 {18197,19540} +133% (still fails).
+FULL PICTURE: SRPF wins everywhere (scheduling lever, known/base); my fair reserve fails everywhere (+75%@λ5,
++133%@λ3, helps p50 only). Paper 1 §5.6 to add srpf λ3 once n≥2. Core correction DONE+firmed.

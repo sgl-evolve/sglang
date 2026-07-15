@@ -4,12 +4,19 @@
 **Clone:** `workspace/sgl/v0.31/research/researchers/floyd/`
 **Base commit:** `a334877e5` (stock sglang)
 
-> **⚠ CURRENT THESIS (read the "★★ PIVOTAL CORRECTION (head-of-line)" section near the end first).**
-> This log is chronological. The early "Thesis"/"Mechanism" prose below (admission control, "retraction
-> cliff") was my *original* direction and is **superseded**: CCA admission is a rigorous **NEGATIVE**, and
-> the λ3 goodput coin-flip is **head-of-line blocking** (small turns queued behind a few large cold docs'
-> back-to-back chunked prefill), not a retraction cascade (stock has **0 retractions**). Both papers (v2):
-> caching & admission are non-levers; **prefill scheduling (shortest-prefill-first) is the goodput lever**.
+> **⚠ CURRENT STATE (2026-07-15): 4-PAPER BODY, lossless design space mapped+bounded. This log is
+> chronological — early "Thesis"/"Mechanism" prose (admission control / "retraction cliff") is SUPERSEDED.**
+> ONE thesis: *goodput@SLO for long-doc multiturn serving is a prefill-scheduling problem bounded by compute,
+> not a KV-cache problem.* The λ3 goodput coin-flip is **head-of-line blocking** (small turns behind a few big
+> cold docs' back-to-back chunked prefill), not a retraction cascade (stock = 0 retractions).
+> **Papers (see submissions/INDEX.md):** P3 `goodput-is-scheduling` = capstone map (whole-request SRPF, textbook
+> = the lever; goodput 0/3→4.0@λ5, SLO-tail-bound below raw ceiling ~4.7). P2 `corpus-bound-goodput` = caching
+> mirage (LRU=Belady=0 avoidable). P1 `cca-prefill-admission` = admission NEGATIVE (deferring cold prefills is
+> self-defeating; the tail IS them). P4 `rpb-chunking` = my novel chunk-level Reserved-Prefill-Budget mechanism,
+> a NEGATIVE (fixed hurts λ5 via ~54% reserve waste; adaptive zero-waste is neutral → chunk-level reservation
+> can't beat SRPF at any impl). Every KV data-movement/retention axis is a bounded non-lever. All papers
+> hostile-reviewed + integrity-clean; P4 firming to n=2 (in progress). No remaining novel lossless lever
+> (CP-for-hybrid unavailable v0.31). The detailed running log follows; latest results near the end.
 
 ## Research Direction (Paper 1): Cache-adjusted prefill admission control
 

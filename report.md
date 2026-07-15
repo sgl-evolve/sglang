@@ -840,3 +840,10 @@ config (would need TP-degree/interconnect change = out of scope). NOT a clean le
 - Adaptive-f controller: limited upside — f=2 already reaches goodput 5 near ceiling C~5.65; headroom small.
 ⇒ Accessible novel-mechanism space is largely EXHAUSTED (design-space map complete). Next value = DEPTH/rigor/polish on
 the strong existing 6-paper portfolio (finalize P6 §5 dose-figure w/ f=1.5; firm replicates) rather than a forced thin paper.
+
+## f=1.5 λ=3 landed (12:51): p99=6.1s PASS, conc=36, tpot=267 — f=1.5 UNDER-boosts (confirms f=2 peak both sides)
+λ=3 p99 by factor: f=2 4.5s < f=3 5.2s < f=1.5 6.1s (< stock 6-14 coinflip). conc: f=2 21 < f=1.5 36 = f=3 36.
+tpot: f=2 138 < f=3 253 ≈ f=1.5 267. ⇒ at λ=3, f=2 is the MINIMUM p99 (best from BOTH sides: f=1.5 under-boosts giants
+linger more; f=3 over-boosts bigger-chunk stall) → inverted-U in p99@λ3 too, peak-performance at f=2. Corroborates f=2
+optimum. f=1.5's GOODPUT needs λ=5 (discriminating rate, ~13:15): if f=1.5 λ5 passes → goodput 5 (plateau [1.5,2]); if
+fails → goodput 3 (sharp peak at f=2). WAIT for λ=5 to add the complete f=1.5 row to P6 §5 table + Figure 2 bar (once).

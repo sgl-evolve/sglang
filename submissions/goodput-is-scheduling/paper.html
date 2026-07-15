@@ -227,8 +227,12 @@ This is a clean <em>same-node</em> A/B (both on node 0-3, so no cross-node varia
 0.5&nbsp;s — reported honestly, goodput is "passes," not "comfortably"), <em>but every run passes</em>, unlike
 stock which coin-flips at λ=3 (3/5) and fails λ=5 stably (n=5, all 17–24&nbsp;s; the same-node control drew
 22.7&nbsp;s). The λ=5 win is robust as a <em>clean separation</em>: every SRPF λ=5 run (5.85–7.46&nbsp;s) is
-2–4× below every stock λ=5 run (17–24&nbsp;s), no overlap — a gap a coin-flip cannot manufacture; and at λ=3
-SRPF converts stock's 3/5 coin-flip into 3/3. Goodput@SLO thus rises from the stock coin-flip (≤3&nbsp;req/s) to SRPF
+2–4× below every stock λ=5 run (17–24&nbsp;s), no overlap — a gap a coin-flip cannot manufacture, and
+statistically significant (Fisher exact, SRPF 3/3 vs stock 0/5, one-tailed p=0.018; both rates pooled 6/6 vs
+3/10, p=0.011; <code>analysis/goodput_stats.py</code>). At λ=3 SRPF converts stock's 3/5 coin-flip into 3/3
+— here the pass-counts alone are not separable (p=0.36, stock passes λ=3 often), so the λ=3 effect is
+<em>distributional</em> (SRPF's tighter, lower tail 5.9–7.4&nbsp;s vs stock's 6.3–11.8&nbsp;s) rather than a
+pass-rate result; the significant, decisive win is at λ=5. Goodput@SLO thus rises from the stock coin-flip (≤3&nbsp;req/s) to SRPF
 passing λ=5 at <b>4.05–4.16&nbsp;req/s</b>; because SRPF clears λ=5 (both runs) and the next swept rate is
 λ=7 (overloaded), the sweep bounds SRPF goodput to <b>[4.05, &lt;7)&nbsp;req/s</b> — the ~4.2&nbsp;req/s
 work-conservation estimate of §3 (a range, not a point) says it is near the compute ceiling but the λ grid
@@ -378,7 +382,7 @@ Base <code>a334877e5</code> (stock v0.31), all analysis and the SRPF policy on <
 Map evidence: <code>analysis/doc_reuse.py</code>, <code>reuse_distance.py</code>, <code>phase_boundary.py</code>
 (caching); <code>mamba_pressure.py</code> (recurrent pool); <code>pd_schedule.py</code> (prefill/decode);
 <code>hol_trace.py</code>, <code>hol_sim.py</code>, <code>bound.py</code>, <code>prefill_flops.py</code>
-(head-of-line + compute bounds); <code>slo_sensitivity.py</code> (SLO-threshold robustness), <code>goodput_model.py</code> (the predictive lever model of §6.1); the admission
+(head-of-line + compute bounds); <code>slo_sensitivity.py</code> (SLO-threshold robustness), <code>goodput_model.py</code> (the predictive lever model of §6.1), <code>goodput_stats.py</code> (Fisher-exact significance of the n=3 win); the admission
 negative is in the CCA companion. GPU runs:
 <code>runs/v0-stock</code> (stock sweep), <code>runs/v-srpf-r1</code> (SRPF sweep), <code>runs/v-stock-srpfctl</code>
 (same-node control). SRPF is <code>--schedule-policy srpf</code> in

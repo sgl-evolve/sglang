@@ -90,9 +90,11 @@ PY
 }
 
 SPECS=${SL_SPECS:-"5:3"}                 # fast screen: lambda=5 (decisive HOL rate), K=3
-RESERVE=${SL_RESERVE:-2048}
-echo "==== SHORTLANE-AB START node=$NODE sl_commit=$SL_COMMIT reserve=$RESERVE $(date -u) | specs=[$SPECS] ===="
+RESERVES=${SL_RESERVES:-${SL_RESERVE:-2048}}   # space-sep list of reserve sizes to ablate (reserve0 always run first)
+echo "==== SHORTLANE-AB START node=$NODE sl_commit=$SL_COMMIT reserves=[$RESERVES] $(date -u) | specs=[$SPECS] ===="
 run_arm "reserve0"        ""                                    $SPECS   # stock (byte-identical)
-run_arm "reserve${RESERVE}" "--prefill-short-lane-reserve $RESERVE"  $SPECS
+for R in $RESERVES; do
+  run_arm "reserve${R}" "--prefill-short-lane-reserve $R" $SPECS
+done
 echo "==== SHORTLANE-AB DONE $(date -u) — shortlane_ab.csv in $OUT ===="
 column -t -s, "$OUT/shortlane_ab.csv" 2>/dev/null || cat "$OUT/shortlane_ab.csv"

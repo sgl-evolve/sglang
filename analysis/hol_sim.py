@@ -95,6 +95,8 @@ def simulate(work, lam, policy, seed=1):
             order = reuse + cold          # reuse-first; cold docs remain in arrival order (like lpm among 0-prefix)
         elif policy.startswith("fl"):     # FAST-LANE (my mechanism): FCFS ordering (NO reorder), but reserve
             order = list(active)          # R tokens/step for shortest waiting SMALL turns so they co-run with
+        elif policy.startswith("rpb"):    # floyd RPB: non-preempt in-progress big doc CAPPED at (1-r)*B,
+            order = list(active)          # reserve r*B for the SRPF-sorted waiting turns (handled below).
         else: raise ValueError(policy)    # the in-progress big cold doc instead of waiting for it to finish.
         budget = B; now += TAU; finished = []
         def _fill(i, cap):
@@ -116,6 +118,15 @@ def simulate(work, lam, policy, seed=1):
             for i in smalls:             # phase 3: spill leftover budget back to remaining small turns
                 if budget <= 0: break
                 if rem[i] > 1e-6: _fill(i, budget)
+        elif policy.startswith("rpb"):
+            r = int(policy[3:]) / 100.0   # reserve fraction, e.g. rpb25 = 0.25 of the chunk budget
+            inprog = cur if (cur is not None and cur in active and 0 < rem[cur] < work[cur]) else None
+            waiting = sorted([j for j in active if j != inprog], key=lambda j: rem[j])
+            if inprog is not None:        # capped in-progress big doc gets (1-r)*B; rest reserved for waiting
+                _fill(inprog, int((1.0 - r) * B))
+            for i in waiting:             # reserved remainder -> SHORTEST waiting turns first (srpf order)
+                if budget <= 0: break
+                _fill(i, budget)
         else:
             for i in order:
                 if budget <= 0: break
@@ -124,6 +135,9 @@ def simulate(work, lam, policy, seed=1):
             active.remove(i); done += 1
         if policy == "srpf_np":  # track the in-progress (mid-chunk) doc so it continues next step
             cur = next((i for i in order if i in active and 0 < rem[i] < work[i]), None)
+        elif policy.startswith("rpb"):  # in-progress big doc = largest-work mid-chunk doc (the monopolizer)
+            midchunk = [i for i in active if 0 < rem[i] < work[i]]
+            cur = max(midchunk, key=lambda j: work[j]) if midchunk else None
         admit()
     ts = sorted(ttft)
     return ts[int(0.99*n)], ts[n//2]

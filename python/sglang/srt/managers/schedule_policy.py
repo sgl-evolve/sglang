@@ -457,8 +457,12 @@ class PrefillAdder:
         prefill_delayer_single_pass: Optional[PrefillDelayerSinglePassExecutor] = None,
         dllm_config: Optional[DllmConfig] = None,
         waiting_queue_len: int = 0,
+        rpb_reserve_frac: float = 0.0,
     ):
         self.page_size = page_size
+        # floyd RPB: fraction of the chunk budget reserved for waiting requests
+        # while a big document is mid chunked-prefill (0 disables). See add_chunked_req.
+        self.rpb_reserve_frac = rpb_reserve_frac
         self.tree_cache = tree_cache
         self.token_to_kv_pool_allocator = token_to_kv_pool_allocator
         self.running_batch = running_batch
@@ -737,6 +741,23 @@ class PrefillAdder:
                 if self.is_hybrid_swa:
                     return req
                 _rem_tokens = self.rem_chunk_tokens
+
+        # floyd RPB (Reserved-Prefill-Budget chunking): if a big document is mid chunked-prefill
+        # and other requests are waiting, cap this chunk so a fraction of the per-batch chunk budget
+        # is left in rem_chunk_tokens for the shortest waiting request(s), which the waiting-queue
+        # loop adds right after this call. This bounds the small-turn TTFT that whole-request SRPF
+        # cannot fix once a big doc's chunking has started (the chunked_req is added before the
+        # waiting queue and otherwise monopolizes the whole chunk budget). Lossless: identical tokens
+        # are computed, only resliced across prefill steps; the big doc still advances >= one page/step.
+        if (
+            self.rpb_reserve_frac > 0.0
+            and self.waiting_queue_len > 0
+            and self.dllm_config is None
+            and self.rem_chunk_tokens is not None
+        ):
+            reserved = int(self.rpb_reserve_frac * self.rem_chunk_tokens)
+            rpb_cap = max(self.page_size, self.rem_chunk_tokens - reserved)
+            _rem_tokens = min(_rem_tokens, rpb_cap)
 
         cand_extend_input_len = len(req.full_untruncated_fill_ids) - len(
             req.prefix_indices

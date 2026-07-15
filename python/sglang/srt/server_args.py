@@ -691,6 +691,14 @@ class ServerArgs:
         bool,
         "Enable dynamic chunk size adjustment for pipeline parallelism. When enabled, chunk sizes are dynamically calculated based on fitted function to maintain consistent execution time across chunks.",
     ] = False
+    enable_rpb_chunking: A[
+        bool,
+        "floyd RPB (Reserved-Prefill-Budget chunking): when a large document is mid chunked-prefill AND other requests are waiting, cap the in-flight chunk at (1 - rpb_reserve_frac) of the per-batch chunk budget and reserve the remainder for the shortest waiting request(s). This stops a big cold document's back-to-back chunks from head-of-line-blocking small conversational turns, which whole-request reordering (--schedule-policy srpf) cannot fix once a big doc's chunking has started. Lossless: the same tokens are computed, only resliced across prefill steps.",
+    ] = False
+    rpb_reserve_frac: A[
+        float,
+        "floyd RPB: fraction of the per-batch chunked-prefill token budget reserved for waiting requests while a big document is mid-chunk. Only active with --enable-rpb-chunking. 0 disables; typical 0.25.",
+    ] = 0.25
     max_prefill_tokens: A[
         int,
         Arg(

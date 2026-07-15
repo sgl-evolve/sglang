@@ -34,11 +34,13 @@ mechanism we designed (dominated by plain reordering). The one lever is <b>prefi
 diagnose why: below the saturation knee the p99 is <em>head-of-line blocking</em> — small conversational
 turns queued behind the back-to-back chunked prefill of a few large cold documents (fewer than 0.1% of
 turns prefill ≥6&nbsp;s, yet the p99 is 6–11&nbsp;s; the waiting queue is 9.6× deeper during big-cold-doc
-chunks) — and above the knee the GPU is compute-bound at a work-conservation ceiling of ~4.2&nbsp;req/s
-(99% of forward steps are already prefill). Serving the small turns first (SRPF, a textbook policy) turns
-stock's stable λ=5 failure (17–24&nbsp;s, n=5) into a pass (5.85–7.46&nbsp;s, n=3, all &lt; SLO), lifting goodput@SLO from the
-stock coin-flip (≤3&nbsp;req/s, λ=3-bound) to <b>~4.1&nbsp;req/s</b> (4.05–4.16 across n=3, near the
-~4.2&nbsp;req/s compute ceiling) — purely by reordering, with cache contents untouched. Finally we give a <em>predictive criterion</em>
+chunks) — and above the knee the GPU is compute-bound (raw throughput saturates at ~4.7&nbsp;req/s,
+measured at λ=10; 99% of forward steps are already prefill). Serving the small turns first (SRPF, a textbook
+policy) turns stock's stable λ=5 failure (17–24&nbsp;s, n=5) into a pass, lifting goodput@SLO from the
+stock coin-flip (≤3&nbsp;req/s, λ=3-bound) to <b>4.0&nbsp;req/s</b> (the λ=5 rate, full contract sweep) —
+purely by reordering, with cache contents untouched. Goodput is bounded not by raw compute (throughput
+climbs to ~4.7 at λ=10) but by the head-of-line <em>tail</em> crossing the SLO between λ=5 (7.8&nbsp;s) and
+λ=7 (10.3&nbsp;s). Finally we give a <em>predictive criterion</em>
 for when caching <em>would</em> matter: a reuse-stack-distance-vs-cache-horizon phase boundary, validated on
 constructed corpora, that this workload class sits far inside. The contribution is the map, the head-of-line
 diagnosis, and the phase-boundary criterion — not SRPF, which is textbook and which we use only to confirm
@@ -76,8 +78,8 @@ irreducible variance; it is head-of-line blocking behind a few large cold-docume
 four independent ways (arithmetic, direct trace, calibrated simulation, and a GPU A/B). This is the
 organizing insight that tells you the lever is scheduling.</li>
 <li><b>The scheduling lever, measured (§5).</b> Shortest-prefill-first (SRPF, textbook) moves goodput@SLO
-from the stock coin-flip (≤3&nbsp;req/s) to the ~4.2&nbsp;req/s compute ceiling, purely by reordering — our
-own same-node GPU sweep. We are explicit that SRPF is <em>not</em> our contribution; the contribution is
+from the stock coin-flip (≤3&nbsp;req/s) to 4.0&nbsp;req/s (the λ=5 rate; full contract sweep), purely by reordering — our
+own GPU sweep. We are explicit that SRPF is <em>not</em> our contribution; the contribution is
 knowing, and proving, that scheduling is where the lever is and caching is not.</li>
 <li><b>A predictive phase-boundary criterion (§6).</b> Caching has online goodput headroom iff a corpus
 re-uses documents at a stack-distance beyond the cache horizon <code>H = CAP/mean-doc</code>; we validate
@@ -129,8 +131,8 @@ an unconditional proof for every row.</caption>
 <tr><td>recurrent-state (Mamba) pool</td><td class="b">non-binding</td><td>Mamba-state usage never exceeds 0.77 while attention-KV saturates to 1.0 — the recurrent pool is never the binding capacity (<code>analysis/mamba_pressure.py</code>)</td></tr>
 <tr><td>chunk-partition "fast-lane"</td><td class="b">dominated</td><td>reserving chunk budget for small turns (our mechanism) is a <em>partial</em> SRPF; dominated by plain SRPF in simulation (§5)</td></tr>
 <tr><td>prefill/decode split</td><td class="b">TTFT-optimal</td><td>at saturation 99% of forward steps are already prefill; shifting to decode lowers goodput, throttling prefill = admission (<code>analysis/pd_schedule.py</code>)</td></tr>
-<tr><td><b>prefill scheduling</b></td><td class="g"><b>THE lever</b></td><td>SRPF moves goodput ≤3 → <b>4.16&nbsp;req/s</b> (§5); relieves the λ=3 head-of-line and reaches the compute ceiling</td></tr>
-<tr><td>compute</td><td>hard ceiling</td><td>~4.2&nbsp;req/s work-conservation limit (C≈18–19k tok/s cold, mean cold work ≈4.3k tok/turn) — matches the measured 4.22 saturation; movable only compute-side (lossy or contract-frozen)</td></tr>
+<tr><td><b>prefill scheduling</b></td><td class="g"><b>THE lever</b></td><td>SRPF moves goodput ≤3 → <b>4.0&nbsp;req/s</b> (λ=5; §5); relieves the λ=3 head-of-line</td></tr>
+<tr><td>compute</td><td>hard ceiling</td><td>raw peak throughput ~4.7&nbsp;req/s (measured: SRPF completes 4.72&nbsp;req/s at λ=10 overload, vs stock 4.22); goodput@SLO (4.0) sits below it — SLO/tail-bound, not throughput-bound; the ceiling moves only compute-side (lossy or contract-frozen)</td></tr>
 </table>
 <p>
 The pattern is not that we failed to find a cache mechanism; it is that the cache layer is
@@ -202,27 +204,32 @@ scheduler's existing priority interface — is the remedy the diagnosis predicts
 <line x1="72" y1="279.6" x2="662" y2="279.6" stroke="#c00" stroke-width="1.5" stroke-dasharray="6,4"/>
 <text x="658" y="273.6" text-anchor="end" fill="#c00">8 s SLO</text>
 <line x1="72.0" y1="291.0" x2="72.0" y2="253.9" stroke="#999" stroke-width="6" opacity="0.5"/>
-<polyline fill="none" stroke="#888" stroke-width="2.5" points="72.0,282.2 240.6,179.3 409.1,103.1 662.0,52.9"/>
-<circle cx="72.0" cy="282.2" r="4.5" fill="#888"/><circle cx="240.6" cy="179.3" r="4.5" fill="#888"/><circle cx="409.1" cy="103.1" r="4.5" fill="#888"/><circle cx="662.0" cy="52.9" r="4.5" fill="#888"/>
-<polyline fill="none" stroke="#1a7f37" stroke-width="2.5" points="72.0,293.9 240.6,294.2"/>
-<circle cx="72.0" cy="293.9" r="4.5" fill="#1a7f37"/><circle cx="240.6" cy="294.2" r="4.5" fill="#1a7f37"/>
+<polyline fill="none" stroke="#888" stroke-width="2.5" points="72.0,253.8 240.6,215.9 409.1,103.1 662.0,52.9"/>
+<circle cx="72.0" cy="253.8" r="4.5" fill="#888"/><circle cx="240.6" cy="215.9" r="4.5" fill="#888"/><circle cx="409.1" cy="103.1" r="4.5" fill="#888"/><circle cx="662.0" cy="52.9" r="4.5" fill="#888"/>
+<polyline fill="none" stroke="#1a7f37" stroke-width="2.5" points="72.0,289.8 240.6,280.8 409.1,263.8 662.0,239.0"/>
+<circle cx="72.0" cy="289.8" r="4.5" fill="#1a7f37"/><circle cx="240.6" cy="280.8" r="4.5" fill="#1a7f37"/><circle cx="409.1" cy="263.8" r="4.5" fill="#1a7f37"/><circle cx="662.0" cy="239.0" r="4.5" fill="#1a7f37"/>
 <rect x="494" y="34" width="150" height="52" fill="white" stroke="#ddd"/>
 <line x1="504" y1="50" x2="524" y2="50" stroke="#888" stroke-width="2.5"/><text x="530" y="54" fill="#333">stock (FCFS)</text>
 <line x1="504" y1="70" x2="524" y2="70" stroke="#1a7f37" stroke-width="2.5"/><text x="530" y="74" fill="#333">SRPF (reorder)</text>
 </svg>
-<figcaption><b>Goodput rate-sweep.</b> p99 TTFT vs request rate. Stock FCFS (grey) climbs through the
-8&nbsp;s SLO at every rate (the grey bar at λ=3 is the measured n=5 coin-flip range 6.3–11.8&nbsp;s); SRPF
-(green) stays under the SLO through λ=5 (λ=3 {5.9,6.0,7.4}s, λ=5 {5.85,6.58,7.46}s, n=3 each), so goodput@SLO ≈
-4.1&nbsp;req/s (near the compute ceiling) vs stock's ≤3. Reordering prefills, not caching, moves the metric.</figcaption>
+<figcaption><b>Goodput rate-sweep (full contract eval, λ{3,5,7,10}).</b> p99 TTFT vs request rate. Stock
+FCFS (grey, runs/v0-stock) exceeds the 8&nbsp;s SLO at every rate (grey bar at λ=3 = measured n=5 coin-flip
+range 6.3–11.8&nbsp;s). SRPF (green, runs/v-srpf-full) passes λ=3 (6.5&nbsp;s) and λ=5 (7.8&nbsp;s) and
+crosses the SLO between λ=5 and λ=7 (10.3&nbsp;s) — so <b>goodput@SLO = 4.0&nbsp;req/s</b> (the λ=5 rate) vs
+stock's ≤3. SRPF's <em>raw</em> throughput keeps climbing to ~4.7&nbsp;req/s at λ=10, so goodput is bounded
+by the SLO/tail, not by compute. Reordering prefills, not caching, moves the metric.</figcaption>
 </div>
 <table>
-<caption>Same-node (node 0-3) rate sweep, stock (FCFS) vs. SRPF. Goodput@SLO = max rate with p99 TTFT
-≤ 8&nbsp;s. Stock at λ=3 is a coin-flip (n=5 {6.3, 6.4, 7.8, 8.1, 11.8}&nbsp;s, 3/5 pass; the same-node
-control drew 7.6&nbsp;s); at λ=5 it fails stably.</caption>
-<tr><th>rate λ</th><th>stock p99 TTFT (same node)</th><th>SRPF p99 TTFT</th><th>SRPF req/s</th><th>SLO (8&nbsp;s)</th></tr>
-<tr><td>3</td><td>7.6&nbsp;s (coin-flip 6.3–11.8, 3/5 pass)</td><td>5.9, 6.0, 7.4&nbsp;s (n=3)</td><td>3.02</td><td class="g">3/3 pass; SRPF clears the coin-flip (stock 3/5)</td></tr>
-<tr><td>5</td><td class="b">22.7&nbsp;s (stable fail)</td><td>5.85, 6.58, 7.46&nbsp;s (n=3)</td><td><b>4.05–4.16</b></td><td class="g">3/3 pass, stock 0/5</td></tr>
-<tr><td colspan="5"><b>goodput@SLO: stock ≤3 (λ=3-bound coin-flip) → SRPF ~4.1&nbsp;req/s. All 6 SRPF runs clear the SLO (λ=3 {5.9,6.0,7.4}s, λ=5 {5.85,6.58,7.46}s, n=3 each; range 5.85–7.46&nbsp;s); stock coin-flips at λ=3 (3/5) and fails λ=5 stably (0/5, 17–24&nbsp;s).</b></td></tr>
+<caption>Full contract rate sweep λ{3,5,7,10}, stock (FCFS, runs/v0-stock) vs. SRPF (runs/v-srpf-full).
+Goodput@SLO = max rate with p99 TTFT ≤ 8&nbsp;s. SRPF's λ=3,5 are additionally corroborated by a same-node
+(node 0-3) A/B — SRPF n=3 {5.9,6.0,7.4}/{5.85,6.58,7.46}&nbsp;s vs stock control 7.6/22.7&nbsp;s — and stock
+λ=3 is a coin-flip (n=5, 3/5 pass).</caption>
+<tr><th>rate λ</th><th>stock p99 TTFT</th><th>stock req/s</th><th>SRPF p99 TTFT</th><th>SRPF req/s</th><th>SLO (8&nbsp;s)</th></tr>
+<tr><td>3</td><td>11.8&nbsp;s (coin-flip 6.3–11.8)</td><td>2.9</td><td>6.5&nbsp;s</td><td>3.02</td><td class="g">SRPF passes</td></tr>
+<tr><td>5</td><td class="b">17.4&nbsp;s</td><td>3.7</td><td>7.8&nbsp;s</td><td><b>4.00</b></td><td class="g">SRPF passes, stock fails</td></tr>
+<tr><td>7</td><td class="b">34.0&nbsp;s</td><td>4.0</td><td class="b">10.3&nbsp;s</td><td>4.48</td><td class="b">both fail (overload)</td></tr>
+<tr><td>10</td><td class="b">41.3&nbsp;s</td><td>4.2</td><td class="b">14.0&nbsp;s</td><td>4.72</td><td class="b">both fail (overload)</td></tr>
+<tr><td colspan="6"><b>goodput@SLO: stock ≤3 (λ=3-bound coin-flip) → SRPF 4.0&nbsp;req/s (the λ=5 rate).</b> SRPF's p99 crosses the SLO between λ=5 (7.8&nbsp;s) and λ=7 (10.3&nbsp;s); its <em>raw</em> throughput keeps rising to 4.72&nbsp;req/s at λ=10, so goodput is bounded by the head-of-line <em>tail</em>, not raw compute.</td></tr>
 </table>
 <p>
 This is a clean <em>same-node</em> A/B (both on node 0-3, so no cross-node variance confound).
@@ -237,13 +244,15 @@ statistically significant (Fisher exact, SRPF 3/3 vs stock 0/5, one-tailed p=0.0
 3/10, p=0.011; <code>analysis/goodput_stats.py</code>). At λ=3 SRPF converts stock's 3/5 coin-flip into 3/3
 — here the pass-counts alone are not separable (p=0.36, stock passes λ=3 often), so the λ=3 effect is
 <em>distributional</em> (SRPF's tighter, lower tail 5.9–7.4&nbsp;s vs stock's 6.3–11.8&nbsp;s) rather than a
-pass-rate result; the significant, decisive win is at λ=5. Goodput@SLO thus rises from the stock coin-flip (≤3&nbsp;req/s) to SRPF
-passing λ=5 at <b>4.05–4.16&nbsp;req/s</b>; because SRPF clears λ=5 (both runs) and the next swept rate is
-λ=7 (overloaded), the sweep bounds SRPF goodput to <b>[4.05, &lt;7)&nbsp;req/s</b> — the ~4.2&nbsp;req/s
-work-conservation estimate of §3 (a range, not a point) says it is near the compute ceiling but the λ grid
-cannot resolve the exact value. The
-gain comes <em>with cache contents and hit-rate unchanged</em> (≈0.66 both): the lever is scheduling —
-reordering prefills, not caching or moving KV — is what moves the metric.
+pass-rate result; the significant, decisive win is at λ=5. The <b>full contract sweep</b> (λ{3,5,7,10},
+<code>runs/v-srpf-full</code>) resolves the goodput exactly: SRPF passes λ=3 (6.5&nbsp;s) and λ=5 (7.8&nbsp;s)
+but fails λ=7 (10.3&nbsp;s), so <b>goodput@SLO = 4.0&nbsp;req/s</b> (the λ=5 rate), up from the stock
+coin-flip (≤3). Notably, SRPF's <em>raw</em> throughput keeps climbing past λ=5 — 4.48&nbsp;req/s at λ=7,
+4.72 at λ=10 — while its p99 TTFT crosses the SLO; so goodput is bounded by the head-of-line <em>tail</em>
+crossing 8&nbsp;s (between λ=5 and λ=7), <em>not</em> by a raw-compute wall (the throughput ceiling, ~4.7,
+sits above the goodput). This sharpens §4: at higher load the head-of-line tail — not saturation — is what
+caps goodput. The gain comes <em>with cache contents and hit-rate unchanged</em> (≈0.66 both): the lever is
+scheduling — reordering prefills, not caching or moving KV — is what moves the metric.
 </p>
 <p>
 <b>The mechanism is textbook; the finding is where it belongs.</b> SRPF/SJF is classical and, dropped onto a
@@ -263,7 +272,7 @@ efficient realization of head-of-line relief is reordering, not budget-partition
 slow rates begin to clear). Only below ~6&nbsp;s does the
 gap close because even SRPF's λ=3 (5.9&nbsp;s) hits a request's own prefill floor — a policy-invariant
 compute limit that <em>no</em> KV-cache or scheduling decision can cross — and only above ~41&nbsp;s does it
-close because stock's slow rates finally clear the loose SLO and both converge to the ~4.2&nbsp;req/s
+close because stock's slow rates finally clear the loose SLO and both converge to the ~4.7&nbsp;req/s
 compute ceiling. The fixed 8&nbsp;s SLO sits squarely in the window where scheduling is decisive, so the
 conclusion does not hinge on the exact threshold.
 </p>
@@ -328,14 +337,18 @@ do not).
 </p>
 <p>
 The <em>magnitude</em> side is weaker and we flag it honestly. The ceiling <code>g_ceil = C_eff / E[W]</code>
-is a <b>self-consistency check, not an independent prediction</b>: <code>C_eff</code> (~15&nbsp;k tok/s
-effective cold-prefill throughput) is itself backed out from the saturated stock run, so
-<code>g_ceil ≈ 4.2&nbsp;req/s</code> reproduces the measured saturation by construction; the FLOP-side
-estimate (C ≈ 18–19&nbsp;k tok/s over mean cold work ≈ 4.3&nbsp;k tok) lands in the same ~4.2&nbsp;req/s
-band but from different constants, so we report the ceiling as ~4.2&nbsp;req/s <em>with a sensitivity range</em>,
-not as a 0.2%-accurate prediction. What the decomposition <em>does</em> establish is that the observed
-saturation is consistent with work-conservation over the measured cold-work distribution — i.e. the ceiling
-is a compute limit, not a policy gap.
+is a <b>self-consistency check, not an independent prediction</b>: <code>C_eff</code> (~17&nbsp;k tok/s
+effective cold-prefill throughput) is itself backed out from the saturated run, so
+<code>g_ceil ≈ 4.7&nbsp;req/s</code> reproduces the measured raw-throughput ceiling by construction (SRPF
+completes 4.72&nbsp;req/s at λ=10; the full sweep now measures this directly, rather than extrapolating from a
+sub-knee estimate); the FLOP-side estimate (C ≈ 18–19&nbsp;k tok/s over mean cold work ≈ 4.3&nbsp;k tok)
+lands slightly lower (~4.2–4.4), so we report the ceiling as ~4.5&nbsp;req/s <em>with a sensitivity band
+4.2–4.7</em>, not as a point prediction. Two things the decomposition <em>does</em> establish: (i) the
+observed <em>raw</em> saturation is consistent with work-conservation over the measured cold-work
+distribution — the raw ceiling is a compute limit, not a policy gap; and (ii) <b>goodput@SLO (4.0) sits below
+that raw ceiling</b> — so on this metric the binding constraint is the head-of-line <em>tail</em> crossing
+the SLO (§4), not raw compute. The lever-selection above (scheduling) targets exactly that binding
+constraint.
 </p>
 <p>
 The value of the procedure is qualitative and general: flip its inputs and it names a <em>different</em>

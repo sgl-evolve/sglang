@@ -541,3 +541,31 @@ hol_trace), (2) decode/ITL of running requests (13.6× stall → E2E minutes). S
 context-parallel prefill (§5.1) as the full fix. Added to P3 §4 (two-victims), reconciled §8 E2E note
 (mechanism not open-loop artifact), + Fisher significance of the goodput win (λ5 p=0.018, pooled p=0.011,
 `analysis/goodput_stats.py`). All committed + pushed (evolve/floyd @ 03a21af76). Papers stronger; core intact.
+
+## ★ CONTRACT-COMPLETE FULL SWEEP (2026-07-15): goodput@SLO = 4.0, resolved
+Ran the SRPF policy over the **full fixed contract λ{3,5,7,10}** (job 19901, `runs/v-srpf-full`), not just
+the λ3/5 screen. Result (p99 TTFT / achieved req/s):
+- λ3 **6503ms** / 3.02 — PASS
+- λ5 **7823ms** / 4.00 — PASS
+- λ7 **10318ms** / 4.48 — FAIL (SLO)
+- λ10 **13964ms** / 4.72 — FAIL (SLO)
+
+⇒ **goodput@SLO = 4.0 req/s** (the λ5 rate; SRPF's p99 crosses the 8s SLO between λ5 (7.8s) and λ7 (10.3s)).
+This *resolves* the earlier `[4.16, <7)` range to a point, and **refines** two things the λ3/5 screen left
+open:
+1. **Goodput is SLO/tail-bound, NOT raw-compute-bound.** SRPF's *raw* throughput keeps climbing past λ5 —
+   4.48 (λ7), **4.72 (λ10)** — while its p99 crosses the SLO. So the binding constraint at higher load is the
+   head-of-line *tail* crossing 8s, not a compute wall. This STRENGTHENS the head-of-line thesis (§4): the
+   tail is what caps goodput at every regime.
+2. **The raw-throughput ceiling is ~4.7, not ~4.2.** SRPF reaches 4.72 req/s at λ10 (vs stock's 4.22 at λ10
+   — SRPF also lifts *peak* throughput ~+12%, a bonus off the goodput metric). The earlier "~4.2 ceiling"
+   was a sub-knee estimate; the full sweep measures it. C_eff back-out updated 15k→~17k; band ~4.2–4.7.
+
+The same-node n=3 A/B (node 0-3: srpf λ3 {5.9,6.0,7.4}/λ5 {5.85,6.58,7.46} vs stock control 7.6/22.7) still
+provides the *rigorous* λ3,5 comparison + Fisher significance; v-srpf-full (node 1-2) provides the
+*contract-complete curve*. Both cited; goodput headline = 4.0.
+
+**Integrated across all 3 papers** (P3 abstract/fig/table/§5/§6.1, P1 §2.3/§4, P2 §4/fig): goodput 4.0,
+raw ceiling ~4.7 measured, goodput SLO-tail-bound below it. Figure regenerated data-driven from
+`runs/v-srpf-full/curve.csv` (`analysis/gen_curve_svg.py`). W&B logged (v-srpf-full, tag=mechanism).
+All papers re-verified well-formed. Committed + pushed to evolve/floyd.

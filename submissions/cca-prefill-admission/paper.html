@@ -158,9 +158,12 @@ new-token prefill (decode shares the GPU, pulling C well below the ~39k&nbsp;tok
 prefill-step rate). With the mean cache-adjusted work of ≈&nbsp;3.6k&nbsp;tok/turn (10.7M-cap LRU replay,
 §2.1), that gives a ceiling of ~5&nbsp;req/s; a lower effective C≈15k (backing the throughput out of the
 saturated run instead) gives ~4.2 — so the ceiling is ~4.2–5&nbsp;req/s, a <em>sensitivity band</em>, and
-the measured saturation (4.22&nbsp;req/s) sits inside it. The point is not a 0.1%-accurate prediction but
-that saturation is a <em>compute</em> limit, not a policy gap: any lossless mechanism — caching, admission,
-or reordering — is capped in this band, and our SRPF sweep (§4) reaches 4.16&nbsp;req/s, already at it.
+the measured raw-throughput ceiling (4.72&nbsp;req/s, SRPF at λ=10, full contract sweep) sits inside it. The
+point is not a 0.1%-accurate prediction but that raw saturation is a <em>compute</em> limit, not a policy
+gap. Note the distinction the full sweep makes explicit: the <em>raw</em> throughput reaches ~4.7&nbsp;req/s,
+but <b>goodput@SLO is only 4.0&nbsp;req/s</b> (the λ=5 rate) because the head-of-line p99 tail crosses the
+8&nbsp;s SLO between λ=5 and λ=7 — so goodput is bounded by the tail, not by raw compute, and no lossless
+reordering closes that gap by more than the SRPF sweep of §4 does.
 <b>(2) p99-TTFT floor.</b> A request's TTFT cannot be smaller than its own prefill time. The p99
 cache-adjusted work is ~41k&nbsp;tok and the max is 190.9k&nbsp;tok; at the effective single-doc prefill
 rate (~18–39k&nbsp;tok/s under chunking) the largest cold documents cost <b>~5–11&nbsp;s of prefill by
@@ -201,13 +204,14 @@ at ~39k&nbsp;tok/s — the engine is <em>simultaneously compute- and KV-memory-b
 <b>99% of forward steps are prefill</b> (decode starved to ~1%; <code>analysis/pd_schedule.py</code>): the
 engine already spends nearly all compute on new first-tokens, so the prefill/decode split is itself
 TTFT-optimal and not a further lever (shifting steps to decode would only lower goodput). Reordering the
-deep queue is now meaningful: shortest-prefill-first (SRPF/SJF, a classic scheduling policy) raises
-throughput to the ~4.2&nbsp;req/s work-conservation ceiling of §2.3. Our own same-node SRPF sweep confirms
-it at both regimes: <b>λ=5 p99 TTFT {5.85, 6.58, 7.46}&nbsp;s (n=3, all below the SLO) at ~4.1&nbsp;req/s</b>,
-versus stock's stable λ=5 failure (17–24&nbsp;s across n=5; the same-node control drew 22.7&nbsp;s) — a clean
-separation — so goodput@SLO rises from the λ=3 coin-flip (≤3&nbsp;req/s) to
-<b>~4.1&nbsp;req/s</b>, near the compute ceiling. No reordering crosses that ceiling — the remaining gap is the
-compute wall, not a policy we have failed to find. (SRPF is textbook; the contribution is the
+deep queue is now meaningful: shortest-prefill-first (SRPF/SJF, a classic scheduling policy) reorders it. The
+full contract sweep sets <b>goodput@SLO = 4.0&nbsp;req/s</b> (SRPF passes λ=3 at 6.5&nbsp;s and λ=5 at
+7.8&nbsp;s, fails λ=7 at 10.3&nbsp;s), and our same-node A/B corroborates the λ=5 win: <b>λ=5 p99 TTFT {5.85,
+6.58, 7.46}&nbsp;s (n=3, all below the SLO)</b> versus stock's stable λ=5 failure (17–24&nbsp;s across n=5;
+the same-node control drew 22.7&nbsp;s) — a clean separation. So goodput@SLO rises from the λ=3 coin-flip
+(≤3&nbsp;req/s) to <b>4.0&nbsp;req/s</b>. This is SLO-tail-bound, not compute-bound: SRPF's <em>raw</em>
+throughput continues climbing to 4.72&nbsp;req/s at λ=10 while its p99 crosses the SLO, so the binding wall is
+the head-of-line tail, not raw compute — and no reordering closes the SLO gap further. (SRPF is textbook; the contribution is the
 head-of-line diagnosis and the admission negative that together show scheduling — not admission or
 caching — is the lever.)</li>
 </ul>
@@ -220,7 +224,7 @@ whereas round-robin interleaving does not help. This confirms the λ=3 tail is h
 per-request floor. The honest scope of the two regimes is therefore: <em>admission</em> and
 <em>caching/residency</em> cannot move goodput (this paper; and the caching companion), but
 <em>scheduling</em> can — shortest-prefill-first relieves the λ=3 head-of-line blocking and, at
-saturation, raises throughput toward the ~4.2&nbsp;req/s work-conservation ceiling. The wall that no policy
+saturation, raises raw throughput toward the ~4.7&nbsp;req/s (measured) work-conservation ceiling. The wall that no policy
 crosses is that ceiling (cold first-turn prefill cost under a frozen model, TP width, and KV budget); the
 p99 <em>coin-flip</em> below it is a schedulable head-of-line effect. (The simulator omits prefill/decode
 step interleaving, so absolute latencies are approximate; the head-of-line diagnosis rests on the
@@ -305,7 +309,7 @@ system does not retract, and the p99 is head-of-line queueing behind large cold 
 at the same mean and no higher pass-rate (it removes the lucky-lows with the unlucky-highs), so
 it does not cross the 8&nbsp;s line. The genuine goodput levers are <em>scheduling</em> — prefill
 reordering (shortest-prefill-first) to relieve the λ=3 head-of-line and, at higher rates, to raise
-throughput toward the ~4.2&nbsp;req/s compute ceiling — and compute-side (faster / more-parallel
+throughput toward the ~4.7&nbsp;req/s (measured) compute ceiling — and compute-side (faster / more-parallel
 cold-document prefill), <em>not</em> KV-cache admission or residency.</p>
 
 <h2>5 Systems lesson: deterministic TP scheduling</h2>

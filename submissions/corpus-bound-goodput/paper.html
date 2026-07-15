@@ -258,12 +258,14 @@ With caching at its optimum, two corpus-and-hardware quantities frame the metric
 whole story. <b>(1) Throughput ceiling (a hard cap).</b> No policy can sustain a request rate whose prefill
 work exceeds the GPU's prefill throughput C: goodput ≤ C / mean-cache-adjusted-work. With the mean
 cache-adjusted work of 3594 tok/turn (§2's LRU replay) and the effective cold-prefill throughput
-C_eff ≈ 15 k tok/s <em>backed out from the saturated stock run</em>, the ceiling is ~4.2 req/s. This is a
+C_eff ≈ 17 k tok/s <em>backed out from the saturated run</em>, the ceiling is ~4.7 req/s. This is a
 <em>self-consistency check, not an independent prediction</em> — C_eff is calibrated to the saturation, so
-the ceiling reproduces the measured ~4.2 by construction; a FLOP-side estimate (C ≈ 18–19 k tok/s over the
+the ceiling reproduces the measured raw-throughput ceiling by construction (the full contract sweep measures
+it directly: SRPF completes 4.72 req/s at λ=10); a FLOP-side estimate (C ≈ 18–19 k tok/s over the
 larger cold-only mean) lands in the same 3.6–5.6 req/s band from different constants. The takeaway is only
-that saturation is consistent with work-conservation — the cap is corpus/hardware-set and caching cannot
-raise it.
+that raw saturation is consistent with work-conservation — the cap is corpus/hardware-set and caching cannot
+raise it. (Goodput@SLO, 4.0 req/s, sits <em>below</em> this raw ceiling: it is bound by the head-of-line p99
+tail crossing the SLO, not by raw compute — but either way, caching moves neither.)
 <b>(2) Per-request prefill floor (a loose lower bound).</b> A request's TTFT cannot be below its own
 prefill time; even the largest document (190.9 k tok) is only ~5 s at the batched ~39 k tok/s, and the p99
 unique-document <em>work</em> (~41 k tok) is ~1–2 s. So the floor is <em>well under</em> the 8 s SLO for
@@ -322,18 +324,19 @@ where the workload's shape suggests:
 <line x1="72" y1="279.6" x2="662" y2="279.6" stroke="#c00" stroke-width="1.5" stroke-dasharray="6,4"/>
 <text x="658" y="273.6" text-anchor="end" fill="#c00">8 s SLO</text>
 <line x1="72.0" y1="291.0" x2="72.0" y2="253.9" stroke="#999" stroke-width="6" opacity="0.5"/>
-<polyline fill="none" stroke="#888" stroke-width="2.5" points="72.0,282.2 240.6,179.3 409.1,103.1 662.0,52.9"/>
-<circle cx="72.0" cy="282.2" r="4.5" fill="#888"/><circle cx="240.6" cy="179.3" r="4.5" fill="#888"/><circle cx="409.1" cy="103.1" r="4.5" fill="#888"/><circle cx="662.0" cy="52.9" r="4.5" fill="#888"/>
-<polyline fill="none" stroke="#1a7f37" stroke-width="2.5" points="72.0,293.9 240.6,294.2"/>
-<circle cx="72.0" cy="293.9" r="4.5" fill="#1a7f37"/><circle cx="240.6" cy="294.2" r="4.5" fill="#1a7f37"/>
+<polyline fill="none" stroke="#888" stroke-width="2.5" points="72.0,253.8 240.6,215.9 409.1,103.1 662.0,52.9"/>
+<circle cx="72.0" cy="253.8" r="4.5" fill="#888"/><circle cx="240.6" cy="215.9" r="4.5" fill="#888"/><circle cx="409.1" cy="103.1" r="4.5" fill="#888"/><circle cx="662.0" cy="52.9" r="4.5" fill="#888"/>
+<polyline fill="none" stroke="#1a7f37" stroke-width="2.5" points="72.0,289.8 240.6,280.8 409.1,263.8 662.0,239.0"/>
+<circle cx="72.0" cy="289.8" r="4.5" fill="#1a7f37"/><circle cx="240.6" cy="280.8" r="4.5" fill="#1a7f37"/><circle cx="409.1" cy="263.8" r="4.5" fill="#1a7f37"/><circle cx="662.0" cy="239.0" r="4.5" fill="#1a7f37"/>
 <rect x="494" y="34" width="150" height="52" fill="white" stroke="#ddd"/>
 <line x1="504" y1="50" x2="524" y2="50" stroke="#888" stroke-width="2.5"/><text x="530" y="54" fill="#333">stock (FCFS)</text>
 <line x1="504" y1="70" x2="524" y2="70" stroke="#1a7f37" stroke-width="2.5"/><text x="530" y="74" fill="#333">SRPF (reorder)</text>
 </svg>
-<figcaption><b>Goodput rate-sweep (same node).</b> p99 TTFT vs request rate. Stock FCFS (grey) exceeds the
-8&nbsp;s SLO at every rate (the grey bar at λ=3 is the measured n=5 coin-flip range 6.3–11.8&nbsp;s);
-shortest-prefill-first (green) stays under the SLO through λ=5 (n=3 each rate), lifting goodput@SLO from ≤3 to
-~4.1&nbsp;req/s — with cache contents unchanged. The lever is scheduling, not caching.</figcaption>
+<figcaption><b>Goodput rate-sweep (full contract sweep; λ=3,5 corroborated same-node).</b> p99 TTFT vs
+request rate. Stock FCFS (grey) exceeds the 8&nbsp;s SLO from λ=3 up (the grey bar at λ=3 is the measured n=5
+coin-flip range 6.3–11.8&nbsp;s); shortest-prefill-first (green) passes the SLO through λ=5 (7.8&nbsp;s) and
+crosses it above λ=5 (λ=7: 10.3&nbsp;s), setting goodput@SLO = 4.0&nbsp;req/s — with cache contents unchanged.
+The lever is scheduling, not caching.</figcaption>
 </div>
 <ul>
 <li><b>Caching / retention (this paper) — non-lever.</b> LRU is single-pass Belady-optimal; document reuse
@@ -353,10 +356,10 @@ and shows <b>non-preemptive shortest-prefill-first (the deployed policy) brings 
 coin-flip removed</b> (all seeds pass; a preemptive idealization reaches ~4&nbsp;s), while round-robin
 interleaving does not. The simulator is calibrated at λ=3 and over-serializes above the knee, so we use it
 only for the λ=3 diagnosis. A same-node GPU SRPF sweep confirms this at both regimes:
-<b>λ=3 p99 TTFT {5.9, 6.0, 7.4}&nbsp;s</b> and <b>λ=5 {5.85, 6.58, 7.46}&nbsp;s (n=3 each); all 6 pass, at ~4.1&nbsp;req/s</b>,
+<b>λ=3 p99 TTFT {5.9, 6.0, 7.4}&nbsp;s</b> and <b>λ=5 {5.85, 6.58, 7.46}&nbsp;s (n=3 each); all 6 pass</b>,
 all below the 8&nbsp;s SLO — versus stock's λ=3 coin-flip (mean 8.1&nbsp;s) and λ=5 stable failure
 (17–24&nbsp;s, n=5), a clean separation. So
-<b>goodput@SLO rises from ≤3 (stock, λ=3-bound) to ~4.1&nbsp;req/s</b> — near the compute ceiling of §4 — purely
+<b>goodput@SLO rises from ≤3 (stock, λ=3-bound) to 4.0&nbsp;req/s</b> (λ=5, full contract sweep) — SLO-tail-bound, below the raw ceiling of §4 — purely
 by reordering prefills, with cache retention untouched. Scheduling moves the metric at both regimes; SRPF/SJF
 is a textbook policy, so the contribution here is the <em>diagnosis</em> that scheduling — not caching — is
 the lever.</li>
@@ -366,7 +369,7 @@ The unifying statement inverts the caching intuition: for long-document conversa
 document <em>reuse</em> is corpus-fixed (caching cannot help — the mirage), but the <em>goodput</em> is
 <b>schedulable</b> — the bottleneck is head-of-line blocking by the heavy cold-document prefills, and
 prefill scheduling (shortest-prefill-first) is the lever, not cache retention or admission. The residual
-hard limit is the compute ceiling (~4.2&nbsp;req/s), movable only compute-side (more prefill FLOPs, or
+hard limit is the raw-throughput ceiling (~4.7&nbsp;req/s, measured; goodput@SLO 4.0 is SLO-tail-bound below it), movable only compute-side (more prefill FLOPs, or
 parallelizing a single document's prefill via context parallelism — §5.1). We confirm the λ=3 head-of-line
 relief three independent ways — the arithmetic (&lt;0.1% of turns prefill ≥6&nbsp;s), the direct trace
 (queue 9.6× deeper during big-cold-doc chunks), and a same-node GPU SRPF run (p99 5.9&nbsp;s, below SLO) —

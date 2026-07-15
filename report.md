@@ -885,3 +885,9 @@ v16 λ=7 thr=5.51 (p99 30.4s) vs v13 λ=7 5.20 — accel capacity REPLICATES in 
 ★CLEAN SEPARATION confirming the reframe: DETERMINISTIC capacity result replicates (v16 5.51 ≈ v13 5.20), COIN-FLIP
 goodput does NOT (v16 λ=5 17.9s vs v13 3.4s). So capacity +36% is the robust n=2 headline; goodput@SLO=5 is coin-flip.
 λ=10 (~16:20) → final sat C, firms +36% to n=2. Exactly as the reframe (deterministic vs coin-flip metrics) predicts.
+
+## v16 λ=10 = 5.79 thr (16:13): CAPACITY +36% FIRMED to n=2 (deterministic replicates); goodput coin-flip confirmed
+v16 full: λ3 4.5s(3.02)/λ5 17.9s(4.86)/λ7 30.4s(5.51)/λ10 38.4s(5.79). sat C=5.79 vs v13 5.65 — CAPACITY REPLICATES
+(both ≫ stock 4.14; +37-40%). v16 goodput@SLO=3 (bad-basin λ5) vs v13 goodput=5 (good-basin λ5) → accel goodput
+COIN-FLIP {3,5}. ★CLEAN: deterministic capacity firmed n=2 (5.65,5.79); coin-flip goodput NOT (3.4/17.9). Update P6 §4
+capacity claim to n=2.

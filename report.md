@@ -904,3 +904,12 @@ is STRICTLY WORSE than both fcfs AND srpf. ⇒ DEFINITIVE bounded negative: the 
 the mega-doc (SRPF), not throttling it; no reserve size captures it. Answers the §5.6 reviewer question decisively
 (failure is fundamental, not thin-regime-specific). Paper-2-as-mechanism (bounded-deferral) is DEAD. Strengthens
 Paper 1 §5.6. reserve4096 reps 2-3 will firm n=3 (100s + req-collapse unambiguous). ⇒ update §5.6 with the curve.
+
+### Direct per-request HOL attribution (2026-07-15 ~12:55Z, from existing perreq dumps, no new GPU)
+Analyzed KLEINROCK_PERREQ_DUMP from stock (reserve0) runs (n=15,549 reqs, 3 runs each λ3/λ5) via
+tools/perreq_hol_analyze.py. DECISIVE HOL evidence: tiny prompts (<1K tok, own-prefill <0.3s) have a HIGHER p99
+TTFT than the heavy docs themselves — λ3: tiny p99 26.9s vs heavy(>=50K) 20.4s; λ5: tiny 30.5s vs heavy 23.3s.
+27-40% of the p99 tail are tiny prompts; 145(λ3)/301(λ5) tiny reqs exceed 8s SLO PURELY from queueing (a 27-68
+token prompt waiting 22s = pure HOL). ⇒ the p99 tail is HOL VICTIMS, and they suffer MORE than the heavy docs
+that block them — airtight direct proof of the §2.4/§5.6 correction ("long docs are NOT the p99"). Integrated
+§5.6 (commit c0cfb6a7b). Turned collected-but-unused attribution data into a strong evidence addition (no GPU).

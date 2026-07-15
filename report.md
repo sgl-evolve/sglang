@@ -477,3 +477,28 @@ WRONG "2 hot docs serve 41%", "45% shared", "888 unique", "reuse distance median
   multi-corpus, not n=1 (answers the #1 reviewer concern). This multi-corpus analysis is what caught the bug.
 - LESSON: hashing a possibly-empty field silently collapses all empties to one key → spurious reuse. Always
   guard `if not <field>`. Multi-corpus/cross-check analyses catch single-trace artifacts.
+
+## ★★ ADVERSARIAL-REVIEW INTEGRITY FIXES (2026-07-15, P1 + P2, via subagents)
+Ran hostile-PC subagent reviews on P1 (CCA) and P2 (mirage) — both found reject-level integrity issues, all
+verified against artifacts and fixed (no fabrication left):
+- **P2:** (1) cited an "LFU/**SLRU** A/B" — SLRU was NEVER run (only in jobs_slru.txt) → removed all SLRU-run
+  claims. (2) the live **LFU** run never completed a benchmark (curve.csv header-only, no summary.json) →
+  reframed "degrades" to queue-depth-only w/ MATCHED stock baseline (LFU overall mean 24.7 vs stock 7.8);
+  LRU=Belady proof is the load-bearer. (3) ceiling "exactly the measured saturation" → self-consistency
+  (C_eff back-solved); reconciled E[W]=3594 vs 4.3k; sensitivity band. (4) "~4s all-passing" was the
+  PREEMPTIVE sim; deployed non-preempt is ~6s (matches GPU 5.9s) → relabeled. (5) cited Mattson1970/Denning
+  (stack-distance is classic). (6) 4 real corpora: 2 are pure-singleton (0 reuse) — stated honestly. (7)
+  reconciled doc-hit 13% (cross-conv) vs server 0.68 (within-conv). Updated stale docstrings.
+- **P1:** (1) the "recompute-currency → **518-retract crash**" had NO preserved artifact (v1-cca crashed
+  before writing one; no run dir, no server.log w/ cca_ignore_loadback) → REMOVED the table row + all
+  specific claims; reframed as an excluded early unstable run (qualitative hazard only). Device-footprint
+  (v3-cca, artifact exists) carries the catastrophe. (2) CCA-lb "n=5" POOLED W=0.85 {7767,8549,8556} and
+  W=0.90 {7790,8243} → split; dropped pooled "5.7×/2/5" variance claim. (3) SRPF corroboration was
+  cross-node (0-3 vs ondem-3) → replaced w/ clean same-node A/B (control on 0-3: λ3 7.6 / λ5 22.7). (4)
+  ceiling: dropped circular C=4.2×mean; lead w/ independent input_tput×(1−hit)≈19k; band ~4.2-5. (5) "no
+  valve escapes" → by-construction. Verified reproductions (trace_diag concentration, hol_trace 9.6×,
+  Levene 0.15) all hold.
+- LESSON: **preserve server.log for crashing runs** (else the finding is uncitable); never pool distinct
+  configs into one "n"; a run that took effect ≠ a run that produced a metric (check summary.json exists);
+  hostile-PC subagent review is HIGH-YIELD (caught what self-review missed). FUTURE: optionally re-run
+  recompute-currency capturing server.log to restore that finding; run SLRU (jobs_slru.txt) if desired.

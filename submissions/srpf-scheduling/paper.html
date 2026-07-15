@@ -74,8 +74,23 @@ values ranging from 6.5 s to 36.7 s on the same node and configuration.</p>
 <strong>Key insight:</strong> The goodput barrier is not a capacity problem &mdash; it is a
 <em>scheduling</em> problem. Under FCFS, cached continuations with near-zero remaining prefill
 queue behind cold first-turn documents requiring 6&ndash;190K tokens of compute. This creates
-severe head-of-line blocking that inflates tail latency by 174&times; at &lambda;=7.
+severe head-of-line blocking that inflates tail latency.
 </div>
+
+<p><strong>Contributions.</strong></p>
+<ol>
+<li><strong>SRPF</strong>, a 60-line cache-aware scheduling policy that sorts by remaining uncached
+prefill, raising goodput 37&ndash;67% (17/17 PASS at &lambda;=5, Fisher p = 8.6&times;10<sup>&minus;10</sup>).</li>
+<li><strong>Per-request TTFT decomposition</strong> showing the p99 tail is 99.9% forward-compute
+(not queueing), and that SRPF delivers rate-invariant cached admission (3.9&ndash;7.5 ms median
+across &lambda;=3&ndash;10).</li>
+<li><strong>Exhaustive design-space closure</strong> across 15 mechanisms in 4 dimensions
+(scheduling, budget, capacity, eviction), with 12 honest negatives &mdash; bounding what
+further improvement is possible.</li>
+<li><strong>Metastability characterization:</strong> goodput@SLO under FCFS is a coin-flip
+(6.5&ndash;36.7 s p99 same-node), making single-run A/B tests void. SRPF stabilizes
+variance 8&times;, itself enabling reliable experimentation.</li>
+</ol>
 
 <h2>2. SRPF: Shortest Remaining Prefill First</h2>
 
@@ -101,12 +116,16 @@ arbitrarily. Under SRPF:</p>
 <li><strong>Cached continuations drain instantly:</strong> With near-zero remaining prefill, they
 consume negligible PrefillAdder budget and enter the running batch immediately.</li>
 <li><strong>Queue depth drops:</strong> p99 queue depth decreases 35&ndash;43% across rates.</li>
-<li><strong>Cold documents still complete:</strong> They process in the same total time, but
-without blocking cached requests.</li>
+<li><strong>Cold documents also benefit:</strong> Their forward compute is unchanged, but their
+queue wait drops because the overall queue is less congested.</li>
 </ol>
 
-<p>At &lambda;=7 under FCFS, continuations wait a median 30.5 s behind cold documents in the queue.
-Under SRPF, they are batched in a single 175 ms iteration &mdash; a <strong>174&times; reduction</strong>.</p>
+<p>Per-request instrumentation (&sect;4.6) reveals that this blocking is a <em>tail</em> phenomenon:
+the cached queue median is identical under FCFS and SRPF (~7 ms at &lambda;=7), but the
+<strong>p99 diverges 5.9&times;</strong> (5837 ms FCFS vs 982 ms SRPF) and <strong>3.0% of cached
+requests wait &gt;1 s</strong> under FCFS (vs 1.0% SRPF). These few percent in the tail are exactly
+the requests that push the overall p99 TTFT past the SLO. Cold documents also benefit:
+their queue median drops 5.5&ndash;22.9&times; across rates because SRPF reduces overall queue depth.</p>
 
 <h3>2.3 Optimality argument</h3>
 <p>SRPF is optimal for the PrefillAdder's budget structure. The scheduler's admission loop
@@ -240,6 +259,44 @@ requests are cold documents. Under SRPF, cached continuations receive near-insta
 This directly explains why chunk-reserve (which trades mega-doc TTFT for continuation queue time)
 is counterproductive: there is no queue-time problem for SRPF to solve at the tail.</p>
 
+<p><strong>Rate-invariant cached admission.</strong> Breaking down by rate reveals that SRPF
+maintains near-constant cached queue times independent of arrival rate:</p>
+
+<table>
+<tr><th>Rate (&lambda;)</th><th>Cached n</th><th>Cached queue median</th><th>Cached &gt;1 s</th><th>Cold queue median</th><th>Cold queue p99</th></tr>
+<tr><td>3</td><td>4,618</td><td>3.9 ms</td><td>0.9%</td><td>160 ms</td><td>9,820 ms</td></tr>
+<tr><td>5</td><td>4,462</td><td>6.2 ms</td><td>1.1%</td><td>28 ms</td><td>14,915 ms</td></tr>
+<tr><td>7</td><td>4,472</td><td>7.5 ms</td><td>1.0%</td><td>90 ms</td><td>35,910 ms</td></tr>
+<tr><td>10</td><td>4,451</td><td>7.5 ms</td><td>0.9%</td><td>88 ms</td><td>41,080 ms</td></tr>
+</table>
+
+<p>Cached queue median varies only 3.9&ndash;7.5 ms (1.9&times;) across a 3.3&times; rate range.
+Fewer than 1% of cached requests wait &gt;1 s at any rate. This is the core SRPF property:
+<strong>the 78% majority of requests are insulated from congestion</strong> caused by the 22%
+cold minority. Cold queue p99 scales with rate (10&ndash;41 s), but their median stays below
+160 ms &mdash; cold documents are not starved, they simply yield priority to near-free requests.</p>
+
+<p><strong>Head-to-head comparison with FCFS</strong> (same node 1-2, same write_back config,
+same commit, instrumented runs v-srpf-wb-diag vs v-fcfs-wb-diag):</p>
+
+<table>
+<tr><th>Rate (&lambda;)</th><th colspan="3">Cached queue p99</th><th colspan="3">Cached &gt;1 s</th><th colspan="2">Cold queue median</th></tr>
+<tr><th></th><th>SRPF</th><th>FCFS</th><th>Ratio</th><th>SRPF</th><th>FCFS</th><th>&Delta;</th><th>SRPF</th><th>FCFS</th></tr>
+<tr><td>3</td><td>945 ms</td><td>3,734 ms</td><td><strong>4.0&times;</strong></td><td>0.9%</td><td>3.3%</td><td>+2.4 pp</td><td>160 ms</td><td>1,159 ms</td></tr>
+<tr><td>5</td><td>1,086 ms</td><td>5,978 ms</td><td><strong>5.5&times;</strong></td><td>1.1%</td><td>3.1%</td><td>+2.0 pp</td><td>28 ms</td><td>631 ms</td></tr>
+<tr><td>7</td><td>982 ms</td><td>5,837 ms</td><td><strong>5.9&times;</strong></td><td>1.0%</td><td>3.0%</td><td>+2.0 pp</td><td>90 ms</td><td>499 ms</td></tr>
+<tr><td>10</td><td>866 ms</td><td>9,718 ms</td><td><strong>11.2&times;</strong></td><td>0.9%</td><td>3.5%</td><td>+2.6 pp</td><td>88 ms</td><td>494 ms</td></tr>
+</table>
+
+<p>The cached queue <em>median</em> is identical under both policies (~4&ndash;8 ms at all rates) &mdash;
+most cached requests experience no HOL blocking under either policy. The difference is entirely
+in the <strong>tail</strong>: under FCFS, 3.0&ndash;3.5% of cached requests queue &gt;1 s (vs
+0.9&ndash;1.1% under SRPF), and the p99 explodes to 4&ndash;10 s (vs &lt;1.1 s under SRPF,
+ratio 4&ndash;11&times; increasing with load). These ~2 pp of excess tail requests are exactly
+what push the overall p99 TTFT past the 8 s SLO. Cold documents experience even larger queue
+reductions (5.5&ndash;22.9&times; median), confirming the Pareto improvement (&sect;9). Forward
+compute is identical (ratio 0.92&ndash;1.04&times; across rates), confirming pure latency reshaping.</p>
+
 <h3>4.7 SRPF is pure latency reshaping, not a throughput increase</h3>
 
 <p>A critical control: SRPF does not increase peak throughput. At &lambda;=10 (saturation),
@@ -301,8 +358,8 @@ configuration, stock &lambda;=3 p99 TTFT ranges from 6.5 s to 36.7 s (n=6, same-
 range: 6.5&ndash;23.7 s). This means single-run goodput A/B comparisons are void &mdash;
 the metric requires median-of-k replication to distinguish signal from noise.</p>
 
-<p>SRPF stabilizes the metric: at &lambda;=5, SRPF &sigma; = 557 ms vs FCFS &sigma; = 5902 ms
-(11&times; reduction). This is itself a methodological contribution: SRPF converts an
+<p>SRPF stabilizes the metric: at &lambda;=5, SRPF &sigma; = 574 ms vs FCFS &sigma; = 4388 ms
+(8&times; reduction, n=17 vs n=16). This is itself a methodological contribution: SRPF converts an
 unreliable metric into a reliable one, enabling meaningful A/B testing.</p>
 
 <h2>7. Honest Negatives and Self-Corrections</h2>
@@ -359,11 +416,22 @@ with higher reuse rates or larger documents will see even more benefit. The mech
 system-agnostic: it requires only a sort key computable from existing scheduler metadata
 (input length, matched prefix, output length).</p>
 
-<p><strong>Fairness.</strong> SRPF does not starve cold documents. Under the PrefillAdder's budget
-structure, only one chunked request occupies the 6144-token chunk budget per iteration, regardless
-of ordering. Cold documents process in the same total number of iterations; only their position
-relative to cheap requests changes. Cold-document p99 TTFT is determined by their own prefill
-compute time, not queue wait (confirmed by the TTFT decomposition in &sect;4.6).</p>
+<p><strong>When SRPF does not help.</strong> Three conditions must hold simultaneously for SRPF to
+improve goodput: (1) <em>bimodal processing time</em> &mdash; the cached/cold prefill ratio must
+be large enough that reordering makes a meaningful difference (our 190&times; ratio is extreme;
+even a 10&times; ratio would suffice); (2) <em>high cached fraction</em> &mdash; SRPF reshapes
+latency for the majority; if most requests are cold, there is nothing to prioritize;
+(3) <em>queue congestion</em> &mdash; at low load where queue depth is &le;1, all orderings are
+equivalent (our &lambda;=3 shows 1.2&times; p99 compression vs 3.7&times; at &lambda;=7).
+Under pure decoding or single-turn workloads, SRPF reduces to FCFS.</p>
+
+<p><strong>Fairness.</strong> SRPF is a Pareto improvement: cold documents also benefit. Under FCFS,
+cold documents queue behind both other cold documents <em>and</em> cached continuations. SRPF
+drains cached continuations in &lt;10 ms, reducing the effective queue depth for everyone.
+Per-request instrumentation confirms (&sect;4.6): cold-document forward compute is unchanged
+(ratio 0.92&ndash;1.01&times; across rates), but cold queue median drops 5.5&ndash;22.9&times;
+(e.g. 631 ms &rarr; 28 ms at &lambda;=5). Cold-document p99 TTFT remains dominated by their own
+prefill compute, not queue wait.</p>
 
 <h2>10. Conclusion</h2>
 
@@ -389,10 +457,23 @@ and <code>--hicache-write-policy write_back</code>. They address different bottl
 <p>All runs are logged to W&amp;B (project <code>sgl-evolve</code>, run <code>base</code>).
 Raw artifacts (server logs, bench JSON, curve CSV) are attached as versioned artifacts.
 The evaluation protocol is frozen (<code>eval.sh</code>) and the code is on branch
-<code>evolve/base</code> at commit <code>01fd8ba0a</code> (SRPF mechanism) and
-<code>68c398520</code> (final report). <strong>37 total evaluation runs:</strong> 17 SRPF-based
-(pure ordering + neutral ablations), 2 SRPF-modified (aging, chunk-reserve = strong negatives),
-16 FCFS variants, 2 broken. Every version (positive and negative) is logged with full server logs.</p>
+<code>evolve/base</code> at commit <code>01fd8ba0a</code> (SRPF mechanism).
+<strong>39 total evaluation runs</strong> across 22 distinct configurations:</p>
+
+<table>
+<tr><th>Category</th><th>Configs</th><th>Runs</th><th>Outcome</th></tr>
+<tr><td>SRPF (pure ordering)</td><td>SRPF, SRPF+WB, SRPF+XT+WB</td><td>17</td><td>17/17 PASS at r5</td></tr>
+<tr><td>SRPF (neutral ablations)</td><td>+QP-KV, +QPAC, +IBAC, +ACHUNK</td><td>4</td><td>NEUTRAL</td></tr>
+<tr><td>SRPF (negative ablations)</td><td>+aging, +chunk-reserve, +DBS</td><td>3</td><td>STRONG NEG</td></tr>
+<tr><td>Capacity (SRPF context)</td><td>+cost-aware device eviction</td><td>1</td><td>NEUTRAL</td></tr>
+<tr><td>FCFS baselines</td><td>stock, WB, XTIER, XTIER+WB</td><td>12</td><td>0/12 PASS at r5</td></tr>
+<tr><td>Diagnostics</td><td>SRPF diag, FCFS diag</td><td>2</td><td>per-request instrumented</td></tr>
+</table>
+
+<p>Every version (positive and negative) is logged with full server logs, curve CSV, and
+benchmark JSON. The diagnostic runs add per-request TTFT decomposition via
+<code>--enable-request-time-stats-logging</code> (29,631 ReqTimeStats entries each,
+28,167 sweep requests after warmup).</p>
 
 </body>
 </html>

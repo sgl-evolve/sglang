@@ -1372,6 +1372,35 @@ is empirical — pending eval (commit 83c6009b9).
   to solve at the tail) and validates the paper's central mechanism argument.
 - W&B: NOT logged (diagnostic only, same config as v-srpf-wb; the goodput number is not a new version).
 
+### v-fcfs-wb-diag — FCFS+WB per-request TTFT decomposition (diagnostic)  [COMPLETE, 1-2, job 19945, commit 515058a3e]
+- **Purpose:** FCFS counterpart to v-srpf-wb-diag. Instrumented eval with
+  `--enable-request-time-stats-logging` to measure head-of-line blocking under FCFS.
+  Same node (1-2), same capacity config (write_back), same commit.
+- **Config**: `--hicache-write-policy write_back --enable-request-time-stats-logging`
+  (FCFS is default scheduling, no --schedule-policy flag)
+- **Results (all rates FAIL — FCFS coin-flip hit r3):**
+  | rate | p99 TTFT (ms) | req/s | hit | pass? |
+  |------|--------------|-------|-----|-------|
+  | 3    | 11873        | 3.02  | 0.744 | FAIL |
+  | 5    | 22474        | 4.40  | 0.734 | FAIL |
+  | 7    | 31752        | 4.99  | 0.729 | FAIL |
+  | 10   | 39134        | 5.20  | 0.727 | FAIL |
+  Goodput = 0 (even r3 FAILS — the FCFS metastable coin-flip). On the SAME NODE, SRPF diag got goodput=5.03.
+- **★★ HOL BLOCKING COMPARISON (29,631 ReqTimeStats each, same node 1-2, same write_back):**
+  HOL blocking is a TAIL phenomenon — cached queue MEDIAN is identical (SRPF ~4-8ms ≈ FCFS ~4-7ms),
+  but TAIL diverges dramatically:
+  | rate | SRPF cached p99 | FCFS cached p99 | ratio | SRPF >1s | FCFS >1s | cold queue median ratio |
+  |------|----------------|----------------|-------|---------|---------|----------------------|
+  | 3    | 945ms          | 3734ms         | 4.0×  | 0.9%    | 3.3%    | 7.3× (160→1159ms)   |
+  | 5    | 1086ms         | 5978ms         | 5.5×  | 1.1%    | 3.1%    | 22.9× (28→631ms)    |
+  | 7    | 982ms          | 5837ms         | 5.9×  | 1.0%    | 3.0%    | 5.5× (90→499ms)     |
+  | 10   | 866ms          | 9718ms         | 11.2× | 0.9%    | 3.5%    | 5.7× (88→494ms)     |
+  Forward compute control: 0.92–1.04× across rates (identical — pure scheduling effect).
+  **Key insight**: ~3% of cached requests experience >1s queue under FCFS at ALL rates (a structural
+  constant, not rate-dependent). These ~2pp excess tail requests push the overall p99 TTFT past the SLO.
+  Cold documents also benefit 5.5–22.9× at the median (the Pareto improvement).
+- W&B: NOT logged (diagnostic only).
+
 ## Ops notes
 - eval.sh has a path bug (computes `workspace/sgl/v0.3_ablations/base`); fixed by symlink
   `v0.3_ablations/base → v0.31/base` (frozen eval.sh untouched — fairness-clean).

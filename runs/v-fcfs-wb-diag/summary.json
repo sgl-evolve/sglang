@@ -1,0 +1,61 @@
+{
+  "version": "v-fcfs-wb-diag",
+  "commit": "68c398520",
+  "panel": {
+    "overall/goodput_reqs_at_SLO": 0,
+    "overall/peak_out_tok_s": 665.31,
+    "overall/peak_req_s": 5.2,
+    "overall/hit_rate": 0.7438,
+    "overall/slo_ms": 8000.0,
+    "curve/req_s@3": 3.02,
+    "curve/ttft_p99@3": 11873.37,
+    "curve/req_s@5": 4.4,
+    "curve/ttft_p99@5": 22474.23,
+    "curve/req_s@7": 4.99,
+    "curve/ttft_p99@7": 31751.94,
+    "curve/req_s@10": 5.2,
+    "curve/ttft_p99@10": 39133.86
+  },
+  "curve": [
+    {
+      "label": "sweep",
+      "rate": "3",
+      "req_throughput": "3.02",
+      "out_tok_s": "386.78",
+      "ttft_p50_ms": "469.41",
+      "ttft_p99_ms": "11873.37",
+      "e2e_p99_ms": "",
+      "hit_rate": "0.7438"
+    },
+    {
+      "label": "sweep",
+      "rate": "5",
+      "req_throughput": "4.40",
+      "out_tok_s": "563.07",
+      "ttft_p50_ms": "633.30",
+      "ttft_p99_ms": "22474.23",
+      "e2e_p99_ms": "",
+      "hit_rate": "0.7337"
+    },
+    {
+      "label": "sweep",
+      "rate": "7",
+      "req_throughput": "4.99",
+      "out_tok_s": "637.98",
+      "ttft_p50_ms": "740.28",
+      "ttft_p99_ms": "31751.94",
+      "e2e_p99_ms": "",
+      "hit_rate": "0.7291"
+    },
+    {
+      "label": "sweep",
+      "rate": "10",
+      "req_throughput": "5.20",
+      "out_tok_s": "665.31",
+      "ttft_p50_ms": "807.32",
+      "ttft_p99_ms": "39133.86",
+      "e2e_p99_ms": "",
+      "hit_rate": "0.7273"
+    }
+  ]
+}

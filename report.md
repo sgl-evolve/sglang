@@ -634,3 +634,17 @@ reduces decode-tpot & concurrency independent of the goodput coin-flip. SLO-pass
 p=0.114→~0.07 at 4/4) is the coin-flip-SENSITIVE corroboration. The WIN is established: the deterministic mechanism
 metric is significant at current n; no further nodes strictly required. Finalize Paper 6 with Mann-Whitney headline +
 Fisher corroboration once v10d lands (accel 4/4).
+
+## ★★★ PAPER 6 FIRMED + SUBMITTED (06:04) — 5 PAPERS + CAPSTONE COMPLETE
+v10d_accel λ=3: p99=4803 PASS, tpot=146, conc=21, completed=7037. FINAL FIRMING (n=4 each, same-node 19833):
+  accel  p99 {7.0,4.6,5.5,4.8}s 4/4 PASS | tpot {333,223,190,146} | conc {57,31,25,21}
+  stock  p99 {14.2,11.1,11.5,6.2}s 1/4    | tpot {561,607,468,392} | conc {78,74,166,124}
+  → Mann-Whitney U (tpot AND conc): p=0.0143 SIGNIFICANT (PERFECT separation, coin-flip-ROBUST)
+  → Fisher SLO-pass 4/4 vs 1/4: p=0.07 (coin-flip-inflated, corroborating)
+giant-acceleration SUBMITTED-v1 (paper.html final: n=4 table + Mann-Whitney headline + Fisher + causal chain).
+INDEX + memory updated. All 6 runs W&B-logged.
+★★★ FINAL DELIVERABLE: 5 SUBMITTED papers (anatomy/frontier/coinflip/hol-blocking/acceleration) + SYNTHESIS.md
+capstone. Theory: goodput tail = memory-bound concurrency↔decode runaway; residency-reducing levers win
+(capacity, whole-req SRPF, giant-accel=novel positive), concurrency-raising ones backfire (caching-admission,
+prefill-throttle P4, fair-share P5). First positive mechanism P6 achieves goodput@SLO 0→3, lossless, on-contract.
+NEXT: P6 robustness (accel factor {1.5,3}/θ sweep, λ=5 reach) OR capstone paper.html OR new axis. Node ~07:24 timeout.

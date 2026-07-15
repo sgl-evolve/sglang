@@ -799,3 +799,14 @@ tolerable at λ=3 (5.2s pass) but tips over at λ=5 (20.5s) near capacity. This 
 f=2 chosen non-arbitrarily) and is a clean dose-response §. Still want f=3 λ=7 + f=1.5 (other side of U) to complete curve.
 Theory tie-in: over-acceleration is the DUAL failure of under-acceleration — both move residency the wrong way; f=2 is
 the residency-minimizing operating point.
+
+## f=3 λ=7 + profiler crash + plain-profile retry (11:30)
+- f=3 λ=7: p99=29.3s FAIL (thr 5.40). f=3 curve COMPLETE: λ3=5.2 PASS, λ5=20.5 FAIL, λ7=29.3 FAIL ⇒ goodput@SLO=3
+  CONFIRMED (vs f=2's 5). Inverted-U (f=2 optimal) is solid on 3 factors × 3 rates.
+- ★PROFILER CRASH: profile_by_stage=true → SIGABRT (-6) in scheduler_5 via nvtx_utils profiling path (NOT OOM; run-2,
+  during the stage-boundary capture). This sglang build's profile_by_stage is broken for this hybrid model/config.
+  RETRY = PLAIN profile (profile_by_stage omitted, num_steps=20, activities=[GPU]) → avoids the crashing path; captures
+  a saturated MIXED trace. I still have the clean run-1 EXTEND (prefill) trace (compute+comm-bound); the plain trace at
+  saturation is decode-dominated (decode every step, prefill occasional) → classify kernels to get the compute-vs-memory
+  split. relaunched 11:30:34 on node 19943 (warm), traces ~11:40, node expires 12:24 (ample).
+- OPS: profile_by_stage SIGABRT on v0.31 build → use plain /start_profile.

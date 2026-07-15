@@ -4,8 +4,8 @@
 set -uo pipefail
 ROOT=/home/junyanch_google_com/autoresearch
 WORK=$ROOT/workspace/sgl/v0.31/research/researchers/turing
-PORT=30056
-PROFDIR=$WORK/runs/prof_accel_sat2
+PORT=30057
+PROFDIR=$WORK/runs/prof_accel_sat3
 CACHE=/tmp/turing_prof_cache            # node-local, SEPARATE flashinfer/triton cache => NO race w/ dose-response
 MODEL=Qwen/Qwen3.5-122B-A10B-FP8
 MIX=/rmeng_data/junyanch-data/datasets/mooncake_mix_v1.jsonl
@@ -42,16 +42,16 @@ LOAD=$!
 
 echo "[prof] wait 160s for saturation $(date -u +%H:%M:%S)"; sleep 160
 echo "[prof] running-req snapshot:"; grep -oE "#running-req: [0-9]+" "$PROFDIR/server.log" | tail -3
-echo "[prof] trigger profile_by_stage (40 steps/stage, GPU) $(date -u +%H:%M:%S)"
+echo "[prof] trigger PLAIN profile (20 steps, GPU; profile_by_stage=true crashes this build w/ SIGABRT) $(date -u +%H:%M:%S)"
 curl -s -X POST localhost:$PORT/start_profile -H "Content-Type: application/json" \
-  -d '{"num_steps":40,"profile_by_stage":true,"activities":["GPU"]}' | tee "$PROFDIR/profstart.log"; echo
+  -d '{"num_steps":20,"activities":["GPU"]}' | tee "$PROFDIR/profstart.log"; echo
 
-echo "[prof] wait for BOTH stages (gate on DECODE, which exports AFTER EXTEND)"
-for i in $(seq 1 180); do
-  ls "$PROFDIR"/*DECODE*.trace.json* >/dev/null 2>&1 && { echo "[prof] DECODE traces present ($((i*5))s)"; break; }
-  ls "$PROFDIR"/*EXTEND*.trace.json* >/dev/null 2>&1 && echo "[prof] EXTEND present, awaiting DECODE... ($((i*5))s)"
+echo "[prof] wait for trace to land (plain => one trace set)"
+for i in $(seq 1 120); do
+  ls "$PROFDIR"/*.trace.json* >/dev/null 2>&1 && { echo "[prof] traces present ($((i*5))s)"; break; }
+  kill -0 $SRV 2>/dev/null || { echo "[prof] SERVER DIED during profile"; break; }
   sleep 5
 done
-sleep 30   # let DECODE export flush fully
+sleep 25   # let export flush fully
 echo "[prof] cleanup $(date -u +%H:%M:%S)"; kill $LOAD $SRV 2>/dev/null; sleep 3; pkill -9 -f "sglang.launch_server|bench_serving" 2>/dev/null
 echo "[prof] DONE $(date -u +%H:%M:%S)"; ls -la "$PROFDIR"

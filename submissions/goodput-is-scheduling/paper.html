@@ -74,8 +74,10 @@ own same-node GPU sweep. We are explicit that SRPF is <em>not</em> our contribut
 knowing, and proving, that scheduling is where the lever is and caching is not.</li>
 <li><b>A predictive phase-boundary criterion (§6).</b> Caching has online goodput headroom iff a corpus
 re-uses documents at a stack-distance beyond the cache horizon <code>H = CAP/mean-doc</code>; we validate
-the boundary on constructed corpora and show long-document QA sits far inside the mirage regime — making
-the negative <em>general</em>, not a single-workload artifact.</li>
+the boundary on constructed corpora, and compose it with the compute and head-of-line bounds into a
+<em>predictive goodput-lever model</em> (§6.1) that reproduces the measured goodput (4.17 vs 4.16&nbsp;req/s)
+and names the lever from workload+hardware parameters — making the result <em>general</em>, not a
+single-workload artifact.</li>
 </ul>
 
 <h2>2 Setup and method</h2>
@@ -263,6 +265,34 @@ against <code>H = CAP/mean-doc</code> before investing in a smarter retention po
 policy beats LRU and the goodput lever is scheduling.
 </p>
 
+<h3>6.1 A predictive goodput-lever model (a roofline for goodput@SLO)</h3>
+<p>
+The map, the diagnosis, and the phase boundary compose into a single decision procedure that, from
+workload and hardware parameters alone, predicts goodput <em>and</em> names the lever
+(<code>analysis/goodput_model.py</code>). From the per-turn cold-adjusted work distribution <code>W</code>
+(trace at the LRU cache), the effective cold-prefill throughput <code>C_eff</code>, the batched throughput
+<code>C_batch</code>, the cache horizon <code>H</code>, and the SLO <code>T</code>:
+</p>
+<ul>
+<li><b>Compute ceiling</b> <code>g_ceil = C_eff / E[W]</code> — the work-conservation cap no policy beats.</li>
+<li><b>Per-request floor</b> <code>f = P99(W) / C_batch</code> — a request's own prefill; policy-invariant.</li>
+<li><b>Caching headroom</b> <code>h</code> = fraction of re-uses at stack-distance &gt; <code>H</code> (§6).</li>
+</ul>
+<p>
+<b>Lever</b> = compute if <code>f &gt; T</code> (even the best schedule misses the SLO); else caching if
+<code>h</code> is large (removable evicted-reuse); else, when work is bimodal and <code>f ≪ T</code>,
+scheduling (the p99 is head-of-line queue-wait, reducible by serving small turns first). <b>Predicted
+goodput:</b> SRPF ≈ <code>g_ceil</code>; FCFS a sub-knee coin-flip below it. On our workload the procedure
+computes <code>g_ceil = 15000/3594 = 4.17&nbsp;req/s</code>, <code>f = 1.04&nbsp;s ≪ 8&nbsp;s</code>, and
+<code>h = 0.2%</code> → <b>lever = scheduling</b>, predicted SRPF goodput <b>4.17&nbsp;req/s</b> — matching
+the measured 4.16 to within 0.2% — while FCFS is a coin-flip below it. The model both reproduces the
+measurement and, by flipping its inputs, names a <em>different</em> lever for a different regime (reuse
+beyond the horizon → caching; a lone document with <code>P99(W)/C_batch &gt; T</code> → compute; near-uniform
+small work → no head-of-line, so neither caching nor scheduling helps). The goodput lever is thus a function
+of <em>(work distribution, reuse locality, throughput, SLO)</em> — not a fixed property of KV-cache serving —
+which is why the KV-cache axis is inert here yet could be decisive elsewhere.
+</p>
+
 <h2>7 Related work</h2>
 <p>
 <b>HiCache / LMCache / AttentionStore</b> optimize KV residency and host↔device movement; we show that for
@@ -295,7 +325,7 @@ Base <code>a334877e5</code> (stock v0.31), all analysis and the SRPF policy on <
 Map evidence: <code>analysis/doc_reuse.py</code>, <code>reuse_distance.py</code>, <code>phase_boundary.py</code>
 (caching); <code>mamba_pressure.py</code> (recurrent pool); <code>pd_schedule.py</code> (prefill/decode);
 <code>hol_trace.py</code>, <code>hol_sim.py</code>, <code>bound.py</code>, <code>prefill_flops.py</code>
-(head-of-line + compute bounds); <code>slo_sensitivity.py</code> (SLO-threshold robustness); the admission
+(head-of-line + compute bounds); <code>slo_sensitivity.py</code> (SLO-threshold robustness), <code>goodput_model.py</code> (the predictive lever model of §6.1); the admission
 negative is in the CCA companion. GPU runs:
 <code>runs/v0-stock</code> (stock sweep), <code>runs/v-srpf-r1</code> (SRPF sweep), <code>runs/v-stock-srpfctl</code>
 (same-node control). SRPF is <code>--schedule-policy srpf</code> in

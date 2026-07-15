@@ -147,6 +147,53 @@ moves the frontier. With <span class="mono">GIANT_ACCEL</span> on:</p>
 </table>
 <p class="note">Throughput column: accel achieved (stock achieved, same-machine companion sweep). Both saturate below
 offered load at high &lambda;; the achieved rate <em>is</em> the effective capacity.</p>
+<figure style="margin:1.1rem 0;text-align:center">
+<svg viewBox="0 0 560 350" width="100%" style="max-width:36rem" font-family="Georgia,serif" role="img"
+     aria-label="p99 TTFT versus offered rate: acceleration stays under the 8s SLO through lambda=5; stock does not">
+  <!-- axes -->
+  <line x1="60" y1="300" x2="520" y2="300" stroke="#1a1a1a" stroke-width="1.2"/>
+  <line x1="60" y1="300" x2="60" y2="30" stroke="#1a1a1a" stroke-width="1.2"/>
+  <!-- y gridlines + labels (0,8,20,40 s) -->
+  <line x1="60" y1="180" x2="520" y2="180" stroke="#eee" stroke-width="1"/>
+  <line x1="60" y1="60" x2="520" y2="60" stroke="#eee" stroke-width="1"/>
+  <text x="52" y="304" text-anchor="end" font-size="11" fill="#666">0</text>
+  <text x="52" y="184" text-anchor="end" font-size="11" fill="#666">20</text>
+  <text x="52" y="64" text-anchor="end" font-size="11" fill="#666">40</text>
+  <text x="20" y="170" text-anchor="middle" font-size="12" fill="#1a1a1a" transform="rotate(-90 20 170)">p99 TTFT (s)</text>
+  <!-- SLO line at 8s (y=252) -->
+  <line x1="60" y1="252" x2="520" y2="252" stroke="#a11" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="516" y="247" text-anchor="end" font-size="11.5" fill="#a11" font-weight="bold">8&#8201;s SLO</text>
+  <!-- x ticks (lambda 3,5,7,10) -->
+  <text x="60"  y="318" text-anchor="middle" font-size="11" fill="#666">3</text>
+  <text x="191" y="318" text-anchor="middle" font-size="11" fill="#666">5</text>
+  <text x="323" y="318" text-anchor="middle" font-size="11" fill="#666">7</text>
+  <text x="520" y="318" text-anchor="middle" font-size="11" fill="#666">10</text>
+  <text x="290" y="340" text-anchor="middle" font-size="12" fill="#1a1a1a">offered rate &#955; (req/s)</text>
+  <!-- stock line (gray): (3,11.5)(5,25)(7,35.8)(10,41) -->
+  <polyline points="60,231 191,150 323,85 520,54" fill="none" stroke="#888" stroke-width="2"/>
+  <g fill="#888">
+    <circle cx="60" cy="231" r="4"/><circle cx="191" cy="150" r="4"/><circle cx="323" cy="85" r="4"/><circle cx="520" cy="54" r="4"/>
+  </g>
+  <!-- accel line (green): (3,4.5)(5,3.4)(7,29.8)(10,37.9) -->
+  <polyline points="60,273 191,280 323,121 520,73" fill="none" stroke="#1a6a1a" stroke-width="2.4"/>
+  <g fill="#1a6a1a">
+    <circle cx="60" cy="273" r="4.5"/><circle cx="191" cy="280" r="4.5"/><circle cx="323" cy="121" r="4.5"/><circle cx="520" cy="73" r="4.5"/>
+  </g>
+  <!-- pass markers on accel lambda 3,5 -->
+  <text x="60"  y="266" text-anchor="middle" font-size="11" fill="#1a6a1a" font-weight="bold">&#10003;</text>
+  <text x="191" y="273" text-anchor="middle" font-size="11" fill="#1a6a1a" font-weight="bold">&#10003;</text>
+  <!-- legend -->
+  <rect x="330" y="34" width="184" height="46" fill="#fff" stroke="#dae0da" stroke-width="1"/>
+  <line x1="340" y1="49" x2="366" y2="49" stroke="#1a6a1a" stroke-width="2.4"/>
+  <text x="372" y="53" font-size="11.5" fill="#1a1a1a">giant acceleration (f=2)</text>
+  <line x1="340" y1="68" x2="366" y2="68" stroke="#888" stroke-width="2"/>
+  <text x="372" y="72" font-size="11.5" fill="#1a1a1a">stock (companion sweep)</text>
+</svg>
+<figcaption style="font-size:.82rem;color:#666;margin-top:.2rem">Figure 1. p99 TTFT vs offered rate, same machine.
+Acceleration (green) stays under the 8&#8201;s SLO through &lambda;=5 (&#10003;), lifting goodput@SLO from 3 to 5; both
+curves diverge past their capacity ceiling (stock at &lambda;&ge;3&ndash;5, accel at &lambda;=7). Stock &lambda;=3 is a
+coin-flip (6&ndash;14&nbsp;s; the plotted 11.5&nbsp;s run is one draw).</figcaption>
+</figure>
 <div class="keyfinding">
 <b>Giant acceleration raises goodput@SLO from 3 to 5&nbsp;req/s (+67%).</b> At &lambda;=5, stock is over its capacity
 ceiling (achieved 3.59, saturating toward C&nbsp;&asymp;&nbsp;4.14) so its queue is unstable and p99 diverges to

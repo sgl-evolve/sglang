@@ -1027,6 +1027,13 @@ class PrefillAdder:
                 and input_tokens <= self.rem_input_tokens
                 and (-self.rem_chunk_tokens + input_tokens) <= int(os.environ.get("IBAC_CAP", "2048"))
             ):
+                rcb = int(os.environ.get("SGLANG_RCB", "0"))
+                if (rcb > 0
+                    and self.rem_chunk_tokens is not None
+                    and input_tokens <= self.rem_chunk_tokens
+                    and input_tokens > 0
+                    and self.rem_chunk_tokens - input_tokens < rcb):
+                    return self.budget_state()
                 # Non-chunked prefill — the whole sequence is committed this iter.
                 req.set_extend_range(
                     len(req.prefix_indices), len(req.full_untruncated_fill_ids)

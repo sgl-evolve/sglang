@@ -913,3 +913,10 @@ TTFT than the heavy docs themselves — λ3: tiny p99 26.9s vs heavy(>=50K) 20.4
 token prompt waiting 22s = pure HOL). ⇒ the p99 tail is HOL VICTIMS, and they suffer MORE than the heavy docs
 that block them — airtight direct proof of the §2.4/§5.6 correction ("long docs are NOT the p99"). Integrated
 §5.6 (commit c0cfb6a7b). Turned collected-but-unused attribution data into a strong evidence addition (no GPU).
+
+### ★ PUSHED evolve/kleinrock (2026-07-15 ~13:05Z) — 34 unpushed commits were local-only!
+Discovered origin/evolve/kleinrock was stuck at 4bafcbc47 (~07:32) while local HEAD was 1c2f1feaf — the ENTIRE
+Paper 1 correction campaign (SRPF correction, reserve ablation, HOL attribution + scatter figure, §8/§9/§5.2
+consistency, sharpened abstract, INDEX updates) was committed but NOT pushed. Pushed all 34 commits →
+origin now at 1c2f1feaf. LESSON (matches memory warning): after committing, VERIFY push status (git ls-remote),
+don't assume; a clean working tree ≠ pushed. The corrected paper is now durable + visible to the supervisor.

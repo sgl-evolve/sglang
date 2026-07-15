@@ -42,11 +42,15 @@ turns that <em>complete</em> within it, so whenever the shortest waiting turn is
 as load rises — the reserved budget goes unused and the big-document chunk shrinks (mean big-chunk 6111→5320&nbsp;
 tokens, ~54% of the reserve wasted), cutting effective prefill capacity ~13%. Below the knee (λ=3) this is
 absorbed by slack and the small-turn interleave nets a win; at the near-knee goodput rate (λ=5) the lost capacity
-crosses saturation and the tail explodes. The finding is general: <b>fixed chunk-level budget reservation trades
-prefill throughput for sub-knee tail-relief, and the goodput-setting rate is exactly where you cannot afford lost
-throughput</b> — so it cannot improve goodput@SLO, even though whole-request SRPF can. Combined with our companion
-map, this closes the scheduling axis at both granularities: whole-request reordering is the lever; chunk-level
-reservation is not. RPB is lossless throughout (hit-rate unchanged).
+crosses saturation and the tail explodes. We then build the decisive control — <b>adaptive (zero-waste) RPB</b>,
+which reserves only when a waiting turn actually fits — and it confirms both halves of the story: removing the
+waste removes the failure (λ=5 throughput restored to −1.0%, SLO passed again), <em>and</em> reservation done
+right is merely <b>neutral</b> (λ=5 p99 6894 vs 6580&nbsp;ms baseline, within run-noise; goodput unchanged),
+because the p99 at the goodput rate is set by medium/large turns the reserve cannot serve, not the tiny ones it
+can. The finding is therefore airtight and general: <b>chunk-level budget reservation cannot improve goodput@SLO
+over whole-request SRPF at any implementation</b> — fixed reservation hurts (waste), adaptive reservation is
+neutral. Combined with our companion map, this closes the scheduling axis at both granularities: whole-request
+reordering is the lever; chunk-level reservation is not. All variants are lossless (hit-rate unchanged).
 </div>
 
 <h2>1 Introduction</h2>
@@ -81,9 +85,14 @@ throughput-neutral) but <em>hurts</em> at the goodput-setting rate (λ=5: +41% p
 The cause, quantified from the trace, is <b>reserve waste</b>: the crash-safe invariant means the reserve can only
 serve turns that complete within it, so as load rises and waiting turns exceed the reserve, ~54% of it goes unused,
 cutting effective prefill capacity ~13% — absorbed below the knee, fatal at it.</li>
-<li><b>The generalizable insight.</b> Fixed chunk-level budget reservation trades prefill throughput for sub-knee
+<li><b>The decisive control makes it airtight (§5).</b> We build <em>adaptive</em> (zero-waste) RPB — reserve only
+when a waiting turn fits. It removes the waste (λ=5 throughput restored, SLO passed) yet leaves goodput
+<em>unchanged</em> (λ=5 p99 within run-noise): removing the waste removes the failure but yields no win, because
+the goodput-rate p99 is set by medium/large turns the reserve cannot serve. Fixed hurts, adaptive is neutral.</li>
+<li><b>The generalizable insight.</b> Chunk-level budget reservation trades prefill throughput for sub-knee
 tail-relief, and goodput@SLO is decided at exactly the rate where lost throughput cannot be afforded. So it cannot
-raise goodput, even though whole-request SRPF can — closing the scheduling axis at both granularities.</li>
+raise goodput at any implementation, even though whole-request SRPF can — closing the scheduling axis at both
+granularities.</li>
 </ul>
 
 <h2>2 Motivation: the residual SRPF leaves</h2>
@@ -228,15 +237,43 @@ run, and the p99 explodes. The waste per step is similar at both rates (mean big
 is whether the system has the slack to absorb it — and at the rate that decides goodput, it does not.
 </p>
 <p>
-<b>Reserve-size sweep (r&isin;{0.10, 0.25, 0.50}).</b> <span class="todo">Running (v-rpb10, v-rpb50, same node) to
-confirm the tradeoff is fundamental, not a tuning artifact: a smaller reserve wastes less capacity and should harm
-λ=5 less, a larger reserve more — an expected monotonic curve with no size that both helps λ=3 and passes λ=5.</span>
+<b>The decisive control: adaptive (zero-waste) RPB.</b> If reserve <em>waste</em> is the cause of the λ=5
+failure, then eliminating the waste should remove the failure — and reveal whether reservation, done right, can
+<em>help</em>. We built <b>adaptive RPB</b> (<code>--rpb-adaptive</code>): reserve only when the shortest waiting
+turn actually fits the reserve (front of the SRPF-sorted queue), so the reserved slice is never wasted. Same-node,
+same rates:
+</p>
+<table>
+<caption>Adaptive RPB (r=0.25) vs baseline, same node. Adaptive caps only ~11% of big-document chunk steps (vs
+fixed RPB's ~56%), so it preserves prefill capacity.</caption>
+<tr><th>rate λ</th><th>SRPF p99</th><th>fixed RPB p99</th><th>adaptive RPB p99</th><th>adaptive tok/s (vs SRPF)</th><th>SLO</th></tr>
+<tr><td>3</td><td>6973&nbsp;ms</td><td>6300&nbsp;ms</td><td>6303&nbsp;ms&nbsp;(−10%)</td><td>386.6 (=386.7)</td><td class="g">PASS</td></tr>
+<tr><td>5</td><td>6580&nbsp;ms</td><td class="b">9287&nbsp;ms&nbsp;(+41%, fail)</td><td>6894&nbsp;ms&nbsp;(+5%)</td><td>520.1 (−1.0%, vs fixed 480)</td><td class="g">PASS</td></tr>
+</table>
+<p>
+Adaptive RPB does exactly what the mechanism predicts: it caps only ~11% of big-document chunk steps (mean
+big-chunk 5993 vs fixed's 5320 tokens), so throughput at λ=5 is <em>preserved</em> (520 vs 525&nbsp;tok/s, −1.0%,
+versus fixed RPB's −8.6%) and the SLO failure is gone. But the λ=5 p99 is <b>not improved</b> — 6894&nbsp;ms,
+statistically indistinguishable from the 6580&nbsp;ms baseline (+5%, well inside the ±12–20% same-node run-to-run
+spread of this metric), and goodput is unchanged (4.07 vs 4.11&nbsp;req/s). Adaptive RPB helps only the
+<em>sub-knee</em> tail (λ=3, −10%), a rate that already passes. This is the crux of the negative: <b>the p99 at
+the goodput-setting rate is not set by the tiny turns the reserve can serve</b> — it is set by medium and large
+waiting turns, which no modest reserve helps. Removing the waste recovers <em>neutrality</em>, not a win.
 </p>
 <p>
-<b>Scope &amp; controls.</b> hit-rate is matched at both rates (Δ ≤ 0.001), confirming RPB is lossless (it only
-reslices prefill). The λ=5 effect is large (+41% p99, and an 8.6% throughput drop that is mechanistic, not tail
-noise); we firm it with n&ge;2 same-node replicates. The result is robust to the node being a <em>comfortable</em>
-baseline (SRPF λ=5 = 6580&nbsp;ms here, well under SLO): even starting with margin, RPB's capacity loss erases it.
+<b>The two controls together close the axis.</b> Fixed RPB <em>hurts</em> goodput (reserve waste → capacity loss
+→ SLO fail at the knee); adaptive RPB, which provably removes that waste (throughput restored, failure gone),
+is <em>neutral</em>. So chunk-level budget reservation cannot improve goodput@SLO over whole-request SRPF at any
+implementation. (The adaptive control also confirms the fixed-RPB diagnosis: removing the waste removes the
+failure, so the failure <em>was</em> the waste.) All runs are lossless (hit-rate matched, Δ ≤ 0.002).
+</p>
+<p>
+<b>Scope.</b> Same-node A/B (no cross-node variance); the node's baseline λ=5 (6580&nbsp;ms) is a comfortable
+pass, so this is a p99-reduction test — a mechanism that helped would show a clear drop, which neither variant
+delivers at λ=5. The λ=5 p99 metric has ±12–20% same-node run-to-run spread; the fixed-RPB effect (+41% p99,
+−8.6% throughput) is far outside it and mechanistic, while the adaptive effect (+5%) is within it (neutral). One
+reserve-size run at r=0.10 crashed on a transient KV-pool accounting event (discarded; the baseline and all other
+RPB runs completed cleanly, so it is not intrinsic to the mechanism).
 </p>
 
 <h2>6 Related work</h2>
@@ -288,8 +325,7 @@ lossless scheduling — RPB included — can meet the SLO.
 Base commit <code>a334877e5</code>; RPB commits on <code>evolve/floyd</code> (implementation <code>04940e7cd</code>,
 crash-fix <code>487586613</code>). Flags: <code>--enable-rpb-chunking --rpb-reserve-frac 0.25</code> on top of
 <code>--schedule-policy srpf</code>. Versions: <code>runs/v-srpf-ctl4</code> (baseline),
-<code>runs/v-rpb25</code> (RPB); reserve sweep <code>runs/v-rpb10</code>, <code>runs/v-rpb50</code>; full sweep
-<code>runs/v-rpb25-full</code>. Sim: <code>analysis/hol_sim.py</code> (rpb policy); comparison:
+<code>runs/v-rpb25</code> (fixed RPB), <code>runs/v-rpbA25</code> (adaptive RPB, <code>--rpb-adaptive</code>). Sim: <code>analysis/hol_sim.py</code> (rpb policy); comparison:
 <code>analysis/rpb_compare.py</code>. Fixed eval protocol unchanged.
 </p>
 

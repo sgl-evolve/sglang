@@ -124,7 +124,12 @@ Every edge amplifies (+), so the loop is a positive feedback. Its single state v
 sign on goodput@SLO is the sign of its effect on residency, inverted.</figcaption>
 </figure>
 <p>We call the quantity the loop pumps <b>residency</b>: the aggregate wall-clock time requests spend occupying the
-running batch (equivalently, the time-integral of concurrency). The loop is <em>not</em> compute-mediated&mdash;adding
+running batch (equivalently, the time-integral of concurrency). Residency is not a synonym for instantaneous
+concurrency&mdash;it is concurrency integrated over <em>duration</em>, and that product structure is exactly why the
+three effective levers are distinct rather than redundant: whole-request shortest-first cuts the <em>number</em> of
+in-flight requests, giant acceleration cuts each giant's <em>duration</em> in the batch, and capacity raises the
+<em>drain rate</em>. Each attacks a different factor of the same product; each lowers residency; each wins. The loop is
+<em>not</em> compute-mediated&mdash;adding
 compute headroom does not drain it, because the bottleneck is memory bandwidth, not FLOPs. It is <em>not</em>
 arrival-noise&mdash;it persists on a fully deterministic workload (fixed seed, disabled shuffle, warmup burst). It is a
 genuine dynamical instability: the same offered load settles into either a low-occupancy basin (p99 passes) or a

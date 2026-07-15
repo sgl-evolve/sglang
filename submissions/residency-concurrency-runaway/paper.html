@@ -71,7 +71,53 @@ individually puzzling. Together they are a pattern, and the pattern has a mechan
 <p>Decode on this model at the concurrency cap is <b>memory-bandwidth-bound</b>: each decode step's time is dominated by
 streaming the KV cache of every request in the running batch. Therefore the per-step decode time grows with the number
 of in-flight requests. This closes a positive-feedback loop:</p>
-<div class="eq">high concurrency &rarr; slower (memory-bound) decode step &rarr; each request lingers longer &rarr; higher concurrency</div>
+<figure style="margin:1.1rem 0;text-align:center">
+<svg viewBox="0 0 660 292" width="100%" style="max-width:40rem" font-family="Georgia,serif" role="img"
+     aria-label="Positive-feedback loop: high concurrency raises decode time raises residency raises concurrency">
+  <defs>
+    <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#1a5a2a"/>
+    </marker>
+    <marker id="ahg" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#1a6a1a"/>
+    </marker>
+    <marker id="ahr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#a11"/>
+    </marker>
+  </defs>
+  <!-- three nodes of the cycle -->
+  <g>
+    <rect x="238" y="14" width="184" height="52" rx="8" fill="#f2f6f2" stroke="#1a5a2a" stroke-width="1.5"/>
+    <text x="330" y="35" text-anchor="middle" font-size="15" font-weight="bold" fill="#1a1a1a">Concurrency &#8593;</text>
+    <text x="330" y="54" text-anchor="middle" font-size="12" fill="#666">in-flight requests</text>
+  </g>
+  <g>
+    <rect x="430" y="196" width="210" height="60" rx="8" fill="#f2f6f2" stroke="#1a5a2a" stroke-width="1.5"/>
+    <text x="535" y="219" text-anchor="middle" font-size="15" font-weight="bold" fill="#1a1a1a">Decode step slower</text>
+    <text x="535" y="238" text-anchor="middle" font-size="12" fill="#666">memory-bandwidth-bound</text>
+  </g>
+  <g>
+    <rect x="20" y="196" width="210" height="60" rx="8" fill="#f2f6f2" stroke="#1a5a2a" stroke-width="1.5"/>
+    <text x="125" y="219" text-anchor="middle" font-size="15" font-weight="bold" fill="#1a1a1a">Residency &#8593;</text>
+    <text x="125" y="238" text-anchor="middle" font-size="12" fill="#666">requests linger longer</text>
+  </g>
+  <!-- clockwise cycle arrows, each amplifying (+) -->
+  <path d="M422,52 C520,80 560,140 560,190" fill="none" stroke="#1a5a2a" stroke-width="2" marker-end="url(#ah)"/>
+  <path d="M430,232 C330,262 230,262 232,232" fill="none" stroke="#1a5a2a" stroke-width="2" marker-end="url(#ah)"/>
+  <path d="M100,192 C100,140 140,80 240,54" fill="none" stroke="#1a5a2a" stroke-width="2" marker-end="url(#ah)"/>
+  <text x="577" y="128" font-size="17" font-weight="bold" fill="#1a5a2a">+</text>
+  <text x="330" y="284" text-anchor="middle" font-size="17" font-weight="bold" fill="#1a5a2a">+</text>
+  <text x="70" y="128" font-size="17" font-weight="bold" fill="#1a5a2a">+</text>
+  <!-- lever annotations -->
+  <text x="330" y="112" text-anchor="middle" font-size="12.5" fill="#1a6a1a">&#9660; capacity &#183; whole-req SRPF &#183; giant-accel</text>
+  <text x="330" y="130" text-anchor="middle" font-size="11.5" fill="#666">reduce residency &#8594; break the loop (win)</text>
+  <text x="330" y="160" text-anchor="middle" font-size="12.5" fill="#a11">&#9650; caching-admission &#183; decode-floor &#183; fair-share</text>
+  <text x="330" y="178" text-anchor="middle" font-size="11.5" fill="#666">raise residency &#8594; amplify the loop (backfire)</text>
+</svg>
+<figcaption style="font-size:.82rem;color:#666;margin-top:.2rem">Figure 1. The residency&ndash;concurrency runaway.
+Every edge amplifies (+), so the loop is a positive feedback. Its single state variable is residency; a mechanism's
+sign on goodput@SLO is the sign of its effect on residency, inverted.</figcaption>
+</figure>
 <p>We call the quantity the loop pumps <b>residency</b>: the aggregate wall-clock time requests spend occupying the
 running batch (equivalently, the time-integral of concurrency). The loop is <em>not</em> compute-mediated&mdash;adding
 compute headroom does not drain it, because the bottleneck is memory bandwidth, not FLOPs. It is <em>not</em>

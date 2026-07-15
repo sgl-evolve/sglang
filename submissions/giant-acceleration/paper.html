@@ -65,6 +65,8 @@ goodput@SLO from 3 to 5&nbsp;req/s (+67%) by raising the effective capacity ceil
 5.65&nbsp;req/s (+36%, measured at &lambda;=10). Acceleration is thus not merely a &lambda;=3 latency fix but a
 <em>capacity</em> lever&mdash;the K-lever of the
 companion frontier study&mdash;of magnitude comparable to shortest-first scheduling, via a distinct mechanism.
+A factor sweep confirms a <b>sharp optimum at f=2</b>: both under-boosting (f=1.5) and over-boosting (f=3) revert
+goodput@SLO to 3 (they raise raw capacity but lose the p99 tail), so acceleration is a tuned, not monotone, lever.
 </div>
 
 <h2>1 Introduction &amp; the unified law</h2>

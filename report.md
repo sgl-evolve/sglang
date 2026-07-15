@@ -719,3 +719,13 @@ EXACTLY as §7 predicted: the λ5 p99 is set by MEDIUM/LARGE waiting turns, not 
 budget reservation cannot improve goodput@SLO over whole-request SRPF at ANY implementation — fixed HURTS (waste),
 adaptive NEUTRAL. Scheduling axis definitively closed at both granularities. The adaptive control also proves the
 fixed-RPB λ5 failure was CAUSED by the waste (removing it removes the failure), strengthening the mechanism claim.
+
+### n=2 firming — baseline landed (node 1-1); adaptive-neutral framing pends the adaptive replicate
+n=2 same-node baseline: λ3 {6973, 6393} (±4.3%), λ5 {6580, 6411} (±1.3%, TIGHT). ⇒ fixed-RPB λ5 9287 (+41%) is
+unambiguously real (far outside the tight band). BUT adaptive λ5 6894 (n1) is +5-7.5% ABOVE the tight n=2 band —
+so "neutral" vs "small real regression" is NOT yet settled; depends on v-rpbA25-r2 (running after v-rpb25-r2).
+Prior n=3 same-node SRPF λ5 {5850,6576,7457} (±14%) WOULD contain 6894 → genuinely ambiguous. ★HONESTY: let the
+adaptive replicate decide the framing — if rpbA25-r2 ≈ baseline (6400-6600) → adaptive was a high draw = neutral;
+if ≈6900 → adaptive is a SMALL real λ5 regression (~+6%), reframe from "neutral" to "no goodput gain + small tail
+cost" (still supports the core negative: reservation doesn't help goodput). Either way the CONCLUSION holds
+(chunk-level reservation can't improve goodput); only the adaptive λ5 sub-claim's precise wording is at stake.

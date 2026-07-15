@@ -770,3 +770,12 @@ prefill-stage vs decode-stage GPU-kernel traces. Analysis for the compute-vs-mem
 Verdict: decode-steps dominate wall-clock AND are attention-KV-read-bound => C is decode-memory-BW-bound (theory's
 prediction); else prefill-compute-bound. Trigger: POST /start_profile {num_steps~30, profile_by_stage:true,
 activities:["GPU"], output_dir} once conc~250 in a λ=10 load. Experiment fully specified; run when node frees.
+
+## DOSE-RESPONSE first data: f=3 λ=3 (10:41) — early signal that f=2 is near-optimal
+f=3 λ=3: p99=5.2s PASS, conc=36, tpot=253, thr=3.02. vs f=2: p99=4.5s, conc=21, tpot=138. vs stock(v1): 11.5s,166,468.
+⇒ ★f=3 is SLIGHTLY WORSE than f=2 at λ=3 (higher conc/tpot/p99, both pass). Consistent with over-acceleration:
+a bigger boosted chunk (3×6144→cap 16384) stalls decode MORE within the step (tpot 253 vs 138) even as it clears the
+giant. Suggests an OPTIMAL factor near f=2 (diminishing/negative returns beyond). NEED f=3 λ=5,7 (~11:07) to confirm
+whether f=3 still reaches goodput@SLO=5 or drops. analyze_dose.py verdict currently partial-data-artifact (λ5,7 pending).
+If confirmed: dose-response finding = "acceleration has a sweet spot (~2×); over-acceleration re-introduces the very
+prefill↔decode interference it exploits" → strengthens P6 (mechanism is tuned, not monotonic) + is a clean §.

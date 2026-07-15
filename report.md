@@ -847,3 +847,11 @@ tpot: f=2 138 < f=3 253 ≈ f=1.5 267. ⇒ at λ=3, f=2 is the MINIMUM p99 (best
 linger more; f=3 over-boosts bigger-chunk stall) → inverted-U in p99@λ3 too, peak-performance at f=2. Corroborates f=2
 optimum. f=1.5's GOODPUT needs λ=5 (discriminating rate, ~13:15): if f=1.5 λ5 passes → goodput 5 (plateau [1.5,2]); if
 fails → goodput 3 (sharp peak at f=2). WAIT for λ=5 to add the complete f=1.5 row to P6 §5 table + Figure 2 bar (once).
+
+## ★★ f=1.5 λ=5 = 20.7s FAIL (13:17) — DOSE-RESPONSE COMPLETE: SHARP optimum at f=2
+f=1.5 goodput@SLO=3 (λ3 6.1 PASS, λ5 20.7 FAIL). Full dose: goodput [stock≤3, f=1.5→3, f=2→5, f=3→3].
+★STRIKING: f=1.5 λ=5 (20.7s) ≈ f=3 λ=5 (20.5s) — BOTH under-boost AND over-boost fail λ=5 at ~20.7s; ONLY f=2 passes
+(3.4s). SHARP optimum at f=2 (not a plateau). Under-boost (f=1.5): 9216-tok chunks insufficient → giants linger →
+runaway. Over-boost (f=3): 16384-tok chunks → tail-spike. f=2 (12288) is the unique sweet spot. Finalizing P6 §5:
+4th table row (f=1.5: λ3 6.1/λ5 20.7/goodput 3) + Figure 2 4th bar (goodput 3) + keyfinding (sharp peak both sides).
+sat C for f=1.5 fills at λ=10 (~14:00).

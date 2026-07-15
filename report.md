@@ -867,3 +867,15 @@ f=1.5 full curve: thr 3.02/4.56/5.34/5.44 (sat C 5.44). ★ALL accel factors rai
 f3 5.46) vs stock 4.14 — goodput@SLO (3/5/3) is NOT a capacity difference; it's TAIL-CONTROL. Only f=2 holds p99 under
 SLO. §5 table complete (f=1.5 sat-C 5.44) + added "tail-control not capacity" note. Dose-response fully done.
 Remaining: v16_accelrep (frontier n≥2 firming) autonomous via launcher after node frees.
+
+## ★★★ CRITICAL: v16 λ=5 = 17.9s FAIL (15:44) — frontier λ=5-pass does NOT replicate → COIN-FLIP; reframe
+v16_accelrep (f=2 replicate) λ=3=4.5s PASS (replicates v13 cleanly, accel λ=3 now 5/5), but λ=5=17.9s FAIL (thr 4.86,
+conc 170, BAD basin) vs v13 λ=5=3.4s PASS (good basin). ⇒ accel λ=5 = 1/2 COIN-FLIP (also cross-node: v13 node19916 vs
+v16 node19959, confounded). The "goodput 3→5 (+67%)" headline was OVER-CLAIMED on a single lucky λ=5 draw (v13).
+★THEORY-CONSISTENT (P3 margin law): at λ=5 accel margin = C−λ = 5.65−5 = 0.65 (SMALL) → coin-flip; at λ=3 margin = 2.65
+(LARGE) → reliable (5/5). So accel RELIABLY raises capacity C +36% (deterministic) + RELIABLY wins λ=3, but λ=5 SLO-pass
+is coin-flip-governed (small margin), EXACTLY as P3 predicts. NOT an embarrassing over-claim — a confirmation of the
+margin law that corrects the frontier framing.
+★MUST REFRAME (integrity): P6 headline = "capacity C +36% (deterministic, SOLID) + reliable λ=3 win (5/5 vs 1/5); λ=5
+goodput coin-flip (1/2, margin 0.65)". Dose-response §5 λ=5 comparison is coin-flip-caveated (f=2 good-basin 3.4s ≪
+f1.5/f3 20.7s but SLO-pass at λ=5 not reliably established). Propagate to P6 §4/abstract, capstone, INDEX, SYNTHESIS, memory.

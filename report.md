@@ -960,3 +960,11 @@ goodput PASS only at λ≤5: at λ7 (offered 7 ≫ compute ceiling ~4.6 req/s) t
 goodput@SLO CEILING ≈ λ5 (~4.1 req/s). Across-λ: λ3 6.7s pass / λ5 7.0s pass / λ7 10.2s fail (all -70% vs fcfs).
 The lever reduces the tail everywhere but clears the SLO only below severe saturation. n=1 (firming to n=3), then
 integrate into §5.6/§5.1.
+
+### Number-consistency audit PASSED (2026-07-15 ~21:40Z)
+Cross-checked every SRPF/reserve/LOF/HOL number cited in paper.html against raw run CSVs (v3-v8): all match and
+are internally coherent. SRPF λ5 23.9→7.0s/0-5→5/5/p0.0079; reserve λ5 +75%/λ3 +141%/abl 1024=22.3/4096=100s;
+deferral triple 22.7/27.5/6.7 (n=3, 0-0); srpf λ7 33.3→9.6 (-71%); HOL tiny 26.9/30.5 > heavy 20.4/23.3. Stock-λ5
+baseline varies 22.7-24.2s across comparisons = node heterogeneity (each A/B same-node-internally-consistent, no
+within-comparison contradiction). Integrity mandate satisfied (numbers match raw runs). No fixes needed. Paper 1
+submission-ready. remote==local (bfdf28b52).

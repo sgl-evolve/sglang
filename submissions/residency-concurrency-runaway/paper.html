@@ -70,7 +70,12 @@ individually puzzling. Together they are a pattern, and the pattern has a mechan
 <h2>2 The runaway</h2>
 <p>Decode on this model at the concurrency cap is <b>memory-bandwidth-bound</b>: each decode step's time is dominated by
 streaming the KV cache of every request in the running batch. Therefore the per-step decode time grows with the number
-of in-flight requests. This closes a positive-feedback loop:</p>
+of in-flight requests. We measure exactly this: across the rate sweep, decode time-per-token is
+linear in concurrency, <span class="mono">tpot &asymp; a + b&middot;concurrency</span> with <b>b &asymp; 1.2&nbsp;ms per
+concurrent request</b> (R&sup2;&nbsp;=&nbsp;0.94&ndash;0.997), and the slope <em>b</em> is the same (1.15&ndash;1.30)
+for stock and for the accelerated policy&mdash;a hardware constant (per-request KV-streaming cost), not a policy
+artifact. A compute-bound decode would amortize across the batch and give a roughly flat tpot; the linear growth is the
+memory-bandwidth signature. This closes a positive-feedback loop:</p>
 <figure style="margin:1.1rem 0;text-align:center">
 <svg viewBox="0 0 660 292" width="100%" style="max-width:40rem" font-family="Georgia,serif" role="img"
      aria-label="Positive-feedback loop: high concurrency raises decode time raises residency raises concurrency">

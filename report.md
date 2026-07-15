@@ -733,3 +733,9 @@ analysis/prefill_ceiling.py (bench_r10.json, saturation λ=10, same 99.9M-token 
 - Compute-vs-memory ceiling attribution: linear-prefill MFU ~7-10% BUT attention-score FLOPs for 191K-tail are large →
   back-of-envelope CANNOT settle it → needs a saturation profiler (prefill-kernel vs decode-kernel wall-clock share) =
   the clean Paper 7 experiment. Theory predicts decode-BW wall. Added as capstone §3 keyfinding.
+
+## Decode memory-bound signature CONFIRMED from existing data (10:04)
+analysis/decode_memory_bound.py: tpot = a + b*concurrency, b≈1.2ms/req (accel 1.30, stock 1.15), R²=0.94-0.997.
+Slope SHARED across policies = hardware constant (per-req KV-streaming cost); compute-bound decode would amortize→flat.
+= direct evidence for the runaway premise (concurrency→linearly-slower-decode). Added to capstone §2 (was assertion-only).
+Note: this evidences the DECODE STEP is memory-bound; the CEILING C compute-vs-memory attribution still needs a profiler (§3, Paper 7).

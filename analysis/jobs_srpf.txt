@@ -1,0 +1,7 @@
+# Central-claim GPU test: does shortest-prefill-first (srpf) stabilize the λ3 coin-flip (head-of-line)?
+# Compare to stock (fcfs) — my existing v0-stock n=5 {6327,6391,7765,8124,11786} 3/5 pass + same-node control.
+# hol_sim predicts srpf λ3 p99 ~4s all-pass vs stock coin-flip. Screen λ3,5 (λ5 = throughput/base regime).
+v-srpf-r1:--schedule-policy srpf
+v-stock-srpfctl:
+v-srpf-r2:--schedule-policy srpf
+v-srpf-r3:--schedule-policy srpf

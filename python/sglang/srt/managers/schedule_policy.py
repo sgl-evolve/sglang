@@ -1031,6 +1031,17 @@ class PrefillAdder:
                     req.retracted_stain,
                 )
             else:
+                # floyd RPB: if an in-flight chunked_req already exists (its chunk was capped by
+                # add_chunked_req to reserve budget for waiting turns), do NOT truncate this waiting
+                # req into a SECOND chunked_req — the scheduler enforces at-most-one chunked_req
+                # (assert self.chunked_req is None at set time). The reserved slice is meant for
+                # small waiting turns that COMPLETE within it (handled by the non-chunked branch
+                # above); a waiting req too big to fit stays in the queue and waits for the in-flight
+                # doc to finish. Without this guard, RPB's leftover budget crashes the server.
+                # Gated on rpb_reserve_frac>0 so non-RPB runs are byte-identical (there the in-flight
+                # chunk exhausts the budget and this branch is unreachable while has_chunked_req).
+                if has_chunked_req and self.rpb_reserve_frac > 0.0:
+                    return AddReqResult.OTHER
                 # Make sure at least one page is available
                 trunc_len = self.rem_chunk_tokens // self.page_size * self.page_size
 

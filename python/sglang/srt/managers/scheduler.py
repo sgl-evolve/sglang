@@ -1000,6 +1000,11 @@ class Scheduler(
         # prefill this step (breaks head-of-line blocking behind giants). Giant still progresses.
         self._turing_fair_prefill = os.environ.get("SGLANG_TURING_FAIR_PREFILL", "0") == "1"
         self._turing_fair_frac = float(os.environ.get("SGLANG_TURING_FAIR_FRAC", "0.5"))
+        # turing Paper-6: giant acceleration (env-gated, default OFF; lossless).
+        # Under concurrency pressure, boost the in-flight giant's per-step chunk so it exits sooner.
+        self._turing_giant_accel = os.environ.get("SGLANG_TURING_GIANT_ACCEL", "0") == "1"
+        self._turing_accel_theta = float(os.environ.get("SGLANG_TURING_ACCEL_THETA", "0.85"))
+        self._turing_accel_factor = float(os.environ.get("SGLANG_TURING_ACCEL_FACTOR", "2.0"))
         uses_transformers_backend = (
             get_resolved_model_impl(self.model_config) == ModelImpl.TRANSFORMERS
         )
@@ -2865,6 +2870,24 @@ class Scheduler(
 
         if self.chunked_req is not None:
             self.chunked_req.init_next_round_input()
+            # turing Paper-6: giant acceleration (env-gated, lossless). Under concurrency pressure
+            # (device-KV occupancy > theta), give the in-flight giant a LARGER per-step chunk so it
+            # finishes and EXITS sooner -> lower residency -> lower concurrency -> faster (memory-bound)
+            # decode. This is the DUAL of Paper-5 fair-share (which caps the giant and backfires).
+            # Boost is capped at max_prefill_tokens to avoid oversized steps/OOM; total tokens still
+            # bounded by rem_total_tokens inside add_chunked_req. Lossless (per-step budget only).
+            if (
+                getattr(self, "_turing_giant_accel", False)
+                and adder.rem_chunk_tokens is not None
+            ):
+                _alloc = self.token_to_kv_pool_allocator
+                try:
+                    _occ = 1.0 - _alloc.available_size() / _alloc.size
+                except Exception:
+                    _occ = 0.0
+                if _occ > self._turing_accel_theta:
+                    _boost = int(adder.rem_chunk_tokens * self._turing_accel_factor)
+                    adder.rem_chunk_tokens = min(_boost, self.max_prefill_tokens)
             # turing Paper-5: fair-share chunk interleaving (env-gated, lossless).
             # Cap the in-flight giant's per-step share so waiting shorts can also start prefill,
             # then restore the remainder of the full budget for the waiting-queue drain below.

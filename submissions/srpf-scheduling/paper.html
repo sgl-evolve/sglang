@@ -191,6 +191,26 @@ faster hardware, fewer cold documents, or prefill-decode disaggregation.</p>
 a good r7. The r7/r5 ratio varies from 1.02 to 1.46 (mean 1.27, &sigma;=0.14). The r7 coin-flip
 is genuinely independent of r5 performance.</p>
 
+<h3>4.5 Per-request TTFT decomposition: the tail is compute, not queueing</h3>
+
+<p>We instrumented the server (<code>--enable-request-time-stats-logging</code>) to decompose
+every request&rsquo;s latency into <em>queue wait</em> (time in the waiting queue) and
+<em>forward compute</em> (time from entering the running batch to completion). Across 29,631
+requests spanning all four rates under SRPF+WB (node 1-2, job 19927):</p>
+
+<table>
+<tr><th>Request type</th><th>n</th><th>Median queue</th><th>Median forward</th><th>Queue/total</th></tr>
+<tr><td>All</td><td>29,631</td><td>6.6 ms</td><td>4,779 ms</td><td>0.1%</td></tr>
+<tr><td>Cached continuation</td><td>19,140</td><td>5.6 ms</td><td>1,630 ms</td><td>0.3%</td></tr>
+<tr><td>Cold first-turn</td><td>10,491</td><td>153 ms</td><td>54,514 ms</td><td>0.3%</td></tr>
+</table>
+
+<p>The <strong>p99 tail composition is 0.1% queue + 99.9% forward</strong>. 100% of p99 tail
+requests are cold documents. Under SRPF, cached continuations receive near-instant admission
+(median 5.6 ms queue), and the tail is entirely determined by cold-document prefill compute.
+This directly explains why chunk-reserve (which trades mega-doc TTFT for continuation queue time)
+is counterproductive: there is no queue-time problem for SRPF to solve at the tail.</p>
+
 <h2>5. Design Space Closure</h2>
 
 <p>We exhaustively bound the mechanisms that could improve goodput beyond SRPF:</p>

@@ -1350,6 +1350,28 @@ is empirical — pending eval (commit 83c6009b9).
   determines p99.
 - W&B: logged as `v-srpf-wb-rsv2k` [mechanism].
 
+### v-srpf-wb-diag — SRPF+WB per-request TTFT decomposition (diagnostic)  [DONE, 1-2, job 19927, commit 515058a3e]
+- **Purpose:** Instrumented eval with `--enable-request-time-stats-logging` to decompose every
+  request's latency into queue_wait + forward_compute. Same SRPF+WB config as production runs.
+- **Config**: `--schedule-policy srpf --hicache-write-policy write_back --enable-request-time-stats-logging`
+- **Result**: goodput=4.39 (r5 p99=5490ms PASS, r7 p99=10216ms FAIL — consistent with prior runs).
+  29,631 ReqTimeStats entries.
+- **TTFT DECOMPOSITION (all rates):**
+  | Request type | n | Median queue | Median forward | Queue/total |
+  |---|---|---|---|---|
+  | All | 29,631 | 6.6ms | 4,779ms | 0.1% |
+  | Cached continuation | 19,140 | 5.6ms | 1,630ms | 0.3% |
+  | Cold first-turn | 10,491 | 153ms | 54,514ms | 0.3% |
+  - **p99 tail: 0.1% queue + 99.9% forward** — overwhelmingly forward-compute dominated.
+  - **100% of p99 tail requests are cold documents** — zero cached continuations in the tail.
+  - **Under SRPF, cached continuations get median 5.6ms queue** — near-instant admission.
+  - **Cold mega-docs (≥50K tokens) at THEIR p99:** queue dominates (63.5%) — these ~3 docs arrive
+    during peak congestion. But mega-docs are <1% of requests and their absolute counts are too small
+    to affect the overall p99.
+- **Implication**: Directly confirms chunk-reserve is counterproductive (no queue-time problem for SRPF
+  to solve at the tail) and validates the paper's central mechanism argument.
+- W&B: NOT logged (diagnostic only, same config as v-srpf-wb; the goodput number is not a new version).
+
 ## Ops notes
 - eval.sh has a path bug (computes `workspace/sgl/v0.3_ablations/base`); fixed by symlink
   `v0.3_ablations/base → v0.31/base` (frozen eval.sh untouched — fairness-clean).

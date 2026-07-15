@@ -197,7 +197,10 @@ by whether heavy cold documents collide and block others (§2.2's coin-flip), a 
 caching or admission — phenomenon.</li>
 <li><b>Above the knee (λ≥5): the queue is deep but the GPU is saturated.</b> <code>#queue-req</code> runs
 20–183 while <code>full token usage</code> holds at 0.96–0.98 and per-step prefill input throughput sits
-at ~39k&nbsp;tok/s — the engine is <em>simultaneously compute- and KV-memory-bound</em>. Reordering the
+at ~39k&nbsp;tok/s — the engine is <em>simultaneously compute- and KV-memory-bound</em>. At saturation
+<b>99% of forward steps are prefill</b> (decode starved to ~1%; <code>analysis/pd_schedule.py</code>): the
+engine already spends nearly all compute on new first-tokens, so the prefill/decode split is itself
+TTFT-optimal and not a further lever (shifting steps to decode would only lower goodput). Reordering the
 deep queue is now meaningful: shortest-prefill-first (SRPF/SJF, a classic scheduling policy) raises
 throughput to the ~4.2&nbsp;req/s work-conservation ceiling of §2.3. Our own same-node SRPF sweep confirms
 it at both regimes: <b>λ=5 p99 TTFT 5.85&nbsp;s at 4.16&nbsp;req/s</b> (below the SLO), versus stock's

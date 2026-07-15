@@ -21,7 +21,11 @@ groups={}
 for r in rows: groups.setdefault((r[gcol], r["lambda"]), []).append(r)
 def summarize(rs):
     p99=[fnum(r,"ttft_p99_ms") for r in rs]; p99v=[x for x in p99 if x is not None]
+    p99mean=st.mean(p99v) if p99v else None
+    p99std=st.stdev(p99v) if len(p99v)>1 else None
+    p99cv=(p99std/p99mean) if (p99std is not None and p99mean) else None   # sigma/m = P1 coin-flip diagnostic
     return dict(n=len(rs), npass=sum(int(r.get("pass","0") or 0) for r in rs),
+                p99_mean=p99mean, p99_std=p99std, p99_cv=p99cv,
                 p99_med=med(p99), p99_min=min(p99v) if p99v else None, p99_max=max(p99v) if p99v else None,
                 p50_med=med([fnum(r,"ttft_p50_ms") for r in rs]), hit_med=med([fnum(r,"hit_rate") for r in rs]),
                 req_med=med([fnum(r,"req_throughput") for r in rs]), tok_med=med([fnum(r,"out_tok_s") for r in rs]),
@@ -31,7 +35,7 @@ for (c,l) in groups:
     if c not in configs: configs.append(c)
 lams=sorted({l for (_,l) in groups}, key=float)
 print(f"\n===== A/B ANALYSIS: {CSV} (config col='{gcol}') =====")
-print(f"{gcol:10} {'lam':>4} {'n':>2} {'pass':>5} {'p99_med':>9} {'p99_min':>9} {'p99_max':>9} {'p50_med':>8} {'hit':>6} {'req':>6} {'tok':>7}")
+print(f"{gcol:10} {'lam':>4} {'n':>2} {'pass':>5} {'p99_med':>9} {'p99_min':>9} {'p99_max':>9} {'sig/m':>6} {'p50_med':>8} {'hit':>6} {'req':>6} {'tok':>7}")
 tab={}
 for l in lams:
     for c in configs:
@@ -39,7 +43,7 @@ for l in lams:
         if not rs: continue
         s=summarize(rs); tab[(c,l)]=s
         f=lambda v,w=9,d=1:(f"{v:>{w}.{d}f}" if v is not None else f"{'-':>{w}}")
-        print(f"{c:10} {l:>4} {s['n']:>2} {s['npass']:>2}/{s['n']:<2} {f(s['p99_med'])} {f(s['p99_min'])} {f(s['p99_max'])} {f(s['p50_med'],8)} {f(s['hit_med'],6,3)} {f(s['req_med'],6,2)} {f(s['tok_med'],7,1)}")
+        print(f"{c:10} {l:>4} {s['n']:>2} {s['npass']:>2}/{s['n']:<2} {f(s['p99_med'])} {f(s['p99_min'])} {f(s['p99_max'])} {f(s['p99_cv'],6,2)} {f(s['p50_med'],8)} {f(s['hit_med'],6,3)} {f(s['req_med'],6,2)} {f(s['tok_med'],7,1)}")
     if tab.get((configs[0],l)): print(f"           p99 samples {configs[0]}={tab[(configs[0],l)]['p99_all']}" + (f"  {configs[1]}={tab[(configs[1],l)]['p99_all']}" if len(configs)>1 and tab.get((configs[1],l)) else ""))
 
 if len(configs)>=2:
@@ -62,6 +66,13 @@ if len(configs)>=2:
         elif pct is not None and pct<-20: print(f"   >>> {b} cuts p99_med {pct:.0f}%: distribution shift (stable-metric signal)")
         elif pct is not None and pct>20: print(f"   >>> {b} WORSENS p99_med +{pct:.0f}%: measured negative")
         else: print(f"   >>> no material p99 separation (within coin-flip band)")
+        acv,bcv=A.get('p99_cv'),B.get('p99_cv')            # variance-collapse test (P1 coin-flip diagnostic sigma/m)
+        if acv is not None and bcv is not None:
+            verdict=("COLLAPSES the coin-flip variance -> goodput RELIABLE (sigma/m<1)" if (bcv<1<=acv) else
+                     "reduces but does NOT collapse variance (still >=1)" if (bcv<acv and bcv>=1) else
+                     "reduces variance (both already <1)" if bcv<acv else
+                     "does NOT reduce variance: knee coin-flip is scheduling-robust")
+            print(f"      sigma/m (P1 diagnostic): {a} {acv:.2f} -> {b} {bcv:.2f}  >>> {b} {verdict}")
         for extra in ("p50_med","hit_med","req_med","tok_med"):
             if A.get(extra) and B.get(extra):
                 dd=100*(B[extra]-A[extra])/A[extra]

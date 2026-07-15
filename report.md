@@ -905,3 +905,12 @@ coin-flip (this draw failed). ⇒ the knee coin-flip is ROBUST to capacity incre
 reinforcing P3. Await λ=7/λ=10 for combined sat C (to quantify margin: if C high but λ=5 still fails → coin-flip robust
 even at large margin; if C modest → margin still small). n=1 caveat (could pass on a good-basin draw). Honest bounded
 result forming: co-design raises C + helps λ=3, but doesn't beat the λ=5 knee coin-flip on this draw.
+
+## ★★ CO-DESIGN v17 λ=7 = 5.86 thr (18:04): TWO findings — capacity levers STACK; knee coin-flip ROBUST
+accel+write_back λ=7 thr=5.86 (vs accel-alone 5.20-5.51, stock 3.99) → combined C ~6.0+ (λ=10 confirms). 
+★FINDING 1 (deterministic, POSITIVE): the two capacity levers STACK — accel (K) + write_back (h, hit 0.748) → C ~6.0+
+> accel-alone 5.65-5.79 > stock 4.14. CONFIRMS P2's two-lever co-design (C=K/(1-h): both K and 1/(1-h) raised).
+★FINDING 2 (coin-flip, bounded): despite the higher C (margin at λ=5 now ~1.0 vs accel-alone 0.65), λ=5 STILL FAILED
+(15.6s, bad basin, n=1) → the metastable knee coin-flip is ROBUST to capacity increases; stacking levers does NOT
+reliably eliminate it. REINFORCES P3 (coin-flip is deep). ⇒ co-design raises the ceiling but the knee remains coin-flip-
+governed. Honest, valuable bounded result. Await λ=10 for exact combined C. Fold into capstone (co-design + coin-flip robustness).

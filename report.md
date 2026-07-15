@@ -513,3 +513,20 @@ The real observation (E2E p99 ~5-7 MIN regardless of policy) is a saturation/ope
 OFF the fixed TTFT metric. Not a paper. Value-add: added an honest P3 limitations note that SRPF's TTFT win
 is NOT bought at E2E/TPOT's expense (preempts the reviewer "what about E2E" question). Fast-screen-before-
 build discipline again avoided a false-hypothesis paper.
+
+## ★★ FULL n=3 FIRMING COMPLETE (2026-07-15) — headline scheduling win firmed
+Campaign jobs_srpf.txt fully done (r1, v-stock-srpfctl, r2, r3). SRPF now **n=3 at both rates, all 6 runs
+clear the 8s SLO**:
+- λ3: {5892, 6039, 7387}ms — 3/3 pass (vs stock λ3 coin-flip 3/5 {6327,6391,7765,8124,11786}).
+- λ5: {5850, 6576, 7457}ms — 3/3 pass, req/s {4.16,4.07,4.05} (vs stock λ5 STABLE-fail 0/5, 17-24s).
+- Overall srpf range 5.85-7.46s; genuine run-to-run spread (worst 7.46s = 0.5s under SLO) but EVERY run
+  passes. Reported honestly (no cherry-picking best run). goodput@SLO: stock ≤3 (λ3-bound) → srpf ~4.1.
+- All logged to W&B (v-srpf-r1/r2/r3 mechanism, v0-stock/v-stock-srpfctl config). Integrated across P1/P2/P3.
+**RECOMPUTE-CURRENCY RE-RUN: DECLINED** — it's a known-server-crashing config; re-running on the SHARED pool
+risks a CUDA-coredump/COMPLETING-wedge that disrupts sibling cells (fairness first). It's a secondary P1
+finding and P1 is honest without it (cleanly excluded, qualitative hazard noted). Not worth the neighbor risk.
+
+**CAMPAIGN STATE: COMPLETE & INTEGRITY-CLEAN.** 3 submitted papers (P1 admission-neg+TP-lesson, P2
+caching-mirage+phase-boundary, P3 capstone-map+diagnosis+predictive-model), all survived 2 adversarial-review
+rounds, design space fully bounded, n=3-firmed headline, multi-corpus generality, honest E2E scoping,
+complete related-work, reproducible, W&B current. Supervisor decides retirement; I hold in monitor mode.

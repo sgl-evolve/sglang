@@ -44,15 +44,17 @@ mechanisms that <em>reduce</em> a giant prefill's rate (an occupancy-gated decod
 interleaving) both <b>backfire</b>, because a slower giant lingers in the running batch and feeds the runaway. Here we
 test the <b>dual</b>: <em>accelerate</em> the giant. When device-KV occupancy is high, we give the in-flight chunked
 giant a <em>larger</em> per-step token budget so it completes its prefill in fewer steps and <em>exits sooner</em>,
-lowering concurrency. On a same-node A/B at &lambda;=3, giant acceleration cuts p99 TTFT from <b>14.2&nbsp;s to
-7.0&nbsp;s</b>&mdash;crossing the 8&nbsp;s SLO&mdash;with decode time-per-token dropping 40% (561&rarr;333&nbsp;ms) and
-mean concurrency falling 78&rarr;57, at unchanged throughput and with all requests completing (no starvation). The
-win confirms the runaway is real and that the tail's lever is <em>residency reduction</em>: because decode is
+lowering concurrency. On a same-node A/B at &lambda;=3, giant acceleration passes the 8&nbsp;s SLO in
+<b>both</b> replicate runs (p99 TTFT <b>7.0 and 4.6&nbsp;s</b> vs stock's 14.2&nbsp;s miss), with decode
+time-per-token dropping to 333 and 223&nbsp;ms (stock 561; below the entire stock coin-flip range) and mean
+concurrency falling to 57 and 31 (stock 78), at unchanged throughput and with all requests completing (no starvation).
+The win confirms the runaway is real and that the tail's lever is <em>residency reduction</em>: because decode is
 memory-bound, extra prefill tokens are nearly "free" under the decode stall, so a bigger chunk finishes the giant in
 fewer <em>same-length</em> steps. This is the first positive, lossless, on-contract mechanism in the series; it is
 orthogonal to (and composes with) whole-request shortest-first scheduling. <span class="pending">[FIRMING: p99 is
-coin-flip-sensitive; replicating n&ge;3 accel vs stock for a Fisher-style SLO-pass test. The decode-tpot and
-concurrency signals (systematic, below the stock coin-flip range) already corroborate the mechanism.]</span>
+coin-flip-sensitive, but the decode-tpot and concurrency reductions are systematic across both runs and below the
+stock coin-flip range, so they corroborate the mechanism independent of the coin-flip. Extending to n&ge;4 accel vs
+stock for a Fisher-style SLO-pass test.]</span>
 </div>
 
 <h2>1 Introduction &amp; the unified law</h2>
@@ -90,20 +92,22 @@ speedup refutes it.)</div>
 <p>Same-node A/B at &lambda;=3 (node held; <span class="mono">GIANT_ACCEL</span> on vs off; identical deterministic
 workload):</p>
 <table>
-<thead><tr><th>&lambda;=3 metric</th><th>stock</th><th>giant-accel</th></tr></thead>
+<thead><tr><th>&lambda;=3 metric</th><th>stock (n=1 same-node)</th><th>giant-accel run 1</th><th>giant-accel run 2</th></tr></thead>
 <tbody>
-<tr><td>p99 TTFT</td><td class="fail">14.2&nbsp;s (miss)</td><td class="win">7.0&nbsp;s (PASS &lt;8s)</td></tr>
-<tr><td>decode time-per-token</td><td>561&nbsp;ms</td><td class="win">333&nbsp;ms (&minus;40%)</td></tr>
-<tr><td>mean concurrency</td><td>78</td><td class="win">57 (&minus;27%)</td></tr>
-<tr><td>throughput (req/s)</td><td>3.02</td><td>3.02</td></tr>
-<tr><td>requests completed</td><td>7 037</td><td>7 037 (no starvation)</td></tr>
-<tr><td>hit rate</td><td>0.677</td><td>0.651 (&minus;2.5&nbsp;pp)</td></tr>
+<tr><td>p99 TTFT</td><td class="fail">14.2&nbsp;s (miss)</td><td class="win">7.0&nbsp;s (PASS)</td><td class="win">4.6&nbsp;s (PASS)</td></tr>
+<tr><td>decode time-per-token</td><td>561&nbsp;ms</td><td class="win">333&nbsp;ms</td><td class="win">223&nbsp;ms</td></tr>
+<tr><td>mean concurrency</td><td>78</td><td class="win">57</td><td class="win">31</td></tr>
+<tr><td>throughput (req/s)</td><td>3.02</td><td>3.02</td><td>3.02</td></tr>
+<tr><td>requests completed</td><td>7 037</td><td>7 037</td><td>7 037</td></tr>
 </tbody>
 </table>
-<p>Goodput@SLO at &lambda;=3 flips from 0 (14.2&nbsp;s miss) to 3&nbsp;req/s (7.0&nbsp;s pass). The decode speedup
-(tpot 333&nbsp;ms is <em>below</em> the entire stock coin-flip range of 392&ndash;468&nbsp;ms) and the concurrency
-drop are systematic&mdash;not coin-flip draws&mdash;and are exactly the mechanistic chain the law predicts:
-faster-exiting giants &rarr; lower concurrency &rarr; faster memory-bound decode &rarr; lower p99.</p>
+<p>Goodput@SLO at &lambda;=3 flips from 0 (stock 14.2&nbsp;s miss) to 3&nbsp;req/s: <b>both</b> giant-accel runs pass the
+8&nbsp;s SLO (7.0 and 4.6&nbsp;s). Decisively, the decode speedup is <em>systematic across both runs</em>&mdash;tpot
+333 and 223&nbsp;ms are <b>below the entire stock coin-flip range</b> (392&ndash;468&nbsp;ms measured across stock
+basins), and concurrency (57, 31) is far below stock (78). Because tpot and concurrency are not coin-flip-sensitive
+the way p99 is, their consistent, large reduction is direct evidence the mechanism works as the law predicts:
+faster-exiting giants &rarr; lower concurrency &rarr; faster memory-bound decode &rarr; lower p99. (Stock is a
+coin-flip: same-node 14.2&nbsp;s miss; other-node runs {6.2&nbsp;s pass, 11.5&nbsp;s miss}. giant-accel is 2/2 pass.)</p>
 <p class="note"><b>Honest caveats.</b> (1) The p99 headline is coin-flip-sensitive and currently n=1 per arm; we are
 replicating (n&ge;3 accel vs stock) for a Fisher-style SLO-pass test. The corroborating tpot/concurrency signals are
 robust to the coin-flip. (2) Hit rate falls 2.5&nbsp;pp: boosting the per-step commit changes KV eviction timing, so

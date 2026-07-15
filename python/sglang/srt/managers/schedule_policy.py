@@ -1046,6 +1046,8 @@ class PrefillAdder:
             else:
                 if self.dbs_has_continuing_chunk:
                     return AddReqResult.OTHER
+                if has_chunked_req:
+                    return AddReqResult.OTHER
                 # Make sure at least one page is available
                 trunc_len = self.rem_chunk_tokens // self.page_size * self.page_size
 

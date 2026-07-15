@@ -946,3 +946,9 @@ running (~18:30) — will confirm; current §5.6 cites srpf 7.0s (n=5, 3x gap �
 On node 0-0 (same as fcfs 22.7s, lof 27.5s): srpf rep1 p99 7399ms (PASS). Fully-controlled same-node
 deferral-specificity: only srpf (defer) passes; fcfs+lof (no defer) fail. Confirms cross-run srpf (7.0s n=5).
 Firming srpf to n=3, then update §5.6 to the clean same-node triple (fcfs/lof/srpf = 22.7/27.5/7.4s, n=3 each).
+
+### ★ DEFERRAL-SPECIFICITY COMPLETE (2026-07-15 ~18:22Z, job 19953) — fully same-node triple
+Node 0-0, λ5, n=3 each: fcfs p99 22.7s (0/3) / LOF 27.5s (0/3) / srpf 6.7s (3/3), DISJOINT (srpf max 7.4 < fcfs
+min 22.4). ⇒ only srpf (defer-by-remaining-prefill) passes; fcfs & LOF (no deferral) fail. The goodput lever is
+DEFERRAL-BY-PREFILL SPECIFICALLY, not reordering-in-general (LOF, a real reorder-by-output, doesn't help). §5.6
+firmed to this same-node triple (fc3245d8c, pushed). Deferral-specificity fully established + integrated.

@@ -22,8 +22,9 @@ kill_srv(){ timeout 40 srun --jobid="$JID" --overlap -N1 -w "$NODE" bash -c 'pki
 free_dram(){
   for i in $(seq 1 30); do
     m=$(timeout 40 srun --jobid="$JID" --overlap -N1 -w "$NODE" bash -c 'pkill -9 -f "[s]glang.launch_server|[b]ench_serving" 2>/dev/null; sleep 1; awk "/MemAvailable/{printf \"%d\",\$2/1048576}" /proc/meminfo' 2>/dev/null | tail -1)
-    echo "[firm] MemAvail=${m}G" >> "$L"; [ "${m:-0}" -ge 1300 ] 2>/dev/null && break; sleep 15
+    echo "[firm] MemAvail=${m}G" >> "$L"; [ "${m:-0}" -ge 1600 ] 2>/dev/null && break; sleep 15
   done
+  sleep 60   # DRAM-race fix: wait for the 768GB pool to FULLY reclaim (gate fires mid-climb otherwise -> OOM)
 }
 caplog(){ # $1=ver $2=commit — build a lam=3 summary from bench_r3.json + curve, log W&B
   python3 - "$1" "$2" >> "$L" 2>&1 <<'PY'

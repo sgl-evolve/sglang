@@ -793,8 +793,7 @@ and mean TTFT ~43%, at equal request throughput (Fisher exact p≈0.008; the two
 this is genuine shortest-job-first flow-time reduction, not a p99 artifact. The mechanism: with only ~3–4 turn-0
 documents above 100K tokens, the heavy documents lie beyond the 99th percentile, so the fcfs p99 is the
 head-of-line victims queued behind their serialized prefill; SRPF reorders those victims ahead (deferring the few
-heavy documents past the p99). <b>This corrects §2.4's "the long documents are the p99" and §3.3's
-"shortest-first backfires."</b> Two caveats keep it consistent with the paper's thesis: (i) it is resolvable
+heavy documents past the p99). <b>Per-request attribution confirms this directly</b> (stock, n=15,549 requests, <code>KLEINROCK_PERREQ_DUMP</code>): tiny prompts (&lt;1K tokens, whose own prefill is &lt;0.3&nbsp;s) have a <i>higher</i> p99 TTFT (26.9&nbsp;s at λ=3, 30.5&nbsp;s at λ=5) than the heavy documents themselves (20.4&nbsp;s, 23.3&nbsp;s); 27&ndash;40% of the p99 tail are such tiny prompts, and hundreds exceed the 8&nbsp;s SLO <i>purely from queueing</i> &mdash; the head-of-line victims suffer more than the heavy documents that block them. <b>This corrects §2.4's "the long documents are the p99" and §3.3's "shortest-first backfires."</b> Two caveats keep it consistent with the paper's thesis: (i) it is resolvable
 <i>because</i> λ=5 is the low-variance reliable-fail regime (σ/m&lt;1, §4) and the effect is large — near the
 knee (λ=3) the coin-flip persists; (ii) SRPF is a known technique (shortest-job-first; cf. Sarathi/Harchol-Balter,
 §6), not a contribution of this paper. The load-bearing claim — that <i>KV caching</i> cannot move this tail and

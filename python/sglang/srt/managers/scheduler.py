@@ -2799,6 +2799,30 @@ class Scheduler(
             resident += int(getattr(req, "host_hit_length", 0) or 0)
         return max(0, total - resident)
 
+    def _rpb_effective_frac(self, chunked_prefill_size) -> float:
+        """floyd RPB: the reserve fraction to use for THIS prefill batch.
+        Off unless --enable-rpb-chunking. Fixed mode returns rpb_reserve_frac. Adaptive mode
+        (--rpb-adaptive) reserves ONLY when the shortest waiting request's cold prefill actually
+        fits within the reserve, so the reserved slice is never wasted (which is what makes fixed
+        RPB lose throughput near the knee). Uses num_matched_prefix_tokens populated by the SRPF
+        calc_priority just above; falls back to full input length if unset. Deterministic across
+        TP ranks (all see the same sorted waiting_queue), so it cannot desync the collectives."""
+        if not self.server_args.enable_rpb_chunking:
+            return 0.0
+        frac = self.server_args.rpb_reserve_frac
+        if not self.server_args.rpb_adaptive:
+            return frac
+        # adaptive: no in-flight chunk or empty queue -> the cap is a no-op anyway; reserve only if
+        # the shortest waiting turn (front of the SRPF-sorted queue) fits the reserve.
+        if self.chunked_req is None or not self.waiting_queue or not chunked_prefill_size:
+            return frac
+        head = self.waiting_queue[0]
+        shortest_cold = len(head.origin_input_ids) - getattr(
+            head, "num_matched_prefix_tokens", 0
+        )
+        reserve = int(frac * chunked_prefill_size)
+        return frac if shortest_cold <= reserve else 0.0
+
     def get_new_batch_prefill(self) -> Optional[ScheduleBatch]:
         prefill_delayer_single_pass = None
         if self.prefill_delayer:
@@ -2899,11 +2923,7 @@ class Scheduler(
             prefill_delayer_single_pass=prefill_delayer_single_pass,
             dllm_config=self.dllm_config,
             waiting_queue_len=len(self.waiting_queue),
-            rpb_reserve_frac=(
-                self.server_args.rpb_reserve_frac
-                if self.server_args.enable_rpb_chunking
-                else 0.0
-            ),
+            rpb_reserve_frac=self._rpb_effective_frac(chunked_prefill_size),
         )
 
         if self.chunked_req is not None:

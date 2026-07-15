@@ -699,6 +699,10 @@ class ServerArgs:
         float,
         "floyd RPB: fraction of the per-batch chunked-prefill token budget reserved for waiting requests while a big document is mid-chunk. Only active with --enable-rpb-chunking. 0 disables; typical 0.25.",
     ] = 0.25
+    rpb_adaptive: A[
+        bool,
+        "floyd RPB (adaptive/zero-waste): reserve the chunk budget ONLY when the shortest waiting request's cold prefill actually fits within the reserve (so the reserved slice is never wasted). This removes the throughput loss that fixed RPB incurs near the knee, where the shortest waiting turn often exceeds the reserve. Requires --schedule-policy srpf (uses its num_matched_prefix_tokens). Only active with --enable-rpb-chunking.",
+    ] = False
     max_prefill_tokens: A[
         int,
         Arg(

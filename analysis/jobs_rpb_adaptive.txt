@@ -1,0 +1,4 @@
+# Adaptive (zero-waste) RPB: reserve ONLY when the shortest waiting turn fits the reserve → no
+# throughput loss. Decisive test: does removing the waste (fixed RPB's failure mode at λ5) turn the
+# negative into a WIN (interleave benefit without the capacity cost)? Same-node (1-1), screen λ3,5.
+v-rpbA25:--schedule-policy srpf --enable-rpb-chunking --rpb-reserve-frac 0.25 --rpb-adaptive

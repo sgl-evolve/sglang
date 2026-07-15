@@ -386,6 +386,13 @@ cold-prefill-compute-bound / control-invariance" claims in BOTH papers.
   reordering prefills (cache untouched). n=1 but λ5 stock is stable-fail so the 3× gap is robust. This is
   my OWN full GPU sweep confirming scheduling is the lever at BOTH regimes — no sibling citation needed.
 - **Logged to W&B** (`sgl-evolve/floyd`, v-srpf-r1, tag=mechanism, churn py+206, goodput 4.16).
+- **★ SAME-NODE CONTROL FIRMED (job 19854, node 0-3, `runs/v-stock-srpfctl`):** stock (fcfs) λ3 p99
+  **7612ms** (lucky coin-flip draw, passes), λ5 p99 **22746ms** (stable FAIL) → stock goodput@SLO=3.02.
+  vs same-node srpf λ3 5892/λ5 5850 → 4.16. **Clean same-node A/B: λ5 gap 3.9× (22746 vs 5850), NO
+  cross-node confound; +38% goodput.** Reference v0-stock λ5 17372 agrees (stock fails λ5 robustly).
+  Logged W&B (v-stock-srpfctl, tag=config). ⇒ P3 draft→**submitted**. Campaign now running srpf r2/r3
+  (n=3 firming for λ3). ★New: `analysis/slo_sensitivity.py` — scheduling decisive for SLO∈[6,41]s
+  (+38% @8s), NOT an 8s artifact; `analysis/gen_curve_svg.py` — goodput-curve figure (in P2/P3).
 - Integrated into BOTH papers (commits above); SRPF cited as textbook, my GPU sweep as the confirmation.
 - **Other axes bounded this session:** Mamba-state pool NEVER binding (max usage 0.77 vs attn-KV 1.0,
   `analysis/mamba_pressure.py`) ⇒ hybrid-asymmetry is a non-lever too. Design space for KV-cache goodput

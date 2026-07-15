@@ -892,3 +892,15 @@ Paper-2 direction is DEAD (no real harm for the metric to reward — SRPF is jus
 Honest negative that saves a weak paper. ALSO refine §5.6: soften "unbounded delay/starvation" → TTFT-deferral,
 E2E-neutral (near-Pareto). srpf λ3 n=2 {6158,6744} tight (stabilizes knee). Design space now well-characterized;
 corrected+strengthened Paper 1 is this cycle's real contribution.
+
+### RESERVE ABLATION result — fair reserve fails at ALL sizes, NO crossover (2026-07-15 ~12:44Z, job 19919, node 0-0)
+Same-node (0-0) λ5 reserve sweep: reserve0 p99 23.3s (0/3) → reserve1024 22.3s (0/3, NEUTRAL -4.4%, n=3) →
+reserve4096 100.3s (n=1, CATASTROPHIC +330%, req collapse 3.63→2.05). Plus reserve2048 (node 1-1) +75% (n=3).
+⇒ NO crossover: the fair reserve is neutral when thin, harmful when medium, CATASTROPHIC when large. My
+"bounded-deferral / approaches-SRPF at large reserve" hypothesis is WRONG. WHY (instructive): unlike SRPF which
+DEFERS the mega-doc entirely, the reserve keeps RUNNING it every iter, just throttled → a large reserve makes it
+occupy the prefill pipeline ~94 iters (192K/2048) → throughput collapses → p99 explodes. Throttling-while-running
+is STRICTLY WORSE than both fcfs AND srpf. ⇒ DEFINITIVE bounded negative: the goodput benefit requires DEFERRING
+the mega-doc (SRPF), not throttling it; no reserve size captures it. Answers the §5.6 reviewer question decisively
+(failure is fundamental, not thin-regime-specific). Paper-2-as-mechanism (bounded-deferral) is DEAD. Strengthens
+Paper 1 §5.6. reserve4096 reps 2-3 will firm n=3 (100s + req-collapse unambiguous). ⇒ update §5.6 with the curve.

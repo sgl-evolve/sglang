@@ -855,3 +855,9 @@ f=1.5 goodput@SLO=3 (λ3 6.1 PASS, λ5 20.7 FAIL). Full dose: goodput [stock≤3
 runaway. Over-boost (f=3): 16384-tok chunks → tail-spike. f=2 (12288) is the unique sweet spot. Finalizing P6 §5:
 4th table row (f=1.5: λ3 6.1/λ5 20.7/goodput 3) + Figure 2 4th bar (goodput 3) + keyfinding (sharp peak both sides).
 sat C for f=1.5 fills at λ=10 (~14:00).
+
+## f=1.5 λ=7 = 10.3s FAIL (13:42): sat C ≥5.34; coin-flip non-monotonicity noted
+f=1.5 λ=7 p99=10.3s FAIL, thr=5.34. ★NON-MONOTONIC p99: λ=5 20.7s > λ=7 10.3s (coin-flip/metastability at per-rate
+level; both FAIL, goodput=3 unchanged) — reinforces n=1-per-cell caveat. sat C ≥5.34 (λ=10 ~14:00 final). ★All accel
+factors have similar raw sat C (f=1.5 ~5.4, f=2 5.65, f=3 5.46) but sharply different goodput@SLO (3/5/3) → reinforces
+"tail not throughput" (f=2 uniquely controls the p99 tail, not raw capacity). Updated §5 f=1.5 sat-C cell 4.6→5.3.

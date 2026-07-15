@@ -237,18 +237,20 @@ composable mechanism.</div>
 <tbody>
 <tr><td>1 (stock)</td><td>6&ndash;14&nbsp;s (coin-flip)</td><td class="fail">~25&nbsp;s</td><td>0&ndash;3</td><td>4.14</td></tr>
 <tr><td><b>2</b></td><td class="win">4.5&nbsp;s</td><td class="win">3.4&nbsp;s</td><td class="win"><b>5</b></td><td class="win"><b>5.65</b></td></tr>
-<tr><td>3</td><td class="win">5.2&nbsp;s</td><td class="fail">20.5&nbsp;s</td><td class="fail">3</td><td>4.68</td></tr>
+<tr><td>3</td><td class="win">5.2&nbsp;s</td><td class="fail">20.5&nbsp;s</td><td class="fail">3</td><td>5.46</td></tr>
 </tbody>
 </table>
 <div class="keyfinding"><b>Goodput@SLO is an inverted-U in f, peaking at f=2.</b> Under-boosting (stock, f=1) lets giants
-linger; over-boosting (f=3) is <em>also</em> harmful&mdash;it drops goodput back from 5 to 3 and lowers saturated
-capacity (5.65&rarr;4.68). The mechanism is why: a 3&times; chunk (up to the 16&nbsp;384-token per-step ceiling) makes
-each prefill step so large it stalls the interleaved decode <em>within the step</em>, so decode time-per-token rises
-(&lambda;=3 tpot 138&rarr;253&nbsp;ms from f=2 to f=3) and residency climbs&mdash;re-igniting the very
-concurrency&harr;decode runaway that acceleration exists to break. Over-acceleration is thus the mirror image of the
-decode-floor and fair-share backfires: all three move residency the wrong way. The effect is load-dependent (f=3 still
-passes at &lambda;=3 but tips over at &lambda;=5, near capacity), which is why the operating point matters. The chosen
-f=2 is therefore a principled optimum, not an arbitrary constant.</div>
+linger; over-boosting (f=3) is <em>also</em> harmful. Notably, over-acceleration is a <b>tail failure, not a throughput
+failure</b>: f=3 keeps almost the same raw saturated capacity (C&nbsp;5.46&nbsp;&asymp;&nbsp;f=2's&nbsp;5.65) but its
+<em>p99</em> craters (&lambda;=5: 3.4&nbsp;s&rarr;20.5&nbsp;s), dropping goodput@SLO from 5 to 3. The mechanism: a
+3&times; chunk (up to the 16&nbsp;384-token ceiling) is a long, uninterruptible prefill burst, and because sglang admits
+only one chunked request at a time, every request waiting behind it stalls for that whole burst&mdash;a large TTFT
+spike that inflates p99 even as average throughput holds; the oversized step also stalls the interleaved decode more
+(&lambda;=3 tpot 138&rarr;253&nbsp;ms). Over-acceleration thus mirrors the decode-floor and fair-share backfires: all
+three worsen the <em>tail</em> by lengthening how long something monopolizes prefill. The effect is load-dependent (f=3
+still passes at &lambda;=3 but tips over at &lambda;=5), so the operating point matters, and f=2 is a principled optimum
+rather than an arbitrary constant.</div>
 <p class="note">Single run per (f, &lambda;) cell (goodput@SLO is coin-flip-sensitive); the f=3 collapse at &lambda;=5
 (20.5&nbsp;s = 2.5&times; the SLO) is far outside the coin-flip band and is corroborated by the systematic &lambda;=3
 degradation (f=3 worse than f=2 on p99, concurrency, and tpot), so the optimum is robust to the coin-flip.</p>

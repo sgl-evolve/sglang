@@ -810,3 +810,12 @@ the residency-minimizing operating point.
   saturation is decode-dominated (decode every step, prefill occasional) → classify kernels to get the compute-vs-memory
   split. relaunched 11:30:34 on node 19943 (warm), traces ~11:40, node expires 12:24 (ample).
 - OPS: profile_by_stage SIGABRT on v0.31 build → use plain /start_profile.
+
+## f=3 full sweep + REFINED finding (11:51): over-acceleration is a TAIL failure, not a throughput failure
+f=3 curve: λ3 5.2 PASS/λ5 20.5 FAIL/λ7 29.3 FAIL/λ10 38.2 FAIL; sat C=5.46 (λ10, in_tok/s 77543). 
+★KEY REFINEMENT: f=3 sat C 5.46 ≈ f=2's 5.65 (raw throughput barely lower!) but p99 craters (λ5 3.4→20.5s) →
+goodput@SLO 5→3. So over-acceleration does NOT kill throughput — it kills the TAIL. Mechanism: a 16384-tok chunk is a
+long uninterruptible burst; single-chunked-req invariant → everything waiting behind it stalls the whole burst → TTFT
+spike → p99 explodes while avg throughput holds. Mirrors decode-floor/fair-share backfires (all lengthen how long
+something monopolizes prefill → tail up). Fixed P6 §5 table (sat C 4.68→5.46) + keyfinding (tail-not-throughput framing).
+This is the 3rd data-driven refinement this session (all from actually reading the numbers).

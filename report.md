@@ -897,3 +897,11 @@ accel + write_back: λ=3 p99=3.7s PASS, thr=3.02, hit=0.7481 (write_back h-lever
 Both capacity levers on (accel K + write_back h). λ=3 passes comfortably. KEY TEST = λ=5 (~17:50): higher hit → higher
 C=K/(1-h) → larger margin (accel-alone margin was 0.65, coin-flip) → does λ=5 become RELIABLE? P1 write_back C~5.11@h0.737;
 accel raises K; combined C could be ~6-7 → margin at λ=5 ~1.5+ (large → reliable per P3). Awaiting λ=5.
+
+## ★ CO-DESIGN v17 λ=5 = 15.6s FAIL (17:42): stacked levers did NOT reliably fix λ=5 (bad-basin draw)
+accel+write_back (hit 0.748, both capacity levers) λ=5 = 15.6s FAIL (thr 5.01, conc 156) — bad basin, like accel-alone's
+17.9s draw. So even STACKING the K-lever (accel) + h-lever (write_back, higher C) does NOT reliably eliminate the λ=5
+coin-flip (this draw failed). ⇒ the knee coin-flip is ROBUST to capacity increases (metastable basin selection persists),
+reinforcing P3. Await λ=7/λ=10 for combined sat C (to quantify margin: if C high but λ=5 still fails → coin-flip robust
+even at large margin; if C modest → margin still small). n=1 caveat (could pass on a good-basin draw). Honest bounded
+result forming: co-design raises C + helps λ=3, but doesn't beat the λ=5 knee coin-flip on this draw.

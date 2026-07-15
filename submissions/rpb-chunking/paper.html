@@ -34,23 +34,25 @@ documents), so small turns that <em>arrive during</em> the chunk-run still block
 residual helps, with <b>Reserved-Prefill-Budget (RPB) chunking</b>: when a large document is mid-chunk and other
 requests are waiting, cap the in-flight chunk at a fraction (1&minus;r) of the per-batch budget and reserve the
 remaining r for the shortest waiting turn(s). <b>The result is a rigorous negative, and the reason is instructive.</b>
-On a same-node A/B (screen λ∈{3,5}), RPB (r=0.25) <em>helps</em> at λ=3 — p99 TTFT 6973→6300&nbsp;ms (−10%) with
-throughput unchanged — but <em>hurts</em> at the goodput-setting rate λ=5: p99 6580→9287&nbsp;ms (+41%), crossing
-the SLO, with throughput down 8.6%. The mechanism, quantified from the server trace, is <b>reserve waste</b>: our
-crash-safe guard (never split a waiting request into a second in-flight chunk) means the reserve can only serve
-turns that <em>complete</em> within it, so whenever the shortest waiting turn is larger than the reserve — common
-as load rises — the reserved budget goes unused and the big-document chunk shrinks (mean big-chunk 6111→5320&nbsp;
-tokens, ~54% of the reserve wasted), cutting effective prefill capacity ~13%. Below the knee (λ=3) this is
-absorbed by slack and the small-turn interleave nets a win; at the near-knee goodput rate (λ=5) the lost capacity
-crosses saturation and the tail explodes. We then build the decisive control — <b>adaptive (zero-waste) RPB</b>,
-which reserves only when a waiting turn actually fits — and it confirms both halves of the story: removing the
-waste removes the failure (λ=5 throughput restored to −1.0%, SLO passed again), <em>and</em> reservation done
-right is merely <b>neutral</b> (λ=5 p99 6894 vs 6580&nbsp;ms baseline, within run-noise; goodput unchanged),
-because the p99 at the goodput rate is set by medium/large turns the reserve cannot serve, not the tiny ones it
-can. The finding is therefore airtight and general: <b>chunk-level budget reservation cannot improve goodput@SLO
-over whole-request SRPF at any implementation</b> — fixed reservation hurts (waste), adaptive reservation is
-neutral. Combined with our companion map, this closes the scheduling axis at both granularities: whole-request
-reordering is the lever; chunk-level reservation is not. All variants are lossless (hit-rate unchanged).
+On a same-node A/B (screen λ∈{3,5}, <b>n=2 per configuration</b>), fixed RPB (r=0.25) <em>robustly hurts</em> at the
+goodput-setting rate λ=5 — p99 TTFT mean 6496→9607&nbsp;ms (+48%; <em>both</em> runs cross the 8&nbsp;s SLO) with
+throughput down ~9% — while at λ=3 it lands <em>within the coin-flip noise band</em> (no robust effect; the −10%
+seen in a single earlier run was a lucky low draw). The mechanism, quantified from the server trace, is
+<b>reserve waste</b>: our crash-safe guard (never split a waiting request into a second in-flight chunk) means the
+reserve can only serve turns that <em>complete</em> within it, so whenever the shortest waiting turn is larger than
+the reserve — common as load rises — the reserved budget goes unused and the big-document chunk shrinks (mean
+big-chunk 6111→5320&nbsp;tokens, ~54% of the reserve wasted), cutting effective prefill capacity ~13%; below the
+knee this is absorbed by slack, but at the near-knee goodput rate it crosses saturation and the tail explodes.
+We then build the decisive control — <b>adaptive (zero-waste) RPB</b>, which reserves only when a waiting turn
+actually fits — and it confirms the diagnosis while sealing the negative: removing the waste removes the failure
+(λ=5 throughput restored, SLO passed in both runs), yet goodput <em>does not improve</em> — λ=5 goodput is
+unchanged (both runs pass at the baseline rate, req/s ~4.1) with, if anything, a small p99 tail cost (mean
+7205 vs 6496&nbsp;ms). The reason: the goodput-rate p99 is set by the larger waiting turns the reserve cannot
+serve, not the tiny ones it can. The finding is therefore airtight and general: <b>chunk-level budget reservation
+cannot improve goodput@SLO over whole-request SRPF at any implementation</b> — fixed reservation hurts (waste),
+adaptive reservation is goodput-neutral. Combined with our companion map, this closes the scheduling axis at both
+granularities: whole-request reordering is the lever; chunk-level reservation is not. All variants are lossless
+(hit-rate matched, Δ≤0.002).
 </div>
 
 <h2>1 Introduction</h2>
@@ -80,15 +82,17 @@ invisible at low load and grows as arrivals during a chunk-run become more likel
 waiting; reserve r&middot;budget for the shortest waiting turn(s). ~30 lines on the live scheduler path; lossless;
 TP-safe. We show it is a distinct point in the scheduling design space (not SRPF, not Sarathi decode-mixing, not
 preemptive SRPT).</li>
-<li><b>The negative, measured and explained (§5).</b> On a same-node A/B, RPB helps below the knee (λ=3: −10% p99,
-throughput-neutral) but <em>hurts</em> at the goodput-setting rate (λ=5: +41% p99, SLO fail, −8.6% throughput).
-The cause, quantified from the trace, is <b>reserve waste</b>: the crash-safe invariant means the reserve can only
-serve turns that complete within it, so as load rises and waiting turns exceed the reserve, ~54% of it goes unused,
-cutting effective prefill capacity ~13% — absorbed below the knee, fatal at it.</li>
-<li><b>The decisive control makes it airtight (§5).</b> We build <em>adaptive</em> (zero-waste) RPB — reserve only
-when a waiting turn fits. It removes the waste (λ=5 throughput restored, SLO passed) yet leaves goodput
-<em>unchanged</em> (λ=5 p99 within run-noise): removing the waste removes the failure but yields no win, because
-the goodput-rate p99 is set by medium/large turns the reserve cannot serve. Fixed hurts, adaptive is neutral.</li>
+<li><b>The negative, measured and explained (§5, n=2).</b> On a same-node A/B, fixed RPB <em>robustly hurts</em> the
+goodput-setting rate (λ=5: p99 mean +48%, <em>both</em> runs SLO-fail, −9% throughput), while at λ=3 it is within
+the coin-flip noise band (no robust effect). The cause, quantified from the trace, is <b>reserve waste</b>: the
+crash-safe invariant means the reserve can only serve turns that complete within it, so as load rises and waiting
+turns exceed the reserve, ~54% of it goes unused, cutting effective prefill capacity ~13% — absorbed below the
+knee, fatal at it.</li>
+<li><b>The decisive control makes it airtight (§5, n=2).</b> We build <em>adaptive</em> (zero-waste) RPB — reserve
+only when a waiting turn fits. It removes the waste (λ=5 throughput restored, both runs pass the SLO) yet goodput
+is <em>unchanged</em> (both runs at the baseline rate, req/s ~4.1) — no win, and a small p99 tail cost. Removing
+the waste removes the failure but yields no gain, because the goodput-rate p99 is set by larger waiting turns the
+reserve cannot serve. Fixed hurts, adaptive is goodput-neutral.</li>
 <li><b>The generalizable insight.</b> Chunk-level budget reservation trades prefill throughput for sub-knee
 tail-relief, and goodput@SLO is decided at exactly the rate where lost throughput cannot be afforded. So it cannot
 raise goodput at any implementation, even though whole-request SRPF can — closing the scheduling axis at both
@@ -206,16 +210,17 @@ so non-RPB runs are byte-identical.
 <h2>5 Evaluation</h2>
 <p>
 <b>Setup.</b> Same-node A/B on one 8&times;H100 node (slurm2-a3nodeset1-1), screen λ&isin;{3,5} of the fixed
-protocol (1553 conversations, 7037 turns/rate, warmup, no flush). Baseline = <code>--schedule-policy srpf</code>
-(v-srpf-ctl4); treatment = <code>srpf + RPB r=0.25</code> (v-rpb25). Both on the <em>same node back-to-back</em>, so
-the delta isolates the RPB engine mechanism (the SRPF config is held fixed) with no cross-node variance.
+protocol (1553 conversations, 7037 turns/rate, warmup, no flush), <b>n=2 per configuration</b>, all on the same
+node back-to-back so deltas isolate the RPB engine mechanism (SRPF config held fixed) with no cross-node variance.
+Runs: baseline <code>--schedule-policy srpf</code> (v-srpf-ctl4, ctl5); fixed <code>+ RPB r=0.25</code> (v-rpb25,
+v-rpb25-r2); adaptive <code>+ --rpb-adaptive</code> (v-rpbA25, v-rpbA25-r2).
 </p>
 <table>
-<caption>Same-node A/B, SRPF vs SRPF+RPB(r=0.25). Δp99 is the goodput-relevant quantity; Δtok/s exposes the
-reserve waste; hit-rate is the lossless check.</caption>
-<tr><th>rate λ</th><th>SRPF p99 TTFT</th><th>RPB p99 TTFT</th><th>Δp99</th><th>SRPF tok/s</th><th>RPB tok/s</th><th>Δtok</th><th>hit (SRPF→RPB)</th><th>SLO</th></tr>
-<tr><td>3</td><td>6973&nbsp;ms</td><td>6300&nbsp;ms</td><td class="g">−673 (−10%)</td><td>386.7</td><td>386.7</td><td>0%</td><td>0.678→0.677</td><td class="g">PASS→PASS</td></tr>
-<tr><td>5</td><td>6580&nbsp;ms</td><td class="b">9287&nbsp;ms</td><td class="b">+2707 (+41%)</td><td>525.1</td><td class="b">480.1</td><td class="b">−8.6%</td><td>0.666→0.667</td><td class="b">PASS→FAIL</td></tr>
+<caption>Same-node A/B (n=2), SRPF vs fixed SRPF+RPB(r=0.25). p99 shown as mean [run1, run2]; Δ is on the mean.
+Δtok/s exposes the reserve waste; hit-rate (matched, Δ≤0.002) is the lossless check.</caption>
+<tr><th>rate λ</th><th>SRPF p99 (mean [runs])</th><th>fixed RPB p99 (mean [runs])</th><th>Δp99 mean</th><th>SRPF / RPB tok/s</th><th>SLO</th></tr>
+<tr><td>3</td><td>6683 [6973, 6393]</td><td>6973 [6300, 7646]</td><td>+290 (within λ3 coin-flip noise)</td><td>387 / 387</td><td class="g">PASS→PASS</td></tr>
+<tr><td>5</td><td>6496 [6580, 6411]</td><td class="b">9607 [9287, 9927]</td><td class="b">+3111 (+48%)</td><td>532 / 482 (−9%)</td><td class="b">PASS→FAIL (both)</td></tr>
 </table>
 <div class="fig">
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 340" font-family="Georgia,serif" font-size="12.5">
@@ -242,41 +247,54 @@ reserve waste; hit-rate is the lossless check.</caption>
 <line x1="137.3" y1="127.7" x2="137.3" y2="113.3" stroke="#222" stroke-width="1.2"/>
 <line x1="134.3" y1="127.7" x2="140.3" y2="127.7" stroke="#222" stroke-width="1.2"/>
 <line x1="134.3" y1="113.3" x2="140.3" y2="113.3" stroke="#222" stroke-width="1.2"/>
-<rect x="169.1" y="130.0" width="48.0" height="156.0" fill="#c0392b" opacity="0.8"/>
-<text x="193.1" y="126.0" text-anchor="middle" fill="#333" font-size="11">6300</text>
-<rect x="224.9" y="129.9" width="48.0" height="156.1" fill="#1a7f37" opacity="0.8"/>
-<text x="248.9" y="125.9" text-anchor="middle" fill="#333" font-size="11">6303</text>
+<rect x="169.1" y="113.3" width="48.0" height="172.7" fill="#c0392b" opacity="0.8"/>
+<text x="193.1" y="109.3" text-anchor="middle" fill="#333" font-size="11">6973</text>
+<line x1="193.1" y1="130.0" x2="193.1" y2="96.7" stroke="#222" stroke-width="1.2"/>
+<line x1="190.1" y1="130.0" x2="196.1" y2="130.0" stroke="#222" stroke-width="1.2"/>
+<line x1="190.1" y1="96.7" x2="196.1" y2="96.7" stroke="#222" stroke-width="1.2"/>
+<rect x="224.9" y="119.0" width="48.0" height="167.0" fill="#1a7f37" opacity="0.8"/>
+<text x="248.9" y="115.0" text-anchor="middle" fill="#333" font-size="11">6744</text>
+<line x1="248.9" y1="129.9" x2="248.9" y2="108.1" stroke="#222" stroke-width="1.2"/>
+<line x1="245.9" y1="129.9" x2="251.9" y2="129.9" stroke="#222" stroke-width="1.2"/>
+<line x1="245.9" y1="108.1" x2="251.9" y2="108.1" stroke="#222" stroke-width="1.2"/>
 <text x="467" y="304" text-anchor="middle" fill="#333">λ = 5</text>
 <rect x="383.3" y="125.2" width="48.0" height="160.8" fill="#888" opacity="0.8"/>
 <text x="407.3" y="121.2" text-anchor="middle" fill="#333" font-size="11">6496</text>
 <line x1="407.3" y1="127.2" x2="407.3" y2="123.1" stroke="#222" stroke-width="1.2"/>
 <line x1="404.3" y1="127.2" x2="410.3" y2="127.2" stroke="#222" stroke-width="1.2"/>
 <line x1="404.3" y1="123.1" x2="410.3" y2="123.1" stroke="#222" stroke-width="1.2"/>
-<rect x="439.1" y="56.0" width="48.0" height="230.0" fill="#c0392b" opacity="0.95"/>
-<text x="463.1" y="52.0" text-anchor="middle" fill="#333" font-size="11">9287*</text>
-<rect x="494.9" y="115.3" width="48.0" height="170.7" fill="#1a7f37" opacity="0.8"/>
-<text x="518.9" y="111.3" text-anchor="middle" fill="#333" font-size="11">6894</text>
+<rect x="439.1" y="48.1" width="48.0" height="237.9" fill="#c0392b" opacity="0.95"/>
+<text x="463.1" y="44.1" text-anchor="middle" fill="#333" font-size="11">9607*</text>
+<line x1="463.1" y1="56.0" x2="463.1" y2="40.2" stroke="#222" stroke-width="1.2"/>
+<line x1="460.1" y1="56.0" x2="466.1" y2="56.0" stroke="#222" stroke-width="1.2"/>
+<line x1="460.1" y1="40.2" x2="466.1" y2="40.2" stroke="#222" stroke-width="1.2"/>
+<rect x="494.9" y="107.6" width="48.0" height="178.4" fill="#1a7f37" opacity="0.8"/>
+<text x="518.9" y="103.6" text-anchor="middle" fill="#333" font-size="11">7205</text>
+<line x1="518.9" y1="115.3" x2="518.9" y2="99.9" stroke="#222" stroke-width="1.2"/>
+<line x1="515.9" y1="115.3" x2="521.9" y2="115.3" stroke="#222" stroke-width="1.2"/>
+<line x1="515.9" y1="99.9" x2="521.9" y2="99.9" stroke="#222" stroke-width="1.2"/>
 <rect x="70" y="30" width="11" height="11" fill="#888" opacity="0.85"/>
 <text x="86" y="40" fill="#333" font-size="11.5">baseline SRPF (n=2)</text>
 <rect x="70" y="46" width="11" height="11" fill="#c0392b" opacity="0.85"/>
-<text x="86" y="56" fill="#333" font-size="11.5">fixed RPB (n=1)</text>
+<text x="86" y="56" fill="#333" font-size="11.5">fixed RPB (n=2)</text>
 <rect x="70" y="62" width="11" height="11" fill="#1a7f37" opacity="0.85"/>
-<text x="86" y="72" fill="#333" font-size="11.5">adaptive RPB (n=1)</text>
+<text x="86" y="72" fill="#333" font-size="11.5">adaptive RPB (n=2)</text>
 <text x="14" y="156" text-anchor="middle" fill="#333" transform="rotate(-90 14 156)">p99 TTFT</text>
 </svg>
-<figcaption><b>The rate-dependent flip.</b> p99 TTFT by rate for baseline SRPF, fixed RPB (r=0.25), and adaptive
-(zero-waste) RPB, same node. At λ=3 all three pass and the RPB variants shave the tail ~10%. At λ=5 (the
-goodput-setting rate) fixed RPB spikes over the 8&nbsp;s SLO (9287&nbsp;ms, <code>*</code> = SLO fail) via reserve
-waste, while adaptive RPB sits at the baseline (neutral). Whiskers = min–max over same-node replicates (n shown in
-legend); regenerated from the run <code>curve.csv</code> by <code>analysis/gen_rpb_fig.py</code> (error bars fill
-in as the n=2 firming completes).</figcaption>
+<figcaption><b>The rate-dependent split (n=2).</b> Mean p99 TTFT by rate for baseline SRPF, fixed RPB (r=0.25),
+and adaptive (zero-waste) RPB, same node; bar label = mean, whiskers = min–max over the two runs. At λ=3 all three
+fall in the metastable coin-flip band (no robust effect). At λ=5 (the goodput-setting rate) fixed RPB spikes over
+the 8&nbsp;s SLO (mean 9607&nbsp;ms, <code>*</code> = SLO fail; both runs fail) via reserve waste, while adaptive RPB
+passes at ~baseline goodput (mean 7205&nbsp;ms, a small p99 cost, no gain). Regenerated from the run
+<code>curve.csv</code> by <code>analysis/gen_rpb_fig.py</code>.</figcaption>
 </div>
 <p>
-<b>The rate-dependent flip.</b> RPB does exactly what it was designed to at λ=3 — it lowers the p99 tail 10% by
-interleaving small turns into big-document chunk-runs, with throughput <em>identical</em> (386.7 tok/s both) and
-hit-rate matched (lossless). But at the goodput-setting rate λ=5 it is a clear <b>negative</b>: the p99 rises 41%
-and crosses the 8&nbsp;s SLO (PASS→FAIL), and throughput falls 8.6% (req/s 4.11→3.75). Goodput@SLO, which is set
-by the highest passing rate, therefore does <em>not</em> improve — RPB breaks the rate that SRPF alone passes.
+<b>The rate-dependent split.</b> At λ=3 fixed RPB is <em>within the coin-flip noise</em>: {6300, 7646}&nbsp;ms over
+n=2 vs baseline {6973, 6393} (throughput identical, hit-rate matched) — no robust effect (λ=3 goodput is a
+documented metastable coin-flip, so single-run λ=3 deltas are noise). But at the goodput-setting rate λ=5 fixed RPB
+is a clear, <em>robust</em> <b>negative</b>: p99 {9287, 9927}&nbsp;ms (mean 9607, +48% over baseline 6496) —
+<em>both</em> runs cross the 8&nbsp;s SLO — with throughput down ~9% (req/s ~3.8 vs ~4.1). Goodput@SLO, set by the
+highest passing rate, therefore does <em>not</em> improve; RPB breaks the rate that SRPF alone passes.
 </p>
 <p>
 <b>Why: reserve waste (quantified, <code>analysis/rpb_waste.py</code>).</b> From the server trace, the big-document
@@ -285,10 +303,11 @@ they commit a mean of only <b>5320</b> tokens: ~50% of big-chunk steps are cappe
 small turn added, i.e. <b>~54% of the 1536-token reserve is wasted</b> (the shortest waiting turn is larger than the
 reserve, and the crash-safe guard refuses to split it). This cuts effective prefill capacity ~13% on big-document
 steps. Below the knee (λ=3, offered 3 ≪ capacity ~4.7) the lost capacity is absorbed by slack — overall throughput
-is unchanged and the small-turn interleave nets the −10% win. At the near-knee goodput rate (λ=5, offered 5 ≈
-capacity) the lost capacity pushes the system past saturation: it can no longer keep up, the queue grows through the
-run, and the p99 explodes. The waste per step is similar at both rates (mean big-chunk 5327 vs 5315); what differs
-is whether the system has the slack to absorb it — and at the rate that decides goodput, it does not.
+is unchanged and any small-turn interleave benefit is lost inside the λ=3 coin-flip noise (no robust effect). At the
+near-knee goodput rate (λ=5, offered 5 ≈ capacity) the lost capacity pushes the system past saturation: it can no
+longer keep up, the queue grows through the run, and the p99 explodes. The waste per step is similar at both rates
+(mean big-chunk 5327 vs 5315); what differs is whether the system has the slack to absorb it — and at the rate that
+decides goodput, it does not.
 </p>
 <p>
 <b>The decisive control: adaptive (zero-waste) RPB.</b> If reserve <em>waste</em> is the cause of the λ=5
@@ -298,48 +317,54 @@ turn actually fits the reserve (front of the SRPF-sorted queue), so the reserved
 same rates:
 </p>
 <table>
-<caption>Adaptive RPB (r=0.25) vs baseline, same node. Adaptive caps only ~11% of big-document chunk steps (vs
-fixed RPB's ~56%), so it preserves prefill capacity.</caption>
-<tr><th>rate λ</th><th>SRPF p99</th><th>fixed RPB p99</th><th>adaptive RPB p99</th><th>adaptive tok/s (vs SRPF)</th><th>SLO</th></tr>
-<tr><td>3</td><td>6973&nbsp;ms</td><td>6300&nbsp;ms</td><td>6303&nbsp;ms&nbsp;(−10%)</td><td>386.6 (=386.7)</td><td class="g">PASS</td></tr>
-<tr><td>5</td><td>6580&nbsp;ms</td><td class="b">9287&nbsp;ms&nbsp;(+41%, fail)</td><td>6894&nbsp;ms&nbsp;(+5%)</td><td>520.1 (−1.0%, vs fixed 480)</td><td class="g">PASS</td></tr>
+<caption>All three configs, same node, n=2 (p99 mean [run1, run2]). Adaptive caps only ~11% of big-document chunk
+steps (vs fixed RPB's ~56%), preserving prefill capacity — so it removes fixed RPB's λ=5 failure but yields no
+goodput gain.</caption>
+<tr><th>rate λ</th><th>SRPF p99</th><th>fixed RPB p99</th><th>adaptive RPB p99</th><th>adaptive tok/s / req/s (vs SRPF)</th><th>SLO</th></tr>
+<tr><td>3</td><td>6683 [6973, 6393]</td><td>6973 [6300, 7646]</td><td>6744 [6303, 7185]</td><td>387 / 3.02 (=)</td><td class="g">PASS (all, coin-flip noise)</td></tr>
+<tr><td>5</td><td>6496 [6580, 6411]</td><td class="b">9607 [9287, 9927] fail</td><td>7205 [6894, 7516] (+11%)</td><td>522 / 4.09 (vs SRPF 532 / 4.16; fixed 482 / 3.77)</td><td class="g">PASS (both)</td></tr>
 </table>
 <p>
 Adaptive RPB does exactly what the mechanism predicts: it caps only ~11% of big-document chunk steps (mean
-big-chunk 5993 vs fixed's 5320 tokens), so throughput at λ=5 is <em>preserved</em> (520 vs 525&nbsp;tok/s, −1.0%,
-versus fixed RPB's −8.6%) and the SLO failure is gone. But the λ=5 p99 is <b>not improved</b> — 6894&nbsp;ms,
-statistically indistinguishable from the 6580&nbsp;ms baseline (+5%, well inside the ±12–20% same-node run-to-run
-spread of this metric), and goodput is unchanged (4.07 vs 4.11&nbsp;req/s). Adaptive RPB helps only the
-<em>sub-knee</em> tail (λ=3, −10%), a rate that already passes. The adaptive control lets us <em>infer</em> what
-sets the goodput-rate p99: adaptive serves every tiny waiting turn (one that fits the 1536-token reserve) from the
-reserve at no throughput cost, so if the λ=5 p99 request were such a tiny turn, its TTFT — and the p99 — would
-drop; it does not. <b>Therefore the p99 at the goodput-setting rate is not one of the tiny turns the reserve can
-serve.</b> This is consistent with the workload (per-turn cache-adjusted work is p50=26 but p90=17.4k tokens, far
-above the reserve) and with the companion head-of-line diagnosis (the p99 is queue-wait, not own-prefill): the tail
-is dominated by the <em>larger</em> waiting turns that no modest reserve can shortcut. Removing the waste recovers
-<em>neutrality</em>, not a win.
+big-chunk 5993 vs fixed's 5320 tokens), so throughput at λ=5 is <em>preserved</em> (522 vs 532&nbsp;tok/s, versus
+fixed RPB's −9%) and the SLO failure is gone — <em>both</em> adaptive runs pass. But adaptive RPB <b>does not
+improve goodput</b>: at λ=5 it sustains the baseline rate (req/s {4.07, 4.10} vs baseline {4.11, 4.21}), i.e.
+goodput is unchanged, and its p99 is if anything slightly <em>worse</em> — {6894, 7516}&nbsp;ms (mean 7205) vs
+baseline {6580, 6411} (mean 6496), a ~11% tail cost, with both adaptive runs above both baseline runs (a small
+real effect, not a p99 reduction). At λ=3 it is within the coin-flip noise, like the others. The adaptive control
+lets us <em>infer</em> what sets the goodput-rate p99: adaptive serves every tiny waiting turn (one that fits the
+1536-token reserve) from the reserve at no throughput cost, so if the λ=5 p99 request were such a tiny turn its
+TTFT — and the p99 — would drop; it does not (the p99 rises slightly). <b>Therefore the p99 at the goodput-setting
+rate is not one of the tiny turns the reserve can serve.</b> This is consistent with the workload (per-turn
+cache-adjusted work is p50=26 but p90=17.4k tokens, far above the reserve) and with the companion head-of-line
+diagnosis (the p99 is queue-wait, not own-prefill): the tail is dominated by the <em>larger</em> waiting turns that
+no modest reserve can shortcut, and slightly delaying the in-flight big doc to reserve for them adds a small cost
+without touching the tail-setting requests. Removing the waste recovers goodput-<em>neutrality</em>, not a win.
 </p>
 <p>
 <b>The two controls together close the axis.</b> Fixed RPB <em>hurts</em> goodput (reserve waste → capacity loss
-→ SLO fail at the knee); adaptive RPB, which provably removes that waste (throughput restored, failure gone),
-is <em>neutral</em>. So chunk-level budget reservation cannot improve goodput@SLO over whole-request SRPF at any
-implementation. (The adaptive control also confirms the fixed-RPB diagnosis: removing the waste removes the
-failure, so the failure <em>was</em> the waste.) All runs are lossless (hit-rate matched, Δ ≤ 0.002).
+→ SLO fail at the knee, both n=2 runs); adaptive RPB, which provably removes that waste (throughput restored,
+failure gone), is <em>goodput-neutral</em> (no gain, a small p99 tail cost). So chunk-level budget reservation
+cannot improve goodput@SLO over whole-request SRPF at any implementation. (The adaptive control also confirms the
+fixed-RPB diagnosis: removing the waste removes the failure, so the failure <em>was</em> the waste.) All runs are
+lossless (hit-rate matched, Δ ≤ 0.002).
 </p>
 <p>
 <b>Scope and statistics (stated plainly).</b> These are same-node A/B runs (node fixed, no cross-node variance),
-<b>one run per configuration</b>; an n=2 same-node firming pass is in progress. The comparison rests on two things
-robust to single-run noise: (i) the fixed-RPB harm is <em>mechanistic</em> — the −8.6% throughput drop and the
-~54% reserve waste are deterministic consequences of the capping (quantified from the trace), not tail noise; and
-(ii) the adaptive control's throughput restoration (−1.0%) and goodput invariance (4.07 vs 4.11&nbsp;req/s) are
-likewise not p99-noise. For the p99 numbers themselves we use a same-node run-to-run spread of ±12–20%, taken from
-our own prior n=3 same-node replicates of this configuration (stock λ=3 p99 {6.3, 8.1, 11.8}&nbsp;s, σ≈26%; SRPF
-λ=5 {5.85, 6.58, 7.46}&nbsp;s): the fixed-RPB effect (+41% p99) is far outside that band and corroborated by the
-throughput drop, while the adaptive effect (+5%) is inside it — hence "neutral." The node's baseline λ=5
-(6580&nbsp;ms) is a comfortable pass, so this is a p99-<em>reduction</em> test: a mechanism that helped would show
-a clear drop, which neither variant delivers at λ=5. Finally, one reserve-size run at r=0.10 crashed on a transient
-KV-pool accounting event (discarded; the baseline and all other RPB runs — fixed, adaptive — completed cleanly with
-zero pool-leak messages, so it is a transient node event, not intrinsic to the mechanism; we did not complete a
+<b>n=2 per configuration</b>. The comparison rests on effects robust to run-to-run noise: (i) the fixed-RPB harm is
+<em>mechanistic and n=2-consistent</em> — <em>both</em> fixed runs SLO-fail at λ=5 ({9287, 9927}&nbsp;ms) with the
+~9% throughput drop and ~54% reserve waste that are deterministic consequences of the capping (quantified from the
+trace); and (ii) adaptive restores throughput and passes in <em>both</em> runs at the baseline req/s (goodput
+invariance). At λ=3 all three configs fall inside the metastable coin-flip band (baseline {6973, 6393}, fixed
+{6300, 7646}, adaptive {6303, 7185}&nbsp;ms), so no λ=3 effect is claimed — consistent with the ±~20% same-node
+λ=3 spread we measure here and in prior n=3 replicates (stock λ=3 {6.3, 8.1, 11.8}&nbsp;s). The λ=5 baseline is
+tighter (n=2 {6580, 6411}); the fixed effect (+48%) is far outside it, while the adaptive p99 (+11%, both runs
+above baseline) is a small real cost, not a reduction — and, crucially, does not change goodput (both pass). The
+node's baseline λ=5 is a comfortable pass, so this is a p99-<em>reduction</em> test: a mechanism that helped would
+show a clear drop, which neither variant delivers. Finally, one reserve-size run at r=0.10 crashed on a transient
+KV-pool accounting event (discarded; the baseline and all other RPB runs — fixed ×2, adaptive ×2 — completed
+cleanly with zero pool-leak messages, so it is a transient node event, not intrinsic to the mechanism; we did not
+complete a
 fixed-r sweep, deferring to the adaptive control as the decisive test).
 </p>
 
@@ -376,15 +401,15 @@ r is best but whether <em>any</em> reservation can help once the waste is remove
 answers directly and empirically.
 </p>
 <p>
-<b>"Use an adaptive reserve that never wastes."</b> This is the decisive control we built and ran (§5): adaptive
+<b>"Use an adaptive reserve that never wastes."</b> This is the decisive control we built and ran (§5, n=2): adaptive
 RPB reserves only when the shortest waiting turn fits, so the reserve is never wasted. It behaves exactly as
-intended — at λ=5 throughput is restored (−1.0% vs SRPF, versus fixed RPB's −8.6%) and the SLO failure disappears —
-but it is <em>neutral</em>, not a win (λ=5 p99 within run-noise of baseline, goodput unchanged). The reason is the
-inference in §5: the goodput-rate p99 is set by the larger waiting turns the reserve cannot serve, not the tiny
-ones it can, so removing the waste recovers neutrality rather than a gain. This is what makes the negative airtight
-rather than a tuning artifact: <em>done wrong</em> (fixed) reservation hurts, <em>done right</em> (adaptive) it does
-nothing for goodput. (Where RPB <em>does</em> help — sub-knee p99, λ=3 −10% — it improves a latency percentile the
-goodput metric does not reward, on a rate that already passes.)
+intended — at λ=5 throughput is restored (~baseline, versus fixed RPB's −9%) and the SLO failure disappears in both
+runs — but it is <em>goodput-neutral</em>, not a win: goodput is unchanged (both runs at the baseline req/s ~4.1)
+and the p99 is if anything slightly worse (+11%). The reason is the inference in §5: the goodput-rate p99 is set by
+the larger waiting turns the reserve cannot serve, not the tiny ones it can, so removing the waste recovers
+goodput-neutrality rather than a gain. This is what makes the negative airtight rather than a tuning artifact:
+<em>done wrong</em> (fixed) reservation hurts, <em>done right</em> (adaptive) it does nothing for goodput. (RPB
+shows no robust sub-knee benefit either: at λ=3 all configs fall inside the metastable coin-flip band.)
 </p>
 <p>
 <b>When RPB is simply inert.</b> On workloads of uniformly small requests (no multi-chunk documents) there is no
@@ -396,9 +421,11 @@ lossless scheduling — RPB included — can meet the SLO.
 <p>
 Base commit <code>a334877e5</code>; RPB commits on <code>evolve/floyd</code> (implementation <code>04940e7cd</code>,
 crash-fix <code>487586613</code>). Flags: <code>--enable-rpb-chunking --rpb-reserve-frac 0.25</code> on top of
-<code>--schedule-policy srpf</code>. Versions: <code>runs/v-srpf-ctl4</code> (baseline),
-<code>runs/v-rpb25</code> (fixed RPB), <code>runs/v-rpbA25</code> (adaptive RPB, <code>--rpb-adaptive</code>). Sim: <code>analysis/hol_sim.py</code> (rpb policy); comparison:
-<code>analysis/rpb_compare.py</code>. Fixed eval protocol unchanged.
+<code>--schedule-policy srpf</code>. Versions (n=2 each): baseline <code>runs/v-srpf-ctl4</code>,
+<code>v-srpf-ctl5</code>; fixed RPB <code>v-rpb25</code>, <code>v-rpb25-r2</code>; adaptive RPB (<code>--rpb-adaptive</code>)
+<code>v-rpbA25</code>, <code>v-rpbA25-r2</code>. Sim: <code>analysis/hol_sim.py</code> (rpb policy); waste analysis:
+<code>analysis/rpb_waste.py</code>; comparison: <code>analysis/rpb_compare.py</code>; figure:
+<code>analysis/gen_rpb_fig.py</code>. Fixed eval protocol unchanged.
 </p>
 
 </body></html>

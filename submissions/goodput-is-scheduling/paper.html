@@ -132,7 +132,7 @@ an unconditional proof for every row.</caption>
 <tr><td>chunk-partition "fast-lane"</td><td class="b">dominated</td><td>reserving chunk budget for small turns (our mechanism) is a <em>partial</em> SRPF; dominated by plain SRPF in simulation (§5)</td></tr>
 <tr><td>prefill/decode split</td><td class="b">TTFT-optimal</td><td>at saturation 99% of forward steps are already prefill; shifting to decode lowers goodput, throttling prefill = admission (<code>analysis/pd_schedule.py</code>)</td></tr>
 <tr><td><b>prefill scheduling</b></td><td class="g"><b>THE lever</b></td><td>SRPF moves goodput ≤3 → <b>4.0&nbsp;req/s</b> (λ=5; §5); relieves the λ=3 head-of-line</td></tr>
-<tr><td>compute</td><td>hard ceiling</td><td>raw peak throughput ~4.7&nbsp;req/s (measured: SRPF completes 4.72&nbsp;req/s at λ=10 overload, vs stock 4.22); goodput@SLO (4.0) sits below it — SLO/tail-bound, not throughput-bound; the ceiling moves only compute-side (lossy or contract-frozen)</td></tr>
+<tr><td>compute</td><td>hard ceiling</td><td>raw peak throughput ~4.7&nbsp;req/s (measured within-run: SRPF completes 4.72&nbsp;req/s at λ=10 overload); goodput@SLO (4.0) sits below it — SLO/tail-bound, not throughput-bound; the ceiling moves only compute-side (lossy or contract-frozen)</td></tr>
 </table>
 <p>
 The pattern is not that we failed to find a cache mechanism; it is that the cache layer is

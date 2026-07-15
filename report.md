@@ -557,9 +557,13 @@ open:
    4.48 (λ7), **4.72 (λ10)** — while its p99 crosses the SLO. So the binding constraint at higher load is the
    head-of-line *tail* crossing 8s, not a compute wall. This STRENGTHENS the head-of-line thesis (§4): the
    tail is what caps goodput at every regime.
-2. **The raw-throughput ceiling is ~4.7, not ~4.2.** SRPF reaches 4.72 req/s at λ10 (vs stock's 4.22 at λ10
-   — SRPF also lifts *peak* throughput ~+12%, a bonus off the goodput metric). The earlier "~4.2 ceiling"
-   was a sub-knee estimate; the full sweep measures it. C_eff back-out updated 15k→~17k; band ~4.2–4.7.
+2. **The raw-throughput ceiling is ~4.7, not ~4.2.** SRPF reaches 4.72 req/s at λ10 (within-run measured).
+   The earlier "~4.2 ceiling" was a sub-knee estimate; the full sweep measures it directly. C_eff back-out
+   updated 15k→~17k; band ~4.2–4.7. ⚠ NOTE (integrity): stock's own full sweep reached 4.22 at λ10 but on a
+   DIFFERENT node/day (v0-stock 07-14 vs v-srpf-full 07-15) — so I do NOT claim "SRPF raises the ceiling
+   +12% vs stock" (cross-node, ±45% var, void by my own rule). I only claim the measured raw ceiling is ~4.7;
+   whether SRPF raises it above stock's would need a same-node full sweep (not run — would be gilding, and the
+   claim isn't load-bearing: the headline goodput=4.0 rests on the within-run v-srpf-full curve).
 
 The same-node n=3 A/B (node 0-3: srpf λ3 {5.9,6.0,7.4}/λ5 {5.85,6.58,7.46} vs stock control 7.6/22.7) still
 provides the *rigorous* λ3,5 comparison + Fisher significance; v-srpf-full (node 1-2) provides the

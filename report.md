@@ -1401,6 +1401,54 @@ is empirical — pending eval (commit 83c6009b9).
   Cold documents also benefit 5.5–22.9× at the median (the Pareto improvement).
 - W&B: NOT logged (diagnostic only).
 
+### Diagnosis #6 — Comprehensive design-space closure  [COMPLETE, no eval]
+**p99 tail composition** (analyze_tail_composition.py on v-srpf-wb-diag):
+The TTFT p99 tail is 100% cold first-turn documents at ALL rates (r3, r5, r7, r10).
+No evicted continuations appear in the tail. "Partial cache violations" in the raw analysis
+are a measurement artifact (forward_duration includes decode, not just TTFT — cached
+continuations with long decode appear as "SLO violations" but have real TTFT ~200ms).
+
+**Iteration-level analysis** (32,043 Prefill batch lines):
+- Chunked iterations (≥6144 new-token): median 168ms, p99 511ms, max 25450ms
+- Slow iterations (>500ms) are 1.2% of total and correlate with LOW token usage (ramp-up/between rates)
+  NOT with steady-state r7. The p99 of 511ms is NOT during the r7 burst.
+- During steady-state r7: iterations are consistently ~168ms. No GC pauses or transfer stalls.
+- Queue depth during r7 chunks: median 2, p90 12, max 48. Transient burst pattern.
+
+**Design-space closure map — ALL mechanisms that could lower p99 TTFT under SRPF:**
+| Dimension         | Mechanism tested              | Result   | Why                                              |
+|-------------------|-------------------------------|----------|--------------------------------------------------|
+| Scheduling        | SRPF (this work)              | **WIN**  | SPT-optimal for bimodal remaining distribution   |
+| Scheduling        | SRPF aging (5s)               | **NEG**  | Cascading budget starvation, +322% p99 r5        |
+| Scheduling        | ACHUNK                        | **INERT**| Activation window doesn't overlap cold arrivals  |
+| Scheduling        | QP-KV                         | **NEUT** | 91.8% queued are cold, nothing to pin            |
+| Budget            | QPAC                          | **NEUT** | Queue too shallow at r3/r5 to trigger            |
+| Budget            | IBAC                          | **NEUT** | Bypass volume 0.6%, too small                    |
+| Budget            | DBS                           | **NEG**  | Longer iterations hurt decode, +990ms r5         |
+| Budget            | Chunk-reserve                 | **NEG**  | Steals mega-doc TTFT for continuation TTFT       |
+| Capacity          | Exclusive tiering             | **WIN**  | +1.7pp hit, compounds with SRPF                  |
+| Capacity          | Cost-aware HOST               | **NEG**  | −3.3pp hit                                       |
+| Capacity          | Reuse-aware exclusive         | **NO-OP**| No reuse signal in online eviction               |
+| Eviction          | Cost-aware DEVICE             | **NEUT** | Burst-time eviction is all-or-nothing            |
+| Transfer          | Per-layer overlap             | EXISTING | cache_controller.py — already pipelined per-layer|
+| Physical          | Cold-prefill throughput       | BOUND    | 49K tok/s demand vs 35.6K GPU cap at r7 burst    |
+
+**Theoretical justification:**
+- **SPT optimality**: under SRPF's bimodal remaining distribution (cached ~100 vs cold ~50K tokens),
+  Shortest-Processing-Time scheduling minimizes mean completion time. Among cold documents,
+  ascending-remaining order also minimizes the NUMBER of SLO violations (Moore's algorithm:
+  the minimum tardy set = documents whose cumulative processing exceeds the SLO deadline).
+- **Iteration budget tradeoff**: the 6144-token chunk shares the iteration with ~250 decode tokens.
+  Any change that increases per-iteration prefill (DBS, DCE, multi-chunk) ALSO increases iteration
+  time, slowing decode for ALL running requests. The decode overhead (20-40ms per iteration) is
+  amortized over fewer iterations with larger chunks, but the attention compute increase (quadratic
+  in chunk_size × KV_length) dominates. Net: zero-sum or negative.
+- **Physical ceiling**: during the r7 burst, ~342 cold first-turns arrive over ~1005s.
+  Each needs ~9 chunked iterations × 168ms = 1512ms prefill. The queue depth peaks at ~48
+  (Poisson burst), giving worst-case queue_wait ≈ 48 / 10 completions/s = 4.8s. Total
+  worst-case TTFT = 4.8 + 5.2 (190K doc) = 10s. No scheduling or cache mechanism can
+  reduce the 5.2s own-prefill-compute below the GPU's physical throughput.
+
 ## Ops notes
 - eval.sh has a path bug (computes `workspace/sgl/v0.3_ablations/base`); fixed by symlink
   `v0.3_ablations/base → v0.31/base` (frozen eval.sh untouched — fairness-clean).

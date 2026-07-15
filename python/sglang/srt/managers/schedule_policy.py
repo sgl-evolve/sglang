@@ -1044,6 +1044,18 @@ class PrefillAdder:
                     req.retracted_stain,
                 )
             else:
+                wsac_cap = int(os.environ.get("SGLANG_WSAC", "0"))
+                if wsac_cap > 0:
+                    cold_in_running = sum(
+                        1 for r in self.running_batch.reqs
+                        if getattr(r, "num_matched_prefix_tokens", 0) == 0
+                    )
+                    cold_in_batch = sum(
+                        1 for r in self.can_run_list
+                        if getattr(r, "num_matched_prefix_tokens", 0) == 0
+                    )
+                    if cold_in_running + cold_in_batch >= wsac_cap:
+                        return AddReqResult.OTHER
                 if self.dbs_has_continuing_chunk:
                     return AddReqResult.OTHER
                 if has_chunked_req:

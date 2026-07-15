@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Reserved-Prefill-Budget Chunking — floyd</title>
+<style>
+body{max-width:52em;margin:2.2em auto;padding:0 1.2em;font:16px/1.55 Georgia,serif;color:#161616}
+h1{font-size:1.7em;line-height:1.25;margin:0 0 .1em}
+h2{font-size:1.22em;margin:1.7em 0 .4em;border-bottom:1px solid #ddd;padding-bottom:.15em}
+h3{font-size:1.05em;margin:1.15em 0 .3em}
+.sub{color:#555;font-style:italic;margin:.2em 0 1.2em}
+code{background:#f4f4f4;padding:.05em .35em;border-radius:3px;font:13.5px/1.4 Menlo,monospace}
+pre{background:#f7f7f7;padding:.7em 1em;border-radius:5px;overflow-x:auto;font:12.5px/1.45 Menlo,monospace}
+table{border-collapse:collapse;margin:1em 0;font-size:14px;width:100%}
+th,td{border:1px solid #ccc;padding:.32em .55em;text-align:left;vertical-align:top}
+th{background:#f0f0f0}
+td.b{background:#fff3f3}
+td.g{background:#f0fff0}
+.fig{margin:1.2em 0;padding:.6em;background:#fafafa;border:1px solid #eee;border-radius:5px;text-align:center}
+figcaption{font-size:13px;color:#555;margin-top:.4em;text-align:left}
+.abs{background:#f7f7f7;border-left:3px solid #888;padding:.7em 1em;margin:1em 0}
+.todo{background:#fff6e5;border:1px dashed #e0a800;padding:.5em .8em;border-radius:5px;color:#8a6d00;font-size:13px}
+b{color:#000}em{color:#333}
+</style></head><body>
+
+<h1>Reserved-Prefill-Budget Chunking: closing the chunk-level head-of-line residual that request-reordering leaves in long-document LLM serving</h1>
+<div class="sub">floyd · sglang v0.31 HiCache (Qwen3.5-122B-A10B-FP8, TP=8, 2-tier KV) · v0 DRAFT (eval pending GPU A/B)</div>
+
+<div class="abs">
+<b>Abstract.</b> <span class="todo">DRAFT — numbers pending the same-node GPU A/B (job 19915: v-srpf-ctl4 vs
+v-rpb25).</span> In long-document conversational serving, goodput@SLO is set by the p99 time-to-first-token
+tail, which prior work (our companion papers) shows is <em>head-of-line blocking</em>: small conversational
+turns queued behind the back-to-back chunked prefill of a few large cold documents. Whole-request shortest-prefill
+scheduling (SRPF) relieves the part of this that is <em>waiting-queue</em> order, but it leaves a residual:
+once a large document's chunked prefill begins, the sglang scheduler feeds that in-flight <code>chunked_req</code>
+the entire per-batch chunk budget every step until it finishes (~31 consecutive 6144-token chunks for the largest
+documents), so small turns that <em>arrive during</em> the chunk-run still block — a residual that <em>grows with
+load</em>. We introduce <b>Reserved-Prefill-Budget (RPB) chunking</b>: when a large document is mid-chunk and other
+requests are waiting, cap the in-flight chunk at a fraction (1&minus;r) of the per-batch budget and reserve the
+remaining r for the shortest waiting turn(s). RPB bounds <em>both</em> tails — small-turn TTFT falls to ~one
+chunk-time, while the large document is slowed by only 1/(1&minus;r) — with no starvation and, because the total
+tokens computed per step are unchanged, <em>no aggregate-throughput penalty</em>. It is lossless (identical tokens,
+resliced across steps) and TP-safe (a static fraction over a deterministic sort). We measure it on the fixed
+rate-sweep goodput@SLO protocol and find <span class="todo">[RESULT PENDING]</span>.
+</div>
+
+<h2>1 Introduction</h2>
+<p>
+Our companion work maps the KV-cache/serving design space for long-document conversational serving against a
+single fixed metric — goodput@SLO (max Poisson request rate with p99 TTFT &le; 8&nbsp;s) on a 122B hybrid
+Mamba-attention model with a two-tier (GPU + 768&nbsp;GB host) KV cache — and shows that every data-movement and
+retention axis (residency/eviction, admission, transfer, the recurrent-state pool) is a bounded non-lever, while
+the one lever is <b>prefill scheduling</b>. The organizing diagnosis is <em>head-of-line blocking</em>: fewer than
+0.1% of turns prefill for &ge;6&nbsp;s, yet the p99 TTFT is 6&ndash;11&nbsp;s, because a few very large cold
+documents monopolize the prefill pipeline and the small conversational turns queue behind them (the waiting queue
+is measured 9.6&times; deeper during big-cold-document chunk-runs).
+</p>
+<p>
+The textbook fix for the <em>waiting-queue</em> component is shortest-prefill-first (SRPF/SJF): serve the shortest
+remaining prefill next. On this workload SRPF lifts goodput@SLO from the stock coin-flip (&le;3&nbsp;req/s) to
+4.0&nbsp;req/s. But SRPF is a <em>whole-request</em> reordering of the <em>waiting</em> queue, and it leaves a
+structural residual that this paper isolates and closes.
+</p>
+<ul>
+<li><b>The chunk-level residual (§2).</b> In sglang's chunked prefill, the in-flight <code>chunked_req</code> is
+added to each prefill batch <em>before</em> the waiting queue is consulted, and it takes up to the whole per-batch
+chunk budget. So once a large document's chunking starts, it runs its ~31 chunks back-to-back and SRPF — which
+only reorders the <em>waiting</em> queue — cannot interpose a small turn that arrives mid-chunk. This residual is
+invisible at low load and grows as arrivals during a chunk-run become more likely.</li>
+<li><b>The mechanism, RPB (§3).</b> Cap the in-flight chunk at (1&minus;r)&middot;budget when requests are
+waiting; reserve r&middot;budget for the shortest waiting turn(s). Bounds both tails without starvation and
+without changing tokens-computed-per-step.</li>
+<li><b>Implementation (§4).</b> ~30 lines across three files on the live scheduler path; lossless; TP-safe.</li>
+<li><b>Evaluation (§5).</b> <span class="todo">Same-node GPU A/B on the fixed protocol — PENDING.</span></li>
+</ul>
+
+<h2>2 Motivation: the residual SRPF leaves</h2>
+<p>
+<b>Workload.</b> 1553 multiturn conversations (7163 turns); turn-0 embeds an entire document (p90 &approx;
+29k&nbsp;tokens, max 191k) that is re-used across the conversation's later turns. Per-turn cache-adjusted prefill
+work is extraordinarily bimodal: p50 = 26 tokens (near-free reuse), p99 = 40.6k, max 190.9k — a ~1500&times;
+spread; the top 10% of turns carry 78% of all prefill compute and 75% of that is cold (first-ever document
+prefill). So the pipeline is dominated by a handful of very large cold prefills interleaved with a stream of tiny
+conversational turns.
+</p>
+<p>
+<b>The engine mechanism.</b> sglang serves prefill in chunks of <code>chunked_prefill_size</code> = 6144 tokens
+per step. A document larger than one chunk becomes the <code>chunked_req</code>: the scheduler adds it to each
+prefill batch first (<code>schedule_policy.py:add_chunked_req</code>, called from <code>scheduler.py</code> before
+the waiting-queue loop), and it takes <code>min(remaining, rem_chunk_tokens)</code> = the whole budget. The 190.9k
+token document therefore occupies ~31 consecutive prefill steps, and <em>on every one of those steps the waiting
+queue gets zero budget</em>. A small turn that arrives during those 31 steps waits for all of them.
+</p>
+<p>
+<b>Why SRPF cannot fix it.</b> <code>--schedule-policy srpf</code> sorts the <em>waiting queue</em> by shortest
+remaining prefill. But the in-flight <code>chunked_req</code> is not in the waiting queue — it is added first,
+unconditionally, and monopolizes the budget. So SRPF changes <em>which</em> document starts, not what happens once
+one is mid-flight. A small turn arriving after a large document has already started still blocks. This is the
+residual: SRPF captures the between-request order but not the within-chunk-run interleaving.
+</p>
+<p>
+<b>Why the residual grows with load.</b> At low λ, a large document's chunk-run rarely overlaps a small-turn
+arrival, so the residual is negligible (and SRPF alone suffices — it passes λ=3 comfortably). As λ rises toward the
+knee, arrivals during a chunk-run become common (our companion trace shows the waiting queue 9.6&times; deeper
+during big-cold-document chunks), so the residual bites hardest at exactly the goodput-setting rate (λ=5, where
+SRPF's p99 is a marginal 7.8&nbsp;s). A calibrated prefill-schedule simulation (<code>analysis/hol_sim.py</code>,
+matched to the measured λ=3 coin-flip) makes the point: <em>preemptive</em> shortest-remaining (an idealization
+that can interrupt a chunk-run) reaches ~4.0&nbsp;s at λ=3, while the deployed <em>non-preemptive</em> SRPF is
+~6.2&nbsp;s — a ~30% gap that is precisely the chunk-level residual.
+</p>
+
+<h2>3 Design: Reserved-Prefill-Budget chunking</h2>
+<p>
+RPB targets the residual without paying preemption's costs (re-prefill, starvation of the large document). The
+rule, applied only when a document is mid-chunk and requests are waiting:
+</p>
+<pre>on each prefill step with an in-flight chunked_req and a non-empty waiting queue:
+    reserve  = floor(r * chunk_budget)                 # r = rpb_reserve_frac, e.g. 0.25
+    in_flight_cap = max(page_size, chunk_budget - reserve)
+    give the in-flight chunked_req up to in_flight_cap tokens   # it advances >= 1 page/step
+    let the reserved 'reserve' tokens serve the shortest waiting turn(s)  # SRPF-sorted queue</pre>
+<p>
+<b>Both tails are bounded, with no starvation.</b> A small waiting turn (the common case: a follow-up question,
+tens to hundreds of new tokens) now completes within ~one chunk-time instead of waiting the large document's full
+chunk-run; and the large document still advances every step, merely slowed by 1/(1&minus;r) (e.g. 1.33&times; at
+r=0.25). Neither can be starved: the in-flight document always gets &ge;(1&minus;r) of the budget, and the reserve
+always goes to the shortest waiting turn.
+</p>
+<p>
+<b>No aggregate-throughput penalty (by construction).</b> Each step still commits the full budget — (1&minus;r) to
+the large document and r to waiting turns — so the total tokens prefilled per step is unchanged. RPB redistributes
+<em>which</em> tokens are computed each step, not <em>how many</em>. (The one exception, and the only way RPB can
+lose throughput, is if the reserve goes unused because every waiting turn is itself larger than the reserve; §5
+measures whether this occurs, and §7 gives the adaptive-reserve fix if so.)
+</p>
+<p>
+<b>Why this is not the mechanisms it resembles.</b> RPB is a point in the scheduling design space distinct from its
+neighbors:
+</p>
+<ul>
+<li><b>vs. whole-request SRPF/SJF</b> (textbook; a stock <code>--schedule-policy</code> flag) — SRPF reorders the
+waiting queue; RPB reslices the <em>in-flight chunk's</em> budget, which SRPF never touches. RPB is applied on top
+of SRPF and closes exactly the residual SRPF leaves.</li>
+<li><b>vs. Sarathi-Serve's stall-free batching</b> (chunked prefill + filling leftover budget with <em>decodes</em>;
+= sglang <code>enable_mixed_chunk</code>) — Sarathi prevents a long prefill from stalling ongoing <em>decodes</em>;
+RPB prevents it from stalling waiting <em>prefills</em>. Orthogonal and composable.</li>
+<li><b>vs. preemptive schedulers</b> (FastServe-style MLFQ, SRPT) — these preempt whole requests at iteration
+granularity, paying re-prefill/context-switch cost and risking large-job starvation. RPB never preempts; it
+co-progresses a budget fraction, so the large document is never displaced, only shared with.</li>
+<li><b>vs. fair-queueing (WFQ/DRR/GPS)</b> — RPB is, honestly, an application of budget reservation to the
+chunked-prefill loop. The contribution is not the reservation idea but (i) the diagnosis that whole-request SRPF
+leaves a chunk-level residual specific to how chunked prefill admits the in-flight request, and (ii) the
+lossless, TP-safe, throughput-neutral realization of reservation inside that loop.</li>
+</ul>
+
+<h2>4 Implementation</h2>
+<p>
+RPB is ~30 lines across three files on the live scheduler path (base commit <code>a334877e5</code>):
+</p>
+<ul>
+<li><code>server_args.py</code>: two flags — <code>--enable-rpb-chunking</code> and <code>--rpb-reserve-frac</code>
+(default 0.25).</li>
+<li><code>managers/schedule_policy.py</code>: <code>PrefillAdder</code> takes <code>rpb_reserve_frac</code>; in
+<code>add_chunked_req</code>, when the reserve is active and the waiting queue is non-empty, cap the in-flight
+chunk at <code>max(page_size, rem_chunk_tokens &minus; floor(r&middot;rem_chunk_tokens))</code>, leaving the reserve
+in <code>rem_chunk_tokens</code> for the waiting-queue loop that follows. A guard in <code>add_one_req</code>
+prevents the reserved slice from truncating a waiting request into a <em>second</em> <code>chunked_req</code> (the
+scheduler enforces at most one; the reserve serves only turns that <em>complete</em> within it).</li>
+<li><code>managers/scheduler.py</code>: thread <code>rpb_reserve_frac</code> into the <code>PrefillAdder</code>
+construction.</li>
+</ul>
+<p>
+<b>Lossless</b> by construction: RPB changes only the order/slicing of prefill computation across steps, never the
+tokens computed or the KV contents, so outputs and hit-rate are unchanged (§5 verifies hit-rate matches the
+baseline). <b>TP-safe</b>: the decision uses a static fraction over the deterministic SRPF-sorted queue, so all 8
+tensor-parallel ranks make identical admission decisions — avoiding the per-rank-nondeterminism class of bug
+(e.g. wall-clock decisions) that deadlocks TP collectives. The guard is gated on <code>rpb_reserve_frac &gt; 0</code>
+so non-RPB runs are byte-identical.
+</p>
+
+<h2>5 Evaluation</h2>
+<p class="todo">
+PENDING same-node GPU A/B (job 19915, node slurm2-a3nodeset1-1, screen λ&isin;{3,5}): baseline
+<code>--schedule-policy srpf</code> (v-srpf-ctl4) vs <code>srpf + RPB r=0.25</code> (v-rpb25). The delta isolates
+the RPB engine mechanism (the SRPF config is held fixed). To report: per-rate p99 TTFT (baseline vs RPB) and SLO
+pass/fail (goodput); req/s and tok/s (throughput preservation — the reserve-waste check); hit-rate (lossless
+check). If RPB lowers the λ=5 p99 with throughput preserved and hit-rate matched, we then run the reserve-fraction
+sweep (r&isin;{0.10,0.25,0.50}) and the full contract sweep λ&isin;{3,5,7,10} for the headline, with n&ge;2
+same-node replicates and Fisher significance, matching the rigor of the companion papers. Honest negative controls:
+peak decode throughput (compute-bound, ~flat) and the λ&ge;7 overload regime (no lossless scheduling passes).
+</p>
+
+<h2>6 Related work</h2>
+<p>
+<b>Chunked prefill.</b> Sarathi / Sarathi-Serve introduced chunked prefill and stall-free batching to stop long
+prefills from stalling decodes; sglang's <code>enable_mixed_chunk</code> is the same idea. RPB addresses the
+orthogonal prefill-stalls-prefill problem and composes with decode-mixing.
+<b>Scheduling for LLM serving.</b> Orca (iteration-level/continuous batching), FastServe (MLFQ preemptive
+scheduling to mitigate head-of-line blocking from long jobs), and SRPF/SJF are whole-request policies; RPB operates
+below them, at the chunk-budget granularity, and is preemption-free.
+<b>Fair scheduling.</b> WFQ/DRR/GPS reserve service per flow; RPB applies reservation to the prefill-token budget
+of the chunked-prefill loop, realized losslessly and TP-safely.
+<b>Serving systems.</b> Strata (balanced batching), Mooncake (KVCache-centric disaggregation, overload rejection),
+HiCache/LMCache/AttentionStore (KV tiering) target data movement and admission — the axes our companion papers show
+are non-levers here; RPB targets the scheduling lever.
+</p>
+
+<h2>7 Limitations &amp; when it fails</h2>
+<p>
+RPB helps only where a chunk-level residual exists: a workload with large multi-chunk documents interleaved with
+small turns, at loads where arrivals overlap chunk-runs. On workloads of uniformly small requests (no multi-chunk
+documents) there is no in-flight monopoly to break, and RPB is inert. Above the saturation knee (λ&ge;7 here) the
+system is genuinely overloaded and no lossless scheduling — RPB included — can meet the SLO. The reserve can be
+wasted if every waiting turn is larger than r&middot;budget while a document is mid-chunk; if §5 shows a
+throughput drop, the fix is an <em>adaptive</em> reserve that returns unused budget to the in-flight document
+(reserve only when the shortest waiting turn fits, or refund at end-of-step). r is a single tunable knob trading
+small-turn relief against large-document slowdown 1/(1&minus;r); §5's sweep picks it.
+</p>
+
+<h2>8 Reproducibility</h2>
+<p>
+Base commit <code>a334877e5</code>; RPB commits on <code>evolve/floyd</code> (implementation <code>04940e7cd</code>,
+crash-fix <code>487586613</code>). Flags: <code>--enable-rpb-chunking --rpb-reserve-frac 0.25</code> on top of
+<code>--schedule-policy srpf</code>. Versions: <code>runs/v-srpf-ctl4</code> (baseline),
+<code>runs/v-rpb25</code> (RPB); reserve sweep <code>runs/v-rpb10</code>, <code>runs/v-rpb50</code>; full sweep
+<code>runs/v-rpb25-full</code>. Sim: <code>analysis/hol_sim.py</code> (rpb policy); comparison:
+<code>analysis/rpb_compare.py</code>. Fixed eval protocol unchanged.
+</p>
+
+</body></html>

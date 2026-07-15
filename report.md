@@ -882,3 +882,13 @@ at BOTH loads: λ5 saturation (5/5, -71%) AND λ3 knee (1/1 so far, likely STABI
 deterministic short-first serving; n=1, firming reps 2-3). λ3 reserve n=2 {18197,19540} +133% (still fails).
 FULL PICTURE: SRPF wins everywhere (scheduling lever, known/base); my fair reserve fails everywhere (+75%@λ5,
 +133%@λ3, helps p50 only). Paper 1 §5.6 to add srpf λ3 once n≥2. Core correction DONE+firmed.
+
+### SRPF is near-PARETO → metric-bias Paper-2 direction DEAD (2026-07-15 ~07:10Z)
+Checked E2E latency srpf vs fcfs λ5 (n=3 each): mean E2E ~44.7s (fcfs) vs ~45.0s (srpf) = IDENTICAL; median E2E
+srpf ≤ fcfs every rep (~6.6 vs ~6.9s). ⇒ SRPF defers heavy docs' TTFT (first-token) but their E2E is UNCHANGED
+(decode-dominated, E2E≫TTFT). So SRPF is a near-PARETO improvement (better/equal TTFT, equal E2E, equal
+throughput), NOT a harmful starvation tradeoff. ⇒ the "goodput@SLO rewards deferral/starvation" metric-bias
+Paper-2 direction is DEAD (no real harm for the metric to reward — SRPF is just a good policy; base was right).
+Honest negative that saves a weak paper. ALSO refine §5.6: soften "unbounded delay/starvation" → TTFT-deferral,
+E2E-neutral (near-Pareto). srpf λ3 n=2 {6158,6744} tight (stabilizes knee). Design space now well-characterized;
+corrected+strengthened Paper 1 is this cycle's real contribution.

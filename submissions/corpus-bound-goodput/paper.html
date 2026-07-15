@@ -332,7 +332,7 @@ where the workload's shape suggests:
 </svg>
 <figcaption><b>Goodput rate-sweep (same node).</b> p99 TTFT vs request rate. Stock FCFS (grey) exceeds the
 8&nbsp;s SLO at every rate (the grey bar at λ=3 is the measured n=5 coin-flip range 6.3–11.8&nbsp;s);
-shortest-prefill-first (green) stays under the SLO through λ=5 (n=2 each rate), lifting goodput@SLO from ≤3 to
+shortest-prefill-first (green) stays under the SLO through λ=5 (n=3 each rate), lifting goodput@SLO from ≤3 to
 ~4.1&nbsp;req/s — with cache contents unchanged. The lever is scheduling, not caching.</figcaption>
 </div>
 <ul>
@@ -353,7 +353,7 @@ and shows <b>non-preemptive shortest-prefill-first (the deployed policy) brings 
 coin-flip removed</b> (all seeds pass; a preemptive idealization reaches ~4&nbsp;s), while round-robin
 interleaving does not. The simulator is calibrated at λ=3 and over-serializes above the knee, so we use it
 only for the λ=3 diagnosis. A same-node GPU SRPF sweep confirms this at both regimes:
-<b>λ=3 p99 TTFT {5.9, 6.0, 7.4}&nbsp;s (n=3)</b> and <b>λ=5 {5.85, 7.46}&nbsp;s (n=2); all 5 pass, at ~4.1&nbsp;req/s</b>,
+<b>λ=3 p99 TTFT {5.9, 6.0, 7.4}&nbsp;s</b> and <b>λ=5 {5.85, 6.58, 7.46}&nbsp;s (n=3 each); all 6 pass, at ~4.1&nbsp;req/s</b>,
 all below the 8&nbsp;s SLO — versus stock's λ=3 coin-flip (mean 8.1&nbsp;s) and λ=5 stable failure
 (17–24&nbsp;s, n=5), a clean separation. So
 <b>goodput@SLO rises from ≤3 (stock, λ=3-bound) to ~4.1&nbsp;req/s</b> — near the compute ceiling of §4 — purely

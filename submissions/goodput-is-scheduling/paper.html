@@ -36,8 +36,8 @@ turns queued behind the back-to-back chunked prefill of a few large cold documen
 turns prefill ≥6&nbsp;s, yet the p99 is 6–11&nbsp;s; the waiting queue is 9.6× deeper during big-cold-doc
 chunks) — and above the knee the GPU is compute-bound at a work-conservation ceiling of ~4.2&nbsp;req/s
 (99% of forward steps are already prefill). Serving the small turns first (SRPF, a textbook policy) turns
-stock's stable λ=5 failure (17–24&nbsp;s, n=5) into a pass (5.85 and 7.46&nbsp;s, n=2, both &lt; SLO), lifting goodput@SLO from the
-stock coin-flip (≤3&nbsp;req/s, λ=3-bound) to <b>~4.1&nbsp;req/s</b> (4.05–4.16 across n=2, near the
+stock's stable λ=5 failure (17–24&nbsp;s, n=5) into a pass (5.85–7.46&nbsp;s, n=3, all &lt; SLO), lifting goodput@SLO from the
+stock coin-flip (≤3&nbsp;req/s, λ=3-bound) to <b>~4.1&nbsp;req/s</b> (4.05–4.16 across n=3, near the
 ~4.2&nbsp;req/s compute ceiling) — purely by reordering, with cache contents untouched. Finally we give a <em>predictive criterion</em>
 for when caching <em>would</em> matter: a reuse-stack-distance-vs-cache-horizon phase boundary, validated on
 constructed corpora, that this workload class sits far inside. The contribution is the map, the head-of-line
@@ -207,7 +207,7 @@ scheduler's existing priority interface — is the remedy the diagnosis predicts
 </svg>
 <figcaption><b>Goodput rate-sweep.</b> p99 TTFT vs request rate. Stock FCFS (grey) climbs through the
 8&nbsp;s SLO at every rate (the grey bar at λ=3 is the measured n=5 coin-flip range 6.3–11.8&nbsp;s); SRPF
-(green) stays under the SLO through λ=5 (λ=3 {5.9,6.0}s, λ=5 {5.85,7.46}s, n=2 each), so goodput@SLO ≈
+(green) stays under the SLO through λ=5 (λ=3 {5.9,6.0,7.4}s, λ=5 {5.85,6.58,7.46}s, n=3 each), so goodput@SLO ≈
 4.1&nbsp;req/s (near the compute ceiling) vs stock's ≤3. Reordering prefills, not caching, moves the metric.</figcaption>
 </div>
 <table>
@@ -216,13 +216,13 @@ scheduler's existing priority interface — is the remedy the diagnosis predicts
 control drew 7.6&nbsp;s); at λ=5 it fails stably.</caption>
 <tr><th>rate λ</th><th>stock p99 TTFT (same node)</th><th>SRPF p99 TTFT</th><th>SRPF req/s</th><th>SLO (8&nbsp;s)</th></tr>
 <tr><td>3</td><td>7.6&nbsp;s (coin-flip 6.3–11.8, 3/5 pass)</td><td>5.9, 6.0, 7.4&nbsp;s (n=3)</td><td>3.02</td><td class="g">3/3 pass; SRPF clears the coin-flip (stock 3/5)</td></tr>
-<tr><td>5</td><td class="b">22.7&nbsp;s (stable fail)</td><td>5.85, 7.46&nbsp;s (n=2)</td><td><b>4.05–4.16</b></td><td class="g">2/2 pass, stock 0/5</td></tr>
-<tr><td colspan="5"><b>goodput@SLO: stock ≤3 (λ=3-bound coin-flip) → SRPF ~4.1&nbsp;req/s. All 5 SRPF runs clear the SLO (λ=3 {5.9,6.0,7.4}s ×3, λ=5 {5.85,7.46}s ×2; range 5.85–7.46&nbsp;s); stock coin-flips at λ=3 (3/5) and fails λ=5 stably (0/5, 17–24&nbsp;s).</b></td></tr>
+<tr><td>5</td><td class="b">22.7&nbsp;s (stable fail)</td><td>5.85, 6.58, 7.46&nbsp;s (n=3)</td><td><b>4.05–4.16</b></td><td class="g">3/3 pass, stock 0/5</td></tr>
+<tr><td colspan="5"><b>goodput@SLO: stock ≤3 (λ=3-bound coin-flip) → SRPF ~4.1&nbsp;req/s. All 6 SRPF runs clear the SLO (λ=3 {5.9,6.0,7.4}s, λ=5 {5.85,6.58,7.46}s, n=3 each; range 5.85–7.46&nbsp;s); stock coin-flips at λ=3 (3/5) and fails λ=5 stably (0/5, 17–24&nbsp;s).</b></td></tr>
 </table>
 <p>
 This is a clean <em>same-node</em> A/B (both on node 0-3, so no cross-node variance confound).
-<b>Scope of evidence, stated plainly:</b> SRPF is n=3 at λ=3 and n=2 at λ=5, and <em>all five runs clear the
-8&nbsp;s SLO</em>: λ=3 {5.9, 6.0, 7.4}&nbsp;s (3/3) and λ=5 {5.85, 7.46}&nbsp;s (2/2), overall range
+<b>Scope of evidence, stated plainly:</b> SRPF is n=3 at both rates, and <em>all six runs clear the
+8&nbsp;s SLO</em>: λ=3 {5.9, 6.0, 7.4}&nbsp;s and λ=5 {5.85, 6.58, 7.46}&nbsp;s, overall range
 5.85–7.46&nbsp;s. SRPF has real run-to-run spread (its worst run, 7.46&nbsp;s, clears the SLO by only
 0.5&nbsp;s — reported honestly, goodput is "passes," not "comfortably"), <em>but every run passes</em>, unlike
 stock which coin-flips at λ=3 (3/5) and fails λ=5 stably (n=5, all 17–24&nbsp;s; the same-node control drew
@@ -355,8 +355,8 @@ matter. Cache-replacement theory (Belady, LRU stack-distance) supplies the phase
 long-document multiturn corpus. The phase-boundary criterion (§6) is our generality argument, but a direct
 cross-workload GPU sweep is out of scope of the fixed protocol.</li>
 <li>goodput@SLO is variance-dominated at λ=3; all comparisons are same-node and distributional. <b>SRPF is
-n=3 at λ=3 and n=2 at λ=5; all five runs clear the SLO: λ=3 {5.9, 6.0, 7.4}&nbsp;s (3/3), λ=5
-{5.85, 7.46}&nbsp;s (2/2), overall range 5.85–7.46&nbsp;s.</b> SRPF has genuine run-to-run spread (worst run
+n=3 at both rates; all six runs clear the SLO: λ=3 {5.9, 6.0, 7.4}&nbsp;s, λ=5
+{5.85, 6.58, 7.46}&nbsp;s, overall range 5.85–7.46&nbsp;s.</b> SRPF has genuine run-to-run spread (worst run
 7.46&nbsp;s, only 0.5&nbsp;s under the SLO — reported honestly), but every run passes, unlike stock (λ=3
 coin-flip 3/5; λ=5 stable-fail 0/5, 17–24&nbsp;s). The λ=5 win is a <em>clean separation</em> (every SRPF
 run 2–4× below every stock run, no overlap); the λ=3 win is 3/3 vs 3/5. We report SRPF's own spread

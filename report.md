@@ -879,3 +879,9 @@ margin law that corrects the frontier framing.
 ★MUST REFRAME (integrity): P6 headline = "capacity C +36% (deterministic, SOLID) + reliable λ=3 win (5/5 vs 1/5); λ=5
 goodput coin-flip (1/2, margin 0.65)". Dose-response §5 λ=5 comparison is coin-flip-caveated (f=2 good-basin 3.4s ≪
 f1.5/f3 20.7s but SLO-pass at λ=5 not reliably established). Propagate to P6 §4/abstract, capstone, INDEX, SYNTHESIS, memory.
+
+## v16 λ=7 = 5.51 thr (15:54): CAPACITY REPLICATES (deterministic), goodput did NOT (coin-flip) — reframe validated
+v16 λ=7 thr=5.51 (p99 30.4s) vs v13 λ=7 5.20 — accel capacity REPLICATES in the ~5.2-5.5 band (both ≫ stock 3.99).
+★CLEAN SEPARATION confirming the reframe: DETERMINISTIC capacity result replicates (v16 5.51 ≈ v13 5.20), COIN-FLIP
+goodput does NOT (v16 λ=5 17.9s vs v13 3.4s). So capacity +36% is the robust n=2 headline; goodput@SLO=5 is coin-flip.
+λ=10 (~16:20) → final sat C, firms +36% to n=2. Exactly as the reframe (deterministic vs coin-flip metrics) predicts.

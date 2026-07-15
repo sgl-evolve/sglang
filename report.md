@@ -819,3 +819,11 @@ long uninterruptible burst; single-chunked-req invariant → everything waiting 
 spike → p99 explodes while avg throughput holds. Mirrors decode-floor/fair-share backfires (all lengthen how long
 something monopolizes prefill → tail up). Fixed P6 §5 table (sat C 4.68→5.46) + keyfinding (tail-not-throughput framing).
 This is the 3rd data-driven refinement this session (all from actually reading the numbers).
+
+## Profiler campaign CLOSED (11:53): prefill anatomy WON; decode trace abandoned after 3 attempts
+run-1 got the clean PREFILL (EXTEND) trace = compute+comm-bound (robust n=8; drove 2 verified mechanism corrections).
+run-2 crashed (profile_by_stage SIGABRT). run-3 crashed (NCCL TCPStore timeout during FlashInfer trtllm workspace init
+— the documented cold-JIT rendezvous hang; needed --dist-timeout 3600, omitted). Node 19943 RELEASED (good-neighbor,
+~1.5h). Decode kernel trace NOT obtained; papers stand honestly on prefill anatomy + the §2 tpot∝conc decode-memory-bound
+law (capstone §3 already caveats profile_by_stage aborts). Net profiler value HIGH despite the decode miss.
+OPS: future profiler needs --dist-timeout 3600 (cold FlashInfer NCCL init); profile_by_stage broken on this build → plain.

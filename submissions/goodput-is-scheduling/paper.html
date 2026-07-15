@@ -285,7 +285,11 @@ scheduling (the p99 is head-of-line queue-wait, reducible by serving small turns
 goodput:</b> SRPF ≈ <code>g_ceil</code>; FCFS a sub-knee coin-flip below it. On our workload the procedure
 computes <code>g_ceil = 15000/3594 = 4.17&nbsp;req/s</code>, <code>f = 1.04&nbsp;s ≪ 8&nbsp;s</code>, and
 <code>h = 0.2%</code> → <b>lever = scheduling</b>, predicted SRPF goodput <b>4.17&nbsp;req/s</b> — matching
-the measured 4.16 to within 0.2% — while FCFS is a coin-flip below it. The model both reproduces the
+the measured 4.16 to within 0.2% — while FCFS is a coin-flip below it. (<code>C_eff</code> and
+<code>C_batch</code> are hardware throughputs measured independently in §3 — derived two agreeing ways —
+not fit to the goodput, so the match is a genuine cross-validation, not a tautology; and the
+<em>lever</em> decision uses only the parameter-free comparisons <code>f&lt;T</code>, <code>h≈0</code>,
+and bimodality, so naming the lever does not depend on <code>C_eff</code> at all.) The model both reproduces the
 measurement and, by flipping its inputs, names a <em>different</em> lever for a different regime (reuse
 beyond the horizon → caching; a lone document with <code>P99(W)/C_batch &gt; T</code> → compute; near-uniform
 small work → no head-of-line, so neither caching nor scheduling helps). The goodput lever is thus a function

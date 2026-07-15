@@ -24,8 +24,13 @@ def group(names):
         if r: out.append((v, r))
     return out
 
-ACCEL = group(["v10_accel","v10b_accel","v10c_accel","v10d_accel","v10e_accel"])
-STOCK_SAME = group(["v9_stock2","v11_stock3","v12_stock4"])       # same node (19833)
+def firm(prefix):  # auto-include v18_f* firming replicates (same-node paired, node 19990)
+    vs = sorted(os.path.basename(os.path.dirname(p))
+                for p in glob.glob(os.path.join(RUNS, prefix + "*", "bench_r3.json")))
+    return group(vs)
+
+ACCEL = group(["v10_accel","v10b_accel","v10c_accel","v10d_accel","v10e_accel"]) + firm("v18_faccel")
+STOCK_SAME = group(["v9_stock2","v11_stock3","v12_stock4"]) + firm("v18_fstock")   # same node (19833/19990)
 STOCK_OTHER = group(["v1_stock","v1b_stock"])                      # other-node coin-flip band
 
 def show(label, g):
@@ -85,9 +90,11 @@ def mannwhitney_exact(a, b):
     return U, ge/tot
 for metric in ("tpot","conc"):
     a=[r[metric] for _,r in ACCEL]; b=[r[metric] for _,r in allstock]
-    if a and b and len(a)+len(b)<=20:
+    if a and b and len(a)+len(b)<=24:
         U,p = mannwhitney_exact(a,b)
         print(f"=== MANN-WHITNEY ({metric}, coin-flip-ROBUST): accel {sorted(a)} vs stock {sorted(b)} ===")
         print(f"  one-sided exact p = {p:.4f}  {'SIGNIFICANT (<0.05)' if p<0.05 else 'ns'}  (accel < stock)")
+    elif a and b:
+        print(f"=== MANN-WHITNEY ({metric}): n={len(a)}+{len(b)} too large for exact enumeration; use scipy/normal approx ===")
 print("\nNOTE: deterministic tpot/conc (accel systematically below stock coin-flip range) is the coin-flip-ROBUST")
 print("evidence; Fisher on p99-pass is the goodput@SLO headline. Both together = the claim.")

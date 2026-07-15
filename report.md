@@ -861,3 +861,9 @@ f=1.5 λ=7 p99=10.3s FAIL, thr=5.34. ★NON-MONOTONIC p99: λ=5 20.7s > λ=7 10.
 level; both FAIL, goodput=3 unchanged) — reinforces n=1-per-cell caveat. sat C ≥5.34 (λ=10 ~14:00 final). ★All accel
 factors have similar raw sat C (f=1.5 ~5.4, f=2 5.65, f=3 5.46) but sharply different goodput@SLO (3/5/3) → reinforces
 "tail not throughput" (f=2 uniquely controls the p99 tail, not raw capacity). Updated §5 f=1.5 sat-C cell 4.6→5.3.
+
+## f=1.5 λ=10 → sat C=5.44; DOSE-RESPONSE FULLY FINALIZED (14:02)
+f=1.5 full curve: thr 3.02/4.56/5.34/5.44 (sat C 5.44). ★ALL accel factors raise sat C to ~5.4-5.65 (f1.5 5.44, f2 5.65,
+f3 5.46) vs stock 4.14 — goodput@SLO (3/5/3) is NOT a capacity difference; it's TAIL-CONTROL. Only f=2 holds p99 under
+SLO. §5 table complete (f=1.5 sat-C 5.44) + added "tail-control not capacity" note. Dose-response fully done.
+Remaining: v16_accelrep (frontier n≥2 firming) autonomous via launcher after node frees.

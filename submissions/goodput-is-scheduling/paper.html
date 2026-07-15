@@ -220,6 +220,17 @@ reserves part of each prefill chunk for waiting small turns without reordering; 
 converges to SRPF only as the reserve grows to the whole budget. We report it as a bounded negative — the
 efficient realization of head-of-line relief is reordering, not budget-partitioning.
 </p>
+<p>
+<b>The result is robust to the SLO threshold, not an artifact of 8&nbsp;s.</b> Sweeping the threshold
+<code>T</code> over the measured curves (<code>analysis/slo_sensitivity.py</code>), scheduling is the lever
+— SRPF's achieved goodput strictly exceeds stock's — for <code>T</code> across the entire practical range
+≈[6, 41]&nbsp;s (+38% at the 8&nbsp;s SLO, narrowing to +4% by 40&nbsp;s). Only below ~6&nbsp;s does the
+gap close because even SRPF's λ=3 (5.9&nbsp;s) hits a request's own prefill floor — a policy-invariant
+compute limit that <em>no</em> KV-cache or scheduling decision can cross — and only above ~41&nbsp;s does it
+close because stock's slow rates finally clear the loose SLO and both converge to the ~4.2&nbsp;req/s
+compute ceiling. The fixed 8&nbsp;s SLO sits squarely in the window where scheduling is decisive, so the
+conclusion does not hinge on the exact threshold.
+</p>
 
 <h2>6 When caching <em>would</em> matter: a phase-boundary criterion</h2>
 <p>
@@ -280,7 +291,8 @@ Base <code>a334877e5</code> (stock v0.31), all analysis and the SRPF policy on <
 Map evidence: <code>analysis/doc_reuse.py</code>, <code>reuse_distance.py</code>, <code>phase_boundary.py</code>
 (caching); <code>mamba_pressure.py</code> (recurrent pool); <code>pd_schedule.py</code> (prefill/decode);
 <code>hol_trace.py</code>, <code>hol_sim.py</code>, <code>bound.py</code>, <code>prefill_flops.py</code>
-(head-of-line + compute bounds); the admission negative is in the CCA companion. GPU runs:
+(head-of-line + compute bounds); <code>slo_sensitivity.py</code> (SLO-threshold robustness); the admission
+negative is in the CCA companion. GPU runs:
 <code>runs/v0-stock</code> (stock sweep), <code>runs/v-srpf-r1</code> (SRPF sweep), <code>runs/v-stock-srpfctl</code>
 (same-node control). SRPF is <code>--schedule-policy srpf</code> in
 <code>managers/schedule_policy.py</code>. All numbers derive from the frozen evaluation protocol; no eval

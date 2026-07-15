@@ -358,7 +358,7 @@ interleaving does not. The simulator is calibrated at λ=3 and over-serializes a
 only for the λ=3 diagnosis. A same-node GPU SRPF sweep confirms this at both regimes:
 <b>λ=3 p99 TTFT 5.85–7.4&nbsp;s</b> and <b>λ=5 5.85–7.82&nbsp;s (n=6 each; all 12 pass)</b>,
 all below the 8&nbsp;s SLO — versus stock's λ=3 coin-flip (mean 8.1&nbsp;s) and λ=5 stable failure
-(17–24&nbsp;s, n=5), a clean separation (Fisher λ=5 6/6 vs 0/5, p=0.0022). So
+(17–24&nbsp;s, n=7), a clean separation (Fisher λ=5 6/6 vs 0/7, p=0.0006). So
 <b>goodput@SLO rises from ≤3 (stock, λ=3-bound) to 4.0&nbsp;req/s</b> (λ=5, full contract sweep) — SLO-tail-bound, below the raw ceiling of §4 — purely
 by reordering prefills, with cache retention untouched. Scheduling moves the metric at both regimes; SRPF/SJF
 is a textbook policy, so the contribution here is the <em>diagnosis</em> that scheduling — not caching — is

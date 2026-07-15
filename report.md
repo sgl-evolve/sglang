@@ -758,3 +758,15 @@ Frozen launch (from eval.sh, reuse VERBATIM to avoid contract drift):
 Recipe: launch (+SGLANG_TURING_GIANT_ACCEL=1) → bench_serving λ=10 saturation load → once conc~250 POST /start_profile
 {num_steps~30, profile_by_stage:true, activities:["GPU"], output_dir} (auto-stops) → sum prefill-stage vs decode-stage
 GPU-kernel time from trace. Build+test when node free (dose-response holds it to ~14:00). Existing nucleus already strong.
+
+## Paper 7 profiler DE-RISKED — profile_by_stage mechanics confirmed (10:20)
+sglang scheduler_components/profiler_manager.py: profile_by_stage=true tracks separate profiler_prefill_ct/decode_ct,
+profiles num_steps of EACH stage, writes STAGE-PREFIXED chrome traces (*.trace.json.gz, per-TP-rank) to
+output_dir (default $SGLANG_TORCH_PROFILER_DIR); ProfileMerger.merge_chrome_traces() merges. => I get SEPARABLE
+prefill-stage vs decode-stage GPU-kernel traces. Analysis for the compute-vs-memory C wall:
+  (a) per-stage GPU-active kernel time per step (prefill vs decode),
+  (b) classify kernels: attention-KV-read/paged-attn = memory-bound; gemm/moe/grouped_gemm = compute,
+  (c) at saturation, the prefill-step vs decode-step WALL-CLOCK share.
+Verdict: decode-steps dominate wall-clock AND are attention-KV-read-bound => C is decode-memory-BW-bound (theory's
+prediction); else prefill-compute-bound. Trigger: POST /start_profile {num_steps~30, profile_by_stage:true,
+activities:["GPU"], output_dir} once conc~250 in a λ=10 load. Experiment fully specified; run when node frees.

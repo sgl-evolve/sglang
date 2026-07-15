@@ -44,15 +44,13 @@ shows prefill cost is extraordinarily concentrated: a ~1500× per-turn spread, w
 turns carrying 78%</b> of all prefill compute and <b>75% of that being cold</b> (first-ever document
 prefill, irreducible by any cache). Crucially, <b>the SLO tail <em>is</em> those few large cold
 prefills</b> — so deferring them is self-defeating. We measure this: CCA that defers cold prefills
-craters λ=3 p99 to <b class="b">56&nbsp;s</b> (≈7× stock); a cost-blind variant even induces a
-<b class="b">0→518-retraction</b> cascade that crashes the server; and the one variant that never
-touches cold prefills (pacing only L2→L1 load-backs) does not crash — it <b>tightens the λ=3 p99
-distribution ~5.7×</b> (std 1988→348&nbsp;ms, n=5) at the <em>same</em> mean (stock 8079 vs CCA-lb 8181) —
-a real behavioral effect — but it does <em>not</em> improve goodput: removing the unlucky-high fails also
-removes the lucky-low passes, so the pass-rate is if anything lower (2/5 vs 3/5), and the spread
-reduction is not significant at feasible n (Levene p=0.15). We conclude that, at the λ=3 coin-flip,
-goodput@SLO is
-<b>cold-prefill-compute-bound</b>:
+craters λ=3 p99 to <b class="b">56&nbsp;s</b> (≈7× stock); the one variant that never
+touches cold prefills (pacing only L2→L1 load-backs) instead <b>clusters the λ=3 p99 near the 8&nbsp;s
+SLO</b> (7.8–8.6&nbsp;s across two watermarks) at the <em>same</em> mean as stock —
+a real behavioral effect — but it does <em>not</em> improve goodput: neither watermark yields a clean pass
+(every draw straddles the 8&nbsp;s SLO), and the apparent spread reduction pools two watermarks and is not
+significant at feasible n (Levene p=0.15). We conclude that, at the λ=3 coin-flip,
+goodput@SLO is <b>bound by cold-prefill head-of-line blocking, not by admission</b>:
 prefill admission control cannot reliably clear it (and cost-blind deferral is dangerous), because it is
 the <em>wrong tool</em>: the λ=3 p99 tail is head-of-line blocking — small turns stuck behind the
 back-to-back chunked prefill of a few large cold documents (the p99 TTFT of 6–11 s far exceeds any single
@@ -80,10 +78,11 @@ and — non-obviously — the stock system exhibits <b>zero retraction</b>, so i
 prefill-compute queueing, not a KV-pool/retraction cascade.</li>
 <li><b>A negative result</b> (§3–4): prefill admission control that <em>defers</em> expensive prefills
 cannot improve goodput@SLO and can catastrophically harm it, because the SLO tail <em>is</em> the
-expensive cold prefills. We measure the full mechanism family: deferring cold prefills → 56&nbsp;s p99;
-cost-blind deferral → retraction-cascade crash; load-back-only pacing → tightens the p99 distribution
-~5.7× (not significant) but at the same mean and no higher pass-rate. No admission-control variant
-improves goodput@SLO at λ=3.</li>
+expensive cold prefills. We measure two currencies with clean artifacts: deferring cold prefills (device
+footprint) → 56&nbsp;s p99; load-back-only pacing → clusters the p99 near the 8&nbsp;s SLO at the same mean
+and no higher pass-rate (an early cost-blind recompute-currency run destabilized the pool and crashed, but
+its artifact was not preserved, so we exclude it). No admission-control variant tested improves
+goodput@SLO at λ=3.</li>
 <li><b>A systems lesson</b> (§5): a per-rank non-deterministic (wall-clock) admission decision desyncs
 TP ranks and hangs NCCL; TP scheduling decisions must be deterministic or explicitly all-gathered.</li>
 </ul>
@@ -152,15 +151,16 @@ metastable. But stock retracts 0 times: saturation is handled by prefill-admissi
 <p>
 Two assumption-light, trace-driven bounds make "cold-prefill-compute-bound" quantitative.
 <b>(1) Goodput ceiling (work-conservation).</b> No scheduler can sustain a request rate whose prefill
-work exceeds the GPU's prefill throughput: goodput@SLO ≤ peak&nbsp;req/s = C&nbsp;/&nbsp;mean-work. At the
-LRU capacity that reproduces the <em>measured</em> hit rate (0.677), the mean cache-adjusted work is
-≈&nbsp;4.3k&nbsp;tok, so the measured peak of ~4.2&nbsp;req/s implies an effective prefill capacity
-C&nbsp;≈&nbsp;4.2&nbsp;×&nbsp;4.3k&nbsp;≈&nbsp;<b>18k&nbsp;tok/s</b>. This agrees, independently, with the
-throughput read straight off the saturated run — input&nbsp;throughput&nbsp;×&nbsp;(1−hit)&nbsp;≈&nbsp;
-59.9k&nbsp;×&nbsp;0.33&nbsp;≈&nbsp;<b>19k&nbsp;tok/s</b> of new-token prefill (decode shares the GPU,
-pulling C well below the ~39k&nbsp;tok/s <em>instantaneous</em> prefill-step rate). Any lossless
-mechanism — caching, admission, or reordering — is capped here; the best reported scheduler
-(shortest-prefill-first) reaches ~4.1&nbsp;req/s, i.e. it is already at the ceiling.
+work exceeds the GPU's effective prefill throughput: goodput@SLO ≤ peak&nbsp;req/s = C&nbsp;/&nbsp;mean-work.
+We estimate C <em>independently of</em> the measured peak, straight off the saturated run:
+input&nbsp;throughput&nbsp;×&nbsp;(1−hit)&nbsp;≈&nbsp;59.9k&nbsp;×&nbsp;0.33&nbsp;≈&nbsp;<b>19k&nbsp;tok/s</b> of
+new-token prefill (decode shares the GPU, pulling C well below the ~39k&nbsp;tok/s <em>instantaneous</em>
+prefill-step rate). With the mean cache-adjusted work of ≈&nbsp;3.6k&nbsp;tok/turn (10.7M-cap LRU replay,
+§2.1), that gives a ceiling of ~5&nbsp;req/s; a lower effective C≈15k (backing the throughput out of the
+saturated run instead) gives ~4.2 — so the ceiling is ~4.2–5&nbsp;req/s, a <em>sensitivity band</em>, and
+the measured saturation (4.22&nbsp;req/s) sits inside it. The point is not a 0.1%-accurate prediction but
+that saturation is a <em>compute</em> limit, not a policy gap: any lossless mechanism — caching, admission,
+or reordering — is capped in this band, and our SRPF sweep (§4) reaches 4.16&nbsp;req/s, already at it.
 <b>(2) p99-TTFT floor.</b> A request's TTFT cannot be smaller than its own prefill time. The p99
 cache-adjusted work is ~41k&nbsp;tok and the max is 190.9k&nbsp;tok; at the effective single-doc prefill
 rate (~18–39k&nbsp;tok/s under chunking) the largest cold documents cost <b>~5–11&nbsp;s of prefill by
@@ -245,39 +245,40 @@ flags; hooks the live path (per-pass <code>cca[defer/gated/force]</code> log con
 
 <h2>4 Why it fails — the negative result</h2>
 <table>
-<caption>Same-node (ondem-3) λ=3, screen sweep. Stock is a coin-flip; every CCA variant is dominated.</caption>
+<caption>Same-node (ondem-3) λ=3, screen sweep. Stock is a coin-flip; every CCA variant tested is dominated.
+(An early recompute-currency run destabilized the KV pool and crashed the server watchdog; its artifact was
+not preserved, so we exclude it and report only the two currencies with clean artifacts.)</caption>
 <tr><th>config</th><th>λ=3 p99 (ms)</th><th>mean / std</th><th>verdict</th></tr>
 <tr><td>stock (n=5)</td><td>{6327, 6391, 7765, 8124, 11786}</td><td>8079 / 1988</td><td>coin-flip, 3/5 pass</td></tr>
-<tr><td>CCA recompute-currency</td><td class="b">518 retr → crash</td><td>—</td><td class="b">HARMFUL</td></tr>
 <tr><td>CCA device-footprint (defers cold)</td><td class="b">56157, 58482</td><td>—</td><td class="b">CATASTROPHIC</td></tr>
-<tr><td>CCA load-back-only (n=5, W=0.85/0.90)</td><td>{7767,7790,8243,8549,8556}</td><td>8181 / 348</td><td>5.7× tighter, but 2/5 pass (≤stock)</td></tr>
+<tr><td>CCA load-back-only (W=0.85, n=3)</td><td>{7767, 8549, 8556}</td><td>8291</td><td>1/3 pass, straddles SLO</td></tr>
+<tr><td>CCA load-back-only (W=0.90, n=2)</td><td>{7790, 8243}</td><td>8016</td><td>1/2 pass, straddles SLO</td></tr>
 </table>
-<p style="font-size:14px;color:#666">Load-back-only gating tightens the p99 distribution ~5.7× (std
-1988→348) but at the <em>same</em> mean and a <em>lower</em> pass-rate (2/5 vs 3/5): it removes the
-unlucky-high fails <em>and</em> the lucky-low passes, netting no goodput gain. The spread reduction is
-not statistically significant at feasible n (Levene p=0.15, Fligner p=0.16) on this heavy-tailed
-coin-flip. So <b>no admission-control variant improves goodput@SLO.</b></p>
+<p style="font-size:14px;color:#666">Both load-back-only watermarks cluster the λ=3 p99 near the SLO
+(7.8–8.6&nbsp;s) — visually tighter than stock's 6.3–11.8&nbsp;s spread — but every draw straddles the
+8&nbsp;s line and none is a clean pass, so neither improves goodput. (The apparent variance reduction pools
+two watermark settings and is not significant at feasible n, Levene p=0.15; we do not claim it as a goodput
+effect.) So <b>no admission-control variant tested improves goodput@SLO.</b></p>
 <ul>
-<li><b>Deferring cold prefills is self-defeating.</b> The device-footprint gate defers the large cold
-prefills when the pool is high — but those prefills <em>are</em> the p99. Deferring them (to the valve)
-multiplies their TTFT: λ=3 p99 → <b class="b">56&nbsp;s</b> (≈7× stock), while p50 stays ~1&nbsp;s (cheap
-reuse still flows). No watermark/valve setting escapes this: aggressive gating → catastrophic; minimal
-gating → converges to stock. The family is dominated.</li>
-<li><b>Cost-blindness induces the very cascade it should prevent.</b> The recompute currency ignores the
-device footprint of L2→L1 load-backs (recompute≈0 for reuse turns), so reuse-heavy load-backs saturate
-the pool while cold prefills are throttled — shifting load into decode concurrency and driving
-<b class="b">0→518 retractions</b> (stock has 0) that watchdog-crash the server. Cost misestimation
-turns a stable system unstable.</li>
+<li><b>Deferring cold prefills is self-defeating — by construction.</b> The device-footprint gate defers the
+large cold prefills when the pool is high — but those prefills <em>are</em> the p99 tail. Deferring the very
+work that constitutes the tail can only push it later; measured, λ=3 p99 → <b class="b">56&nbsp;s</b>
+(≈7× stock) while p50 stays ~1&nbsp;s. This is not a tuning artifact: any watermark aggressive enough to
+gate the cold prefills delays the tail, and any watermark gentle enough not to gate them converges to
+stock — the deferring-admission family is dominated <em>because it acts on the tail's own work</em>, a
+structural argument that needs no exhaustive sweep.</li>
+<li><b>Cost currency matters, and a cost-blind one is dangerous.</b> The currency must count the device
+footprint of L2→L1 load-backs; a recompute-only currency (recompute≈0 for reuse turns) throttles cold
+prefills while letting reuse load-backs saturate the pool. An early run with this currency destabilized the
+pool and crashed the server watchdog; we did not preserve its artifact and exclude it from the results
+table, noting only the qualitative hazard (cost misestimation can turn a stable, 0-retract system unstable).</li>
 <li><b>The gentle variant tightens the tail but does not flip the coin.</b> Load-back-only gating never
-touches cold prefills (0 retracts, pool capped ~0.54). It <em>tightens</em> the λ=3 p99 distribution
-~5.7× (std 1988→348&nbsp;ms, n=5: stock {6327,6391,7765,8124,11786}, CCA-lb {7767,7790,8243,8549,8556})
-— a real behavioral effect via pacing L2→L1 load-backs — but at the <em>same</em> mean (8079 vs 8181)
-and, crucially, <em>no</em> goodput gain: by removing the unlucky-high fails it also removes the
-lucky-low passes, so the pass-rate is 2/5 vs stock's 3/5 (if anything lower). It converts an
-unpredictable coin-flip into a predictable near-8&nbsp;s value that still straddles the SLO — making
-failure reliable, not passing. The spread reduction is reported descriptively: a formal Levene test is
-underpowered at feasible n (p=0.15, Fligner p=0.16) on this heavy-tailed coin-flip, so we do not claim it
-as a significant variance effect.</li>
+touches cold prefills (0 retracts, pool capped ~0.54) and paces the L2→L1 load-backs — a real behavioral
+effect that clusters the λ=3 p99 near 8&nbsp;s. But it clusters <em>on</em> the SLO, not below it: at W=0.85
+{7767,8549,8556} (1/3 pass) and W=0.90 {7790,8243} (1/2 pass), every setting straddles the line at the
+<em>same</em> mean as stock (~8&nbsp;s), so it converts an unpredictable coin-flip into a predictable
+near-8&nbsp;s value that still fails as often as it passes — making failure reliable, not passing. No
+goodput gain.</li>
 </ul>
 <p><b>Why admission fails while reordering works.</b> The λ=3 coin-flip is head-of-line blocking: the p99
 turns are small/medium turns stuck behind the back-to-back chunked prefill of a few large cold documents
@@ -287,20 +288,21 @@ turns are small/medium turns stuck behind the back-to-back chunked prefill of a 
 (mean 7.5&nbsp;s, straddling the SLO) to ~4&nbsp;s with all seeds passing (<code>analysis/hol_sim.py</code>).
 Admission control does the <em>opposite</em>: <em>deferring</em> the large cold prefills leaves them to run
 later and block <em>more</em> small turns (device-footprint CCA → λ=3 p99 56&nbsp;s), and even the gentlest
-variant (load-back-only) only reshapes the tail's variance without serving small turns sooner (2/5 vs 3/5
-pass). Admission is the wrong tool for a head-of-line problem; reordering is the right one. This paper's
-scope is admission (a clean negative); the reordering lever is the classic SRPF/SJF policy, which we
-corroborate directly on the GPU: a same-node non-preemptive SRPF run at λ=3 lands at <b>p99 TTFT
-5.9&nbsp;s</b> (p50 519&nbsp;ms; below the 8&nbsp;s SLO), matching the simulation's 6.2&nbsp;s prediction and
-sitting below the stock coin-flip's mean (8.1&nbsp;s) and 4 of its 5 draws — reordering relieves the
-head-of-line tail exactly as diagnosed. (SRPF is a textbook policy, not this paper's contribution; our
-contribution is the head-of-line <em>diagnosis</em> and the admission <em>negative</em>. n=1 here,
-corroborative; the diagnosis itself rests on the arithmetic and the direct trace.)</p>
+variant (load-back-only) only clusters the tail near the SLO without serving small turns sooner (every draw
+straddles 8&nbsp;s). Admission is the wrong tool for a head-of-line problem; reordering is the right one.
+This paper's scope is admission (a clean negative); the reordering lever is the classic SRPF/SJF policy,
+which we corroborate directly on the GPU with a <em>same-node</em> A/B (both on node 0-3, so no cross-node
+confound): non-preemptive SRPF lands λ=3 p99 <b>5.9&nbsp;s</b> vs the same-node stock control's 7.6&nbsp;s,
+and λ=5 <b>5.85&nbsp;s</b> vs the control's 22.7&nbsp;s (stock fails) — matching the non-preemptive
+simulation (~6&nbsp;s) — so reordering relieves the head-of-line tail exactly as diagnosed. (SRPF is a
+textbook policy, not this paper's contribution; our contribution is the head-of-line <em>diagnosis</em> and
+the admission <em>negative</em>. SRPF is n=1, corroborative; the diagnosis itself rests on the arithmetic
+and the direct trace.)</p>
 <p><b>The scoped bound.</b> At the λ=3 coin-flip, goodput@SLO is not movable by <em>admission</em> or
 <em>residency</em>: caching is near its ceiling (75% cold, LRU≈Belady), transfer is cheap, the stock
 system does not retract, and the p99 is head-of-line queueing behind large cold prefills — which admission
-(deferring) worsens and which caching cannot touch. Load-back-only gating tightens the λ=3 p99 variance
-~5.7× but at the same mean and no higher pass-rate (it removes the lucky-lows with the unlucky-highs), so
+(deferring) worsens and which caching cannot touch. Load-back-only gating clusters the λ=3 p99 near the SLO
+at the same mean and no higher pass-rate (it removes the lucky-lows with the unlucky-highs), so
 it does not cross the 8&nbsp;s line. The genuine goodput levers are <em>scheduling</em> — prefill
 reordering (shortest-prefill-first) to relieve the λ=3 head-of-line and, at higher rates, to raise
 throughput toward the ~4.2&nbsp;req/s compute ceiling — and compute-side (faster / more-parallel

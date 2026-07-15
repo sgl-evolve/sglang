@@ -232,8 +232,10 @@ Goodput@SLO = max rate with p99 TTFT ≤ 8&nbsp;s. SRPF's λ=3,5 are additionall
 <tr><td colspan="6"><b>goodput@SLO: stock ≤3 (λ=3-bound coin-flip) → SRPF 4.0&nbsp;req/s (the λ=5 rate).</b> SRPF's p99 crosses the SLO between λ=5 (7.8&nbsp;s) and λ=7 (10.3&nbsp;s); its <em>raw</em> throughput keeps rising to 4.72&nbsp;req/s at λ=10, so goodput is bounded by the head-of-line <em>tail</em>, not raw compute.</td></tr>
 </table>
 <p>
-This is a clean <em>same-node</em> A/B (both on node 0-3, so no cross-node variance confound).
-<b>Scope of evidence, stated plainly:</b> SRPF is n=3 at both rates, and <em>all six runs clear the
+The λ=7,10 failures come from the single full contract sweep (v-srpf-full); the decisive λ=3,5 rows are
+additionally backed by a <em>clean same-node A/B</em> (both on node 0-3, so no cross-node variance confound in
+the comparison that sets the goodput).
+<b>Scope of evidence, stated plainly:</b> at λ=3,5 SRPF is n=3 each, and <em>all six runs clear the
 8&nbsp;s SLO</em>: λ=3 {5.9, 6.0, 7.4}&nbsp;s and λ=5 {5.85, 6.58, 7.46}&nbsp;s, overall range
 5.85–7.46&nbsp;s. SRPF has real run-to-run spread (its worst run, 7.46&nbsp;s, clears the SLO by only
 0.5&nbsp;s — reported honestly, goodput is "passes," not "comfortably"), <em>but every run passes</em>, unlike

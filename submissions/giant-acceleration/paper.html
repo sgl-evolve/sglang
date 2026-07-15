@@ -46,7 +46,7 @@ test the <b>dual</b>: <em>accelerate</em> the giant. When device-KV occupancy is
 giant a <em>larger</em> per-step token budget so it completes its prefill in fewer steps and <em>exits sooner</em>,
 lowering concurrency. On a same-node A/B at &lambda;=3 (n=4 replicates each), giant acceleration passes the 8&nbsp;s
 SLO in <b>4/4 runs</b> (p99 TTFT 7.0/4.6/5.5/4.8&nbsp;s) vs stock 1/4 (14.2/11.1/11.5/6.2&nbsp;s), with decode
-time-per-token dropping to 146&ndash;333&nbsp;ms (stock 392&ndash;607) and mean concurrency to 21&ndash;57 (stock
+time-per-token dropping to 146&ndash;333&nbsp;ms (stock 319&ndash;607) and mean concurrency to 21&ndash;57 (stock
 74&ndash;166), at unchanged throughput and all requests completing (no starvation). The decode-tpot and concurrency
 distributions are near-perfectly separated (one-sided Mann-Whitney U exact p&nbsp;=&nbsp;0.016 for tpot,
 0.008 for concurrency)&mdash;coin-flip-robust, significant confirmation that the mechanism reduces residency and
@@ -123,7 +123,7 @@ good-basin draw). One-sided Fisher exact p = <b>0.040</b>. Even the coin-flip-in
 significance at n=4 vs n=5.</li>
 </ul>
 The causal chain is measured end-to-end: bigger chunk &rarr; giant exits in fewer steps &rarr; concurrency down
-(21&ndash;57 vs 74&ndash;166) &rarr; memory-bound decode faster (tpot 146&ndash;333 vs 392&ndash;607) &rarr; p99 down
+(21&ndash;57 vs 74&ndash;166) &rarr; memory-bound decode faster (tpot 146&ndash;333 vs 319&ndash;607) &rarr; p99 down
 (4.6&ndash;7.0 vs 6.2&ndash;14.2&nbsp;s), all lossless (7 037/7 037 complete every run).</div>
 <p class="note"><b>Honest caveats.</b> (1) The p99 SLO-pass is coin-flip-sensitive; we therefore report both it
 (Fisher, n=4 vs 5) and the coin-flip-robust deterministic metrics (Mann-Whitney on tpot/concurrency), and both are
@@ -153,6 +153,8 @@ clearing giants from the running batch faster, more requests flow through per un
 <em>K-lever</em> (capacity) of the companion capacity law C=K/(1&minus;h), not merely a latency fix. &lambda;=7 becomes
 the new knee (offered 7 &gt; new C&nbsp;&asymp;&nbsp;5.2). The gain magnitude is comparable to shortest-first
 scheduling, achieved by a fully distinct, composable mechanism.</div>
+
+<h2>5 Relationship to the series</h2>
 <p>This completes a trilogy on intra-step prefill control at the concurrency cap: slowing giants via a decode floor
 (companion) backfires; slowing giants via fair-share interleaving (companion) backfires; <em>accelerating</em> giants
 wins. Together they establish that the goodput tail is governed by giant <em>residency</em>, and that the levers are

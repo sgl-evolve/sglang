@@ -37,12 +37,15 @@ whole-request shortest-first scheduling, and **giant *acceleration*** reduce res
    the in-flight giant (boost its per-step chunk to f·B under occupancy pressure) so it exits sooner → concurrency↓ →
    memory-bound decode↓ → p99↓. Same-node A/B λ=3: accel n=4 PASS the 8s SLO 4/4 (p99 7.0/4.6/5.5/4.8 s) vs stock 1/4
    (14.2 s); DOUBLY SIGNIFICANT — Fisher SLO-pass p=0.040 + Mann-Whitney tpot p=0.016/conc p=0.008 (coin-flip-robust).
-   First positive, lossless, on-contract mechanism. Why it works (refutes the wall-clock-residency worry): decode is
-   memory-bound, so extra prefill tokens are ~free under the decode stall → a bigger chunk finishes the giant in fewer
-   *same-length* steps → halves residency. **★FRONTIER (full sweep): accel is not just a λ=3 fix — it PASSES the SLO
-   at BOTH λ=3 (4.5s) AND λ=5 (3.4s, thr 4.85 STABLE) where stock λ=5 is unstable/fails (17-20s) → goodput@SLO 3→5
-   (+67%); λ=7 is the new knee (29.8s, thr saturates 5.20). Acceleration raises the effective capacity ceiling C
-   ~4.14→~5.65 (+36%) — it is empirically the K-lever of P2's C=K/(1−h).**
+   First positive, lossless, on-contract mechanism. Why it works (kernel-profile-corrected mechanism): prefill runs as
+   its own COMPUTE+COMM-bound steps (profile: 39% flash-attn + 29% MoE/GEMM + 19% AllReduce + 9% mem), so a bigger chunk
+   is NOT "free" — instead it halves the giant's prefill-STEP count, amortizing per-step overhead (19% AllReduce),
+   releasing the single-chunked-req admission block sooner, and interrupting the interleaved decode fewer times → decode
+   tpot 561→423 (−25%) at EQUAL concurrency AND equal KV-footprint (0.33=0.33, verified: interference not footprint).
+   **★FRONTIER (full sweep): goodput@SLO 3→5 (+67%; PASSES λ=3 4.5s + λ=5 3.4s stable, stock λ=5 fails 17-25s); accel
+   raises capacity C ~4.14→~5.65 (+36%) = empirical K-lever of P2. ★DOSE-RESPONSE (inverted-U): f=2 OPTIMAL; f=3 is a
+   TAIL failure (sat C 5.46≈f=2 but p99 craters λ5→20.5s → goodput back to 3) — over-accel lengthens prefill
+   monopolization, mirroring decode-floor/fair-share backfires.**
 
 ### The design-space map (what moves the tail, what doesn't)
 | axis | effect on concurrency/residency | goodput@SLO |

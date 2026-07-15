@@ -17,9 +17,9 @@ SLWT=$ROOT/workspace/sgl/v0.31/research/researchers/kleinrock-shortlane-wt      
 source "$MAIN/.venv/bin/activate"
 export PYTHONPATH="$SLWT/python"
 cd "$SLWT"
-CACHE="$MAIN/.cache-shortlane"; mkdir -p "$CACHE"
+CACHE="$MAIN/${SL_CACHE:-.cache-shortlane}"; mkdir -p "$CACHE"
 export TRITON_CACHE_DIR="$CACHE/triton" CUDA_CACHE_PATH="$CACHE/nv" FLASHINFER_CACHE_DIR="$CACHE/flashinfer" XDG_CACHE_HOME="$CACHE"
-OUT="$MAIN/runs/v4-shortlane-ab"; mkdir -p "$OUT"; PORT=${PORT:-30041}
+OUT="$MAIN/${SL_OUT:-runs/v4-shortlane-ab}"; mkdir -p "$OUT"; PORT=${PORT:-30041}
 NUMP=1553; WARMUP_NUMP=300; MAXC=256; SLO_MS=8000
 MODEL=Qwen/Qwen3.5-122B-A10B-FP8; MIX=/rmeng_data/junyanch-data/datasets/mooncake_mix_v1.jsonl
 NODE=$(hostname -s 2>/dev/null || hostname)
@@ -56,6 +56,7 @@ run_arm () {   # $1=arm_label  $2=extra_flag(s)  $3="lam:K ..."
     for REP in $(seq 1 "$K"); do
       local tag="${ALABEL}_l${LAM}_r${REP}"
       echo ">>> [SHORTLANE] arm=$ALABEL lambda=$LAM rep=$REP/$K $(date -u +%H:%M:%S)"
+      [ -n "${SL_PERREQ:-}" ] && export KLEINROCK_PERREQ_DUMP="$OUT/perreq_${tag}.csv" || unset KLEINROCK_PERREQ_DUMP
       python3 benchmark/hicache/bench_serving.py --backend sglang --model "$MODEL" \
         --dataset-name loogle --dataset-path "$MIX" --enable-multiturn --disable-shuffle \
         --request-rate "$LAM" --max-concurrency "$MAXC" --num-prompts "$NUMP" --port $PORT \

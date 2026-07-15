@@ -236,8 +236,8 @@ Fisher p=0.0022 (§5) — while stock λ=3 is a coin-flip (4/6 pass).</caption>
 </table>
 <p>
 The λ=7,10 failures come from the single full contract sweep (v-srpf-full); the decisive λ=3,5 rows are
-additionally backed by a <em>clean same-node A/B</em> (both on node 0-3, so no cross-node variance confound in
-the comparison that sets the goodput).
+additionally backed by <em>n=6 SRPF replicates</em> — a clean same-node A/B on node 0-3 (both arms, no
+cross-node confound) plus replicates on node 1-1 that confirm the win is not node-specific.
 <b>Scope of evidence, stated plainly:</b> SRPF is n=6 at each of λ=3 and λ=5 (six independent runs, all
 verified plain-SRPF: <code>schedule_policy=srpf</code>, RPB off), and <em>every one of the twelve clears the
 8&nbsp;s SLO</em>: λ=3 {5.89, 6.04, 6.39, 6.50, 6.97, 7.39}&nbsp;s and λ=5 {5.85, 6.41, 6.58, 6.58, 7.46,

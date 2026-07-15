@@ -217,7 +217,31 @@ C=K/(1&minus;h), not merely a latency fix. &lambda;=7 becomes the new knee (offe
 C&nbsp;&ge;&nbsp;5.65). The gain magnitude is comparable to shortest-first scheduling, achieved by a fully distinct,
 composable mechanism.</div>
 
-<h2>5 Relationship to the series</h2>
+<h2>5 The acceleration factor has an optimum (dose-response)</h2>
+<p>Is bigger always better? No&mdash;the boost factor <span class="mono">f</span> has a sweet spot. Sweeping
+<span class="mono">SGLANG_TURING_ACCEL_FACTOR</span> &isin; {1&nbsp;(stock), 2, 3} (same node, same workload):</p>
+<table>
+<thead><tr><th>factor f</th><th>&lambda;=3 p99</th><th>&lambda;=5 p99</th><th>goodput@SLO</th><th>saturated C</th></tr></thead>
+<tbody>
+<tr><td>1 (stock)</td><td>6&ndash;14&nbsp;s (coin-flip)</td><td class="fail">~25&nbsp;s</td><td>0&ndash;3</td><td>4.14</td></tr>
+<tr><td><b>2</b></td><td class="win">4.5&nbsp;s</td><td class="win">3.4&nbsp;s</td><td class="win"><b>5</b></td><td class="win"><b>5.65</b></td></tr>
+<tr><td>3</td><td class="win">5.2&nbsp;s</td><td class="fail">20.5&nbsp;s</td><td class="fail">3</td><td>4.68</td></tr>
+</tbody>
+</table>
+<div class="keyfinding"><b>Goodput@SLO is an inverted-U in f, peaking at f=2.</b> Under-boosting (stock, f=1) lets giants
+linger; over-boosting (f=3) is <em>also</em> harmful&mdash;it drops goodput back from 5 to 3 and lowers saturated
+capacity (5.65&rarr;4.68). The mechanism is why: a 3&times; chunk (up to the 16&nbsp;384-token per-step ceiling) makes
+each prefill step so large it stalls the interleaved decode <em>within the step</em>, so decode time-per-token rises
+(&lambda;=3 tpot 138&rarr;253&nbsp;ms from f=2 to f=3) and residency climbs&mdash;re-igniting the very
+concurrency&harr;decode runaway that acceleration exists to break. Over-acceleration is thus the mirror image of the
+decode-floor and fair-share backfires: all three move residency the wrong way. The effect is load-dependent (f=3 still
+passes at &lambda;=3 but tips over at &lambda;=5, near capacity), which is why the operating point matters. The chosen
+f=2 is therefore a principled optimum, not an arbitrary constant.</div>
+<p class="note">Single run per (f, &lambda;) cell (goodput@SLO is coin-flip-sensitive); the f=3 collapse at &lambda;=5
+(20.5&nbsp;s = 2.5&times; the SLO) is far outside the coin-flip band and is corroborated by the systematic &lambda;=3
+degradation (f=3 worse than f=2 on p99, concurrency, and tpot), so the optimum is robust to the coin-flip.</p>
+
+<h2>6 Relationship to the series</h2>
 <p>This completes a trilogy on intra-step prefill control at the concurrency cap: slowing giants via a decode floor
 (companion) backfires; slowing giants via fair-share interleaving (companion) backfires; <em>accelerating</em> giants
 wins. Together they establish that the goodput tail is governed by giant <em>residency</em>, and that the levers are
@@ -226,14 +250,14 @@ wins. Together they establish that the goodput tail is governed by giant <em>res
 raised it. Giant acceleration is orthogonal to whole-request reordering (intra-step chunk budget vs inter-request
 queue order); whether the two residency levers compose additively is a natural but untested extension.</p>
 
-<h2>6 Related work</h2>
+<h2>7 Related work</h2>
 <p>Sarathi-Serve chunks prefill <em>smaller</em> to bound prefill&harr;decode interference for mean latency; giant
 acceleration goes the opposite way (bigger chunks for in-flight giants under pressure) and targets the p99 tail via
 residency&mdash;valid precisely because decode is memory-bound so the extra prefill is nearly free. SRPF/SJF reorder
 whole requests; acceleration does not reorder&mdash;it speeds the giant already running. To our knowledge, an
 occupancy-adaptive giant-acceleration policy for goodput@SLO is new.</p>
 
-<h2>7 Reproducibility</h2>
+<h2>8 Reproducibility</h2>
 <ul>
 <li>Mechanism commit <span class="mono">8bf42d159</span> on <span class="mono">evolve/turing</span>; base
 <span class="mono">a334877e5</span>. Hook in <span class="mono">scheduler.get_new_batch_prefill</span> before

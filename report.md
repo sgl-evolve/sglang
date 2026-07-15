@@ -736,3 +736,12 @@ adaptive replicate decide the framing — if rpbA25-r2 ≈ baseline (6400-6600) 
 if ≈6900 → adaptive is a SMALL real λ5 regression (~+6%), reframe from "neutral" to "no goodput gain + small tail
 cost" (still supports the core negative: reservation doesn't help goodput). Either way the CONCLUSION holds
 (chunk-level reservation can't improve goodput); only the adaptive λ5 sub-claim's precise wording is at stake.
+
+### n=2 firming update — fixed RPB λ3 is within coin-flip noise (the "−10% help" was a lucky draw)
+fixed RPB λ3 n=2: {6300, 7646} (span ~19%, tput 386.7/386.8 identical). vs baseline λ3 {6973, 6393}. ⇒ at λ3
+fixed RPB is WITHIN the coin-flip/metastable noise band — the n=1 "−10% help" (6300 vs 6973) was a lucky LOW
+draw. HONEST n=2 reframe: fixed RPB has NO robust sub-knee benefit; the only robust effect is the λ5 harm
+(+41%, mechanistic throughput drop). This SHARPENS the negative (RPB gives no robust benefit anywhere + hurts
+the goodput rate). Must update P4 §5: soften "helps λ3 −10%" → "λ3 within coin-flip noise (no robust effect)".
+Awaiting fixed r2 λ5 (confirms the robust harm) + adaptive r2 (framing decider). NOTE λ3 metastability was my
+own core thesis — single-run λ3 comparisons unreliable — so this is expected, not surprising.

@@ -935,3 +935,9 @@ fcfs (n=3) p99 median 22.7s {22408,22658,23406} vs LOF (longest-output-first, n=
 size — does NOT help the tail (even slightly worse), while srpf (defers heavy docs by remaining-prefill) does.
 CONFIRMS it is DEFERRAL-BY-PREFILL-SIZE specifically, not reordering-in-general → rules out the "any reordering
 helps" alternative. Sharpens §5.6. Firming LOF to n=3 (reps 2-3 landing), then add the sentence + commit/push.
+
+### §5.6 deferral-specificity integrated (2026-07-15 ~16:40Z)
+LOF n=3 firm: p99 {26460,27521,27979} median 27.5s, 0/3 (slightly worse than fcfs 22.7s). Added to §5.6: the
+goodput lever is DEFERRAL-BY-PREFILL specifically — LOF (reorder-by-output, doesn't defer heavy docs) fails like
+fcfs; only srpf (defer) passes. Rules out "any reordering helps." srpf-on-0-0 arm (fully same-node triple) still
+running (~18:30) — will confirm; current §5.6 cites srpf 7.0s (n=5, 3x gap ≫ node variance). Committed+pushed.

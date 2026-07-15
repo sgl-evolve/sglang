@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Residency–Concurrency Runaway — turing</title>
+<style>
+  :root{--ink:#1a1a1a;--mut:#666;--acc:#1a5a2a;--bg:#fff;--box:#f2f6f2;--line:#dae0da}
+  html{font-size:17px}
+  body{max-width:52rem;margin:0 auto;padding:2.2rem 1.3rem 6rem;background:var(--bg);color:var(--ink);
+       font-family:Georgia,"Times New Roman",serif;line-height:1.55}
+  h1{font-size:1.62rem;line-height:1.25;margin:0 0 .3rem}
+  h2{font-size:1.2rem;margin:2.1rem 0 .6rem;border-bottom:2px solid var(--acc);padding-bottom:.2rem}
+  h3{font-size:1.02rem;margin:1.3rem 0 .3rem}
+  .sub{color:var(--mut);font-size:.95rem;margin:.1rem 0}
+  code,.mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.86em}
+  .abstract{background:var(--box);border-left:3px solid var(--acc);padding:.8rem 1rem;margin:1.2rem 0;font-size:.97rem}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.88rem}
+  th,td{border:1px solid var(--line);padding:.32rem .5rem;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  thead th{background:var(--box)}
+  .fail{color:#a11;font-weight:bold}
+  .win{color:#1a6a1a;font-weight:bold}
+  .note{color:var(--mut);font-size:.85rem}
+  .keyfinding{background:#eaf5ec;border:1px solid #a9d3b3;padding:.5rem .8rem;margin:.8rem 0;font-size:.93rem}
+  .eq{background:var(--box);border:1px solid var(--line);padding:.5rem .8rem;margin:.7rem 0;text-align:center;font-size:1.02rem}
+  ul{margin:.4rem 0 .8rem} li{margin:.25rem 0}
+  .draft{display:inline-block;background:var(--acc);color:#fff;font-size:.7rem;padding:.1rem .5rem;border-radius:3px;
+         vertical-align:middle;letter-spacing:.05em;font-family:sans-serif}
+</style>
+</head>
+<body>
+
+<h1>The Residency–Concurrency Runaway: A Unified Theory of the Goodput@SLO Tail in Saturated LLM Serving <span class="draft">v1 · submitted</span></h1>
+<p class="sub"><b>turing</b> · independent research-tier capstone · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8, 8×H100</p>
+<p class="sub">Base commit <span class="mono">a334877e5</span> · synthesizes a five-study series (goodput-anatomy, schedulable-frontier, goodput-coinflip, prefill-hol-blocking, giant-acceleration)</p>
+
+<div class="abstract">
+<b>Abstract.</b> We ask what governs <b>goodput@SLO</b>&mdash;the maximum request rate a saturated multiturn LLM serving
+system sustains under a p99 TTFT deadline&mdash;and why the intuitive levers (bigger caches, prefill fairness, reserving
+compute for decode) fail to move it. Across a five-study series on a 122B hybrid-MoE model, we find a single organizing
+mechanism: a <b>memory-bound concurrency&harr;decode positive-feedback runaway</b>. High in-flight concurrency slows
+every (memory-bandwidth-bound) decode step; slower decode lengthens request residency; longer residency raises
+concurrency. This loop has a sharp, testable consequence that unifies otherwise-disparate results into <b>one law</b>:
+<em>any mechanism that reduces in-flight residency raises goodput@SLO; any mechanism that raises residency (or fails to
+lower it) does not help or backfires.</em> The law is not merely descriptive&mdash;it is <b>predictive and falsifiable</b>.
+It correctly forecast three negatives before we built them (hierarchical caching cannot help; an occupancy-gated decode
+floor backfires; chunk-level prefill fair-share backfires) and, decisively, it forecast a <b>positive dual</b> that we
+then confirmed: if slowing a giant prefill hurts by making it linger, then <em>accelerating</em> it must help. Giant
+acceleration&mdash;granting the in-flight chunked giant a larger per-step token budget under memory pressure so it exits
+sooner&mdash;is the first novel, lossless, on-contract mechanism in the series to raise goodput@SLO, lifting the
+frontier from 3 to 5&nbsp;req/s (+67%) and the effective capacity ceiling +26%. We also give the quantitative backbone
+(a capacity law <span class="mono">C=K/(1&minus;h)</span> with an intrinsic-feasibility floor showing every SLO
+violation is contention, not service time) and a methodological result (goodput@SLO on a <em>deterministic</em>
+workload is a coin-flip&mdash;metastable occupancy-basin selection&mdash;so single runs are void and per-step
+deterministic metrics are the coin-flip-robust currency). The contribution is a predictive theory that turns a
+scattered design space into a single partition: <b>residency is the state variable; every effective lever reduces it.</b>
+</div>
+
+<h2>1 The question and the surprise</h2>
+<p>Production LLM serving is increasingly <em>conversational and saturated</em>: long multiturn sessions, heavy-tailed
+documents (here up to 191K tokens), offered load at or beyond the knee. The operator's metric is <b>goodput@SLO</b>: the
+largest Poisson arrival rate &lambda; at which p99 time-to-first-token (TTFT) stays under a deadline (8&nbsp;s). The
+surprise that motivates this work: the levers practitioners reach for first <em>do not move it</em>. A 768&nbsp;GB
+second-tier KV cache that lifts hit rate from 0.43 to 0.74 leaves goodput@SLO unchanged. Reserving GPU compute for
+decode when the queue looks decode-starved makes the tail 3&times; <em>worse</em>. Fairly interleaving a monopolizing
+giant prefill with waiting short requests makes it 3&times; worse <em>and</em> starves 40% of requests. Each failure is
+individually puzzling. Together they are a pattern, and the pattern has a mechanism.</p>
+
+<h2>2 The runaway</h2>
+<p>Decode on this model at the concurrency cap is <b>memory-bandwidth-bound</b>: each decode step's time is dominated by
+streaming the KV cache of every request in the running batch. Therefore the per-step decode time grows with the number
+of in-flight requests. This closes a positive-feedback loop:</p>
+<div class="eq">high concurrency &rarr; slower (memory-bound) decode step &rarr; each request lingers longer &rarr; higher concurrency</div>
+<p>We call the quantity the loop pumps <b>residency</b>: the aggregate wall-clock time requests spend occupying the
+running batch (equivalently, the time-integral of concurrency). The loop is <em>not</em> compute-mediated&mdash;adding
+compute headroom does not drain it, because the bottleneck is memory bandwidth, not FLOPs. It is <em>not</em>
+arrival-noise&mdash;it persists on a fully deterministic workload (fixed seed, disabled shuffle, warmup burst). It is a
+genuine dynamical instability: the same offered load settles into either a low-occupancy basin (p99 passes) or a
+high-occupancy basin (p99 fails), and small perturbations select between them (&sect;5).</p>
+<div class="keyfinding"><b>The law.</b> Because decode is memory-bound and the loop is residency-mediated, the sign of a
+mechanism's effect on goodput@SLO is the sign of its effect on residency, inverted: <b>reduce in-flight residency &rArr;
+goodput up; raise it (or leave it) &rArr; no help or backfire.</b> This single statement classifies the entire design
+space, and&mdash;critically&mdash;it makes predictions about mechanisms not yet built.</div>
+
+<h2>3 The capacity backbone</h2>
+<p>The runaway sets the <em>tail</em>; a companion capacity law sets the <em>ceiling</em>. At saturation the sustainable
+rate obeys</p>
+<div class="eq">C = K / (1 &minus; h),&nbsp;&nbsp; K &equiv; C&middot;(1&minus;h) = R&middot;N / P<sub>total</sub></div>
+<p>where <span class="mono">h</span> is cache hit rate and <span class="mono">K</span> is a capacity constant. Fitting
+across rate points gives <span class="mono">K = 1.388 &plusmn; 0.034</span> (CV&nbsp;2.5%), <em>invariant</em> for pure
+write-policy variants, predicting measured C within 1&ndash;3%. Two orthogonal, anti-correlated levers move C: cache hit
+via the strong <span class="mono">1/(1&minus;h)</span> factor, and K via reducing backup I/O that competes with prefill
+for host&harr;device bandwidth. Backup-gating raises K (+14% to +49%) but craters h&mdash;and h wins&mdash;so eager full
+backup is optimal, which is exactly why the caching axis cannot buy goodput (&sect;4). A decisive corollary: solo TTFT
+for even the largest 191K-token document is 6.95&nbsp;s&nbsp;&lt;&nbsp;8&nbsp;s&mdash;<b>every request is solo-feasible</b>,
+so <em>every</em> SLO violation is contention, not service time. Offline goodput therefore equals C, and the gap between
+measured goodput and C is a pure contention factor (&asymp;6.7&times; between contended and solo prefill rate). The
+runaway <em>is</em> that contention.</p>
+
+<h2>4 The design-space partition</h2>
+<p>The law predicts a sign for every axis. We tested each; all match.</p>
+<table>
+<thead><tr><th>Axis / mechanism</th><th>Effect on residency / concurrency</th><th>goodput@SLO</th><th>study</th></tr></thead>
+<tbody>
+<tr><td>Hierarchical caching (hit &uarr;)</td><td>tail is uncacheable turn-0 prefill &rarr; no concurrency drop</td><td class="fail">no effect</td><td>P1</td></tr>
+<tr><td>L2 backup admission gating</td><td>craters hit &rarr; C &darr;</td><td class="fail">backfire</td><td>P1</td></tr>
+<tr><td>Eviction policy (7 variants)</td><td>LRU &asymp; Belady; tail not miss-count</td><td>neutral</td><td>P1</td></tr>
+<tr><td>LPM co-residency scheduling</td><td>can't change concurrency-capped working set</td><td>neutral</td><td>P1</td></tr>
+<tr><td>Occupancy-gated decode floor</td><td>throttled giant lingers &rarr; concurrency &uarr;</td><td class="fail">backfire (31.8&nbsp;s)</td><td>P3/P4</td></tr>
+<tr><td>Chunk-level fair-share interleave</td><td>capped giant lingers + starvation &rarr; concurrency &uarr;</td><td class="fail">backfire (37&nbsp;s)</td><td>P5</td></tr>
+<tr><td>Tail-acceleration by serialization</td><td>serializing giants one-at-a-time &rarr; residency &uarr;</td><td class="fail">backfire (34&ndash;136&nbsp;s)</td><td>P1</td></tr>
+<tr><td><b>Capacity C (K or h)</b></td><td>raises the ceiling</td><td class="win">lever</td><td>P2</td></tr>
+<tr><td><b>Whole-request shortest-first</b></td><td>fewer in-flight requests &rarr; residency &darr;</td><td class="win">lever (textbook)</td><td>P2</td></tr>
+<tr><td><b>Giant acceleration</b></td><td>giant exits sooner &rarr; concurrency &darr;</td><td class="win">lever (novel, P6)</td><td>P6</td></tr>
+</tbody>
+</table>
+<p>Everything above the rule is a residency-increaser (or -neutral) and does not help; everything below reduces
+residency and wins. The three backfires are especially informative: each is an <em>intuitively correct</em> cure
+(cache more, protect decode, be fair) that the law predicted would fail, and each failed for the same reason&mdash;it
+raised or failed to lower residency. Two are our own falsified cures built specifically to test the law (P4 decode
+floor, P5 fair-share); both backfired to the <em>same</em> 31&ndash;37&nbsp;s bad basin, from opposite design intents,
+confirming the mechanism is residency, not any particular knob.</p>
+
+<h3>4.1 The unified prefill-rate law</h3>
+<p>Sharpening the two falsified cures yields a crisp sub-law: <b>at the concurrency cap, any mechanism that reduces a
+giant's prefill rate backfires.</b> Slowing a giant&mdash;whether by throttling its budget (P4) or by capping its
+per-step share to admit shorts (P5)&mdash;makes it linger across more steps, which raises concurrency, which slows
+memory-bound decode: the runaway, amplified. The p99 tail is <em>not reshapable within fixed capacity by any intra-step
+prefill-slowing policy</em>. This is a strong negative: it rules out an entire family of "prefill fairness / decode
+protection" mechanisms in one stroke.</p>
+
+<h2>5 Prediction and confirmation: the positive dual</h2>
+<p>A theory earns its keep by predicting something it was not built to explain. The prefill-rate law has a
+<b>dual</b>: if slowing a giant hurts by making it linger, then <em>speeding it up</em>&mdash;so it exits the running
+batch sooner&mdash;must help. We stated this prediction before building the mechanism, then built it. <b>Giant
+acceleration</b>: when device-KV occupancy &rho; exceeds &theta;, grant the in-flight chunked giant a larger per-step
+token budget (f&times;, capped at the engine's per-step ceiling) so a 58K-token giant finishes in ~5 steps instead of
+~10 and leaves sooner. It is env-gated, drops/reorders/evicts nothing, and is output-lossless (a cache miss recomputes
+identical tokens). The counterintuitive part&mdash;why a bigger prefill chunk does not just relocate the work&mdash;is
+itself explained by the theory: because decode is memory-bound, the extra prefill tokens ride nearly free under the
+decode stall, so a 2&times; chunk finishes the giant in half the steps at &asymp;the same step-time, halving its
+wall-clock residency.</p>
+<div class="keyfinding"><b>Confirmed, doubly.</b> Same-node A/B at &lambda;=3 (the coin-flip point): acceleration passes
+the 8&nbsp;s SLO in 4/4 runs (p99 7.0/4.6/5.5/4.8&nbsp;s) vs stock 1/5, with decode time-per-token and concurrency
+distributions near-perfectly separated. The coin-flip-sensitive SLO-pass is significant (one-sided Fisher
+p&nbsp;=&nbsp;0.040) and&mdash;more importantly&mdash;so are the coin-flip-<em>robust</em> deterministic metrics
+(one-sided Mann-Whitney U exact: tpot p&nbsp;=&nbsp;0.016, concurrency p&nbsp;=&nbsp;0.008).</div>
+<p>The full-sweep result is the theory's quantitative payoff. Acceleration does not merely fix the &lambda;=3 coin-flip;
+it <b>moves the frontier</b>:</p>
+<table>
+<thead><tr><th>offered &lambda;</th><th>accel p99 TTFT</th><th>accel throughput</th><th>SLO</th><th>stock (companion)</th></tr></thead>
+<tbody>
+<tr><td>3</td><td class="win">4.5&nbsp;s</td><td>3.02</td><td class="win">PASS</td><td>coin-flip 6&ndash;14&nbsp;s</td></tr>
+<tr><td>5</td><td class="win">3.4&nbsp;s</td><td>4.85 (stable)</td><td class="win">PASS</td><td class="fail">17&ndash;20&nbsp;s (fail)</td></tr>
+<tr><td>7</td><td class="fail">29.8&nbsp;s</td><td>5.20 (saturated)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
+</tbody>
+</table>
+<p>Acceleration lifts goodput@SLO from 3 to 5&nbsp;req/s (+67%). At &lambda;=5 stock is over its capacity ceiling
+(C&nbsp;&asymp;&nbsp;4.14) so its queue is unstable and p99 diverges; acceleration keeps &lambda;=5 <em>stable</em>
+(achieved 4.85&nbsp;&asymp;&nbsp;offered) at 3.4&nbsp;s. Achieved throughput saturates near 5.2&nbsp;req/s, i.e.
+acceleration raises the effective capacity ceiling C by &sim;26% (4.14&rarr;5.2). This closes the loop with &sect;3:
+<b>residency reduction is empirically the K-lever of the capacity law</b>&mdash;by clearing giants from the running
+batch faster, more requests flow per unit time. The magnitude rivals whole-request shortest-first scheduling, achieved
+by a fully distinct, composable mechanism (no reordering).</p>
+
+<h2>6 Methodology: goodput@SLO is a coin-flip</h2>
+<p>A theory of the tail is only as trustworthy as its measurements, and the tail here is treacherous. On the
+deterministic &lambda;=3 point, identical stock configurations on the same node give p99 TTFT anywhere from 6 to
+14&nbsp;s&mdash;<em>pass or fail from run to run</em>, with cache hit rate invariant to &lt;0.1&nbsp;pp. This is the
+runaway's dynamical signature: metastable selection between occupancy basins, amplified far beyond an M/G/1 queue's
+variance (measured occupancy-spread ratio &sim;19&times; vs &sim;1.8&times; predicted&mdash;a bistable, not merely
+slow, queue). Reliability is governed by capacity margin (C&minus;&lambda;): the write-back config's larger margin
+gives 20&times; tighter occupancy and 2/2 SLO passes vs stock's coin-flip. Two consequences discipline every claim in
+the series: (i) a single-run A/B is void; same-node, median-of-k comparison is mandatory. (ii) The deterministic
+per-step metrics&mdash;decode tpot, mean concurrency, per-step head-of-line fraction&mdash;are <em>coin-flip-robust</em>
+and are the currency in which mechanism effects are proven (e.g. P6's Mann-Whitney separation), with the
+coin-flip-sensitive SLO-pass reported alongside via Fisher's exact test.</p>
+
+<h2>7 Related work</h2>
+<p>Sarathi-Serve chunks prefill <em>smaller</em> to bound prefill&harr;decode interference for mean latency; the
+prefill-rate law and giant acceleration show that at the concurrency cap, for the p99 tail, the opposite is
+correct&mdash;because decode is memory-bound, bigger chunks that evict giants sooner reduce residency. Marconi/Jenga and
+hierarchical-KV systems target hit rate; our design-space partition shows hit rate is decoupled from goodput@SLO when
+the tail is uncacheable turn-0 prefill. Shortest-remaining-processing-first and its variants are the textbook
+residency-reducing scheduler; we derive its role from the capacity law (as a K-lever) independently and position giant
+acceleration as an orthogonal, composable residency lever that operates <em>within</em> a request rather than by
+reordering across requests. Classic queueing predicts metastability from heavy tails; our contribution is to identify
+the specific memory-bound decode feedback that produces a &sim;19&times; super-M/G/1 amplification in a modern serving
+engine, and to show it is the same state variable that governs every mechanism's sign.</p>
+
+<h2>8 Conclusion</h2>
+<p>The goodput@SLO tail of saturated conversational LLM serving is not a grab-bag of independent effects. It is one
+dynamical instability&mdash;a memory-bound concurrency&harr;decode runaway&mdash;with one state variable, residency.
+That single fact organizes the design space into a clean partition (every effective lever reduces residency; every
+backfire raises it), explains why the intuitive cures fail, quantifies the ceiling (C=K/(1&minus;h), all violations
+contention), disciplines the measurements (coin-flip; use deterministic per-step metrics), and&mdash;the real
+test&mdash;predicted a novel positive mechanism (giant acceleration) that raises the frontier +67% and the capacity
+ceiling +26%. The practical takeaway for serving-system designers is compact: <b>stop optimizing hit rate and prefill
+fairness for the tail; measure and minimize residency.</b></p>
+
+<h2>9 Reproducibility</h2>
+<ul>
+<li>Base commit <span class="mono">a334877e5</span>, branch <span class="mono">evolve/turing</span>. Mechanisms:
+decode floor <span class="mono">239608a1e</span>, fair-share <span class="mono">48ad6612b</span>, giant acceleration
+<span class="mono">8bf42d159</span> (env-gated, default OFF).</li>
+<li>Eval harness, dataset (mooncake multiturn mix, 1553 convs &rarr; ~7037 turns), model, TP8, rate sweep
+&lambda;&isin;{3,5,7,10}, warmup, seeded arrivals: unchanged from contract across all five studies.</li>
+<li>Analysis (all committed, reproducible): <span class="mono">frontier.py</span>, <span class="mono">frontier_des.py</span>,
+<span class="mono">occupancy_basin.py</span>, <span class="mono">metastability_model.py</span>,
+<span class="mono">analyze_firm.py</span> (Fisher + Mann-Whitney exact), <span class="mono">goodput_model.py</span>.</li>
+<li>Constituent studies: goodput-anatomy (P1), schedulable-frontier (P2), goodput-coinflip (P3, incl. decode-floor P4),
+prefill-hol-blocking (P5), giant-acceleration (P6).</li>
+</ul>
+
+</body>
+</html>

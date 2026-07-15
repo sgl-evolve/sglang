@@ -32,7 +32,7 @@
 </head>
 <body>
 
-<h1>Giant Acceleration: Finishing Big Prefills Faster is the Tail Lever That Works <span class="draft">v1 · submitted</span></h1>
+<h1>Giant Acceleration: Finishing Big Prefills Faster is the Tail Lever That Works <span class="draft">v2 · submitted</span></h1>
 <p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
 <p class="sub">Base commit <span class="mono">a334877e5</span> · mechanism <span class="mono">8bf42d159</span></p>
 
@@ -55,7 +55,12 @@ speeds memory-bound decode as the law predicts; and the coin-flip-sensitive SLO-
 win establishes that the tail's lever is <em>residency reduction</em>: because decode is memory-bound, extra prefill
 tokens are nearly "free" under the decode stall, so a bigger chunk finishes the giant in fewer <em>same-length</em>
 steps. This is the first positive, lossless, on-contract mechanism in the series; it is orthogonal to (and composes
-with) whole-request shortest-first scheduling.
+with) whole-request shortest-first scheduling. <b>Beyond &lambda;=3, giant acceleration raises the goodput@SLO
+frontier itself:</b> a full rate sweep passes the SLO at both &lambda;=3 (4.5&nbsp;s) and &lambda;=5 (3.4&nbsp;s,
+throughput 4.85&nbsp;req/s &mdash; stable) where stock is unstable and fails (p99 17&ndash;20&nbsp;s), lifting
+goodput@SLO from 3 to 5&nbsp;req/s (+67%) by raising the effective capacity ceiling from &sim;4.14 to &sim;5.2&nbsp;req/s
+(+26%). Acceleration is thus not merely a &lambda;=3 latency fix but a <em>capacity</em> lever&mdash;the K-lever of the
+companion frontier study&mdash;of magnitude comparable to shortest-first scheduling, via a distinct mechanism.
 </div>
 
 <h2>1 Introduction &amp; the unified law</h2>
@@ -120,14 +125,34 @@ significance at n=4 vs n=5.</li>
 The causal chain is measured end-to-end: bigger chunk &rarr; giant exits in fewer steps &rarr; concurrency down
 (21&ndash;57 vs 74&ndash;166) &rarr; memory-bound decode faster (tpot 146&ndash;333 vs 392&ndash;607) &rarr; p99 down
 (4.6&ndash;7.0 vs 6.2&ndash;14.2&nbsp;s), all lossless (7 037/7 037 complete every run).</div>
-<p class="note"><b>Honest caveats.</b> (1) The p99 headline is coin-flip-sensitive and currently n=1 per arm; we are
-replicating (n&ge;3 accel vs stock) for a Fisher-style SLO-pass test. The corroborating tpot/concurrency signals are
-robust to the coin-flip. (2) Hit rate falls 2.5&nbsp;pp: boosting the per-step commit changes KV eviction timing, so
-the set of cached prefixes differs&mdash;the mechanism is output-lossless (misses recompute identically; all 7 037
-requests complete) but not hit-invariant. Notably the p99 win occurs <em>despite</em> lower cache reuse, underscoring
+<p class="note"><b>Honest caveats.</b> (1) The p99 SLO-pass is coin-flip-sensitive; we therefore report both it
+(Fisher, n=4 vs 5) and the coin-flip-robust deterministic metrics (Mann-Whitney on tpot/concurrency), and both are
+significant. (2) Hit rate falls ~2.5&nbsp;pp: boosting the per-step commit changes KV eviction timing, so the set of
+cached prefixes differs&mdash;the mechanism is output-lossless (misses recompute identically; all 7 037 requests
+complete every run) but not hit-invariant. Notably the win occurs <em>despite</em> lower cache reuse, underscoring
 that the gain is from residency/decode, not caching.</p>
 
-<h2>4 Relationship to the series</h2>
+<h2>4 Raising the goodput@SLO frontier (full sweep)</h2>
+<p>The &lambda;=3 result shows acceleration wins where stock coin-flips. A full rate sweep shows it does more&mdash;it
+moves the frontier. With <span class="mono">GIANT_ACCEL</span> on:</p>
+<table>
+<thead><tr><th>offered &lambda;</th><th>accel p99 TTFT</th><th>accel throughput</th><th>SLO</th><th>stock (companion)</th></tr></thead>
+<tbody>
+<tr><td>3</td><td class="win">4.5&nbsp;s</td><td>3.02</td><td class="win">PASS</td><td>coin-flip 6&ndash;14&nbsp;s (goodput 0&ndash;3)</td></tr>
+<tr><td>5</td><td class="win">3.4&nbsp;s</td><td>4.85 (&asymp;offered, stable)</td><td class="win">PASS</td><td class="fail">17&ndash;20&nbsp;s, unstable (fail)</td></tr>
+<tr><td>7</td><td class="fail">29.8&nbsp;s</td><td>5.20 (&lt;offered, saturated)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
+</tbody>
+</table>
+<div class="keyfinding">
+<b>Giant acceleration raises goodput@SLO from 3 to 5&nbsp;req/s (+67%).</b> At &lambda;=5, stock is over its capacity
+ceiling (C&nbsp;&asymp;&nbsp;4.14, companion frontier study) so its queue is unstable and p99 diverges to 17&ndash;20&nbsp;s;
+acceleration keeps &lambda;=5 <em>stable</em> (achieved 4.85&nbsp;&asymp;&nbsp;offered) at 3.4&nbsp;s p99. The accel
+throughput saturates near <b>5.2&nbsp;req/s</b> (the &lambda;=7 achieved rate), i.e. acceleration <b>raises the
+effective capacity ceiling C by &sim;26%</b> (4.14&rarr;5.2). This is the mechanistic payoff of residency reduction: by
+clearing giants from the running batch faster, more requests flow through per unit time&mdash;acceleration is the
+<em>K-lever</em> (capacity) of the companion capacity law C=K/(1&minus;h), not merely a latency fix. &lambda;=7 becomes
+the new knee (offered 7 &gt; new C&nbsp;&asymp;&nbsp;5.2). The gain magnitude is comparable to shortest-first
+scheduling, achieved by a fully distinct, composable mechanism.</div>
 <p>This completes a trilogy on intra-step prefill control at the concurrency cap: slowing giants via a decode floor
 (companion) backfires; slowing giants via fair-share interleaving (companion) backfires; <em>accelerating</em> giants
 wins. Together they establish that the goodput tail is governed by giant <em>residency</em>, and that the levers are
@@ -135,21 +160,22 @@ wins. Together they establish that the goodput tail is governed by giant <em>res
 (c) giant acceleration (reduces each giant's residency). (a)/(b)/(c) all reduce concurrency; the failed mechanisms all
 raised it. Giant acceleration is orthogonal to whole-request reordering and composes with it.</p>
 
-<h2>5 Related work</h2>
+<h2>6 Related work</h2>
 <p>Sarathi-Serve chunks prefill <em>smaller</em> to bound prefill&harr;decode interference for mean latency; giant
 acceleration goes the opposite way (bigger chunks for in-flight giants under pressure) and targets the p99 tail via
 residency&mdash;valid precisely because decode is memory-bound so the extra prefill is nearly free. SRPF/SJF reorder
 whole requests; acceleration does not reorder&mdash;it speeds the giant already running. To our knowledge, an
 occupancy-adaptive giant-acceleration policy for goodput@SLO is new.</p>
 
-<h2>6 Reproducibility</h2>
+<h2>7 Reproducibility</h2>
 <ul>
 <li>Mechanism commit <span class="mono">8bf42d159</span> on <span class="mono">evolve/turing</span>; base
 <span class="mono">a334877e5</span>. Hook in <span class="mono">scheduler.get_new_batch_prefill</span> before
 <span class="mono">add_chunked_req</span>. Env <span class="mono">SGLANG_TURING_GIANT_ACCEL=1
 SGLANG_TURING_ACCEL_THETA=0.85 SGLANG_TURING_ACCEL_FACTOR=2.0</span>.</li>
 <li>Eval harness, dataset, model, TP8, rate sweep, warmup, seeded arrivals: unchanged from contract. Same-node A/B
-(coin-flip demands it); focus &lambda;=3.</li>
+(coin-flip demands it): the &sect;3 firming uses n=4 accel vs n=5 stock &lambda;=3 replicates; the &sect;4 frontier is
+a full &lambda;&isin;{3,5,7,10} sweep (<span class="mono">v13_accelfull</span>) vs the stock companion curve.</li>
 </ul>
 
 </body>

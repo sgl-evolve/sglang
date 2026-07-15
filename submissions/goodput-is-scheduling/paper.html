@@ -158,6 +158,43 @@ its work-conservation ceiling. Two regimes, one physical wall.
 Serving the small turns first — shortest-prefill-first (SRPF/SJF), a textbook policy dropped onto the
 scheduler's existing priority interface — is the remedy the diagnosis predicts. Our own same-node GPU sweep:
 </p>
+<div class="fig">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 380" font-family="Georgia,serif" font-size="13">
+<rect x="0" y="0" width="680" height="380" fill="white"/>
+<line x1="72" y1="334" x2="662" y2="334" stroke="#333"/>
+<line x1="72" y1="28" x2="72" y2="334" stroke="#333"/>
+<line x1="72" y1="334.0" x2="662" y2="334.0" stroke="#eee"/>
+<text x="64" y="338.0" text-anchor="end" fill="#555">0s</text>
+<line x1="72" y1="266.0" x2="662" y2="266.0" stroke="#eee"/>
+<text x="64" y="270.0" text-anchor="end" fill="#555">10s</text>
+<line x1="72" y1="198.0" x2="662" y2="198.0" stroke="#eee"/>
+<text x="64" y="202.0" text-anchor="end" fill="#555">20s</text>
+<line x1="72" y1="130.0" x2="662" y2="130.0" stroke="#eee"/>
+<text x="64" y="134.0" text-anchor="end" fill="#555">30s</text>
+<line x1="72" y1="62.0" x2="662" y2="62.0" stroke="#eee"/>
+<text x="64" y="66.0" text-anchor="end" fill="#555">40s</text>
+<text x="72.0" y="352" text-anchor="middle" fill="#555">λ=3</text>
+<text x="240.6" y="352" text-anchor="middle" fill="#555">λ=5</text>
+<text x="409.1" y="352" text-anchor="middle" fill="#555">λ=7</text>
+<text x="662.0" y="352" text-anchor="middle" fill="#555">λ=10</text>
+<text x="367" y="372" text-anchor="middle" fill="#333">request rate λ (req/s, Poisson)</text>
+<text x="16" y="181" text-anchor="middle" fill="#333" transform="rotate(-90 16 181)">p99 TTFT</text>
+<line x1="72" y1="279.6" x2="662" y2="279.6" stroke="#c00" stroke-width="1.5" stroke-dasharray="6,4"/>
+<text x="658" y="273.6" text-anchor="end" fill="#c00">8 s SLO</text>
+<line x1="72.0" y1="291.0" x2="72.0" y2="253.9" stroke="#999" stroke-width="6" opacity="0.5"/>
+<polyline fill="none" stroke="#888" stroke-width="2.5" points="72.0,253.8 240.6,215.9 409.1,103.1 662.0,52.9"/>
+<circle cx="72.0" cy="253.8" r="4.5" fill="#888"/><circle cx="240.6" cy="215.9" r="4.5" fill="#888"/><circle cx="409.1" cy="103.1" r="4.5" fill="#888"/><circle cx="662.0" cy="52.9" r="4.5" fill="#888"/>
+<polyline fill="none" stroke="#1a7f37" stroke-width="2.5" points="72.0,293.9 240.6,294.2"/>
+<circle cx="72.0" cy="293.9" r="4.5" fill="#1a7f37"/><circle cx="240.6" cy="294.2" r="4.5" fill="#1a7f37"/>
+<rect x="494" y="34" width="150" height="52" fill="white" stroke="#ddd"/>
+<line x1="504" y1="50" x2="524" y2="50" stroke="#888" stroke-width="2.5"/><text x="530" y="54" fill="#333">stock (FCFS)</text>
+<line x1="504" y1="70" x2="524" y2="70" stroke="#1a7f37" stroke-width="2.5"/><text x="530" y="74" fill="#333">SRPF (reorder)</text>
+</svg>
+<figcaption><b>Goodput rate-sweep.</b> p99 TTFT vs request rate. Stock FCFS (grey) climbs through the
+8&nbsp;s SLO at every rate (the grey bar at λ=3 is the measured n=5 coin-flip range 6.3–11.8&nbsp;s); SRPF
+(green) stays flat at ~5.9&nbsp;s through λ=5, so goodput@SLO = 4.16&nbsp;req/s (the compute ceiling) vs
+stock's ≤3. Reordering prefills, not caching, moves the metric.</figcaption>
+</div>
 <table>
 <caption>Same-node rate sweep, stock (FCFS) vs. SRPF. Goodput@SLO = max rate with p99 TTFT ≤ 8&nbsp;s.
 Stock at λ=3 is a coin-flip (n=5: {6.3, 6.4, 7.8, 8.1, 11.8}&nbsp;s, 3/5 pass); at λ≥5 it fails stably.</caption>

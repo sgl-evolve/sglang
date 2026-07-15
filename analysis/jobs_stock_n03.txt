@@ -1,0 +1,10 @@
+# floyd: same-node stock (fcfs) λ5 controls on node 0-3 — the flagship's PRIMARY same-node node,
+# which already holds 4 SRPF λ5 passes (r1/r2/r3 5.9/7.5/6.6s + full 7.8s) + 1 stock fail (srpfctl 22.7s).
+# Goal: firm the STRICTLY same-node SRPF-vs-stock significance (currently p=0.20 with a single stock
+# control) to p<=0.05 WITHOUT cross-node pooling. 3 stock fails -> 0-3: SRPF 4/4 vs stock 0/4 -> Fisher
+# p=0.014, zero pooling. Stock (no flags) = fcfs. Full contract sweep (TIMEOUT=4:00:00 so summary.json
+# is written after λ10). Stock λ5 has failed 5/5 (17-24s, <=1.08x spread) -> these should fail too;
+# if any PASSES on 0-3, that is itself a major node-dependence finding.
+v-stock-n03-1:
+v-stock-n03-2:
+v-stock-n03-3:

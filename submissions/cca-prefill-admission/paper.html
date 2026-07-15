@@ -206,9 +206,9 @@ engine already spends nearly all compute on new first-tokens, so the prefill/dec
 TTFT-optimal and not a further lever (shifting steps to decode would only lower goodput). Reordering the
 deep queue is now meaningful: shortest-prefill-first (SRPF/SJF, a classic scheduling policy) reorders it. The
 full contract sweep sets <b>goodput@SLO = 4.0&nbsp;req/s</b> (SRPF passes λ=3 at 6.5&nbsp;s and λ=5 at
-7.8&nbsp;s, fails λ=7 at 10.3&nbsp;s), and our same-node A/B corroborates the λ=5 win: <b>λ=5 p99 TTFT {5.85,
-6.58, 7.46}&nbsp;s (n=3, all below the SLO)</b> versus stock's stable λ=5 failure (17–24&nbsp;s across n=5;
-the same-node control drew 22.7&nbsp;s) — a clean separation. So goodput@SLO rises from the λ=3 coin-flip
+7.8&nbsp;s, fails λ=7 at 10.3&nbsp;s), and our same-node A/B (plus node-1-1 replicates) corroborates the λ=5 win: <b>λ=5 p99 TTFT 5.85–7.82&nbsp;s
+(n=6, all below the SLO)</b> versus stock's stable λ=5 failure (17–24&nbsp;s across n=5;
+the same-node control drew 22.7&nbsp;s) — a clean separation (Fisher 6/6 vs 0/5, p=0.0022). So goodput@SLO rises from the λ=3 coin-flip
 (≤3&nbsp;req/s) to <b>4.0&nbsp;req/s</b>. This is SLO-tail-bound, not compute-bound: SRPF's <em>raw</em>
 throughput continues climbing to 4.72&nbsp;req/s at λ=10 while its p99 crosses the SLO, so the binding wall is
 the head-of-line tail, not raw compute — and no reordering closes the SLO gap further. (SRPF is textbook; the contribution is the
@@ -295,12 +295,12 @@ later and block <em>more</em> small turns (device-footprint CCA → λ=3 p99 56&
 variant (load-back-only) only clusters the tail near the SLO without serving small turns sooner (every draw
 straddles 8&nbsp;s). Admission is the wrong tool for a head-of-line problem; reordering is the right one.
 This paper's scope is admission (a clean negative); the reordering lever is the classic SRPF/SJF policy,
-which we corroborate directly on the GPU with a <em>same-node</em> A/B (both on node 0-3, so no cross-node
-confound): non-preemptive SRPF lands λ=3 p99 <b>{5.9, 6.0, 7.4}&nbsp;s (n=3, all pass)</b> vs the same-node stock control's 7.6&nbsp;s (and stock's 3/5 coin-flip),
-and λ=5 <b>{5.85, 6.58, 7.46}&nbsp;s (n=3, all pass)</b> vs the control's 22.7&nbsp;s and stock's 0/5 λ=5 failures (Fisher exact p=0.018) — matching the non-preemptive
+which we corroborate directly on the GPU with a <em>same-node</em> A/B (node 0-3) plus cross-node replicates
+(node 1-1): non-preemptive SRPF lands λ=3 p99 in <b>{5.9–7.4}&nbsp;s (n=6, all pass)</b> vs the same-node stock control's 7.6&nbsp;s (and stock's 4/6 coin-flip),
+and λ=5 in <b>{5.85–7.82}&nbsp;s (n=6, all pass)</b> vs the control's 22.7&nbsp;s and stock's 0/5 λ=5 failures (Fisher exact, 6/6 vs 0/5, p=0.0022) — matching the non-preemptive
 simulation (~6&nbsp;s) — so reordering relieves the head-of-line tail exactly as diagnosed. (SRPF is a
 textbook policy, not this paper's contribution; our contribution is the head-of-line <em>diagnosis</em> and
-the admission <em>negative</em>. SRPF is n=1, corroborative; the diagnosis itself rests on the arithmetic
+the admission <em>negative</em>. The SRPF A/B is corroborative (n=6); the diagnosis itself rests on the arithmetic
 and the direct trace.)</p>
 <p><b>The scoped bound.</b> At the λ=3 coin-flip, goodput@SLO is not movable by <em>admission</em> or
 <em>residency</em>: caching is near its ceiling (75% cold, LRU≈Belady), transfer is cheap, the stock

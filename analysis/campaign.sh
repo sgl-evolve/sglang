@@ -27,9 +27,10 @@ for entry in "${JOBS[@]}"; do
   log="$LOGD/eval-floyd-$ver-%j.out"; mkdir -p "$LOGD" 2>/dev/null || log="/tmp/eval-floyd-$ver-%j.out"
   echo "[campaign] >>> $ver  flags='$flags'  $(date -u)"
   # shellcheck disable=SC2086
-  # -t 2:45:00: screens take ~2h; a hung job (NCCL flake) gets force-killed here
-  # instead of stalling the serial driver for the full 6h wall limit.
-  sbatch --wait -p a3 -N1 --exclusive --gres=gpu:8 -w "$NODE" -t 2:45:00 \
+  # -t default 2:45:00: λ3,5 screens take ~2h; a hung job (NCCL flake) gets force-killed
+  # here instead of stalling the serial driver for the full 6h wall limit. Set TIMEOUT
+  # (e.g. 4:00:00) for a FULL λ{3,5,7,10} sweep, whose summary.json is written only after λ10.
+  sbatch --wait -p a3 -N1 --exclusive --gres=gpu:8 -w "$NODE" -t "${TIMEOUT:-2:45:00}" \
     -J "eval-floyd-$ver" -o "$log" \
     --wrap "bash $EVAL floyd $ver $flags"
   rc=$?

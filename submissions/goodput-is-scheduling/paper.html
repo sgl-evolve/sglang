@@ -274,8 +274,11 @@ stack-distance is p50 = 10, p90 = 197, max = 518 against <code>H ≈ 516</code>,
 re-uses (99.2%) are LRU-captured</b> and headroom is ~0.8% (one re-use at distance 518, just past H). A corpus
 escapes the mirage only if its hot documents recur at stack-distance beyond the horizon — a large working set
 re-used long-range — which long-document QA serving structurally is not (its one hot document recurs at a
-median gap of six conversations, and only ~10% of conversations re-use any document). <b>Practitioner
-corollary:</b> measure your corpus's reuse stack-distance
+median gap of six conversations, and only ~10% of conversations re-use any document). Applying the criterion
+to <b>four real long-document corpora</b> (the eval mix, LEval, and two LooGLE variants;
+<code>analysis/phase_boundary_realcorpora.py</code>) puts <em>all four</em> in the mirage regime (≤0.8%
+headroom) — the mirage is a property of the workload class, predicted from corpus statistics, not an artifact
+of one trace (companion paper, §3.4). <b>Practitioner corollary:</b> measure your corpus's reuse stack-distance
 against <code>H = CAP/mean-doc</code> before investing in a smarter retention policy; below the horizon, no
 policy beats LRU and the goodput lever is scheduling.
 </p>

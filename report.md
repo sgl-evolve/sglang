@@ -891,3 +891,9 @@ v16 full: λ3 4.5s(3.02)/λ5 17.9s(4.86)/λ7 30.4s(5.51)/λ10 38.4s(5.79). sat C
 (both ≫ stock 4.14; +37-40%). v16 goodput@SLO=3 (bad-basin λ5) vs v13 goodput=5 (good-basin λ5) → accel goodput
 COIN-FLIP {3,5}. ★CLEAN: deterministic capacity firmed n=2 (5.65,5.79); coin-flip goodput NOT (3.4/17.9). Update P6 §4
 capacity claim to n=2.
+
+## CO-DESIGN v17 λ=3 = 3.7s PASS, hit=0.748 (17:21): both levers active
+accel + write_back: λ=3 p99=3.7s PASS, thr=3.02, hit=0.7481 (write_back h-lever ACTIVE: hit 0.65→0.748 vs accel-alone).
+Both capacity levers on (accel K + write_back h). λ=3 passes comfortably. KEY TEST = λ=5 (~17:50): higher hit → higher
+C=K/(1-h) → larger margin (accel-alone margin was 0.65, coin-flip) → does λ=5 become RELIABLE? P1 write_back C~5.11@h0.737;
+accel raises K; combined C could be ~6-7 → margin at λ=5 ~1.5+ (large → reliable per P3). Awaiting λ=5.

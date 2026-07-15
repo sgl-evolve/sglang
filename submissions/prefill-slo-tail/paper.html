@@ -788,7 +788,7 @@ warm steady-state, byte-identical flags except <code>--schedule-policy srpf</cod
 <tr><td>srpf</td><td>5</td><td>6983</td><td>5530, 6617, 6983, 7028, 7814</td><td>1183 (med)</td><td>5/5</td><td>4.08</td></tr>
 </table>
 <p>SRPF turns λ=5 from reliable-fail (0/5) to pass (5/5, every replicate under the SLO), cutting p99 TTFT ~71%
-and mean TTFT ~43%, at equal request throughput (Fisher exact p≈0.008; the two distributions are disjoint). It improves the <i>whole</i> TTFT distribution (mean, p90, p99), so
+and mean TTFT ~43%, at equal request throughput (Fisher exact p≈0.008; the two distributions are disjoint). A single λ=3 run under SRPF also passed (6.2&nbsp;s vs fcfs&rsquo;s coin-flip 10.8&ndash;34&nbsp;s over n=3), suggesting SRPF also stabilizes the knee; we headline λ=5, where n=5. It improves the <i>whole</i> TTFT distribution (mean, p90, p99), so
 this is genuine shortest-job-first flow-time reduction, not a p99 artifact. The mechanism: with only ~3–4 turn-0
 documents above 100K tokens, the heavy documents lie beyond the 99th percentile, so the fcfs p99 is the
 head-of-line victims queued behind their serialized prefill; SRPF reorders those victims ahead (deferring the few
@@ -806,8 +806,8 @@ non-starving</i> alternative could capture the same p99 win without deferring th
 per-iteration chunk budget so short waiting requests prefill alongside it (the heavy document still makes
 progress every iteration). It does not work. On the same-node A/B (raw runs <code>runs/v4-shortlane-ab</code>,
 <code>v5-shortlane-l3</code>), a 2048-token reserve <i>worsens</i> the p99 at both loads — λ=5:
-24.2&nbsp;s→42.4&nbsp;s (+75%, n=3, disjoint distributions); λ=3: 8.1&nbsp;s→18.2&nbsp;s (+125%) — while
-<i>improving</i> the median (−11 to −19%). The reason is instructive: a thin reserve trickles a few victims
+24.2&nbsp;s→42.4&nbsp;s (+75%, n=3, disjoint distributions); λ=3: 8.1&nbsp;s→19.5&nbsp;s (+141%, n=3) — while
+<i>improving</i> the median (−19 to −25%). The reason is instructive: a thin reserve trickles a few victims
 through but keeps the heavy document occupying the pipeline (now over more iterations), so it lengthens the
 congestion window instead of clearing it. The goodput lever is therefore inseparable from <i>deferring</i>
 (starving) the heavy documents; a mechanism that keeps them progressing forfeits the benefit. This is the

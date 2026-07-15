@@ -13,8 +13,8 @@ SLO = 8000
 def xmap(lam): return PX0 + (lam - LAM0) / (LAM1 - LAM0) * (PX1 - PX0)
 def ymap(ms):  return PY1 - (ms - Y0) / (Y1 - Y0) * (PY1 - PY0)
 
-stock = [(3, 11787), (5, 17372), (7, 33961), (10, 41334)]   # v0-stock full sweep
-srpf  = [(3, 5892), (5, 5850)]                               # v-srpf-r1 (mine)
+stock = [(3, 7612), (5, 22746), (7, 33961), (10, 41334)]     # same-node (0-3) λ3,5; v0-stock λ7,10 (overload)
+srpf  = [(3, 5892), (5, 5850)]                               # v-srpf-r1 (same node 0-3)
 stock_l3_lo, stock_l3_hi = 6327, 11786                       # n=5 coin-flip range
 
 def poly(pts, color, dash=""):

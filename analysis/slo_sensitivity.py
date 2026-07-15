@@ -15,7 +15,7 @@ Measured p99 TTFT (ms), same-node where available:
 """
 RATES = [3, 5, 7, 10]
 # (p99 TTFT ms, achieved req/s) per rate. goodput@SLO = max ACHIEVED req/s over rates that pass.
-STOCK = {3: (7612, 3.02), 5: (17372, 3.66), 7: (33961, 4.00), 10: (41334, 4.22)}
+STOCK = {3: (7612, 3.02), 5: (22746, 4.10), 7: (33961, 4.00), 10: (41334, 4.22)}
 SRPF  = {3: (5892, 3.02), 5: (5850, 4.16), 7: (10**9, 4.2), 10: (10**9, 4.2)}  # λ7/10 overload => fail
 STOCK_L3_RANGE = (6327, 11786)                      # λ3 coin-flip (n=5)
 

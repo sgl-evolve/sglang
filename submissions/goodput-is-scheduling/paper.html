@@ -182,8 +182,8 @@ scheduler's existing priority interface — is the remedy the diagnosis predicts
 <line x1="72" y1="279.6" x2="662" y2="279.6" stroke="#c00" stroke-width="1.5" stroke-dasharray="6,4"/>
 <text x="658" y="273.6" text-anchor="end" fill="#c00">8 s SLO</text>
 <line x1="72.0" y1="291.0" x2="72.0" y2="253.9" stroke="#999" stroke-width="6" opacity="0.5"/>
-<polyline fill="none" stroke="#888" stroke-width="2.5" points="72.0,253.8 240.6,215.9 409.1,103.1 662.0,52.9"/>
-<circle cx="72.0" cy="253.8" r="4.5" fill="#888"/><circle cx="240.6" cy="215.9" r="4.5" fill="#888"/><circle cx="409.1" cy="103.1" r="4.5" fill="#888"/><circle cx="662.0" cy="52.9" r="4.5" fill="#888"/>
+<polyline fill="none" stroke="#888" stroke-width="2.5" points="72.0,282.2 240.6,179.3 409.1,103.1 662.0,52.9"/>
+<circle cx="72.0" cy="282.2" r="4.5" fill="#888"/><circle cx="240.6" cy="179.3" r="4.5" fill="#888"/><circle cx="409.1" cy="103.1" r="4.5" fill="#888"/><circle cx="662.0" cy="52.9" r="4.5" fill="#888"/>
 <polyline fill="none" stroke="#1a7f37" stroke-width="2.5" points="72.0,293.9 240.6,294.2"/>
 <circle cx="72.0" cy="293.9" r="4.5" fill="#1a7f37"/><circle cx="240.6" cy="294.2" r="4.5" fill="#1a7f37"/>
 <rect x="494" y="34" width="150" height="52" fill="white" stroke="#ddd"/>
@@ -196,19 +196,21 @@ scheduler's existing priority interface — is the remedy the diagnosis predicts
 stock's ≤3. Reordering prefills, not caching, moves the metric.</figcaption>
 </div>
 <table>
-<caption>Same-node rate sweep, stock (FCFS) vs. SRPF. Goodput@SLO = max rate with p99 TTFT ≤ 8&nbsp;s.
-Stock at λ=3 is a coin-flip (n=5: {6.3, 6.4, 7.8, 8.1, 11.8}&nbsp;s, 3/5 pass); at λ≥5 it fails stably.</caption>
-<tr><th>rate λ</th><th>stock p99 TTFT</th><th>SRPF p99 TTFT</th><th>SRPF req/s</th><th>SLO (8&nbsp;s)</th></tr>
-<tr><td>3</td><td>6.3–11.8&nbsp;s (coin-flip)</td><td>5.9&nbsp;s</td><td>3.02</td><td class="g">SRPF passes</td></tr>
-<tr><td>5</td><td class="b">17.4&nbsp;s (stable fail)</td><td>5.85&nbsp;s</td><td><b>4.16</b></td><td class="g">SRPF passes</td></tr>
+<caption>Same-node (node 0-3) rate sweep, stock (FCFS) vs. SRPF. Goodput@SLO = max rate with p99 TTFT
+≤ 8&nbsp;s. Stock at λ=3 is a coin-flip (n=5 {6.3, 6.4, 7.8, 8.1, 11.8}&nbsp;s, 3/5 pass; the same-node
+control drew 7.6&nbsp;s); at λ=5 it fails stably.</caption>
+<tr><th>rate λ</th><th>stock p99 TTFT (same node)</th><th>SRPF p99 TTFT</th><th>SRPF req/s</th><th>SLO (8&nbsp;s)</th></tr>
+<tr><td>3</td><td>7.6&nbsp;s (coin-flip 6.3–11.8)</td><td>5.9&nbsp;s</td><td>3.02</td><td class="g">both pass (SRPF safer)</td></tr>
+<tr><td>5</td><td class="b">22.7&nbsp;s (stable fail)</td><td>5.85&nbsp;s</td><td><b>4.16</b></td><td class="g">SRPF passes, stock fails</td></tr>
 <tr><td colspan="5"><b>goodput@SLO: stock ≤3 (λ=3-bound coin-flip) → SRPF 4.16&nbsp;req/s (the compute ceiling).</b></td></tr>
 </table>
 <p>
-SRPF passes both λ=3 and λ=5; stock fails λ=5 stably (17.4&nbsp;s, a 3× gap far outside node variance, so
-robust even at n=1 here). Goodput@SLO rises from the stock coin-flip (≤3&nbsp;req/s) to
-<b>4.16&nbsp;req/s</b> — the work-conservation ceiling of §3 — <em>with the cache contents and hit-rate
-unchanged</em> (0.673 vs 0.667). This is the clean demonstration that the lever is scheduling: reordering
-prefills, not caching or moving KV, is what moves the metric.
+This is a clean <em>same-node</em> A/B (both on node 0-3, so no cross-node variance confound). SRPF passes
+both λ=3 and λ=5; stock fails λ=5 stably at <b>22.7&nbsp;s</b> — a <b>3.9× gap</b> that dwarfs the ±45%
+cross-node variance, and the independent reference full sweep agrees (v0-stock λ=5 = 17.4&nbsp;s). Goodput@SLO
+rises from the stock coin-flip (≤3&nbsp;req/s) to <b>4.16&nbsp;req/s</b> — the work-conservation ceiling of
+§3 — <em>with the cache contents and hit-rate unchanged</em> (0.66 both). This is the clean demonstration
+that the lever is scheduling: reordering prefills, not caching or moving KV, is what moves the metric.
 </p>
 <p>
 <b>The mechanism is textbook; the finding is where it belongs.</b> SRPF/SJF is classical and, dropped onto a
@@ -278,8 +280,9 @@ matter. Cache-replacement theory (Belady, LRU stack-distance) supplies the phase
 long-document multiturn corpus. The phase-boundary criterion (§6) is our generality argument, but a direct
 cross-workload GPU sweep is out of scope of the fixed protocol.</li>
 <li>goodput@SLO is variance-dominated at λ=3; all comparisons are same-node and distributional. The λ=5 SRPF
-win is n=1 but against a stable stock failure (3× gap); a same-node stock control and SRPF replicates are in
-flight to firm it.</li>
+win is a same-node A/B (stock 22.7&nbsp;s fail vs SRPF 5.85&nbsp;s pass, a 3.9× gap dwarfing the ±45%
+cross-node variance); stock λ=5 is a stable failure (independent reference sweep 17.4&nbsp;s agrees), so the
+result is robust at this n. SRPF replicates (r2, r3) are running to further firm λ=3.</li>
 <li>The compute ceiling could in principle move compute-side (context-parallel prefill, quantization), but
 prefill context-parallelism is unavailable for this hybrid model in-engine and quantization is lossy /
 contract-frozen; we treat the ceiling as fixed.</li>

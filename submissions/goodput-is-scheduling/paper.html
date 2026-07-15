@@ -148,10 +148,15 @@ The goodput coin-flip lives entirely in how these collide.
 <li><b>Arithmetic.</b> At the batched ~39k&nbsp;tok/s, the largest document is ~5&nbsp;s and
 <b>fewer than 0.1% of turns prefill ≥6&nbsp;s</b>; yet the measured λ=3 p99 is 6–11&nbsp;s. The tail
 therefore cannot be a per-request prefill floor — it is queue-wait.</li>
-<li><b>Direct trace.</b> In the stock run's log, the waiting queue is <b>9.6× deeper</b> during
-big-cold-document prefill chunks (#new-token ≥ 6144, #cached-token = 0: mean depth 11.9, p90 33, max 183)
-than during all other prefill steps (mean 1.2, p90 0) — small turns pile up specifically behind the cold
-grind (<code>analysis/hol_trace.py</code>).</li>
+<li><b>Direct trace (two victims, one mechanism).</b> In the stock run's log, the waiting queue is
+<b>9.6× deeper</b> during big-cold-document prefill chunks (#new-token ≥ 6144, #cached-token = 0: mean depth
+11.9, p90 33, max 183) than during all other prefill steps (mean 1.2, p90 0) — small turns pile up behind
+the cold grind (<code>analysis/hol_trace.py</code>). The <em>same</em> monopolization stalls the decode side:
+while a big cold doc grinds its back-to-back chunks the GPU runs no decode step, so running requests wait
+<b>24.5&nbsp;s between tokens on average (p90 37&nbsp;s, max 182&nbsp;s) vs 1.8&nbsp;s otherwise — a 13.6×
+decode stall</b> (<code>analysis/hol_decode.py</code>). One mechanism, two victims: the metric-visible TTFT
+tail (waiting turns) and the metric-invisible E2E/TPOT tail (running decodes) — which is why p99 E2E is
+minutes (§8) even where TTFT passes.</li>
 <li><b>Simulation.</b> A per-step 6144-token queueing model calibrated to the coin-flip (stock λ=3 p99 mean
 7.5&nbsp;s, straddling the SLO) shows shortest-prefill-first collapses it to ~4&nbsp;s, coin-flip removed
 (<code>analysis/hol_sim.py</code>); round-robin interleaving does not. The simulator is calibrated and used
@@ -369,11 +374,14 @@ honestly rather than cherry-picking its best run.</li>
 prefill context-parallelism is unavailable for this hybrid model in-engine and quantization is lossy /
 contract-frozen; we treat the ceiling as fixed.</li>
 <li>We are scoped to the fixed headline metric, goodput@SLO on p99 TTFT; we do not optimize E2E latency or
-TPOT (both are saturation-dominated at these rates — p99 E2E is minutes — a property of the open-loop
-rate-sweep, not of any policy). Importantly, SRPF's TTFT win is <em>not</em> bought at their expense: from
-the same runs, SRPF's p99 E2E also improves over stock (e.g. λ=3 322&nbsp;s vs 438&nbsp;s) and its p99 TPOT
-is within noise, so reordering prefills does not starve decode relative to stock. Jointly optimizing TTFT
-and TPOT/E2E is future work.</li>
+TPOT. These are catastrophic (p99 E2E is minutes) for a mechanistic reason we identify in §4: the same
+big-cold-doc prefill monopolization that causes the TTFT head-of-line also stalls running decodes 13.6×
+(24.5&nbsp;s vs 1.8&nbsp;s between tokens) — a decode-side head-of-line the TTFT metric does not see.
+Importantly, SRPF's TTFT win is <em>not</em> bought at their expense: from the same runs SRPF's p99 E2E
+<em>improves</em> over stock (λ=3 322&nbsp;s vs 438&nbsp;s) and its p99 TPOT is within noise — reordering
+does not worsen decode. But reordering cannot <em>fix</em> the decode stall either (a big cold prefill is
+serialized whichever request goes first); a full fix needs the compute-side lever (parallelizing the
+single big prefill, i.e. context-parallel — §5.1), motivating that as the highest-value future work.</li>
 </ul>
 
 <h2>9 Reproducibility</h2>
@@ -381,7 +389,7 @@ and TPOT/E2E is future work.</li>
 Base <code>a334877e5</code> (stock v0.31), all analysis and the SRPF policy on <code>evolve/floyd</code>.
 Map evidence: <code>analysis/doc_reuse.py</code>, <code>reuse_distance.py</code>, <code>phase_boundary.py</code>
 (caching); <code>mamba_pressure.py</code> (recurrent pool); <code>pd_schedule.py</code> (prefill/decode);
-<code>hol_trace.py</code>, <code>hol_sim.py</code>, <code>bound.py</code>, <code>prefill_flops.py</code>
+<code>hol_trace.py</code>, <code>hol_decode.py</code> (decode-side head-of-line), <code>hol_sim.py</code>, <code>bound.py</code>, <code>prefill_flops.py</code>
 (head-of-line + compute bounds); <code>slo_sensitivity.py</code> (SLO-threshold robustness), <code>goodput_model.py</code> (the predictive lever model of §6.1), <code>goodput_stats.py</code> (Fisher-exact significance of the n=3 win); the admission
 negative is in the CCA companion. GPU runs:
 <code>runs/v0-stock</code> (stock sweep), <code>runs/v-srpf-r1</code> (SRPF sweep), <code>runs/v-stock-srpfctl</code>

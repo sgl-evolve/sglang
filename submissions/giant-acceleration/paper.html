@@ -292,7 +292,8 @@ mechanism.</div>
 </svg>
 <figcaption style="font-size:.82rem;color:#666;margin-top:.2rem">Figure 2. goodput@SLO vs acceleration factor: a
 <b>sharp</b> optimum at f=2. Both under-boosting (stock, f=1.5) and over-boosting (f=3) give goodput@SLO=3; only f=2
-reaches 5. (f=1 plotted at its best-case draw, 3, of the 0&ndash;3 coin-flip.)</figcaption>
+reaches 5&mdash;in its good-basin draw (f=2's &lambda;=5 pass is coin-flip, &sect;4). f=1 plotted at its best-case draw
+(3) of the 0&ndash;3 coin-flip. The robust reading: f=2 minimizes p99 at every rate; the '5' is its best case.</figcaption>
 </figure>
 <div class="keyfinding"><b>p99 is a sharp inverted-U in f, minimized at f=2.</b> The optimum is narrow and symmetric:
 at &lambda;=5, under-boosting (f=1.5) and over-boosting (f=3) both land at nearly identical p99 (20.7&nbsp;s vs
@@ -327,7 +328,12 @@ wins. Together they establish that the goodput tail is governed by giant <em>res
 (a) capacity, (b) whole-request shortest-first scheduling (reduces the number of in-flight requests), and now
 (c) giant acceleration (reduces each giant's residency). (a)/(b)/(c) all reduce concurrency; the failed mechanisms all
 raised it. Giant acceleration is orthogonal to whole-request reordering (intra-step chunk budget vs inter-request
-queue order); whether the two residency levers compose additively is a natural but untested extension.</p>
+queue order); whether the two residency levers compose additively is a natural but untested extension.
+Composition <em>with the caching capacity-lever</em>, however, we do show: stacking acceleration (the K-lever) with a
+write-back cache (the hit-rate lever, 0.65&rarr;0.73) raises saturated capacity to <b>C=6.33&nbsp;req/s</b> (vs
+5.65&ndash;5.79 for acceleration alone, 4.14 stock)&mdash;the two levers of C=K/(1&minus;h) stack, as the companion
+capacity study predicts. (That higher C still does not make the &lambda;=5 goodput reliable, though: the knee remains
+coin-flip-governed at moderate margin&mdash;see the companion coin-flip study.)</p>
 
 <h2>7 Related work</h2>
 <p>Sarathi-Serve chunks prefill <em>smaller</em> to bound prefill&harr;decode interference for mean latency; giant

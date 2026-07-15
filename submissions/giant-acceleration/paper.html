@@ -231,9 +231,11 @@ deterministic result is the capacity ceiling (achieved throughput): 4.14&rarr;&g
 </figure>
 <div class="keyfinding">
 <b>The solid, deterministic win is capacity: acceleration raises the ceiling C from 4.14 to &ge;5.65&nbsp;req/s
-(+36%).</b> Stock saturates cleanly at 4.14&nbsp;req/s (3.99&rarr;4.14 from &lambda;=7&rarr;10, flat), while accel is
-<em>still climbing</em> at &lambda;=10 (5.20&rarr;5.65); output-token throughput rises 530&rarr;723&nbsp;tok/s, likewise
-+36%. This achieved-throughput result is deterministic (not coin-flip-sensitive), so it is the robust headline:
+(+36&ndash;40%), replicated n=2.</b> Stock saturates cleanly at 4.14&nbsp;req/s (3.99&rarr;4.14 from &lambda;=7&rarr;10,
+flat), while accel reaches 5.65 (v13) and 5.79 (v16 replicate) at &lambda;=10&mdash;both far above stock; output-token
+throughput rises 530&rarr;723&nbsp;tok/s (+36%) likewise. Crucially, this achieved-throughput result <em>replicates
+cleanly</em> (5.65, 5.79) whereas the &lambda;=5 goodput did <em>not</em> (3.4&nbsp;s / 17.9&nbsp;s)&mdash;the very
+signature that capacity is deterministic while goodput@SLO is coin-flip. So capacity is the robust headline:
 acceleration is the <em>K-lever</em> of the companion capacity law C=K/(1&minus;h), by clearing giants from the running
 batch faster so more requests flow per unit time.
 <br><br><b>Does this reach goodput@SLO=5? Only as a coin-flip.</b> Raising C to 5.65 brings &lambda;=5 <em>within</em>

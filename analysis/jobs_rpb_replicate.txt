@@ -1,0 +1,8 @@
+# n=3 same-node A/B confirmation (launch after v-rpb25's first signal). Interleaved srpf/rpb so
+# any slow drift is shared. Screen λ3,5. Gives paired n=3 each arm for Fisher/distributional stats,
+# matching the rigor of the SRPF result. Needed because same-node srpf λ5 p99 varies ±~20% run-to-run
+# ({5.85,6.58,7.46}s) — a single-run A/B only resolves a LARGE RPB effect.
+v-srpf-ctl5:--schedule-policy srpf
+v-rpb25-r2:--schedule-policy srpf --enable-rpb-chunking --rpb-reserve-frac 0.25
+v-srpf-ctl6:--schedule-policy srpf
+v-rpb25-r3:--schedule-policy srpf --enable-rpb-chunking --rpb-reserve-frac 0.25

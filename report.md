@@ -693,3 +693,9 @@ boundaries) yet was clean, and r=0.10 has FEWER boundaries — opposite of a cap
 intermittent pool/NCCL events seen on long node runs (node 1-1 ran ~5h continuously). rpb50 (r=0.50) running =
 leak-robustness check at the MOST-capping config (if clean → confirms transient). Then adaptive RPB (decisive).
 Reserve sweep now = rpb25 (clean) + rpb50 (pending); rpb10 point lost to the crash (re-run optional).
+
+### Adaptive RPB — mechanism confirmed working (mid-λ3, v-rpbA25)
+Adaptive big-chunk mean **5993 tok (89% full 6144)** vs fixed-rpb25's 5320 (44% full): adaptive caps only ~11%
+of big-chunk steps (only when a small turn fits the reserve), so prefill capacity is ~PRESERVED (5993 vs
+baseline 6111, −2% vs fixed-rpb's −13%). ⇒ adaptive should AVOID the λ5 throughput-loss SLO-fail. Open Q: does
+the selective interleave (the ~11% p99-relevant cases) still HELP the tail (WIN) or is it NEUTRAL? GPU deciding.

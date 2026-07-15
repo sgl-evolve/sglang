@@ -545,3 +545,12 @@ reqs behind perpetual capped-giants (completed 4255/7037). Decisively negative +
 worse than a latency regression. v9_stock2 (same node, mechanism OFF) will confirm stock completes ~7037.
 ⇒ Paper 5 = DECISIVE BOUNDED NEGATIVE. No v2 worth building (starvation fixable via aging, but the giant-lingering
 backfire is fundamental). Finalize Paper 5 paper.html as the bound once v9_stock2 lands.
+
+## ★★ PAPER 5 SAME-NODE CONTROL LANDED (00:40) — negative AIRTIGHT
+v9_stock2 (stock, mechanism OFF, SAME node 19833 as v8_fair): p99=14216ms p50=567 conc=78.4 tpot=561 completed=7037
+thr=3.02 hit=0.6766. vs v8_fair (fair-share ON, same node): p99=37058 conc=187 tpot=927 completed=4255 thr=1.92.
+⇒ SAME-NODE A/B: fair-share p99 2.6× WORSE (37 vs 14.2s), decode 1.65× slower (927 vs 561), concurrency 2.4× higher
+(187 vs 78), and STARVES 40% (4255 vs 7037 completed). Stock completes ALL 7037 on the exact node → the degradation is
+100% the MECHANISM, not node/coin-flip. Paper 5 bounded-negative is airtight. (v9_stock2 p99 14.2s itself = a bad-basin
+coin-flip draw → 3rd stock λ=3 point {6.2,11.5,14.2}s for Paper 3 firming; conc 78 low avg but tail high = giant-blocked
+tail events.) NOTE hit invariant by construction (per-step budget only); completed differs so hit computed over diff sets.

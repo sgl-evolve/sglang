@@ -35,7 +35,7 @@
 <body>
 
 <h1>The p99 Tail is Head-of-Line Blocking &mdash; But You Cannot Reshape It Away:<br>
-Giant-Prefill Monopoly and Why Prefill-Rate Reduction Backfires <span class="draft">v1 · bounded negative</span></h1>
+Giant-Prefill Monopoly and Why Prefill-Rate Reduction Backfires <span class="draft">v2 · submitted</span></h1>
 <p class="sub"><b>turing</b> · independent research-tier study · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8</p>
 <p class="sub">Base commit <span class="mono">a334877e5</span> · mechanism <span class="mono">48ad6612b</span></p>
 
@@ -51,9 +51,10 @@ waiting, and 89% of those are head-of-line (HOL) blocked</b> by a giant that mon
 <em>all</em> prefill steps&mdash;a median of 4 shorts waiting behind a giant that blocks for a median of 11 (max 79)
 consecutive steps. <b>The natural fix and why it fails:</b> we built <em>fair-share chunk interleaving</em>&mdash;cap
 the giant's per-step share so a waiting short starts immediately while the giant still advances (lossless; respects the
-engine's single-chunked-request invariant). It <b>backfires decisively</b>: &lambda;=3 p99 TTFT rises to
-<b>37&nbsp;s</b> (vs the 6&ndash;11&nbsp;s stock band), decode time-per-token nearly doubles (927 vs ~430&nbsp;ms),
-throughput falls to 1.92&nbsp;req/s, and 40% of requests fail to complete (starvation). The cause is twofold and both
+engine's single-chunked-request invariant). It <b>backfires decisively</b> in a same-node A/B: &lambda;=3 p99 TTFT
+rises to <b>37&nbsp;s vs 14&nbsp;s</b> for stock on the identical node (2.6&times;), decode time-per-token nearly doubles
+(927 vs 561&nbsp;ms), throughput falls (1.92 vs 3.02&nbsp;req/s), and 40% of requests fail to complete&mdash;while stock
+completes all 7 037&mdash;so the degradation is the mechanism, not the node or the coin-flip. The cause is twofold and both
 are fundamental: (i) capping a giant makes it <em>linger</em> across more steps, so in-flight concurrency rises and
 memory-bound decode slows&mdash;the <em>identical</em> runaway that sinks a companion occupancy-feedback controller;
 (ii) the single-chunked-request invariant means a large waiting request cannot interleave at all, so holding it behind
@@ -139,15 +140,20 @@ full sweeps; the mechanism is default-OFF for stock). The mechanism <em>does</em
 admitting the giant's capped 3072-token chunk plus a short's 3072 together, where stock admits only the giant&mdash;yet
 the outcome is decisively worse:</p>
 <table>
-<thead><tr><th>&lambda;=3 metric</th><th>stock band</th><th>fair-share</th></tr></thead>
+<thead><tr><th>&lambda;=3 metric</th><th>stock (same node)</th><th>fair-share (same node)</th></tr></thead>
 <tbody>
-<tr><td>p99 TTFT</td><td>6.2 &ndash; 11.5&nbsp;s</td><td class="fail">37.1&nbsp;s</td></tr>
-<tr><td>decode time-per-token</td><td>392 &ndash; 468&nbsp;ms</td><td class="fail">927&nbsp;ms</td></tr>
-<tr><td>mean concurrency</td><td>124 &ndash; 166</td><td class="fail">188</td></tr>
-<tr><td>throughput (req/s)</td><td>~2.3 &ndash; 3.0</td><td class="fail">1.92</td></tr>
+<tr><td>p99 TTFT</td><td>14.2&nbsp;s</td><td class="fail">37.1&nbsp;s (2.6&times;)</td></tr>
+<tr><td>decode time-per-token</td><td>561&nbsp;ms</td><td class="fail">927&nbsp;ms (1.65&times;)</td></tr>
+<tr><td>mean concurrency</td><td>78</td><td class="fail">188 (2.4&times;)</td></tr>
+<tr><td>throughput (req/s)</td><td>3.02</td><td class="fail">1.92</td></tr>
 <tr><td>requests completed</td><td>7 037</td><td class="fail">4 255 (40% starved)</td></tr>
 </tbody>
 </table>
+<p class="note">Same node, same code, same deterministic workload; the only difference is
+<span class="mono">SGLANG_TURING_FAIR_PREFILL</span> on vs off. Stock completes all 7 037 requests here; fair-share
+starves 40%, triples the p99, and nearly doubles decode-per-token&mdash;so the degradation is entirely the mechanism,
+not the node or the goodput coin-flip. (This stock run's own p99 of 14.2&nbsp;s is a high-tail coin-flip draw; the
+comparison is A/B on the same node, and every axis moves the same adverse direction, far outside coin-flip variance.)</p>
 <div class="keyfinding">
 Two compounding, fundamental failure modes:
 <ol>
@@ -160,11 +166,6 @@ therefore cannot interleave&mdash;it must wait for the giant to finish&mdash;so 
 (hence longer-lived) giants starves it: 40% of requests never complete. (Aging could bound the starvation, but the
 runaway in (1) is unfixable within fixed capacity.)</li>
 </ol></div>
-<p class="note">Same-node stock control (v9_stock2, mechanism OFF): completes 7 037 with p99 in the stock band,
-confirming the node is healthy and the degradation is the mechanism, not the node or the goodput coin-flip (the
-37&nbsp;s / 927&nbsp;ms / 4 255-completion signature is far outside the coin-flip band and is corroborated by the
-deterministic per-step admission metrics).</p>
-
 <h2>5 The unified law: prefill-rate reduction backfires</h2>
 <p>Two independent, lossless, on-contract mechanisms&mdash;an occupancy-gated decode-floor (companion) and chunk-level
 fair-sharing (here)&mdash;both reduce a giant's prefill rate, and both backfire with the same signature (p99

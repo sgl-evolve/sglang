@@ -788,3 +788,14 @@ REGARDLESS of FLASHINFER_CACHE_DIR (my separate-cache mitigation didn't apply to
 and now only SERVES (no recompile); profiler writes are unilateral. Monitoring dose-response health (λ=5 due ~11:07).
 Profiler cold compile ~10-15min → traces ~11:10-11:20. LESSON: to truly isolate flashinfer JIT, must warm serially OR
 set the flashinfer JIT dir env (not FLASHINFER_CACHE_DIR) — or accept low risk when the other run is already warmed.
+
+## ★★★ DOSE-RESPONSE KEY RESULT (11:06): f=2 is OPTIMAL — over-acceleration (f=3) craters goodput 5→3
+f=3 λ=5: p99=20.5s FAIL (thr 4.68, conc 175) vs f=2 λ=5: p99=3.4s PASS. ⇒ f=3 goodput@SLO=3 (passes λ3 5.2s, FAILS λ5)
+vs f=2 goodput@SLO=5. Also λ=3: f=3 worse than f=2 (5.2 vs 4.5s, conc 36 vs 21, tpot 253 vs 138). 
+⇒ ★INVERTED-U / GOLDILOCKS: acceleration has an OPTIMAL factor (~2×); beyond it, the boosted chunk gets so large it
+re-introduces massive prefill↔decode interference within the step (stalls decode) → residency↑ → the runaway → goodput
+COLLAPSES back to 3. Confirms the mechanism is genuinely TUNED, not monotone "bigger=better." Load-dependent: f=3
+tolerable at λ=3 (5.2s pass) but tips over at λ=5 (20.5s) near capacity. This STRENGTHENS P6 (f is a real knob w/ optimum;
+f=2 chosen non-arbitrarily) and is a clean dose-response §. Still want f=3 λ=7 + f=1.5 (other side of U) to complete curve.
+Theory tie-in: over-acceleration is the DUAL failure of under-acceleration — both move residency the wrong way; f=2 is
+the residency-minimizing operating point.

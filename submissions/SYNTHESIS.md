@@ -42,8 +42,9 @@ whole-request shortest-first scheduling, and **giant *acceleration*** reduce res
    is NOT "free" — instead it halves the giant's prefill-STEP count, amortizing per-step overhead (19% AllReduce),
    releasing the single-chunked-req admission block sooner, and interrupting the interleaved decode fewer times → decode
    tpot 561→423 (−25%) at EQUAL concurrency AND equal KV-footprint (0.33=0.33, verified: interference not footprint).
-   **★FRONTIER (full sweep): goodput@SLO 3→5 (+67%; PASSES λ=3 4.5s + λ=5 3.4s stable, stock λ=5 fails 17-25s); accel
-   raises capacity C ~4.14→~5.65 (+36%) = empirical K-lever of P2. ★DOSE-RESPONSE (inverted-U): f=2 OPTIMAL; f=3 is a
+   **★FRONTIER (full sweep): accel raises capacity C ~4.14→~5.65 (+36%, DETERMINISTIC) = empirical K-lever of P2, and
+   reliably wins goodput@SLO at λ=3 (5/5 vs stock 1/5); the goodput extension to λ=5 is a COIN-FLIP (1/2: v13 3.4s pass,
+   v16 replicate 17.9s fail) — small margin C−λ=0.65 per P3 (single-run '3→5' overturned by replication). ★DOSE-RESPONSE (inverted-U): f=2 OPTIMAL; f=3 is a
    TAIL failure (sat C 5.46≈f=2 but p99 craters λ5→20.5s → goodput back to 3) — over-accel lengthens prefill
    monopolization, mirroring decode-floor/fair-share backfires.**
 
@@ -57,12 +58,12 @@ whole-request shortest-first scheduling, and **giant *acceleration*** reduce res
 | fair-share interleave | giants linger + starvation → concurrency↑ | backfire (P5) |
 | **capacity (C)** | raises ceiling | **lever (P2)** |
 | **whole-request SRPF** | fewer in-flight requests | **lever (textbook; P2 K-lever)** |
-| **giant acceleration** | shorter giant residency → concurrency↓ AND raises C +36% | **lever (P6, novel positive; goodput 3→5)** |
+| **giant acceleration** | shorter giant residency → concurrency↓ AND raises C +36% (deterministic) | **lever (P6, novel positive; reliable @λ=3, capacity +36%; λ=5 coin-flip)** |
 
 ### Contributions
 - A predictive **theory** (concurrency↔decode runaway) that unifies caching, scheduling, and reliability on one axis.
 - A **unified law** (prefill-rate reduction backfires) established via two independent falsified cures (P4, P5).
 - The law's **positive dual verified** (P6 giant acceleration) — a novel, lossless, on-contract goodput@SLO win that
-  **raises the frontier 3→5 req/s (+67%) and the capacity ceiling C +36%** (empirically the K-lever of the P2 law).
+  **raises the frontier 3→5 [★v16 REPLICATE OVERTURN 2026-07-15: goodput 3→5 was OVER-CLAIMED on n=1 (v13 λ5 3.4s); replicate v16 λ5=17.9s FAIL → λ=5 is a COIN-FLIP (1/2). RELIABLE claims = capacity C +36% (deterministic) + λ=3 win 5/5. λ=5 coin-flip is theory-consistent: margin C−λ=0.65 small → metastable per P3 margin law (confirmed both ends). Papers reframed.]  req/s (+67%) and the capacity ceiling C +36%** (empirically the K-lever of the P2 law).
 - Rigorous **bounded negatives** across the cache/admission/prefill-reshaping axes; honest coin-flip methodology
   (median-of-k, same-node A/B, deterministic per-step metrics that are coin-flip-robust).

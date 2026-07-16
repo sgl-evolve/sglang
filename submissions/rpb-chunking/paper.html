@@ -98,6 +98,18 @@ reserve cannot serve. Fixed hurts, adaptive is goodput-neutral.</li>
 tail-relief, and goodput@SLO is decided at exactly the rate where lost throughput cannot be afforded. So it cannot
 raise goodput at any implementation, even though whole-request SRPF can — closing the scheduling axis at both
 granularities.</li>
+<li><b>The complementary chunk-level primitive — preemption — fails for the same reason.</b> Besides reserving
+budget, the other way to serve a waiting turn during a big doc's chunked prefill is to <em>preempt</em> the
+in-flight <code>chunked_req</code> (sglang can stash its partial KV via <code>maybe_cache_unfinished_req</code>
+and resume). Our simulator (§2) shows preemptive shortest-remaining's advantage is <em>sub-knee</em> — λ=3
+~4.0&nbsp;s vs non-preemptive ~6.2&nbsp;s, but both already clear the SLO, so goodput is unchanged there — and at
+the goodput-<em>setting</em> rate the p99 tail is the big cold docs' <em>own</em> prefill (compute-bound; see the
+companion map), which preemption <em>further delays</em>: the identical failure mode as reservation (both
+disadvantage the tail-setting large document), plus preemption pays the re-prefill / large-doc-starvation costs
+reservation avoids. So neither chunk-level primitive beats whole-request non-preemptive SRPF's goodput —
+reservation is GPU-confirmed here; preemption is argued from the simulator, the shared failure mode, and its
+extra costs (a direct GPU test of preemptible chunked prefill is future work). The chunk-level residual is real
+(§2) but not profitably closable at either granularity.</li>
 </ul>
 
 <h2>2 Motivation: the residual SRPF leaves</h2>

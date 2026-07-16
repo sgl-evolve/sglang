@@ -1553,3 +1553,25 @@ TPOT p99) both collapse ~13-21× = mutually-corroborating. Added TPOT column to 
 right but MC max consec=5335 is an artifact since those "prefill" batches ARE co-running decode). ⇒ do NOT feature the
 batch-label table (a reviewer would poke the 5335); the ITL/TPOT p99 are the DIRECT, clean decode-progress measures
 and they are what the paper rests on. Recorded so I don't mistakenly resurrect the confounded metric later.
+
+### ★ INTEGRITY — the async-pending FIX is PARTIAL (job 20269 fix-validation, 21:05) — must NOT claim a clean one-guard fix
+20269 runs mixed-chunk WITH the async-pending guard (scheduler.py on_idle) AND STRICT_MEM_CHECK_DURING_IDLE=0
+(belt-and-suspenders). Through λ3 the guard suppressed MOST idle checks (0 warns through 46%), but at ~53% ONE leak-warn
+fired: over=448 tokens = **7 pages** (avail=1152, evict=2346944, protected=0) — SAME benign class (bounded, exact
+page-multiple, protected=0/full-idle, self-healing, NO crash, tree-consistent) but at an on_idle where BOTH
+ongoing_write_through AND ongoing_load_back were EMPTY ⇒ my dict-guard didn't catch it. This is the ack-lag window I
+flagged in refinement #6: the write-through ACK cleared the dicts but the allocator free-list / tree-evictable
+reconciliation of those 7 pages hadn't completed at the sample instant. ⇒ THE GUARD IS NECESSARY-BUT-INSUFFICIENT
+(cuts false-positive frequency — 1 residual event through 53% of λ3 vs v17's 3+ by the same point — but does not
+eliminate them). ★HONEST CONSEQUENCE for Paper 5: do NOT present a "clean one-guard fix." The VALIDATED, robust
+unblock is the STOCK env SGLANG_ENABLE_STRICT_MEM_CHECK_DURING_IDLE=0 (warn-not-crash; the check is diagnostic and
+the "leak" is proven a benign bounded self-healing page-transient) — that is what actually lets mixed-chunk complete
+in BOTH v17 and v18 and deliver the decode-tail win. The async-guard is a PARTIAL structural improvement. The COMPLETE
+structural fix must be magnitude-independent + ack-lag-robust: either (a) tolerate a bounded page-slack like the
+existing DCP precedent (but the bound must cover higher-load in-flight counts — 7 pages seen at λ3, likely more at
+λ5/7/10), or better (b) a PERSISTENCE detector — report only an over-count that FAILS to self-heal across consecutive
+idle checks (directly encodes "self-healing=benign, persistent=real", magnitude- and load-independent). ★The DECODE-TAIL
+WIN is UNAFFECTED (it is mixed-chunk's benefit; the fix/env only prevents the spurious crash; STRICT=0 kept 20269
+running so λ7/λ10 data is valid). ★NEXT: (1) let 20269 finish for λ7/λ10; (2) revise Paper 5 §5 to the honest framing
+above (diagnosis solid + STRICT-env robust unblock + guard partial + persistence-fix proposed); (3) OPTIONAL: implement
+the persistence detector + validate in a short dedicated run. Integrity > a tidy fix story.

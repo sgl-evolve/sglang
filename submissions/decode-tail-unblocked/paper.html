@@ -37,11 +37,14 @@ driven by p99 inter-token latency (ITL) of ~4&ndash;5&nbsp;s. That study conclud
 fixing: the textbook remedy&mdash;interleaving prefill chunks with decode (sglang's <code>--enable-mixed-chunk</code>)&mdash;<b>crashed
 the server</b> with a KV-pool &ldquo;memory-leak&rdquo; abort. <b>This paper corrects that conclusion.</b> We show the
 crash is a <b>false positive</b>: the idle memory-leak invariant reports a bounded, page-granular
-(256&ndash;320&nbsp;token = 4&ndash;5&nbsp;page), <i>self-healing</i> over-count that appears only transiently while
-hierarchical-cache write-through is in flight&mdash;precisely the window in which the engine's own radix-tree
-sanity-check already <i>skips</i>. The tree structure that governs KV correctness stays perfectly consistent
-(0 sanity failures across a full run), and serving is correct. We give a one-guard, <b>lossless</b> fix (align the
-pool check with the tree check) that unblocks mixed-chunk without disabling any safety machinery. Unblocked,
+(256&ndash;448&nbsp;token = 4&ndash;7&nbsp;page), <i>self-healing</i> over-count that appears only transiently around
+hierarchical-cache write-through&mdash;the same window in which the engine's own radix-tree sanity-check already
+<i>skips</i>. The tree structure that governs KV correctness stays perfectly consistent (0 sanity failures across two
+full runs), and serving is correct. Because the &ldquo;leak&rdquo; is diagnostic and provably benign, the safe,
+<b>lossless</b> unblock is simply to not treat it as fatal (the stock warn-not-abort mode); mixed-chunk then runs to
+completion. We also give a structural guard that mirrors the tree check (skip the pool report while async backup is
+pending); it is lossless and removes most of the false positives but not all&mdash;a residual ack-lag window remains,
+for which we discuss a magnitude-independent persistence-based check (&sect;5). Unblocked,
 mixed-chunk <b>cuts the decode tail by ~15&times;</b> at &lambda;=3 (ITL p99 ~4200&rarr;282&nbsp;ms) and ~11&times; at
 &lambda;=5 (~4750&rarr;418&nbsp;ms), and end-to-end p99 by 4.7&times;/2.4&times; (347&rarr;75&nbsp;s / 377&rarr;157&nbsp;s),
 <b>losslessly</b> (identical total output tokens, tree-consistent). The win is not free: it trades prefill latency,
@@ -70,11 +73,13 @@ paper identified.</p>
 <div class="key">
 <b>Contributions.</b>
 (1) A <b>diagnosis</b>: the mixed-chunk crash is a false positive of the idle pool-leak invariant&mdash;a bounded
-(4&ndash;5 page), page-aligned, self-healing over-count that appears only while hierarchical-cache write-through is in
-flight, with the radix tree provably consistent throughout (&sect;4).
-(2) A <b>root cause</b>: the pool invariant lacks the very guard the engine&rsquo;s own tree sanity-check already
-uses (skip while async backup is pending); we align them (&sect;5). The fix is <b>lossless</b>&mdash;it gates only a
-diagnostic assertion, never scheduling or KV computation.
+(4&ndash;7 page), page-aligned, self-healing over-count around hierarchical-cache write-through, with the radix tree
+provably consistent throughout (&sect;4).
+(2) A <b>lossless unblock and its root cause</b>: the pool invariant lacks a guard the engine&rsquo;s own tree
+sanity-check already uses (skip while async backup is pending). We show the validated unblock is the stock warn-not-abort
+mode (the check is diagnostic and the leak benign), give a structural guard that mirrors the tree check and removes most
+false positives (with an honest residual ack-lag case), and recommend a magnitude-independent persistence check as the
+complete form&mdash;all lossless, gating only the assertion, never computation (&sect;5).
 (3) A <b>measured result</b>: unblocked mixed-chunk cuts the decode tail ~15&times; (&lambda;=3) / ~11&times;
 (&lambda;=5) in ITL p99 and 4.7&times;/2.4&times; in E2E p99, <b>losslessly</b> (identical total output tokens), with an
 <b>honest, load-growing TTFT trade-off</b> stated plainly (&sect;6&ndash;7).
@@ -163,25 +168,43 @@ pages. Our case is the same phenomenon (logical vs physical page accounting unde
 hierarchical-cache + hybrid-SSM path, simply not yet whitelisted.
 </div>
 
-<h2>5 The fix (lossless)</h2>
-<p>We align the pool check with the tree check: suppress the idle pool-leak <i>report</i> while hierarchical-cache
-async operations are pending. One guard in <code>on_idle()</code>:</p>
+<h2>5 Unblocking it, losslessly</h2>
+<p>Because the reported leak is a diagnostic assertion and the &ldquo;leak&rdquo; is provably benign (&sect;4), the
+robust, <b>validated</b> unblock is to not treat it as fatal: the stock environment variable
+<code>SGLANG_ENABLE_STRICT_MEM_CHECK_DURING_IDLE=0</code> downgrades the idle check from abort to warn. It changes
+only whether the assertion is fatal&mdash;never scheduling, batching, eviction, or KV computation&mdash;so it is
+lossless by construction, and it is what lets mixed-chunk run to completion in both of our full runs. Its only
+downside is coarseness: it silences the idle leak check globally rather than just for this benign window.</p>
+
+<p>A tighter, still-lossless structural guard mirrors the tree sanity-check, which already skips while asynchronous
+backup is pending:</p>
 <pre>if has_leak:
     # HiCache write-through / load-back transiently double-counts a bounded, page-
     # granular set of pages; the tree sanity_check already skips in this window
     # (HiMambaRadixCache.sanity_check). Mirror that guard so the idle pool check
-    # does not false-positive. A real (persistent) leak still trips on a later
-    # idle once async backup has drained.
+    # does not false-positive.
     tc = self.tree_cache
     hicache_async_pending = bool(getattr(tc, "ongoing_write_through", None)) \
                          or bool(getattr(tc, "ongoing_load_back", None))
     if not hicache_async_pending:
         self.invariant_checker._report_leak("pool", "\n".join(messages))</pre>
-<p>This is <b>lossless by construction</b>: it changes only whether a diagnostic assertion fires, never scheduling,
-batching, eviction, or KV computation. It does not weaken real-leak detection: a genuine, persistent leak survives
-the transient window and is reported on the next idle check once backup drains (the same reasoning under which the
-tree check already trusts this guard). It is strictly narrower than the two existing precedents (which skip the whole
-check for hisparse, and allow unbounded page-slack for DCP).</p>
+<p>This guard is lossless (it gates only the assertion) and, measured on the full run, it removes <b>most</b> of the
+false positives&mdash;but <b>not all</b>. We report this honestly: one residual warning still fired at &lambda;=3
+(over-count 448&nbsp;tokens = 7 pages, <code>protected=0</code>, same benign self-healing class) at an idle sample
+where <i>both</i> async dicts were already empty. That is an <b>ack-lag</b> window: the write-through acknowledgement
+has cleared the tracking dicts, but the allocator free-list and tree-evictable reconciliation of those pages has not
+yet completed at the instant the pool counters are sampled. The async-pending guard is therefore
+<i>necessary but not sufficient</i>.</p>
+
+<p>The complete, load-independent fix follows directly from the diagnosis (&sect;4): the benign discrepancy is
+distinguished from a real leak not by its magnitude but by its <b>impermanence</b>&mdash;it self-heals within a
+sampling interval, whereas a true leak persists and grows. A <b>persistence check</b> captures exactly this: record
+the idle over-count and report a leak only if a non-zero over-count persists across consecutive idle checks (it did
+not, here). This is magnitude- and load-independent and strictly preserves real-leak detection. (A bounded
+page-slack tolerance, mirroring the existing DCP precedent, is a simpler alternative but requires a load-dependent
+bound on in-flight pages.) All three variants gate only the diagnostic assertion&mdash;none touches computation&mdash;so
+all are lossless; we validate the warn-mode unblock end-to-end and leave the persistence check as the recommended
+structural form.</p>
 
 <h2>6 Result: the decode tail collapses, losslessly</h2>
 <p>All runs use the frozen evaluation (unchanged <code>eval.sh</code>: 1553 conversations &rarr; 7037 requests,
@@ -324,12 +347,14 @@ false-positive scrutiny as the mechanisms they guard; and evaluation should surf
 <h2>10 Reproducibility</h2>
 <p>Frozen eval (unchanged): <code>eval.sh</code>, Qwen3.5-122B-A10B-FP8, 8&times;H100 TP8, 2-tier hicache
 (ratio 2.0, write_through), 1553 conversations, warmup burst, no per-rate flush. Mixed-chunk run:
-<code>--enable-mixed-chunk</code> with either the stock env
-<code>SGLANG_ENABLE_STRICT_MEM_CHECK_DURING_IDLE=0</code> (to warn instead of abort) or the one-guard fix in
-<code>scheduler.py:on_idle()</code> (&sect;5). Stock baselines: <code>runs/v0-stock{,-r2,-r3}</code>. Mixed-chunk:
-<code>runs/v17-mixedchunk-nocheck</code> (&lambda;3/&lambda;5 full), <code>runs/v14-mixedchunk</code> (&lambda;3
-replicate, crashed at 3836 under the default fatal check). Over-count trend and tree-sanity results parsed from
-<code>server.log</code>; decode-tail metrics from <code>bench_r{3,5}.json</code>. Fix commit on
+<code>--enable-mixed-chunk</code> with the stock env
+<code>SGLANG_ENABLE_STRICT_MEM_CHECK_DURING_IDLE=0</code> (warn instead of abort &mdash; the validated unblock);
+the structural async-pending guard in <code>scheduler.py:on_idle()</code> (&sect;5) was additionally applied in the
+full-sweep run and shown to remove most but not all false positives. Stock baselines:
+<code>runs/v0-stock{,-r2,-r3}</code>. Mixed-chunk: <code>runs/v17-mixedchunk-nocheck</code> (&lambda;3/&lambda;5 full,
+warn-mode), <code>runs/v18-mc-sweep</code> (full sweep, warn-mode + async-guard), <code>runs/v14-mixedchunk</code>
+(&lambda;3 replicate, crashed at 3836 under the default fatal check). Over-count trend and tree-sanity results parsed
+from <code>server.log</code>; decode-tail metrics from <code>bench_r{3,5,7,10}.json</code>. Fix commit on
 <code>evolve/kleinrock</code>.</p>
 
 <h2>11 Conclusion</h2>

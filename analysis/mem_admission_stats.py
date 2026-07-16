@@ -63,16 +63,22 @@ def analyze(path):
 
 
 if __name__ == "__main__":
-    logs = sys.argv[1:] or ["runs/v0-stock/server.log", "runs/v-stock-samenode-1/server.log"]
-    tot_r = tot_z = 0
+    # Default: all four full sweeps -> 2 stock (FCFS) + 2 SRPF, so the non-lever is shown
+    # robust to the scheduling policy, not an artifact of stock ordering.
+    logs = sys.argv[1:] or [
+        "runs/v0-stock/server.log", "runs/v-stock-samenode-1/server.log",
+        "runs/v-srpf-full/server.log", "runs/v-srpf-samenode-1/server.log",
+    ]
+    tot_r = tot_z = n = 0
     for p in logs:
         try:
             r, z = analyze(p)
             tot_r += r
             tot_z += z
+            n += 1
         except FileNotFoundError:
             print(f"\n{p}: not found (skip)")
-    print(f"\nPOOLED over {len(logs)} stock full sweeps: "
+    print(f"\nPOOLED over {n} full sweeps (stock FCFS + SRPF): "
           f"{tot_r} retractions, {tot_z} memory-blocked prefill admissions.")
-    print("Both zero => the proactive-KV-memory-management sub-axis (retraction / reservation)"
-          " has no headroom on this workload; the tail is compute + head-of-line.")
+    print("Both zero under BOTH policies => the proactive-KV-memory-management sub-axis"
+          " (retraction / reservation) has no headroom on this workload; tail = compute + head-of-line.")

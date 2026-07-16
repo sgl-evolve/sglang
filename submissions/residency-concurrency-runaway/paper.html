@@ -208,8 +208,10 @@ genuinely stackable.</div>
 </svg>
 <figcaption style="font-size:.82rem;color:#666;margin-top:.2rem">Figure 2. The two capacity levers stack. Acceleration
 (K-lever) lifts C 4.14&rarr;5.65; adding a write-back cache (h-lever, hit 0.65&rarr;0.73) lifts it further to 6.33
-(+53% over stock)&mdash;confirming the co-design predicted by C=K/(1&minus;h). (Capacity is deterministic; the raised
-ceiling still does not make the &lambda;=5 goodput reliable&mdash;the knee stays coin-flip-governed, &sect;6.)</figcaption>
+(+53% over stock)&mdash;confirming the co-design predicted by C=K/(1&minus;h). (Capacity is deterministic; but the raised
+ceiling does <em>not</em> rescue &lambda;=5 goodput: co-design fails it in <b>0/4</b> draws, all clustered ~14&ndash;16&nbsp;s
+&mdash;a <em>consistent</em> bad-basin, not a coin-flip. Raising C from 5.65 to 6.33 did not improve knee reliability;
+the knee is basin-metastability-dominated, not capacity-rescuable at this margin, &sect;6.)</figcaption>
 </figure>
 
 <h2>4 The design-space partition</h2>
@@ -332,10 +334,14 @@ reliability where the margin is large (&lambda;=3) but not where it is small (&l
 (P6 &times; P3) and bounds the mechanism's headline&mdash;acceleration reliably raises capacity, but converting that
 into reliable goodput@SLO needs margin, i.e. C comfortably above &lambda;. <b>Stacking capacity does not shortcut
 this.</b> Co-designing both levers (acceleration + write-back cache) lifts C to 6.33, so the &lambda;=5 margin doubles
-to 1.33&mdash;yet &lambda;=5 still landed in the bad basin (15.6&nbsp;s). Even a large capacity gain does not buy
-knee-rate reliability at moderate margin; reliability arrives only when C sits well above &lambda; (the write-back
-config's margin&nbsp;&asymp;&nbsp;2.0 was the first to give 2/2). The knee is coin-flip-governed almost independently of
-how the capacity was raised&mdash;a two-regime picture: <em>large-margin</em> (&lambda;&nbsp;&ll;&nbsp;C) reliably
+to 1.33&mdash;yet &lambda;=5 fails in <b>0/4</b> independent draws (14.3/15.3/15.6/15.9&nbsp;s, tightly clustered), a
+<em>consistent</em> bad-basin rather than a lucky bad run. Strikingly, this higher-C configuration is <em>less</em>
+likely to reach the good basin at &lambda;=5 than acceleration alone (0/4 at C=6.33 vs 1/2 at C=5.65), so knee
+reliability is <em>not</em> a monotone function of steady-state capacity in this range&mdash;a large capacity gain
+does not buy knee-rate reliability at moderate margin. (While &lambda;=3 co-design is a clean 4/4 pass, ~3.5&nbsp;s.)
+Reliability arrives only when C sits well above &lambda; (the write-back config's margin&nbsp;&asymp;&nbsp;2.0 was the
+first to give 2/2). The knee is thus <em>basin-metastability-dominated</em> almost independently of how&mdash;or how
+much&mdash;capacity was raised&mdash;a two-regime picture: <em>large-margin</em> (&lambda;&nbsp;&ll;&nbsp;C) reliably
 served, <em>knee</em> (&lambda;&nbsp;&asymp;&nbsp;C) metastable regardless of the lever.</div>
 
 <h2>7 Related work</h2>

@@ -50,7 +50,7 @@ then confirmed: if slowing a giant prefill hurts by making it linger, then <em>a
 acceleration&mdash;granting the in-flight chunked giant a larger per-step token budget under memory pressure so it exits
 sooner&mdash;is the first novel, lossless, on-contract mechanism in the series to raise goodput@SLO: it reliably wins at
 &lambda;=3 (7/7 vs stock 1/8, Fisher p=0.0012) and raises the effective capacity ceiling +36% (deterministic); the extension to a higher
-goodput frontier is coin-flip-limited (&lambda;=5 is 1/2), exactly as the margin law predicts at small margin. We also give the quantitative backbone
+goodput frontier is coin-flip-limited (&lambda;=5 is 2/5, firmed n=5), exactly as the margin law predicts at small margin. We also give the quantitative backbone
 (a capacity law <span class="mono">C=K/(1&minus;h)</span> with an intrinsic-feasibility floor showing every SLO
 violation is contention, not service time) and a methodological result (goodput@SLO on a <em>deterministic</em>
 workload is a coin-flip&mdash;metastable occupancy-basin selection&mdash;so single runs are void and per-step
@@ -290,7 +290,7 @@ deterministically:</p>
 <thead><tr><th>offered &lambda;</th><th>accel p99 TTFT</th><th>accel throughput</th><th>SLO</th><th>stock (companion)</th></tr></thead>
 <tbody>
 <tr><td>3</td><td class="win">4.7&nbsp;s (7/7)</td><td>3.02</td><td class="win">PASS</td><td>coin-flip 6&ndash;29&nbsp;s</td></tr>
-<tr><td>5</td><td>3.4&nbsp;s / 17.9&nbsp;s</td><td>4.85</td><td>coin-flip (1/2)</td><td class="fail">17&ndash;25&nbsp;s (fail)</td></tr>
+<tr><td>5</td><td>3.4&ndash;18&nbsp;s (bimodal)</td><td>4.85</td><td>coin-flip (2/5)</td><td class="fail">17&ndash;25&nbsp;s (fail)</td></tr>
 <tr><td>7</td><td class="fail">29.8&nbsp;s</td><td>5.20 (3.99)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
 <tr><td>10</td><td class="fail">37.9&nbsp;s</td><td>5.65 (4.14)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
 </tbody>
@@ -302,8 +302,8 @@ deterministically:</p>
 flat at 4.14. This closes the loop with &sect;3: <b>residency reduction is empirically the K-lever of the capacity
 law</b>&mdash;clearing giants faster lets more requests flow per unit time; the magnitude rivals whole-request
 shortest-first, via a distinct mechanism. Whether the raised capacity yields a higher goodput@SLO is <em>coin-flip-limited</em>
-(&sect;6): raising C to 5.65 brings &lambda;=5 within capacity and accel <em>can</em> pass it (a good-basin draw hit
-3.4&nbsp;s where stock fails), but a replicate hit 17.9&nbsp;s&mdash;&lambda;=5 is 1/2. This is precisely the
+(&sect;6): raising C to 5.65 brings &lambda;=5 within capacity and accel <em>can</em> pass it (good-basin draws hit
+3.4/4.7&nbsp;s where stock fails), but other draws hit ~18&nbsp;s&mdash;&lambda;=5 is a 2/5 coin-flip (firmed n=5). This is precisely the
 margin&ndash;reliability law: the accel margin at &lambda;=5 is only C&minus;&lambda;=0.65 (metastable), versus 2.65 at
 &lambda;=3 (reliable 7/7). So the firm goodput@SLO win is at &lambda;=3; &lambda;=5 is made feasible but not yet
 reliable&mdash;a single-run reading of "3&rarr;5" over-stated a coin-flip and replication corrected it.</p>
@@ -327,19 +327,20 @@ does: across &lambda;=3 replicates (multiple nodes), acceleration's p99 stays in
 (&sigma;&nbsp;&asymp;&nbsp;0.85&nbsp;s, 7/7 pass) versus stock's wild 6.2&ndash;28.9&nbsp;s scatter
 (&sigma;&nbsp;&asymp;&nbsp;7&nbsp;s, 1/8 pass)&mdash;roughly an 8&times; variance reduction <em>and</em> a shift under
 the SLO. The law is confirmed at <em>both</em> ends of the margin: at
-&lambda;=5, acceleration's margin is only C&minus;&lambda;=0.65 (small), and there its goodput@SLO is a coin-flip
-(1/2: a good-basin 3.4&nbsp;s vs a replicate's 17.9&nbsp;s)&mdash;a direct, if humbling, confirmation that <em>even a
-capacity-raising mechanism inherits the metastable coin-flip when its margin is thin</em>. Reducing residency thus buys
-reliability where the margin is large (&lambda;=3) but not where it is small (&lambda;=5); this both confirms the theory
-(P6 &times; P3) and bounds the mechanism's headline&mdash;acceleration reliably raises capacity, but converting that
-into reliable goodput@SLO needs margin, i.e. C comfortably above &lambda;. <b>Stacking capacity does not shortcut
-this.</b> Co-designing both levers (acceleration + write-back cache) lifts C to 6.33, so the &lambda;=5 margin doubles
-to 1.33&mdash;yet &lambda;=5 fails in <b>0/4</b> independent draws (14.3/15.3/15.6/15.9&nbsp;s, tightly clustered), a
-<em>consistent</em> bad-basin rather than a lucky bad run. Raising C from 5.65 to 6.33 does not buy knee-rate
-reliability at this moderate margin&mdash;acceleration alone (C=5.65) was likewise unreliable at &lambda;=5 (1/2), and
-the modest additional capacity did not move the knee out of the metastable regime. (We do not read the 0/4-vs-1/2 gap as
-co-design being <em>worse</em>&mdash;the accel-alone point is only n=2; the robust statement is that neither reaches the
-good basin reliably at &lambda;=5.) (&lambda;=3 co-design is a clean 4/4 pass, ~3.5&nbsp;s.)
+&lambda;=5, acceleration's margin is only C&minus;&lambda;=0.65 (small), and there its goodput@SLO is a genuine
+coin-flip&mdash;<b>firmed to n=5: 2/5</b>, bimodally either a good basin (3.4/4.7&nbsp;s) or a bad one
+(~18&nbsp;s)&mdash;a direct, if humbling, confirmation that <em>even a capacity-raising mechanism inherits the
+metastable coin-flip when its margin is thin</em>. Reducing residency thus buys reliability where the margin is large
+(&lambda;=3) but not where it is small (&lambda;=5); this both confirms the theory (P6 &times; P3) and bounds the
+mechanism's headline&mdash;acceleration reliably raises capacity, but converting that into reliable goodput@SLO needs
+margin, i.e. C comfortably above &lambda;. <b>Stacking capacity does not shortcut this.</b> Co-designing both levers
+(acceleration + write-back cache) lifts C to 6.33, so the &lambda;=5 margin nearly doubles to 1.33&mdash;yet &lambda;=5
+still fails in <b>0/4</b> independent draws (14.3&ndash;15.9&nbsp;s, tightly clustered). Raising C from 5.65 to 6.33
+does not buy knee-rate reliability: acceleration alone is a 2/5 coin-flip and co-design 0/4, so the higher-capacity
+config reached the good basin no more often (if anything less, and more <em>consistently</em> bad-basin&mdash;but this
+0/4-vs-2/5 difference is <em>not</em> statistically significant, Fisher p=0.28 at this n, so we do not claim
+capacity-raising <em>hurts</em> the knee&mdash;only that it does not rescue it). The robust statement: neither reaches
+the good basin reliably at &lambda;=5. (&lambda;=3 co-design is a clean 4/4 pass, ~3.5&nbsp;s.)
 Reliability arrives only when C sits well above &lambda; (the write-back config's margin&nbsp;&asymp;&nbsp;2.0 was the
 first to give 2/2). The knee is thus <em>basin-metastability-dominated</em> almost independently of how&mdash;or how
 much&mdash;capacity was raised&mdash;a two-regime picture: <em>large-margin</em> (&lambda;&nbsp;&ll;&nbsp;C) reliably

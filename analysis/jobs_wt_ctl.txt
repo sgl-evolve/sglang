@@ -1,0 +1,6 @@
+# floyd: same-node control for the write_back +7pp hit finding. write_back ran on node 1-1; my stock
+# baselines are all on 0-3, so the +7pp is currently CROSS-NODE. This runs stock (write_through, FCFS, LRU
+# = all defaults) on node 1-1 -> a clean same-node A/B vs v-writeback (differ ONLY in --hicache-write-policy).
+# MANDATORY before correcting P2's mirage: confirm write_back's +7pp hit / +9.7% peak-tput is a real write-
+# policy effect, not node-1-1 variance. Compare hit-vs-load + peak req/s.
+v-wt-ctl-n11:

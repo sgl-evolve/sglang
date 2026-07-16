@@ -50,8 +50,10 @@ unchanged (both runs pass at the baseline rate, req/s ~4.1) with, if anything, a
 7205 vs 6496&nbsp;ms). The reason: the goodput-rate p99 is set by the larger waiting turns the reserve cannot
 serve, not the tiny ones it can. The finding is therefore airtight and general: <b>chunk-level budget reservation
 cannot improve goodput@SLO over whole-request SRPF at any implementation</b> — fixed reservation hurts (waste),
-adaptive reservation is goodput-neutral. Combined with our companion map, this closes the scheduling axis at both
-granularities: whole-request reordering is the lever; chunk-level reservation is not. All variants are lossless
+adaptive reservation is goodput-neutral. Combined with our companion map, this establishes whole-request reordering
+as the scheduling lever and chunk-level <em>reservation</em> as a non-lever; we scope the chunk-level negative to
+reservation — a distinct same-granularity primitive, queue-pressure-adaptive chunk <em>sizing</em>, is left open
+(§7). All variants are lossless
 <em>by construction</em> — RPB only reslices prefill computation and never changes cache contents; measured
 hit-rate matches baseline within Prometheus scrape noise (Δ up to ~0.04, uncorrelated with the mechanism).
 </div>

@@ -186,9 +186,9 @@ goodput-setting rate is seconds; a millisecond load-back is lost in it.</li>
 <p>
 The boundary flips when a tier is slow. Add an L3 (SSD/NVMe/disk) at, say, 10&ndash;100&nbsp;MB/s effective per
 rank instead of DRAM's GB/s, and <code>C_move</code> for a large document rises from tens of milliseconds to
-<em>seconds</em> &mdash; now a material fraction of TTFT, and now prefetch/overlap/layout genuinely pay (indeed,
-in disk-backed HiCache regimes, parallelizing and overlapping L3 IO is a known win). <b>The movement lever lives
-below L2.</b> Within the L1&harr;L2 (HBM+DRAM) hierarchy of this protocol &mdash; which deliberately has no L3
+<em>seconds</em> &mdash; now a material fraction of TTFT, and the criterion predicts prefetch/overlap/layout
+would genuinely pay there (this is presumably why hierarchical caches offer a disk tier at all). <b>The movement
+lever lives below L2.</b> Within the L1&harr;L2 (HBM+DRAM) hierarchy of this protocol &mdash; which deliberately has no L3
 &mdash; movement is on the non-binding side of the boundary, and the family of &sect;3 mechanisms has no goodput
 headroom. This is the movement-axis analogue of the companion caching phase boundary (caching helps iff reuse
 recurs beyond the cache horizon): a single, checkable criterion that tells a practitioner whether the axis is
@@ -198,9 +198,9 @@ worth optimizing before they build anything.
 <h2>6 Related work</h2>
 <p>
 <b>HiCache / LMCache / AttentionStore</b> build the KV tiering and its movement machinery; our result is that,
-for this workload in a fast two-tier hierarchy, the movement they optimize is not the goodput bottleneck (it is
-below-L2, disk-tier movement that pays &mdash; consistent with disk-backed HiCache results where parallel L3 IO
-is the win). <b>Marconi</b> manages hybrid SSM&ndash;attention prefix caching; consistent with our companion's
+for this workload in a fast two-tier hierarchy, the movement they optimize is not the goodput bottleneck &mdash;
+our criterion (&sect;5) predicts the payoff is below L2, at a disk tier, which is presumably why such a tier is
+offered at all. <b>Marconi</b> manages hybrid SSM&ndash;attention prefix caching; consistent with our companion's
 finding that the recurrent-state pool never binds, the only residency pressure is attention-KV, and moving it is
 cheap. Prefetching and transfer/compute overlap are classic memory-hierarchy techniques; our contribution is not
 a new one but the measured, bounded statement that <em>on this axis, for this workload, there is nothing to

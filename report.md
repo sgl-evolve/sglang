@@ -1443,3 +1443,12 @@ for: (1) does `pool memory leak detected` WARN appear there (leak reproduces, no
 tree sanity_check (on_idle line 3547, runs right after the pool check) ALSO trip? pool-warns+tree-PASSES ⇒ benign pool-aggregate
 divergence, radix tree self-consistent, KV fine (false-positive-leaning / structural); tree-FAILS (`evictable size !=`) ⇒ real
 tree counter-drift. NO positive claim without the refinement-#6 losslessness proof. Invariant arithmetic double-checked: over by 256.
+
+### Direction 6 HARVEST cont'd (19:27) — rate=3 is CLEAN under STRICT=0 (leak is load-dependent); decisive full-drain ~20:07
+Through 45% of λ3 (3157/7037) with STRICT_MEM_CHECK_DURING_IDLE=0: ZERO `pool memory leak detected` warns, ZERO tree-sanity asserts.
+Because rate=3 has frequent idle gaps, `on_idle` (and thus BOTH the pool check and the tree sanity_check) has fired repeatedly
+throughout λ3 and found nothing ⇒ **rate=3 is clean** — the mixed-chunk over-count is LOAD-DEPENDENT, consistent with v14 crashing
+only at rate=5 (never at rate=3). λ3 ETA ~40 min → completes ~20:07; job wall ~20:26. The crash-equivalent point (v14: protected=0
+⇒ FULL drain) is the end-of-λ3 full drain (~20:07), within the window; λ5 will then run only ~19 min before the wall (won't
+complete, but the transition idle is what matters). If the over-count needs deep-λ5 accumulation, this single 1:30 run may not
+reach it → would need a longer -t re-run. Watching the ~19:55-20:10 window for the pool-warn + the decisive tree-check verdict.

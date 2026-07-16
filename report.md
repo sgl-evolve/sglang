@@ -1414,3 +1414,19 @@ Gate for the tree check = `is_hybrid_ssm and supports_mamba()` (invariant_checke
 All three are honest + valuable; the run is worth its slot. NO positive claim without a losslessness/output-equivalence proof
 (bench jsons lack outputs). Compute status: 20258 top-priority PENDING, est start ~19:54 (good nodes ondem-0/1 completing); the two
 idle nodes are the excluded bad ones (1-0 OOMs the 122B load, -2 GPU-less). Fair queue, priority 1 — harvest when it runs.
+
+### Direction 6 refinement #6 (GPU-free) — pre-staged the LOSSLESSNESS-PROOF protocol for the top-prize branch (B/C), and its confound
+If 20258 lands outcome (B) counter-drift or (C) lock-leak and I write a fix, my only shot at the charter's top prize (a novel
+lossless positive) requires PROVING the fix is output-equivalent. Checked the eval harness (benchmark/hicache/bench_serving.py):
+generated_text IS retained per request (line 59/168); sampling is `temperature=0.0` (GREEDY, line 85) with `ignore_eos=True`
+(fixed length, line 89). ⇒ outputs are a deterministic function of prompt+model state GIVEN identical batch composition.
+★CONFOUND: greedy@temp0 is NOT batch-invariant — FP non-associativity makes logits (hence argmax) depend on batch composition, so
+under concurrent Poisson load even STOCK-vs-STOCK generated_text can diverge slightly. ⇒ a naive concurrent output-diff is NOT a
+clean losslessness test (would false-positive as "lossy"). VALID losslessness proof for a counter/lock fix =
+(1) CODE-LEVEL correctness argument — the fix only corrects an accounting counter / releases an already-logically-free lock; it
+    never changes which KV block feeds which token (same class of argument as decode-QoS "default 0 = byte-identical");
+(2) EVAL invariants unchanged — hit_rate and output-len distributions identical stock-vs-fixed on the real eval;
+(3) OPTIONAL empirical — a deterministic single-concurrency (max-concurrency=1) replay showing byte-identical generated_text
+    (batch-invariant at concurrency 1), acknowledging it doesn't exercise the concurrent path the bug lives in.
+Recording now prevents a future integrity error (claiming lossless from a confounded concurrent diff) and readies the fix branch.
+NOT building the harness speculatively — outcome (A) needs none, and (A) is plausible; this is the proof PROTOCOL, ready to apply.

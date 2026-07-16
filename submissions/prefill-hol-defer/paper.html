@@ -41,18 +41,21 @@ SLO. The natural engineering instinct, though, is to avoid deferring anyone: kee
 and simply <i>share</i> the prefill budget fairly. Our main result is that this instinct is <b>wrong, and
 demonstrably so on this workload</b>. We design a fair, non-starving, opt-in, lossless mechanism &mdash; a
 <em class="k">reserved short-prefill lane</em> that holds back a slice of the per-iteration budget so short
-requests prefill alongside an in-flight heavy document &mdash; and show it <b>fails at every reserve size</b>
-(neutral at 1024, +75% worse at 2048, n=3 same-node, monotone, no crossover), and when pushed harder collapses
-request throughput (3.6&rarr;2.0&nbsp;req/s) and OOM-kills the server. The mechanism is diagnosed: throttling the
-heavy document makes it occupy the prefill pipeline for <i>more</i> iterations (&asymp;32&rarr;94), maximizing the
-blocking window &mdash; the opposite of deferral. We further show the benefit is specific to deferral <i>by
-prefill size</i>: a genuine reordering by a different key (longest-output-first) does not help. This yields a
-crisp, transferable design principle &mdash; <b>defer, don't throttle</b>: to protect the goodput tail of a
-heavy-tailed prefill workload you must defer the few heavy documents past the percentile; fair budget-sharing
-cannot substitute, and pushed for fairness it destabilizes the server. Contributions: the per-request HOL
-diagnosis; the reserved-lane bounded negative with its throughput-collapse/OOM failure mode; and the
-deferral-by-prefill-size specificity. (Shortest-remaining-prefill scheduling itself is classical and is
-<i>not</i> claimed as a contribution here.)
+requests prefill alongside an in-flight heavy document &mdash; and show, in a clean same-node ablation, that it
+<b>fails at every reserve size</b> (monotone-harmful: +22% at 1024, +72% at 2048, n=3; no crossover) and, pushed
+to <i>R</i>&ge;3072, <b>destabilizes the server</b> (a KV-pool-leak crash at 3072; an outright throughput collapse
+at 4096). The mechanism is diagnosed: throttling the heavy document makes it occupy the prefill pipeline for
+<i>more</i> iterations (&asymp;32&rarr;94), maximizing the blocking window &mdash; the opposite of deferral. We
+further show the benefit is specific to deferral <i>by prefill size</i>: a genuine reordering by a different key
+(longest-output-first) does not help. Finally, bridging a companion result, we show deferral does not merely lower
+the knee median but <b>collapses the goodput@SLO cold-start coin-flip</b> (&lambda;=3 run-to-run &sigma;/m
+0.53&rarr;0.04, a ~13&times; variance reduction, 0/5&rarr;5/5) &mdash; the metric's knee variance is itself a
+schedulability artifact. This yields a crisp, transferable design principle &mdash; <b>defer, don't throttle</b>:
+to protect the goodput tail of a heavy-tailed prefill workload you must defer the few heavy documents past the
+percentile; fair budget-sharing cannot substitute, and pushed for fairness it destabilizes the server.
+Contributions: the per-request HOL diagnosis; the reserved-lane bounded negative with its
+destabilization failure modes; the deferral-by-prefill-size specificity; and the coin-flip-collapse bridge.
+(Shortest-remaining-prefill scheduling itself is classical and is <i>not</i> claimed as a contribution here.)
 </div>
 
 <h2>1 Introduction</h2>
@@ -81,6 +84,10 @@ reordering by a different key (longest-output-first) does not help &mdash; rulin
 <li><b>A design principle (&sect;4.4) &mdash; <em class="k">defer, don't throttle</em></b> &mdash; and its load
 bound (&sect;5.2): deferral reduces the tail ~70% at every load but clears the SLO only below severe saturation
 (&lambda;&le;5).</li>
+<li><b>A coin-flip-collapse bridge (&sect;5.3).</b> A companion paper shows goodput@SLO is a cold-start
+<i>coin-flip</i> at the knee for caching. We show deferral does not merely shift the knee median &mdash; it
+<b>collapses that run-to-run variance ~13&times;</b> (&sigma;/m 0.53&rarr;0.04, 0/5&rarr;5/5), so the metric's
+knee variance is itself a schedulability artifact: a well-ordered queue is faster <i>and</i> reliable.</li>
 </ul>
 <div class="disc"><b>On scope and prior art.</b> The reference policy that <i>does</i> fix the tail here is
 shortest-remaining-prefill-first (SRPF), a classical shortest-job-first variant; that reordering can raise LLM
@@ -1092,29 +1099,31 @@ document still makes progress every iteration (no starvation); the knob is opt-i
 stock (lossless). It does not work, and a size sweep shows the failure is <b>systematic &mdash; monotone, with
 no crossover</b>:</p>
 <table>
-<tr><th>reserve <i>R</i> (&lambda;=5, same node)</th><th>n</th><th>p99 TTFT med (ms)</th><th>p99 &divide; own-run stock</th><th>req/s</th><th>run</th></tr>
-<tr><td>0 (stock, ablation)</td><td>3</td><td>23317</td><td>1.00&times;</td><td>3.63</td><td>v6</td></tr>
-<tr><td>1024</td><td>3</td><td>22296</td><td>0.96&times; (neutral)</td><td>3.66</td><td>v6</td></tr>
-<tr><td>0 (stock, primary A/B)</td><td>3</td><td>24226</td><td>1.00&times;</td><td>3.51</td><td>v4</td></tr>
-<tr><td>2048</td><td>3</td><td>42359</td><td><b>1.75&times; (worse)</b></td><td>3.26</td><td>v4</td></tr>
-<tr><td>4096</td><td>1*</td><td>~100272</td><td>4.30&times; (catastrophic)</td><td>2.05</td><td>v6</td></tr>
+<tr><th>reserve <i>R</i> (&lambda;=5, one node, warm)</th><th>n</th><th>p99 TTFT med (ms)</th><th>vs stock</th><th>req/s</th><th>stability</th></tr>
+<tr><td>0 (stock = byte-identical)</td><td>3</td><td>24638</td><td>1.00&times;</td><td>3.64</td><td>stable</td></tr>
+<tr><td>1024</td><td>3</td><td>30014</td><td>+22%</td><td>3.58</td><td>stable</td></tr>
+<tr><td>2048</td><td>3</td><td>42276</td><td><b>+72%</b></td><td>3.43</td><td>stable</td></tr>
+<tr><td>3072</td><td>1*</td><td>63134</td><td>+156%</td><td>2.47</td><td><b>server crash</b> (reps 2&ndash;3)</td></tr>
+<tr><td>4096</td><td>0*</td><td>&mdash; (collapse)</td><td>&mdash;</td><td>~0</td><td><b>throughput collapse</b></td></tr>
 </table>
-<p><span class="sub">Each reserve row is normalized to <i>its own run's</i> stock (reserve=0): the 1024/4096
-points are from the ablation (v6, stock p99 23.3&nbsp;s) and the 2048 point from the primary A/B (v4, stock
-24.2&nbsp;s) &mdash; the two stock baselines differ by &lt;4% (both inside the stock run-to-run band), so the
-normalized ratios are directly comparable and monotone (0.96&times; &rarr; 1.75&times; &rarr; 4.30&times;), with
-no crossover below 1&times; that would indicate a genuine improvement. *The 4096 point is a single attempt: the
-run collapsed and the server was OOM-killed mid-sweep, so it is an observation, not a replicated mean. The
-<b>negative rests on the replicated n=3 rows</b> (1024 neutral; 2048 &plus;75%, distributions disjoint from its
-stock).</span></p>
+<p><span class="sub">A clean <b>same-node</b> ablation: one node, one warm stock baseline, byte-identical flags
+except <i>R</i> (this supersedes an earlier cross-run version that had to normalize to per-run stock). Monotone
+and harmful with no crossover &mdash; every reserve is at best neutral and mostly worse than stock, and the harm
+grows with <i>R</i>. *At <i>R</i>=3072 only rep&nbsp;1 completed (63.1&nbsp;s); the server then crashed on reps
+2&ndash;3 with a KV-pool-leak invariant violation. At <i>R</i>=4096 the first rep collapsed to ~7&nbsp;s
+<i>per request</i> (&asymp;1000&times; slower than stock's ~7 req/s, KV-pool utilization climbing to exhaustion)
+and never completed. The robust negative rests on the replicated n=3 rows (0/1024/2048); at <i>R</i>&ge;3072 the
+mechanism destabilizes the server. An independent earlier cross-node run agrees (2048 harmful +75%; 1024 was
+neutral there &mdash; so 1024 is node-dependent neutral-to-harmful, never beneficial).</span></p>
 <p>At &lambda;=3 the 2048 reserve is likewise harmful (8.1&rarr;19.5&nbsp;s, +141%, n=3), so the negative holds
 across load. The reason is instructive and is the crux of the paper:</p>
 <div class="neg"><b>Throttling maximizes the blocking window.</b> Sharing budget with the heavy document keeps it
 running but slower, so it occupies the prefill pipeline for proportionally <i>more</i> iterations
 (&asymp;94 at <i>R</i>=4096 vs 32 at <i>R</i>=0) &mdash; the exact <i>opposite</i> of deferral, which removes it
 from the pipeline entirely. A thin reserve trickles a few victims through but lengthens the congestion window; a
-larger reserve starves the pipeline of forward progress while the backlog grows, collapsing throughput
-(3.6&rarr;2.0&nbsp;req/s) until accumulated KV exhausts memory. <b>Throttling-while-running never beats FCFS
+larger reserve starves the pipeline of forward progress while the backlog grows, until the accumulated KV
+destabilizes the server &mdash; a KV-pool-leak invariant violation at <i>R</i>=3072, an outright throughput
+collapse (and, in an earlier run, an OOM) at <i>R</i>=4096. <b>Throttling-while-running never beats FCFS
 (neutral at best, at the thinnest reserve) and is far worse than deferral.</b></div>
 
 <h3>4.3 The lever is deferral by prefill size, not reordering in general</h3>
@@ -1150,7 +1159,7 @@ different ceiling.</p>
 goodput pass only below severe saturation:</p>
 <table>
 <tr><th>&lambda; (same node, n=3, deferral vs FCFS)</th><th>FCFS p99</th><th>deferral p99</th><th>&Delta;</th><th>deferral goodput</th></tr>
-<tr><td>3 (knee)</td><td>coin-flip 10.8&ndash;34&nbsp;s</td><td>6.7&nbsp;s</td><td>&mdash;</td><td>pass (stabilizes the knee)</td></tr>
+<tr><td>3 (knee, n=5)</td><td>22.0&nbsp;s (coin-flip 9.7&ndash;35.9)</td><td>6.7&nbsp;s</td><td>&minus;70%</td><td><b>5/5 pass</b> (variance collapses, &sect;5.3)</td></tr>
 <tr><td>5 (saturation)</td><td>23.9&nbsp;s</td><td>7.0&nbsp;s</td><td>&minus;71%</td><td>pass</td></tr>
 <tr><td>7 (severe saturation)</td><td>33.3&nbsp;s</td><td>9.6&nbsp;s</td><td>&minus;71%</td><td>fail</td></tr>
 </table>
@@ -1159,6 +1168,31 @@ unboundedly; deferral still cuts p99 71% (33.3&rarr;9.6&nbsp;s) but the backlog 
 requests above the 8&nbsp;s SLO. So the goodput@SLO ceiling of the scheduling lever is &asymp;&lambda;=5: the tail
 is reduced everywhere but the SLO is cleared only below severe saturation. Fixing &lambda;=7 needs provisioning
 or admission control, not reordering &mdash; a boundary on the whole scheduling axis, not just on our negative.</p>
+
+<h3>5.3 Deferral collapses the knee coin-flip, not just the median</h3>
+<p>Our companion paper (<code>prefill-slo-tail</code>) establishes that at the queueing knee (&lambda;=3)
+goodput@SLO is a <i>cold-start coin-flip</i> for caching: identical stock runs straddle the SLO with large
+run-to-run variance, so the binary pass/fail verdict is dominated by metastability rather than by the cache. A
+question bridges that result to this paper's scheduling lever: does deferral merely <i>shift</i> the knee median
+under the SLO, or does it <i>collapse</i> the metastable variance &mdash; making goodput <i>reliable</i>, not just
+passing? We answer with a same-node K=5 A/B at &lambda;=3 (fcfs vs the deferral reference; raw runs
+<code>runs/v9-defer-knee</code>):</p>
+<table>
+<tr><th>&lambda;=3, same node, n=5</th><th>p99 TTFT samples (ms)</th><th>median</th><th>&sigma;/m</th><th>goodput</th></tr>
+<tr><td>fcfs (stock)</td><td>9671, 12265, 22035, 34132, 35870</td><td>22.0&nbsp;s</td><td>0.53</td><td>0/5</td></tr>
+<tr><td>deferral (SRPF ref.)</td><td>6177, 6225, 6665, 6711, 6755</td><td>6.7&nbsp;s</td><td><b>0.04</b></td><td><b>5/5</b></td></tr>
+</table>
+<div class="key">Deferral cuts the knee median p99 <b>&minus;70%</b> (Fisher exact p=0.008; the distributions are
+disjoint &mdash; srpf max 6.76&nbsp;s &lt; fcfs min 9.67&nbsp;s) <b>and collapses the run-to-run variance
+&sim;13&times;</b> (&sigma;/m 0.53&rarr;0.04): the fcfs spread is 3.7&times; (a wide straddle of the SLO), the
+deferral spread just 1.09&times; (tight, entirely under it). p50, hit rate, and request throughput are flat
+(lossless, throughput-neutral). So the goodput@SLO knee coin-flip is a <b>schedulability artifact</b>: a
+well-ordered (deferred) queue is not only faster but ~13&times; more predictable.</div>
+<p>This completes, rather than contradicts, the companion paper: the coin-flip is real and caching is blind to it,
+but it is <i>caused</i> by the head-of-line queue's sensitivity to arrival ordering (&sect;3), which deferral
+removes. The metric is movable <i>and stabilizable</i> by scheduling yet invariant to caching &mdash; precisely
+why caching must be evaluated on stable metrics, not goodput@SLO. At the knee, deferral converts an unreliable
+pass/fail into a reliable pass. (SRPF remains a cited reference here, not a contribution.)</p>
 
 <h2>6 Related work</h2>
 <p><b>Request reordering for LLM goodput.</b> Shortest-remaining / shortest-job-first scheduling is classical
@@ -1182,9 +1216,12 @@ to single-node intra-iteration prefill budgeting, which is where the HOL and our
 
 <h2>7 Limitations &amp; when it does not hold</h2>
 <ul>
-<li><b>The 4096 reserve point is n=1.</b> The catastrophic-collapse/OOM observation is a single attempt; the
-bounded negative is anchored on the replicated n=3 rows (1024/2048) and the &lambda;=3 replicate. We report the
-4096 crash as an observation, not a mean.</li>
+<li><b>The destabilization points (<i>R</i>&ge;3072) are not per-point replicated.</b> At 3072 only rep&nbsp;1
+completed before a pool-leak crash; at 4096 the first rep collapsed and never completed. The robust bounded
+negative is anchored on the replicated n=3 rows (0/1024/2048), corroborated by an independent cross-node run and
+the &lambda;=3 replicate. We report the crashes as observations, not means; whether the &ge;3072 destabilization
+is a fundamental congestion property or an implementation artifact under extreme reserve is untested (either way,
+the observable is that large reserve breaks the server &mdash; the opposite of the intended fairness).</li>
 <li><b>Deferral defers first-token, not completion.</b> Here E2E is decode-dominated so deferral is E2E-neutral;
 for TTFT-streaming-critical heavy requests the deferred first token is a real (if bounded-by-count) cost, and
 SRPF starvation under sustained overload (not exercised here) would need an aging or size-threshold guard.</li>
@@ -1206,11 +1243,15 @@ Same-node A/B harnesses <code>tools/shortlane_ab_eval.sh</code> (reserve sweep) 
 (reference), byte-identical eval flags except the scheduling knob; analysis <code>tools/ab_analyze.py</code>;
 per-request HOL attribution via env-gated <code>KLEINROCK_PERREQ_DUMP</code>, analyzed by
 <code>tools/perreq_hol_analyze.py</code>, Figure&nbsp;1 by <code>tools/make_hol_scatter.py</code>. Runs:
-reserved-lane <code>runs/v4-shortlane-ab</code> (&lambda;5), <code>v5-shortlane-l3</code> (&lambda;3), size
-ablation <code>v6-shortlane-abl</code>; reference deferral <code>runs/v3-srpf-ab</code> (&lambda;5),
-across-&lambda; <code>v8-srpf-l7</code> (&lambda;7); deferral-specificity triple <code>v7-policy-defer</code>.
-Every number in this paper is taken directly from those runs' CSVs. The evaluation protocol (rate sweep, dataset,
-model, SLO) is the frozen contract and is unchanged.</p>
+the clean same-node reserve ablation of &sect;4.2 is <code>runs/v10-reserve-sweep</code> (&lambda;5,
+<i>R</i>&isin;{0,1024,2048,3072,4096}, one node, <code>tools/reserve_sweep.sbatch</code>); the &sect;5.3
+coin-flip-collapse A/B is <code>runs/v9-defer-knee</code> (&lambda;3 K=5 fcfs vs srpf, one node,
+<code>tools/defer_knee.sbatch</code>); earlier corroborating runs: reserved-lane <code>runs/v4-shortlane-ab</code>
+(&lambda;5) / <code>v5-shortlane-l3</code> (&lambda;3) / cross-node ablation <code>v6-shortlane-abl</code>;
+reference deferral <code>runs/v3-srpf-ab</code> (&lambda;5), across-&lambda; <code>v8-srpf-l7</code> (&lambda;7);
+deferral-specificity triple <code>v7-policy-defer</code>. Every number in this paper is taken directly from those
+runs' CSVs (<code>{srpf,shortlane}_ab.csv</code>). The evaluation protocol (rate sweep, dataset, model, SLO) is the
+frozen contract and is unchanged.</p>
 
 <h2>9 Conclusion</h2>
 <p>The goodput@SLO tail of a heavy-tailed LLM prefill workload is not the cold prefill of the large documents

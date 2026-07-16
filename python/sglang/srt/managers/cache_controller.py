@@ -82,7 +82,7 @@ def _kl_drain():
         else:
             still.append((s, e, n))
     _kl_pending = still
-    if len(_kl_hist) >= _kl_logged + 500:
+    if len(_kl_hist) >= _kl_logged + 25:
         _kl_logged = len(_kl_hist)
         h = sorted(_kl_hist)
         q = lambda p: h[min(len(h) - 1, int(p * len(h)))]

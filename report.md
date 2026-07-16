@@ -1373,3 +1373,12 @@ list Y") → COUNTER DRIFT (fixable false-positive; fix = find/fix the drift sit
 COMPLETES past on_idle → counter consistent + pool-invariant over-strict → benign/LOSSLESS (fix = correct the
 pool invariant to model whatever it misses); (c) OOM → REAL over-commit (fundamental → P4 firmed). No more source
 speculation needed — the empirical run decides. 20257 queued (cluster saturated 10 alloc/2 idle; next-priority).
+
+### Direction 6 feasibility note (2026-07-16): losslessness verification needs output-capture
+bench jsons store ONLY aggregate stats (no generated_text/output_ids) → can't compare outputs from existing runs.
+Direction-6 losslessness will need output-capture instrumentation + a run. NOTE: for a SCHEDULING change (decode-QoS/
+mixed-chunk) bit-exact output-equivalence is inherently fuzzy (batch-invariance: batch-composition shifts FP
+reduction order → token flips even when correct), so the practical lossless test = "serves full trace, completion
+normal, outputs coherent/non-garbage (detects real KV corruption), aggregate stats sane" — as used for decode-QoS
+in P4. Implement output-capture ONLY after diagnostic 20257 confirms the false-positive (don't pre-build; gated).
+★STATUS: 20257 still queued (cluster saturated); Direction 6 fully scoped GPU-free; compute-bound. Harvest on schedule.

@@ -56,6 +56,9 @@ def main():
     ap.add_argument("--arm", nargs="+", action="append", metavar=("LABEL","VER"),
                     help="--arm <label> <ver1> <ver2> ...")
     a = ap.parse_args()
+    if not a.arm:
+        ap.error("need at least one --arm; e.g. "
+                 "--arm stock v0-stock v0-stock-r2 --arm srpf v-srpf-r1 v-srpf-r2 v-srpf-r3")
     arms = {x[0]: summarize(x[1:]) for x in a.arm}
     for label, s in arms.items():
         gps = s["goodput"]

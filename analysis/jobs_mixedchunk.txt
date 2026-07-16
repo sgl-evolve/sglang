@@ -1,0 +1,8 @@
+# floyd: GPU-confirm the LAST analysis-only map axis = prefill/decode split.
+# P3 currently backs "prefill/decode split = TTFT-optimal" analytically (pd_schedule.py: 99% prefill
+# at saturation + scheduler.py prefill-first code). --enable-mixed-chunk is the mechanism that shifts
+# toward decode: it adds decode running_bs INTO prefill batches (scheduler.py:2918, LIVE, stock base
+# a334877e5, not auto-disabled with fa3/no-dllm). If it hurts TTFT (steals prefill compute) or is
+# neutral (inert when prefill chunks are full), either confirms prefill-first is TTFT-optimal.
+# Compare full curve vs stock (both FCFS+LRU, differ only in mixed_chunk). Lossless (batching, not outputs).
+v-mixedchunk:--enable-mixed-chunk

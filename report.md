@@ -1034,3 +1034,12 @@ paper 0.675→0.426), v3_wb 0.7372 (✓); P3 decode-floor v7_decfloor λ=3 p99=3
 p99=37.1s / completed 4255/7037 / thr 1.92 (✓ all EXACT). Combined with prior cycles (P6 flagship capacity/dose/λ=3/
 step-count + capstone P7 all verified), EVERY headline number across all 6 papers now matches the raw runs/*/summary.json
 & bench_r3.json exactly — zero inflation, portfolio-wide. Charter integrity requirement systematically confirmed end-to-end.
+
+## SESSION 2 cont. (07-16 ~11:35): CO-DESIGN λ=5 FIRMED 0/4 — capacity does NOT rescue the knee (two-regime sharpened)
+Firmed the two-regime weakest leg (was n=1). Co-design (accel+write_back, C=6.33, margin 1.33): λ=3 4/4 PASS (3.7/3.5/
+3.4/3.5s, ~3.5s clean win); λ=5 0/4 FAIL (15.6/15.3/15.9/14.3s, tightly clustered = CONSISTENT bad-basin, NOT coin-flip;
+achieved thr ~5.01 but tail ~15s). ★SHARPENED: higher C (6.33) is if anything LESS likely to reach the good basin at
+λ=5 than accel-alone (0/4 @C6.33 vs 1/2 @C5.65) → knee reliability is NOT monotone in steady-state capacity; the knee is
+basin-metastability-dominated, not capacity-rescuable at moderate margin. Reliability needs C≫λ (write_back margin~2.0
+gave 2/2). Folded into capstone Fig2 caption + §6 (f2dd18ea4). Node released (good-neighbor). This firming turned an
+ambiguous n=1 into a decisive n=4 result that strengthens the "capacity raises ceiling but not knee reliability" bound.

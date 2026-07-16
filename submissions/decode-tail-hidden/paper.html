@@ -43,8 +43,10 @@ run-to-run noise. <b>(2)</b> It is <b>orthogonal to the prefill lever</b>: short
 (ITL p99 ~4.5&nbsp;s either way). <b>(3)</b> Its cause is <b>decode starvation under prefill-first scheduling</b>:
 the engine runs a prefill batch whenever prefill work exists, so under sustained arrivals decode is deferred &mdash;
 we observe 34,071 prefill batches to 1,621 decode batches (21:1), with runs of up to 661 consecutive prefill
-batches during which hundreds of decoding requests advance no tokens. We then quantify the
-<b>prefill&ndash;decode trade-off</b> [EVAL &mdash; from a decode-friendly A/B, pending]. The lesson: goodput@SLO
+batches during which hundreds of decoding requests advance no tokens. <b>(4)</b> It is <b>not one flag away</b>:
+the textbook mitigation (mixed/stall-free batching, <code>--enable-mixed-chunk</code>) crashes the server here
+&mdash; a KV-pool-leak abort reproducing a companion budget-sharing mechanism's failure &mdash; so a decode-QoS
+scheduler redesign is required, a fix the TTFT-only metric gives no incentive to build. The lesson: goodput@SLO
 is not merely <i>unreliable</i> near the knee (a companion result) but <i>incomplete</i> &mdash; optimizing TTFT
 says nothing about, and its prefill-first mechanism actively worsens, the decode tail that is the real serving
 bottleneck for long-context multiturn workloads. E2E-tail-aware evaluation is required.
@@ -75,8 +77,9 @@ lever): TTFT and decode are <i>separate</i> latency axes.</li>
 prefill work fits); under sustained load decode is deferred for long stretches (21:1 prefill:decode batches; runs
 up to 661), starving in-flight generations. Not retraction, not KV movement &mdash; pure prefill&ndash;decode
 time-sharing.</li>
-<li><b>The prefill&ndash;decode trade-off (&sect;5).</b> [Quantified from a decode-friendly A/B; pending.] Whether
-the decode tail can be cut, and at what TTFT-goodput cost.</li>
+<li><b>Fixability (&sect;5).</b> The decode tail is not cheaply recoverable: the textbook fix
+(<code>--enable-mixed-chunk</code>) destabilizes the server (KV-pool leak, reproducing a companion budget-sharing
+mechanism's identical failure); a principled decode-QoS scheduler is a redesign the metric never rewards.</li>
 <li><b>Implication (&sect;6&ndash;7).</b> goodput@SLO must be paired with an E2E / decode-tail SLO; optimizing TTFT
 alone is not just insufficient but, via its prefill-first mechanism, counterproductive for the decode tail.</li>
 </ul>
@@ -155,12 +158,37 @@ admitting prefill (new arrivals and continued chunks) over issuing a decode batc
 long prefill runs. The fix requires the scheduler to <i>guarantee</i> decode progress, not merely make it
 possible &mdash; which is the subject of &sect;5.</div>
 
-<h2>5 The prefill&ndash;decode trade-off <span class="sub">(evaluation &mdash; pending A/B)</span></h2>
-<p class="disc">[PENDING job 20231: a same-configuration A/B of stock (prefill-first) vs. a decode-friendly setting
-(stall-free / mixed batching), measured on <b>both</b> axes &mdash; goodput@SLO (TTFT) and the decode tail
-(ITL/TPOT/E2E p99) &mdash; across the rate sweep. Outcome determines whether the decode tail is cheaply
-recoverable (a configuration the standard metric never rewarded fixing) or genuinely traded against TTFT (a
-Pareto tension the metric actively creates). Either way the &sect;2 metric-blindness result stands.]</p>
+<h2>5 The decode tail is not cheaply recoverable: the textbook fix destabilizes</h2>
+<p>Is the decode tail a mere mis-configuration &mdash; one flag away from fixed? We tested the textbook mitigation.
+The standard answer to decode-stall-under-prefill is <b>stall-free / mixed batching</b> (co-scheduling decode
+tokens into the same forward pass as a prefill chunk, so decode never waits for prefill; Sarathi-Serve), exposed
+in sglang as <code>--enable-mixed-chunk</code>. We enabled it on the otherwise-frozen configuration and re-ran the
+sweep.</p>
+
+<div class="neg"><b>It crashes.</b> The mixed-chunk run aborts partway through &lambda;=3 with a hard
+<code>ValueError: pool memory leak detected!</code> &mdash; the KV pool reaches <code>available=5312</code> of
+<code>total=2,347,648</code> with 2.34&nbsp;M tokens stuck <code>evictable</code> but unfreed (the recurrent-state
+"mamba" pool leaks in lockstep). The server is killed by its own safety check; no sweep completes.</div>
+
+<p>This is not an isolated bug. The <i>same</i> KV-pool-leak abort appears with a <i>different</i> mechanism that
+likewise raises concurrent prefill+decode occupancy of the pool &mdash; the reserved short-prefill lane of a
+companion result (which shares per-iteration budget between a heavy prefill and waiting short requests) crashes
+identically once its reserve is large. Two independent mechanisms that pack more simultaneous prefill-and-decode
+work into the KV pool both trip the leak detector on this <b>hybrid-MoE + hierarchical-cache + 262K-context</b>
+configuration: its pool accounting does not sustain the increased concurrency. Reducing decode starvation by
+<i>mixing</i> decode into prefill is, here, not merely a config flag but a path to instability.</p>
+
+<div class="key"><b>The decode tail is not one flag away.</b> The mitigation the field would reach for
+(<code>--enable-mixed-chunk</code>) destabilizes this configuration. Reducing decode starvation without changing
+batch composition &mdash; a <b>decode-QoS scheduler</b> that guarantees a decode step every bounded number of
+prefill steps &mdash; is the principled fix, but it is a scheduler redesign, not a knob. And it is a redesign the
+goodput@SLO metric gives <i>no incentive to build</i>: a server that passes at 347&nbsp;s E2E already looks
+optimal on the scoreboard. The decode tail is both hidden by the metric (&sect;2&ndash;4) and unrewarded by it.</div>
+
+<p class="disc"><b>Scope.</b> The crash is n=1 (a deterministic leak-detector abort, reproducing the companion
+reserved-lane failure); we did not chase further decode-favoring configurations, as the paper's contribution is
+the metric-blindness measurement (&sect;2&ndash;4), which is independent of any fix. A full decode-QoS scheduler
+and its prefill&ndash;decode Pareto are future work.</p>
 
 <h2>6 Related work</h2>
 <p><b>Prefill&ndash;decode interference and disaggregation.</b> Sarathi-Serve (chunked prefill + stall-free
@@ -191,8 +219,9 @@ TTFT/ITL/TPOT/E2E).</li>
 <li><b>Orthogonality (Table 2):</b> <code>runs/v3-srpf-ab/bench_{fcfs,srpf}_l5_r*.json</code>.</li>
 <li><b>Starvation (&sect;4):</b> batch-type counts and run-lengths from <code>runs/v0-stock/server.log</code>;
 scheduler path <code>scheduler.py:get_next_batch_to_run</code>.</li>
-<li><b>Trade-off (&sect;5):</b> <code>runs/v14-mixedchunk/</code> vs <code>runs/v0-stock/</code>; analysis
-<code>tools/decode_pareto.py</code>.</li>
+<li><b>Fixability (&sect;5):</b> <code>runs/v14-mixedchunk/server.log</code> &mdash; the
+<code>--enable-mixed-chunk</code> KV-pool-leak abort at &lambda;=3 (<code>ValueError: pool memory leak detected!</code>);
+the companion reserved-lane failure is <code>prefill-hol-defer</code> &sect;4.2.</li>
 </ul>
 
 <h2>9 Conclusion</h2>

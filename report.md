@@ -1232,3 +1232,13 @@ a separate, INVARIANT pathology, orthogonal to BOTH the TTFT coin-flip (P1) and 
 unreliable (P1 coin-flip) but INCOMPLETE — it hides a decode tail ~50× larger that dominates real E2E latency.
 This is a genuine measurement/critique contribution (like P1's methodology) REGARDLESS of the mixed-chunk fix
 outcome (job 20231). Table for paper: {run, λ, ttft_p99, goodput, itl_p99, tpot_p99, e2e_p99} from v0-stock{,-r2,-r3}.
+
+### P4 §5 experiment 1: --enable-mixed-chunk CRASHES (2026-07-16, job 20231, v14, node -0)
+mixed-chunk (the textbook decode-starvation fix: co-batch decode with prefill chunks) CRASHED at λ3 (4390/7037)
+with `ValueError: pool memory leak detected! [full] total=2347648 available=5312 evictable=2342592` (also [mamba]).
+SAME KV-pool-leak failure mode as P2's reserved-lane at large reserve → batching-composition changes destabilize
+this hybrid-MoE + hierarchical-cache + long-context config. ⇒ §5 finding: the decode tail is NOT cheaply fixable —
+the standard mixed/stall-free-batching mitigation destabilizes the server here. Node freed (scancel). NEXT: try a
+non-batch-changing decode-friendly knob (schedule-conservativeness / prefill-delayer) for a clean Pareto, else
+§5 = "obvious fix destabilizes; a proper decode-QoS fix needs scheduler redesign (future work)". P4 core
+(metric-blindness) stands regardless.

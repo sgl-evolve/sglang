@@ -1092,3 +1092,18 @@ PASS goodput@SLO at λ7 (aggregate p99<8s) where SRPF fails (9.6s)? Sim predicts
 (with honest mega-doc-starvation disclosure + metric-gaming caution connecting to P1). If neutral/heavier-than-sim
 → characterized. RESUME: analyze runs/v11-interleave-{l7,l5}/srpf_ab.csv via ab_analyze.py; verify LOSSLESS (stock
 outputs match) if interleave wins; if a job died + csv incomplete, resubmit the sbatch on any idle a3 node (NOT -2).
+
+### ★ CHUNK-INTERLEAVE = NEGATIVE (2026-07-16, job 20162, node 0-0, λ7) — over-defers the mega-docs
+Same-node λ7: fcfs {12.2,33.9,35.0}s med 34s (0/3) / srpf {9.6,9.6,8.4}s med 9.6s (0/3) / INTERLEAVE rep1
+**90.1s (0/3), CATASTROPHICALLY WORSE** than both. Mechanism runs (no crash — park-gate+guard correct under
+full λ7 load), keeps SHORT reqs fast (per sim) BUT the AGGREGATE p99 (what goodput@SLO measures) is dominated by
+the OVER-DEFERRED mega-docs: parking a mega-doc every ≤N=2 iters defers it MORE than srpf (which runs it to
+completion once started) → mega-doc TTFT explodes (~90s at λ7 backlog). ★The GPU-free interleave_sim was
+MISLEADING — it tracked TINY-req p99 (~1.7s, optimistic) not the aggregate metric; the real goodput tail is the
+mega-docs, which interleaving worsens. ⇒ chunk-interleaving does NOT beat srpf; it's WORSE than both baselines.
+No N helps: large N→fcfs-like, small N→over-defer; srpf's defer-at-admission-then-run-to-completion is the sweet
+spot. HONEST NEGATIVE (charter-valid). ★SHARPENS defer-don't-throttle: deferral works ONLY as srpf does it;
+repeated/chunk-level deferral (interleaving) OVER-defers heavy docs → wrecks the aggregate tail. Awaiting reps
+2-3 + λ5 to firm; then fold as a characterized negative into Paper 2 §4 (a 3rd failed alternative to SRPF, after
+reserve[throttle] and LOF[wrong-key]: interleave[over-defer]). SRPF remains the unique deferral sweet spot.
+LESSON: sim must measure the SAME metric as the eval (aggregate p99), not a proxy (tiny-req p99).

@@ -1500,3 +1500,14 @@ FIX candidate = account for in-flight hicache write-through pages in the idle in
 false-positiving WITHOUT globally disabling the check via STRICT env — that would be a genuine novel lossless code contribution that
 unblocks the win safely; (4) same-node replicate. Do NOT publish a headline until (1)-(2) done. This is the strongest lead of the
 campaign — pursue rigorously, frame honestly (diagnosis-driven, mechanism stock-but-blocked; or elevate to the invariant-fix).
+
+### Losslessness evidence (19:50, mechanism/distribution level) — mixed-chunk vs stock, λ3, same 7037 reqs, greedy@temp0+ignore_eos
+total_output_tokens: v17-mixedchunk = **900082**, v0-stock-r3 = **900082**, v0-stock-r2 = **900082** — EXACT match ⇒ every request
+served to full length, zero truncation/errors under mixed-chunk. total_output_tokens_retokenized: mixedchunk 899812 vs stock
+{899792, 899830} — mixedchunk lands BETWEEN the two stock values ⇒ output text tokenizes consistently (corrupted text would diverge
+by thousands), NOT garbage. output_throughput 386.8 vs 386.6/386.7 ≈ identical. Combined with tree-sanity 0-failures (KV structure
+correct) + 7037×200-OK + mixed-chunk being a stock correctness-preserving prefill-chunk-batching feature (same attention math),
+this is a solid mechanism-level losslessness case. HONEST CAVEAT (refinement #6): greedy@temp0 is not batch-invariant, so I do NOT
+claim bitwise token identity under concurrent load (even stock-vs-stock can differ); the claim is distributional + structural +
+code-level — the same bar by which mixed-chunk is accepted upstream. OPTIONAL hard proof still available: max-concurrency=1
+deterministic replay (byte-identical text) — cheap follow-up if a reviewer demands token-level identity.

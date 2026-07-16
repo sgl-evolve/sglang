@@ -226,23 +226,24 @@ clean (no crash). But applied at <i>K</i>=4 to the very run that <b>passes</b> g
 (&lambda;=3), it exposes a brutal trade-off (Table&nbsp;3).</p>
 
 <table>
-<caption class="disc">Table 3. decode-QoS (K=4) vs. stock, at &lambda;=3 (unsaturated, the goodput-passing case of
-&sect;2) and &lambda;=5 (saturated). Lossless (7,037/7,037 served each). The trade-off is <b>load-dependent</b>:
-at &lambda;=3 it breaks goodput without cutting the tail; at &lambda;=5 it modestly cuts the tail but goodput is
-already lost.</caption>
-<tr><th>metric</th><th>&lambda;3 stock</th><th>&lambda;3 K=4</th><th>&lambda;5 stock</th><th>&lambda;5 K=4</th></tr>
-<tr><td>p99 TTFT <i>(goodput metric)</i></td><td>6.8&nbsp;s PASS</td><td>29.4&nbsp;s FAIL</td><td>25.4&nbsp;s fail</td><td>23.1&nbsp;s fail</td></tr>
-<tr><td>p99 ITL <i>(decode-stall tail)</i></td><td>4.12&nbsp;s</td><td>3.94&nbsp;s (&minus;4%)</td><td>5.10&nbsp;s</td><td>4.34&nbsp;s (&minus;14%)</td></tr>
-<tr><td>median TPOT <i>(typical)</i></td><td>99&nbsp;ms</td><td>45&nbsp;ms</td><td>312&nbsp;ms</td><td>225&nbsp;ms</td></tr>
-<tr><td>p99 E2E</td><td>347&nbsp;s</td><td>236&nbsp;s</td><td>400&nbsp;s</td><td>337&nbsp;s</td></tr>
+<caption class="disc">Table 3. decode-QoS (K=4) vs. stock across the rate sweep (&Delta; = K4 relative to stock;
+lossless, 7,037/7,037 served at every rate). <b>Load-dependent</b>: at &lambda;=3 (unsaturated &mdash; the only
+swept rate where goodput passes) it <b>breaks goodput</b> while leaving the decode tail flat; at the saturated
+rates it trims the tail but goodput is already lost. It helps only where goodput is unachievable.</caption>
+<tr><th>rate</th><th>&Delta; p99 TTFT <i>(goodput)</i></th><th>&Delta; p99 ITL <i>(tail)</i></th><th>&Delta; median TPOT</th><th>&Delta; p99 E2E</th><th>goodput stock&rarr;K4</th></tr>
+<tr><td>&lambda;=3 <i>(unsaturated)</i></td><td>+333% (6.8&rarr;29&nbsp;s)</td><td>&minus;4% (flat)</td><td>&minus;54%</td><td>&minus;32%</td><td><b>PASS&rarr;FAIL</b></td></tr>
+<tr><td>&lambda;=5</td><td>&minus;9%</td><td>&minus;14%</td><td>&minus;28%</td><td>&minus;15%</td><td>fail&rarr;fail</td></tr>
+<tr><td>&lambda;=7</td><td>&minus;29%</td><td>&minus;9%</td><td>&minus;22%</td><td>&minus;14%</td><td>fail&rarr;fail</td></tr>
 </table>
 
 <p>The effect is <b>load-dependent, and never a clean win</b>. At <b>&lambda;=3</b> (unsaturated &mdash; the exact
 run that passes goodput@SLO at 347&nbsp;s E2E) decode-QoS <b>breaks goodput</b> (p99 TTFT 6.8&rarr;29&nbsp;s,
 PASS&rarr;FAIL, far outside the stock coin-flip band of 6.8&ndash;14&nbsp;s so real despite the cross-node
-comparison) while barely touching the decode tail (p99 ITL &minus;4%). At <b>&lambda;=5</b> (saturated) it modestly
-cuts the tail (p99 ITL &minus;14%, p99 E2E &minus;15%) &mdash; but goodput is already lost (both fail). At both
-loads it lowers the <i>typical</i> decode latency (median TPOT &minus;28 to &minus;54%). The p99 tail is stubborn
+comparison) while barely touching the decode tail (p99 ITL &minus;4%). At the <b>saturated</b> rates
+(&lambda;=5,7) it modestly trims the tail (p99 ITL &minus;14%/&minus;9%, p99 E2E &minus;15%/&minus;14%) &mdash; but
+goodput is already lost (both fail), so the mechanism helps only where goodput is unachievable and hurts where it
+is not. At every load it lowers the <i>typical</i> decode latency (median TPOT &minus;22 to &minus;54%). The p99
+tail is stubborn
 for a structural reason visible in the batch trace: decode-QoS raises the decode-batch share from 4.5% to 11.8% and
 caps the <i>common</i> prefill runs at ~<i>K</i>, but the <i>tail</i> runs still escape (to 388) &mdash; the worst
 stalls occur <i>during</i> a heavy document's chunked prefill, which the pool-leak guard must not interrupt.</p>

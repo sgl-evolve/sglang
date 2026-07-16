@@ -993,3 +993,16 @@ is_deepseek_dsa). Full hybrid-model prefill CP (ring attention + sequence-parall
 mechanism; a buggy partial attempt would violate losslessness. The compute-side lever is genuinely out of reach;
 the bounded-impossibility (goodput = cold-prefill-compute wall, no in-engine lossless lever) is airtight.
 No paper change (P2 §5.1 accurate). This firms the impossibility's most important axis by re-verification.
+
+### 2026-07-16: fresh ~14-angle brainstorm (took program's push seriously) — bound confirmed + P4 completed to 3 policies
+Re-examined the space from scratch/creatively for a genuinely-new lever: decode-preemption-for-prefill (bounded:
+99% prefill at saturation already, retraction wasteful), multiple-concurrent-big-doc-prefill (bounded: budget
+compute-fixed, splitting delays all tail docs), speculative-decode-for-slots (off-scope/lossy, model-level),
+lossless L2-KV compression (no headroom: L2 non-binding per mirage), first-token/prefill-tail overlap (needs
+full prefill = lossy), cross-conversation doc-sharing (97% singletons per P2), multi-concurrent chunked_req,
+non-textbook scheduling signals (all subsumed by SRPF's remaining-work signal or textbook EDF-neg). EVERY angle
+bounds to the compute wall / an already-mapped non-lever / out-of-scope-lossy. Bound is airtight.
+★Genuine outcome: "concurrent big-doc prefill" is the 4th natural chunk-budget-allocation policy → added to P4's
+chunk-scheduling closure (now covers reservation[GPU]+preemption[argued]+concurrent-split[argued], all bounded
+by the same tail-setting-big-doc-delay failure mode). Completes the chunk-scheduling axis over ALL budget
+policies. Commit follows. No new substantial direction; no GPU experiment adds non-redundant value.

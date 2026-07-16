@@ -1158,3 +1158,27 @@ over 3838 completed reqs; crashed run = directional corroboration, not a clean p
 **Net:** the 5-paper body + 9-axis fully-empirical map is adversarially-verified integrity-clean and
 submission-ready. No new lossless lever exists (space exhaustively bounded); no thin/salami 6th paper warranted
 (an eviction paper would salami-slice P2). Keep probing; supervisor decides retirement.
+
+### 2026-07-16: ★write_back backup policy raises hit+throughput but NOT goodput — integrity correction + sharpened thesis
+Fast-screened the last distinct untested stock mechanism (L1→L2 backup policy, --hicache-write-policy) and
+found it genuinely worth a run — it tests whether the multiturn-eager-retention principle extends from eviction
+to backup. Result was a GENUINE SURPRISE that required an integrity correction to P2.
+- **GPU sweep (v-writeback, node 1-1) + same-node control (v-wt-ctl-n11, node 1-1, stock write_through, FCFS,
+  differ ONLY in write policy):** write_back raises hit **+4.9/+6.0/+6.5/+6.6pp** (λ3/5/7/10; 0.70→0.74 … 0.66→0.73)
+  and peak throughput **+7.4%** (λ10 4.74→5.09 req/s). Mechanism: write_back (threshold=2) does NOT back up the
+  97% singletons to L2 → less L2 pollution → reused prefixes retained → higher hit → less prefill → higher tput.
+  Lossless (backup TIMING, cache serves exact KV). **BUT goodput@SLO UNMOVED — p99 fails every rate (25-43s),
+  exactly like write_through.**
+- **Rigor:** the cross-node number (+7pp/+9.7% vs 0-3 baselines) included ~1pp node inflation; the same-node A/B
+  (both node 1-1) gives the clean +4.9-6.6pp / +7.4%. Ran the same-node control specifically to avoid overclaiming.
+- **INTEGRITY CORRECTION to P2:** §3.1's "measured hit rate sits at the online optimum" was too strong — it's
+  optimal for the EVICTION order (holding backup fixed); the backup policy is a separate lever that DOES raise
+  hit. Corrected §3.1 + added §3.4 "the one cache knob that raises hit — and still misses goodput."
+- **This STRENGTHENS the headline thesis:** even the one knob that provably improves hit (+6pp) AND the throughput
+  ceiling (+7.4%) leaves goodput untouched → goodput is DECOUPLED from hit-rate, set by the cold-doc SLO tail.
+  Sharpest possible statement of the caching mirage (you CAN improve hit; it's a mirage for goodput).
+- **write_back is a STOCK CONFIG** (charter explicitly excludes config flags, naming "write_back") → reported as
+  EVIDENCE, not a claimed contribution. Integrated P2 §3.1+§3.4, P3 residency row. W&B: v-writeback,
+  v-wt-ctl-n11 (both config). Commits 3ca47e6fb→4f5ae12d6.
+**Net:** a genuine new GPU finding that corrected an overstated claim (integrity) AND sharpened the central
+thesis. Fast-screen-then-run discipline paid off (I nearly skipped it as "predictable crater"; it was the opposite).

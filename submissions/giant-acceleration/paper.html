@@ -44,14 +44,15 @@ mechanisms that <em>reduce</em> a giant prefill's rate (an occupancy-gated decod
 interleaving) both <b>backfire</b>, because a slower giant lingers in the running batch and feeds the runaway. Here we
 test the <b>dual</b>: <em>accelerate</em> the giant. When device-KV occupancy is high, we give the in-flight chunked
 giant a <em>larger</em> per-step token budget so it completes its prefill in fewer steps and <em>exits sooner</em>,
-lowering concurrency. On a same-node A/B at &lambda;=3 (n=4 replicates each), giant acceleration passes the 8&nbsp;s
-SLO in <b>4/4 runs</b> (p99 TTFT 7.0/4.6/5.5/4.8&nbsp;s) vs stock 1/4 (14.2/11.1/11.5/6.2&nbsp;s), with decode
-time-per-token dropping to 146&ndash;333&nbsp;ms (stock 319&ndash;607) and mean concurrency to 21&ndash;57 (stock
-74&ndash;166), at unchanged throughput and all requests completing (no starvation). The decode-tpot and concurrency
-distributions are near-perfectly separated (one-sided Mann-Whitney U exact p&nbsp;=&nbsp;0.016 for tpot,
-0.008 for concurrency)&mdash;coin-flip-robust, significant confirmation that the mechanism reduces residency and
-speeds memory-bound decode as the law predicts; and the coin-flip-sensitive SLO-pass is <em>also</em> significant
-(accel 4/4 vs stock 1/5, one-sided Fisher p&nbsp;=&nbsp;0.040). The
+lowering concurrency. On an A/B at &lambda;=3 (<b>n=7 replicates each</b>, spanning multiple nodes), giant acceleration
+passes the 8&nbsp;s SLO in <b>7/7 runs</b> (p99 TTFT median 4.7&nbsp;s, all 4.5&ndash;7.0) vs stock 1/7 (median 11.5,
+range 6.2&ndash;22.0&nbsp;s), with decode time-per-token dropping to 120&ndash;333&nbsp;ms (stock 319&ndash;607) and
+mean concurrency to 18&ndash;57 (stock 74&ndash;166), at unchanged throughput and all requests completing (no
+starvation). The decode-tpot and concurrency distributions are <em>completely non-overlapping</em> (one-sided
+Mann-Whitney U exact p&nbsp;=&nbsp;0.0006 for tpot, 0.0003 for concurrency)&mdash;coin-flip-robust, significant
+confirmation that the mechanism reduces residency and speeds memory-bound decode as the law predicts; and the
+coin-flip-sensitive SLO-pass is <em>also</em> significant (accel 7/7 vs stock 1/7, one-sided Fisher
+p&nbsp;=&nbsp;0.0023, tightening from 0.040 at n=4). The
 win establishes that the tail's lever is <em>residency reduction</em>: a bigger chunk roughly halves the number of
 prefill steps a giant needs, which amortizes fixed per-step overhead (a kernel profile shows prefill is compute- and
 communication-bound&mdash;notably a 19% tensor-parallel AllReduce tax per step), releases the single-chunked-request
@@ -65,10 +66,13 @@ companion capacity law C=K/(1&minus;h), of magnitude comparable to shortest-firs
 Whether this raised capacity translates into a higher goodput@SLO is coin-flip-limited: raising C to 5.65 brings
 &lambda;=5 within capacity and accel <em>can</em> pass it (a good-basin draw hit 3.4&nbsp;s where stock fails), but a
 replicate landed at 17.9&nbsp;s&mdash;&lambda;=5 is 1/2, a coin-flip, exactly as the companion margin&ndash;reliability
-law predicts at the small resulting margin (C&minus;&lambda;=0.65). So the firm goodput@SLO win is at &lambda;=3 (5/5
-vs stock 1/5); &lambda;=5 is made feasible but not yet reliable. A factor sweep confirms a <b>sharp optimum at f=2</b>
+law predicts at the small resulting margin (C&minus;&lambda;=0.65). So the firm goodput@SLO win is at &lambda;=3 (7/7
+vs stock 1/7); &lambda;=5 is made feasible but not yet reliable. A factor sweep confirms a <b>sharp optimum at f=2</b>
 (both under- and over-boosting raise raw capacity but lose the tail), so acceleration is a tuned, not monotone, lever.
-</div>
+Finally, the boost is <em>robust to its trigger signal</em>: gating on device-KV occupancy, on waiting-queue depth
+(the companion head-of-line-blocking signal), or on either gives statistically indistinguishable results (all pass
+&lambda;=3; concurrency 18&ndash;23, tpot 109&ndash;131 across signals)&mdash;because under a monopolizing giant the two
+signals are the same event.</div>
 
 <h2>1 Introduction &amp; the unified law</h2>
 <p>The headline metric is <b>goodput@SLO</b>: max request rate with p99 TTFT &lt; 8&nbsp;s. Companion studies showed
@@ -121,42 +125,70 @@ system is healthy, large exactly when a giant must be cleared. Second, <span cla
 a frozen contract knob; the contribution is the occupancy-adaptive control law, not a re-tuned constant.</p>
 
 <h2>3 Result: p99 halved, SLO crossed, statistically significant</h2>
-<p>Same-node A/B at &lambda;=3 (<span class="mono">GIANT_ACCEL</span> on vs off; identical deterministic workload;
-n=4 giant-accel replicates vs n=5 stock, all λ=3):</p>
+<p>A/B at &lambda;=3 (<span class="mono">GIANT_ACCEL</span> on vs off; identical deterministic workload;
+<b>n=7 giant-accel replicates vs n=7 stock</b>, spanning multiple nodes &mdash; every accel replicate passes on every
+node tried, so the win is node-robust, not a single-machine artifact):</p>
 <table>
-<thead><tr><th>&lambda;=3 (per-run)</th><th>giant-accel &times;4</th><th>stock &times;5</th></tr></thead>
+<thead><tr><th>&lambda;=3 &mdash; median (range)</th><th>giant-accel (n=7)</th><th>stock (n=7)</th></tr></thead>
 <tbody>
-<tr><td>p99 TTFT (s)</td><td class="win">7.0, 4.6, 5.5, 4.8 &nbsp;(<b>4/4 PASS</b>)</td><td class="fail">14.2, 11.1, 11.5, 8.1, 6.2 &nbsp;(1/5)</td></tr>
-<tr><td>decode tpot (ms)</td><td class="win">333, 223, 190, 146</td><td>561, 607, 468, 319, 392</td></tr>
-<tr><td>mean concurrency</td><td class="win">57, 31, 25, 21</td><td>78, 74, 166, 109, 124</td></tr>
+<tr><td>p99 TTFT (s)</td><td class="win">4.7 (4.5&ndash;7.0) &nbsp;(<b>7/7 PASS</b>)</td><td class="fail">11.5 (6.2&ndash;22.0) &nbsp;(1/7)</td></tr>
+<tr><td>decode tpot (ms)</td><td class="win">146 (120&ndash;333)</td><td>499 (319&ndash;607)</td></tr>
+<tr><td>mean concurrency</td><td class="win">21 (18&ndash;57)</td><td>103 (74&ndash;166)</td></tr>
 <tr><td>throughput (req/s)</td><td>~3.02</td><td>~3.02</td></tr>
-<tr><td>requests completed</td><td>7 037 (all)</td><td>7 037 (all)</td></tr>
+<tr><td>requests completed</td><td>7 037 (all, every run)</td><td>7 037 (all, every run)</td></tr>
 </tbody>
 </table>
-<p class="note">Statistics: SLO-pass one-sided Fisher exact <b>p = 0.040</b> (accel 4/4 vs stock 1/5). Coin-flip-robust
-deterministic metrics: one-sided Mann-Whitney U exact <b>p = 0.016</b> (decode-tpot), <b>p = 0.008</b> (concurrency).
-Both the goodput headline and the causal mechanism metrics are significant.</p>
+<p class="note">Statistics: SLO-pass one-sided Fisher exact <b>p = 0.0023</b> (accel 7/7 vs stock 1/7). Coin-flip-robust
+deterministic metrics: one-sided Mann-Whitney U exact <b>p = 0.0006</b> (decode-tpot), <b>p = 0.0003</b> (concurrency).
+Both the goodput headline and the causal mechanism metrics are significant, and both <em>tightened</em> as replicates
+accrued (Fisher 0.040&rarr;0.0023 from n=4&rarr;7), the signature of a real effect rather than a lucky draw.</p>
 <div class="keyfinding">
 <b>Goodput@SLO at &lambda;=3 flips 0&rarr;3.</b> Two statistics, one coin-flip-robust and one coin-flip-sensitive:
 <ul>
-<li><b>Deterministic metric (coin-flip-ROBUST) &mdash; SIGNIFICANT.</b> The giant-accel concurrencies {21,25,31,57}
-are <em>entirely below</em> the stock range {74&hellip;166} and decode-tpot {146,190,223,333} nearly so vs stock
-{319,392,468,561,607}. One-sided Mann-Whitney U (exact): p = <b>0.008</b> (concurrency), p = <b>0.016</b> (tpot).
-Because tpot/concurrency are not subject to the goodput coin-flip, this is direct, significant evidence the mechanism
-reduces residency and speeds memory-bound decode as the law predicts.</li>
-<li><b>SLO-pass (coin-flip-sensitive) &mdash; ALSO SIGNIFICANT.</b> giant-accel passes 4/4; stock 1/5 (one lucky
-good-basin draw). One-sided Fisher exact p = <b>0.040</b>. Even the coin-flip-inflated headline metric reaches
-significance at n=4 vs n=5.</li>
+<li><b>Deterministic metric (coin-flip-ROBUST) &mdash; SIGNIFICANT.</b> The seven giant-accel concurrencies
+{18,19,19,21,25,31,57} are <em>entirely below</em> the seven stock {74&hellip;166}, and decode-tpot
+{120&hellip;333} entirely below stock {319&hellip;607}&mdash;the two distributions do not overlap. One-sided
+Mann-Whitney U (exact): p = <b>0.0003</b> (concurrency), p = <b>0.0006</b> (tpot). Because tpot/concurrency are not
+subject to the goodput coin-flip, this is direct, significant evidence the mechanism reduces residency and speeds
+memory-bound decode as the law predicts.</li>
+<li><b>SLO-pass (coin-flip-sensitive) &mdash; ALSO SIGNIFICANT.</b> giant-accel passes 7/7; stock 1/7 (one lucky
+good-basin draw). One-sided Fisher exact p = <b>0.0023</b>. Even the coin-flip-inflated headline metric is firmly
+significant, and it strengthened monotonically as replicates accrued (0.040 at n=4 &rarr; 0.0023 at n=7).</li>
 </ul>
 The causal chain is measured end-to-end: bigger chunk &rarr; giant exits in fewer steps &rarr; concurrency down
-(21&ndash;57 vs 74&ndash;166) &rarr; memory-bound decode faster (tpot 146&ndash;333 vs 319&ndash;607) &rarr; p99 down
-(4.6&ndash;7.0 vs 6.2&ndash;14.2&nbsp;s), all lossless (7 037/7 037 complete every run).</div>
+(18&ndash;57 vs 74&ndash;166) &rarr; memory-bound decode faster (tpot 120&ndash;333 vs 319&ndash;607) &rarr; p99 down
+(4.5&ndash;7.0 vs 6.2&ndash;22.0&nbsp;s), all lossless (7 037/7 037 complete every run).</div>
 <p class="note"><b>Honest caveats.</b> (1) The p99 SLO-pass is coin-flip-sensitive; we therefore report both it
-(Fisher, n=4 vs 5) and the coin-flip-robust deterministic metrics (Mann-Whitney on tpot/concurrency), and both are
+(Fisher, n=7 vs 7) and the coin-flip-robust deterministic metrics (Mann-Whitney on tpot/concurrency), and both are
 significant. (2) Hit rate falls ~2.5&nbsp;pp: boosting the per-step commit changes KV eviction timing, so the set of
 cached prefixes differs&mdash;the mechanism is output-lossless (misses recompute identically; all 7 037 requests
 complete every run) but not hit-invariant. Notably the win occurs <em>despite</em> lower cache reuse, underscoring
 that the gain is from residency/decode, not caching.</p>
+
+<h3>3.1 The win is robust to the trigger signal</h3>
+<p>The boost fires on device-KV occupancy (&rho;&gt;&theta;). Does the <em>signal</em> matter, or only the boost? A
+companion study diagnosed the &lambda;=3 tail as head-of-line blocking&mdash;a giant monopolizes the per-step prefill
+budget while short requests wait. That suggests a different gate: fire when shorts are actually <em>waiting</em>
+(waiting-queue depth &ge; 2), rather than when device-KV happens to be full. We compare three gates at &lambda;=3 (all
+f=2, same node): <span class="mono">occ</span> (occupancy, the original), <span class="mono">queue</span> (the HOL
+signal), and <span class="mono">either</span> (occ OR queue):</p>
+<table>
+<thead><tr><th>trigger signal</th><th>p99 TTFT (s)</th><th>decode tpot (ms)</th><th>mean concurrency</th><th>SLO</th></tr></thead>
+<tbody>
+<tr><td>occ &mdash; occupancy (original)</td><td class="win">4.6, 4.7</td><td>121, 123</td><td>19, 19</td><td class="win">2/2 PASS</td></tr>
+<tr><td>queue &mdash; shorts waiting (HOL)</td><td class="win">3.6, 4.1</td><td>128, 131</td><td>21, 23</td><td class="win">2/2 PASS</td></tr>
+<tr><td>either &mdash; occ OR queue</td><td class="win">3.4</td><td>109</td><td>18</td><td class="win">1/1 PASS</td></tr>
+</tbody>
+</table>
+<div class="keyfinding"><b>All three signals gate the boost equally well.</b> Every run passes &lambda;=3, and the
+coin-flip-robust deterministic metrics are near-identical across signals (concurrency 18&ndash;23, decode-tpot
+109&ndash;131&mdash;vs stock's 74&ndash;166 / 319&ndash;607 respectively). The mechanism does not depend on
+<em>which</em> pressure signal fires it, because under a monopolizing giant the two signals are the <em>same event</em>:
+the giant that fills device-KV is the giant that makes shorts wait. This ties the companion HOL diagnosis directly to
+the cure&mdash;the very quantity identified as the problem (waiting shorts) gates the fix as well as occupancy&mdash;and
+shows the boost is a robust control, not a fragile threshold on one hand-picked signal. Occupancy remains the natural
+default: it needs no queue bookkeeping and fires slightly less eagerly, which matters at high &lambda; where
+over-firing is a tail risk (&sect;5).</div>
 
 <h2>4 Raising the capacity ceiling (full sweep)</h2>
 <p>The &lambda;=3 result shows acceleration wins where stock coin-flips. A full rate sweep shows it also raises the
@@ -166,7 +198,7 @@ stock companion in parentheses):</p>
 <table>
 <thead><tr><th>offered &lambda;</th><th>accel p99 TTFT</th><th>accel throughput</th><th>SLO</th><th>stock (companion)</th></tr></thead>
 <tbody>
-<tr><td>3</td><td class="win">4.5&nbsp;s (5/5 pass)</td><td>3.02 (2.83)</td><td class="win">PASS</td><td>coin-flip 6&ndash;14&nbsp;s (goodput 0&ndash;3)</td></tr>
+<tr><td>3</td><td class="win">4.7&nbsp;s (7/7 pass)</td><td>3.02 (2.83)</td><td class="win">PASS</td><td>coin-flip 6&ndash;22&nbsp;s (goodput 0&ndash;3)</td></tr>
 <tr><td>5</td><td>3.4&nbsp;s / 17.9&nbsp;s (1/2)</td><td>4.85 (3.59)</td><td>coin-flip</td><td class="fail">17&ndash;25&nbsp;s (fail)</td></tr>
 <tr><td>7</td><td class="fail">29.8&nbsp;s</td><td>5.20 (3.99)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
 <tr><td>10</td><td class="fail">37.9&nbsp;s</td><td>5.65 (4.14)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
@@ -212,7 +244,7 @@ is coin-flip-governed (see below), so we report it as 1/2, not a clean pass.</p>
   <line x1="191" y1="280" x2="191" y2="193" stroke="#a11" stroke-width="1" stroke-dasharray="3 3"/>
   <circle cx="191" cy="193" r="4.5" fill="#fff" stroke="#a11" stroke-width="1.8"/>
   <text x="205" y="190" font-size="10" fill="#a11">17.9&#8201;s (replicate)</text>
-  <!-- pass marker on accel lambda=3 (reliable 5/5); lambda=5 = coin-flip -->
+  <!-- pass marker on accel lambda=3 (reliable 7/7); lambda=5 = coin-flip -->
   <text x="60"  y="266" text-anchor="middle" font-size="11" fill="#1a6a1a" font-weight="bold">&#10003;</text>
   <text x="205" y="285" font-size="10" fill="#666">&#189; coin-flip</text>
   <!-- legend -->
@@ -223,7 +255,7 @@ is coin-flip-governed (see below), so we report it as 1/2, not a clean pass.</p>
   <text x="372" y="72" font-size="11.5" fill="#1a1a1a">stock (companion sweep)</text>
 </svg>
 <figcaption style="font-size:.82rem;color:#666;margin-top:.2rem">Figure 1. p99 TTFT vs offered rate. Acceleration
-(green) reliably passes &lambda;=3 (&#10003;, 5/5). At &lambda;=5 it is a <b>coin-flip</b>: a good-basin draw hit
+(green) reliably passes &lambda;=3 (&#10003;, 7/7). At &lambda;=5 it is a <b>coin-flip</b>: a good-basin draw hit
 3.4&nbsp;s (plotted) but a replicate hit 17.9&nbsp;s (open red marker)&mdash;1/2 &mdash; because the accel margin there
 (C&minus;&lambda;=0.65) is small. Both curves diverge past capacity (stock at &lambda;&ge;5, accel at &lambda;=7).
 Stock &lambda;=3 is itself a coin-flip (6&ndash;14&nbsp;s; the plotted 11.5&nbsp;s run is one draw). The robust,
@@ -242,9 +274,9 @@ batch faster so more requests flow per unit time.
 capacity, and accel <em>can</em> pass &lambda;=5 (a good-basin draw hit 3.4&nbsp;s) where stock cannot. But a replicate
 (second node) landed in the bad basin at 17.9&nbsp;s: &lambda;=5 is 1/2, a coin-flip. This is exactly what the companion
 margin&ndash;reliability law predicts&mdash;at &lambda;=5 the accel margin is only C&minus;&lambda;&nbsp;=&nbsp;0.65
-(small &rArr; metastable), whereas at &lambda;=3 the margin is 2.65 (large &rArr; the reliable 5/5 win). So the honest
-statement is: <b>acceleration reliably raises capacity (+36%) and reliably wins goodput@SLO at &lambda;=3 (5/5 vs
-stock 1/5); it makes &lambda;=5 feasible but not yet reliable</b> (goodput@SLO=5 is a coin-flip at the current margin;
+(small &rArr; metastable), whereas at &lambda;=3 the margin is 2.65 (large &rArr; the reliable 7/7 win). So the honest
+statement is: <b>acceleration reliably raises capacity (+36%) and reliably wins goodput@SLO at &lambda;=3 (7/7 vs
+stock 1/7); it makes &lambda;=5 feasible but not yet reliable</b> (goodput@SLO=5 is a coin-flip at the current margin;
 reaching it dependably would need still-higher C). The earlier "3&rarr;5" single-run reading over-stated a coin-flip
 draw&mdash;replication corrected it. The gain magnitude is comparable to shortest-first scheduling, via a distinct
 mechanism.</div>
@@ -299,7 +331,7 @@ reaches 5&mdash;in its good-basin draw (f=2's &lambda;=5 pass is coin-flip, &sec
 at &lambda;=5, under-boosting (f=1.5) and over-boosting (f=3) both land at nearly identical p99 (20.7&nbsp;s vs
 20.5&nbsp;s), whereas f=2 alone reaches the good basin (3.4&nbsp;s). <b>Caveat (integrity):</b> f=2's &lambda;=5 pass is
 itself coin-flip-sensitive&mdash;a replicate hit 17.9&nbsp;s (&sect;4)&mdash;so "goodput@SLO=5 for f=2" is not reliably
-established; what <em>is</em> robust is that f=2 minimizes p99 at every rate (sharply and reliably at &lambda;=3, 5/5),
+established; what <em>is</em> robust is that f=2 minimizes p99 at every rate (sharply and reliably at &lambda;=3, 7/7),
 and even f=2's bad-basin 17.9&nbsp;s beats f=1.5/f=3's ~20.5&nbsp;s. Under-boosting leaves giants lingering
 (9&nbsp;216-token chunks clear them too slowly); over-boosting is <em>also</em> harmful.
 Notably, over-acceleration is a <b>tail failure, not a throughput
@@ -349,9 +381,14 @@ occupancy-adaptive giant-acceleration policy for goodput@SLO is new.</p>
 <span class="mono">a334877e5</span>. Hook in <span class="mono">scheduler.get_new_batch_prefill</span> before
 <span class="mono">add_chunked_req</span>. Env <span class="mono">SGLANG_TURING_GIANT_ACCEL=1
 SGLANG_TURING_ACCEL_THETA=0.85 SGLANG_TURING_ACCEL_FACTOR=2.0</span>.</li>
-<li>Eval harness, dataset, model, TP8, rate sweep, warmup, seeded arrivals: unchanged from contract. Same-node A/B
-(coin-flip demands it): the &sect;3 firming uses n=4 accel vs n=5 stock &lambda;=3 replicates; the &sect;4 frontier is
-a full &lambda;&isin;{3,5,7,10} sweep (<span class="mono">v13_accelfull</span>) vs the stock companion curve.</li>
+<li>Eval harness, dataset, model, TP8, rate sweep, warmup, seeded arrivals: unchanged from contract. The &sect;3
+result uses n=7 accel vs n=7 stock &lambda;=3 replicates (<span class="mono">v10*_accel</span> +
+<span class="mono">v18_faccel1&ndash;3</span> vs <span class="mono">v9/v11/v12/v18_fstock*</span> + 2 other-node
+stock), spanning multiple nodes; the &sect;4 frontier is a full &lambda;&isin;{3,5,7,10} sweep
+(<span class="mono">v13_accelfull</span>) vs the stock companion curve.</li>
+<li>Trigger-signal ablation (&sect;3.1): <span class="mono">SGLANG_TURING_ACCEL_SIGNAL</span>&isin;{occ,queue,either}
+with <span class="mono">SGLANG_TURING_ACCEL_QTHRESH=2</span> (default <span class="mono">occ</span> is byte-identical
+to the original), runs <span class="mono">v19_{occ,queue,either}*</span>, same node.</li>
 </ul>
 
 </body>

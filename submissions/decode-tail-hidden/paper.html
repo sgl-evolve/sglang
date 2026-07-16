@@ -66,8 +66,8 @@ end-to-end latency of <b>347 seconds</b>. The metric's green light is a mirage.<
 <p><b>Contributions.</b></p>
 <ul>
 <li><b>The metric-blindness result (&sect;2).</b> A run passing goodput@SLO (p99 TTFT 6.8&nbsp;s) has p99 E2E of
-347&nbsp;s; the decode tail (ITL p99 ~4.5&nbsp;s, TPOT p99 ~3.5&nbsp;s vs median 0.22&nbsp;s) is ~50&times; the TTFT
-tail and dominates E2E. TTFT-goodput is blind to it.</li>
+347&nbsp;s &mdash; p99 E2E is ~50&times; p99 TTFT &mdash; because the decode phase (a tail of ITL p99 ~4.5&nbsp;s,
+TPOT p99 ~3.5&nbsp;s vs median 0.22&nbsp;s) dominates E2E while TTFT-goodput sees only the first token.</li>
 <li><b>Invariance and orthogonality (&sect;3).</b> The decode tail is stable across three stock replicates and
 both loads (not the run-to-run coin-flip that afflicts the TTFT knee), and it is untouched by SRPF (the prefill
 lever): TTFT and decode are <i>separate</i> latency axes.</li>

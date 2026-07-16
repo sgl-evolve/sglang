@@ -1575,3 +1575,13 @@ WIN is UNAFFECTED (it is mixed-chunk's benefit; the fix/env only prevents the sp
 running so λ7/λ10 data is valid). ★NEXT: (1) let 20269 finish for λ7/λ10; (2) revise Paper 5 §5 to the honest framing
 above (diagnosis solid + STRICT-env robust unblock + guard partial + persistence-fix proposed); (3) OPTIONAL: implement
 the persistence detector + validate in a short dedicated run. Integrity > a tidy fix story.
+
+### FAIR guard-effectiveness + λ3 replication (21:21, v18 λ3 complete) — corrected §5/abstract to accurate numbers
+Matched λ3 mixed-chunk, TP0 idle leak-warn events: v17 (NO guard) = **10** (all during λ3, timestamps 19:30-19:48);
+v18 (WITH async-guard) = **7** (21:03-21:19). ⇒ guard reduces only ~30% (10→7), NOT "most" — corrected §5 ("modestly
+reduces 10→7") + abstract ("only modestly reduces ... most fall in a residual ack-lag window"). Most false-positives
+are ack-lag (async dicts empty at sample) → the guard is necessary-but-far-from-sufficient → PERSISTENCE check is the
+right fix. ★λ3 WIN REPLICATED n=3 (all mixed-chunk, lossless): v14 itl 300 (partial), v17 itl 282/tpot 174/e2e 75421,
+v18 itl 317/tpot 182/e2e 89142 — all ~15× below stock ~4200 ITL; total_output_tokens = 900082 EXACT in v17 AND v18
+(and stock) ⇒ ★GUARD CONFIRMED LOSSLESS (v18-with-guard perf ≈ v17-no-guard, out_tok identical). v18 now on λ5;
+λ7/λ10 ~23:00-23:30.

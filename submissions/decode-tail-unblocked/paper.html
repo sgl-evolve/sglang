@@ -42,9 +42,10 @@ hierarchical-cache write-through&mdash;the same window in which the engine's own
 <i>skips</i>. The tree structure that governs KV correctness stays perfectly consistent (0 sanity failures across two
 full runs), and serving is correct. Because the &ldquo;leak&rdquo; is diagnostic and provably benign, the safe,
 <b>lossless</b> unblock is simply to not treat it as fatal (the stock warn-not-abort mode); mixed-chunk then runs to
-completion. We also give a structural guard that mirrors the tree check (skip the pool report while async backup is
-pending); it is lossless and removes most of the false positives but not all&mdash;a residual ack-lag window remains,
-for which we discuss a magnitude-independent persistence-based check (&sect;5). Unblocked,
+completion. We also examine a structural guard that mirrors the tree check (skip the pool report while async backup is
+pending); it is lossless but only modestly reduces the false positives (10&rarr;7 at &lambda;=3), because most fall in a
+residual ack-lag window it cannot see&mdash;for which we recommend a magnitude-independent persistence-based check (&sect;5).
+Unblocked,
 mixed-chunk <b>cuts the decode tail by ~15&times;</b> at &lambda;=3 (ITL p99 ~4200&rarr;282&nbsp;ms) and ~11&times; at
 &lambda;=5 (~4750&rarr;418&nbsp;ms), and end-to-end p99 by 4.7&times;/2.4&times; (347&rarr;75&nbsp;s / 377&rarr;157&nbsp;s),
 <b>losslessly</b> (identical total output tokens, tree-consistent). The win is not free: it trades prefill latency,
@@ -188,13 +189,16 @@ backup is pending:</p>
                          or bool(getattr(tc, "ongoing_load_back", None))
     if not hicache_async_pending:
         self.invariant_checker._report_leak("pool", "\n".join(messages))</pre>
-<p>This guard is lossless (it gates only the assertion) and, measured on the full run, it removes <b>most</b> of the
-false positives&mdash;but <b>not all</b>. We report this honestly: one residual warning still fired at &lambda;=3
-(over-count 448&nbsp;tokens = 7 pages, <code>protected=0</code>, same benign self-healing class) at an idle sample
-where <i>both</i> async dicts were already empty. That is an <b>ack-lag</b> window: the write-through acknowledgement
-has cleared the tracking dicts, but the allocator free-list and tree-evictable reconciliation of those pages has not
-yet completed at the instant the pool counters are sampled. The async-pending guard is therefore
-<i>necessary but not sufficient</i>.</p>
+<p>This guard is lossless (it gates only the assertion), but&mdash;measured head-to-head on matched &lambda;=3
+mixed-chunk runs&mdash;it only <b>modestly reduces</b> the false positives: from <b>10</b> idle warnings (no guard) to
+<b>7</b> (with guard), about a 30% reduction. We report this honestly rather than claim a clean fix: most residual
+warnings (e.g. over-count 448&nbsp;tokens = 7 pages, <code>protected=0</code>, same benign self-healing class) fire at
+idle samples where <i>both</i> async dicts are already empty. That is an <b>ack-lag</b> window: the write-through
+acknowledgement has cleared the tracking dicts, but the allocator free-list and tree-evictable reconciliation of those
+pages has not completed at the instant the pool counters are sampled. The async-pending guard is therefore
+<i>necessary but far from sufficient</i>&mdash;most of the divergence lives in the ack-lag window it cannot see.
+(The guard is nonetheless lossless: with it, the &lambda;=3 decode-tail metrics are unchanged&mdash;ITL p99 317&nbsp;ms,
+TPOT p99 182&nbsp;ms, total output tokens 900082, matching the no-guard run to within run-to-run variance.)</p>
 
 <p>The complete, load-independent fix follows directly from the diagnosis (&sect;4): the benign discrepancy is
 distinguished from a real leak not by its magnitude but by its <b>impermanence</b>&mdash;it self-heals within a

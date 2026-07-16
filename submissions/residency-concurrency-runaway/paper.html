@@ -215,8 +215,9 @@ h) that multiply through C=K/(1&minus;h). Capacity is genuinely stackable.</div>
 0.65&rarr;0.73) lifts it further to 6.33 (&ge;+31% over stock)&mdash;confirming the co-design predicted by
 C=K/(1&minus;h). <span style="font-size:.95em">*The co-design bar (6.33) was measured on an earlier commit where
 accel-alone was 5.65, so it is drawn conservatively next to the current-commit 5.90; the true current-commit co-design
-would stack from the higher base.</span> (Capacity is robust though not perfectly deterministic&mdash;it has run-to-run
-variance, stock 4.14&ndash;4.83, from the same metastable saturated-concurrency the paper characterizes; but the raised
+would stack from the higher base.</span> (Capacity is reproducible on a fixed commit&mdash;stock
+n=2 = 4.83/4.74 (&plusmn;2%), accel n=3 = 5.65&ndash;5.90 (&plusmn;4%), two tight non-overlapping bands; the earlier 4.14
+stock figure was an <em>older</em> commit, not run-to-run noise. Unlike capacity, the raised
 ceiling does <em>not</em> rescue &lambda;=5 goodput: co-design fails it in <b>0/4</b> draws, all clustered
 ~14&ndash;16&nbsp;s&mdash;a <em>consistent</em> bad-basin, not a coin-flip. Raising C did not improve knee reliability;
 the knee is basin-metastability-dominated, not capacity-rescuable at this margin, &sect;6.)</figcaption>
@@ -303,8 +304,8 @@ robustly (same-commit, same-node, back-to-back paired):</p>
 <tr><td>10</td><td class="fail">37.8&nbsp;s</td><td>5.90 (4.83)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
 </tbody>
 </table>
-<p class="note">Throughput: accel achieved (stock achieved), same-commit same-node paired sweep. Stock saturates at 4.83;
-accel is still rising at &lambda;=10 (5.90), so the accel capacity ceiling is &ge;5.90 (+22%).</p>
+<p class="note">Throughput: accel achieved (stock achieved), same-commit same-node paired sweep. Stock saturates at 4.83
+(reproducible: n=2 = 4.83/4.74, &plusmn;2%); accel is still rising at &lambda;=10 (5.90), so the accel capacity ceiling is &ge;5.90 (+22%).</p>
 <p><b>The robust result is capacity: acceleration raises C from 4.83 to &ge;5.90&nbsp;req/s (+22%, same-commit paired)</b>
 (accel is still climbing at &lambda;=10, 5.62&rarr;5.90; output-token throughput +22% likewise), while stock saturates
 at 4.83. This closes the loop with &sect;3: <b>residency reduction is empirically the K-lever of the capacity

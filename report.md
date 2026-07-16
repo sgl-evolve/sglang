@@ -1084,3 +1084,13 @@ OVERLAPS a sibling's lever, and carries server-stall risk (my v0.2 custom-spf ST
 leave as a stated open extension in the flagship. Giant-acceleration (my novel intra-step prefill lever) is fully
 explored (dose-response f=2 optimum, trigger-robustness, direct step-count evidence, capacity +22%). The last remaining
 firming = same-commit co-design (Fig2 polish, in flight via chain_cdcur). Portfolio complete + honest + corrected.
+
+## stockcap2 LANDED — stock n=2 FIRMED (2026-07-16 23:30)
+v23_stockcap2 λ=10 = 4.738 (curve 3.02/4.11/4.63/4.738). Stock n=2 CURRENT commit (76ea1d13f) = {4.833, 4.738},
+mean 4.79, spread 2.0% → current-commit stock is REPRODUCIBLE (±2%). accel n=3 = {5.65,5.79,5.898}, mean 5.78, ±4.3%.
+★KEY REFINEMENT: the 4.14 (v1_stock, OLD commit ce01c1c79) is 13% below the current-commit stock mean (4.79) — so the
++36→+22 correction is a COMMIT effect (accel-new vs stock-OLD), NOT run-to-run variance. Current-commit stock run-to-run
+spread is only 2%. Both capacity bands TIGHT + NON-OVERLAPPING (stock 4.74-4.83 vs accel 5.65-5.90) → +22% separation
+CLEAN. FIRMED headline: paired +22.0% (5.898/4.833), mean/mean +20.8% (5.78/4.79), range +17-24%. This STRENGTHENS the
+story (capacity is nearly deterministic on a fixed commit; the coin-flip is SLO-pass, not capacity). Fixing the papers'
+"run-to-run variance 4.14-4.83" framing → "current-commit reproducible 4.74-4.83 (n=2); 4.14 was older commit".

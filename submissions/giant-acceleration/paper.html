@@ -279,11 +279,12 @@ result is the capacity ceiling (achieved throughput), measured same-commit, same
 same-commit, same-node, back-to-back (accelcap1 / stockcap1, commit 76ea1d13f).</b> On the current commit stock
 saturates at 4.83&nbsp;req/s (4.58&rarr;4.83 from &lambda;=7&rarr;10) while accel reaches 5.90 at &lambda;=10&mdash;far
 above stock; output-token throughput rises 618&rarr;754&nbsp;tok/s (+22%) and prefill input throughput
-68.6K&rarr;83.7K&nbsp;tok/s (+22%) likewise, all three consistent. Accel capacity replicates tightly across
-<b>n=3</b> draws (5.65 / 5.79 / 5.90, mean 5.78, &plusmn;2%); stock itself has larger run-to-run variance
-(4.14&ndash;4.83&mdash;a metastable saturated-concurrency effect, the same runaway the companion capstone
-characterizes), so the effect magnitude ranges +17% (5.65/4.83) to +22% (paired 5.90/4.83), with the same-commit
-paired measurement the cleanest point estimate. Crucially the achieved-throughput result <em>replicates</em>
+68.6K&rarr;83.7K&nbsp;tok/s (+22%) likewise, all three consistent. Both capacities replicate tightly on a fixed commit:
+accel <b>n=3</b> = 5.65 / 5.79 / 5.90 (mean 5.78, &plusmn;4%) and stock <b>n=2</b> = 4.83 / 4.74 (mean 4.79, &plusmn;2%),
+two tight, <em>non-overlapping</em> bands. (The earlier 4.14 stock figure was an <em>older</em> commit&mdash;13% below the
+current-commit stock mean&mdash;not run-to-run noise; it was the source of the retracted +36%.) The effect is thus
+robust: paired +22% (5.90/4.83, same node, back-to-back), mean/mean +21% (5.78/4.79), range +17% (5.65/4.83) to +24%
+(5.90/4.74), with the same-commit paired measurement the cleanest point estimate. Crucially the achieved-throughput result <em>replicates</em>
 (5.65&ndash;5.90) whereas the &lambda;=5 goodput did <em>not</em> (3.4&nbsp;s / 17.9&nbsp;s)&mdash;the signature that
 capacity is far more stable than the binary goodput@SLO pass. So capacity is the robust headline:
 acceleration is the <em>K-lever</em> of the companion capacity law C=K/(1&minus;h), by clearing giants from the running

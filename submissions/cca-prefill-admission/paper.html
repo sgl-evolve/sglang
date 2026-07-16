@@ -225,9 +225,13 @@ whereas round-robin interleaving does not help. This confirms the λ=3 tail is h
 per-request floor. The honest scope of the two regimes is therefore: <em>admission</em> and
 <em>caching/residency</em> cannot move goodput (this paper; and the caching companion), but
 <em>scheduling</em> can — shortest-prefill-first relieves the λ=3 head-of-line blocking and, at
-saturation, raises raw throughput toward the ~4.7&nbsp;req/s (measured) work-conservation ceiling. The wall that no policy
-crosses is that ceiling (cold first-turn prefill cost under a frozen model, TP width, and KV budget); the
-p99 <em>coin-flip</em> below it is a schedulable head-of-line effect. (The simulator omits prefill/decode
+saturation, raises raw throughput toward the ~4.7&nbsp;req/s (measured) work-conservation ceiling. No
+<em>scheduling</em> policy crosses that ceiling — scheduling reorders prefill work but does not reduce it; it is
+a compute wall set by the cold first-turn prefill cost under a frozen model, TP width, and KV budget. (A
+<em>backup</em> policy that lowers prefill work <em>does</em> raise the ceiling — <code>write_back</code> lifts it
+~7% losslessly by not backing singletons up to L2, companion — but goodput stays below even the raised ceiling,
+being SLO-tail-bound, so this does not change the admission conclusion.) The p99 <em>coin-flip</em> below the
+ceiling is a schedulable head-of-line effect. (The simulator omits prefill/decode
 step interleaving, so absolute latencies are approximate; the head-of-line diagnosis rests on the
 arithmetic — &lt;0.1% of turns prefill ≥6&nbsp;s — and the coin-flip reproduction.)</p>
 

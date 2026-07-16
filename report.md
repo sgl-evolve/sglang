@@ -1313,3 +1313,11 @@ cutting the tail; at saturation it modestly cuts the tail (itl -14%) but goodput
 point fixes the p99 tail while preserving goodput. ★§5 FIX: don't over-claim "itl flat/doesn't cut the tail"
 universally (λ5 shows -14%); frame as the load-dependent Pareto (λ3 = break-goodput-no-tail-cut; λ5 =
 modest-tail-cut-but-goodput-gone). Await λ7/λ10 then update Table 3 (add λ5, +λ7/λ10) + refine §5 prose.
+
+### decode-QoS λ7 cross-load (2026-07-16, v16, lossless 7037/7037)
+λ7 K=4 vs stock: ttft_p99 33314→23355 (-29%), itl_p99 4915→4427 (-9%), tpot_med 350→271 (-22%), e2e_p99
+399583→339832 (-14%). ★FULL PATTERN (λ3/5/7): ttft +333%/-9%/-29%; itl -4%/-14%/-9%. ⇒ decode-QoS BREAKS
+goodput exactly where it's ACHIEVABLE (λ3 unsaturated, PASS→FAIL, tail untouched) and only helps modestly in the
+SATURATED regime (λ5/λ7) where goodput is ALREADY LOST. "Helps where it doesn't matter, hurts where it does."
+Reinforces "no operating point cuts the tail while preserving goodput." Await λ10 (~30min) → final 4-rate Table 3
++ refine §5 prose (the wrecks-TTFT is λ3-specific; saturated regime shows modest ttft+tail improvement but goodput moot).

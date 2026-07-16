@@ -1314,3 +1314,34 @@ Re-sweep confirms ZERO remaining unscoped ceiling/cap claims across P1–P5; wri
 cross-cutting concept (here: the throughput ceiling) must be grepped across ALL papers — number-focused
 reviews and even a fresh full-paper review of the *changed* paper missed these two eval-description/glossary
 lines because they carry no headline number. Eval frozen (07-12), WARNINGS clean, web blocked, no new lever.
+
+---
+## PRE-REGISTRATION — SRPF × write_back interaction (job 20306, submitted 07-16, result pending)
+**Why now:** the flagship's central claim is "goodput is decoupled from the (losslessly-raisable) throughput
+ceiling — it is SLO-tail-bound, and the sole lever is scheduling." I supported this with the FCFS write_back
+result (ceiling 4.74→5.09, hit 0.66→0.73, yet goodput ~0 — FCFS tail 12–42s). But I had NOT tested write_back
+*with the scheduling lever active*. This is the thesis's STRONGEST challenge and a hostile-PC must-ask: write_back
+lowers total prefill work E[W] (higher hit ⇒ less recompute of reused docs); once SRPF supplies tail protection,
+does that freed work convert the SRPF λ7 tail (p99 10.3s, currently the binding fail) below the 8s SLO?
+Prior 2 attempts (job 20267) died on infra only (dead-fabric "no accelerator" + host OOM-killer at init), never
+a clean measurement — so this is a genuine unmeasured gap, not a re-run of a known result.
+
+**Baselines (same eval, my clone, SRPF impl 307ddc764):**
+- SRPF-alone (v-srpf-full): goodput 4.0 — curve p99 {λ3:6.50s PASS, λ5:7.82s PASS, λ7:10.32s FAIL, λ10:13.96s};
+  peak thpt 4.72@λ10; hit ~0.66.
+- FCFS+write_back (v-writeback): goodput ~0 — p99 {λ3:12.27s, λ5:25.34s, λ7:41.91s, λ10:43.38s}; peak thpt
+  5.09; hit ~0.73.
+
+**Config under test (v-srpfwb-1):** `--schedule-policy srpf --hicache-write-policy write_back` (identical to the
+two infra-killed attempts; write_back threshold = default).
+
+**PRE-REGISTERED PREDICTION (primary):** goodput ≈ 4.0 (NO compound) — the λ7 p99 tail stays > 8s. Rationale:
+the tail is dominated by *first-sight* (turn-0, uncacheable, singleton) big-doc prefill, which write_back cannot
+reduce; its E[W] saving is on *reused* docs, off the critical tail. → confirms decoupling more sharply (ceiling
+non-lever for goodput even with scheduling active + ceiling raised).
+**PRE-REGISTERED ALTERNATIVE (falsifier):** goodput ≥ 4.48 (λ7 p99 drops < 8s) — write_back's freed compute lets
+SRPF clear the λ7 tail ⇒ a genuine lossless COMPOUND (both mechanisms mine, independence-clean). If observed, I
+will HONESTLY revise the flagship (the ceiling CAN convert to goodput once scheduling is active — a more nuanced,
+stronger result) and run a same-node paired replicate before claiming it.
+**Third outcome:** goodput < 4.0 (write_back backup dynamics interfere with SRPF's tail) → bounded negative.
+Decision rule: compare v-srpfwb-1 curve.csv p99 at each λ vs v-srpf-full; goodput = max λ with p99 ≤ 8000ms.

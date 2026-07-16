@@ -1621,3 +1621,20 @@ with huge margin while still catching real thousands-of-pages leaks). Persistenc
 DISPROVEN attempt (validation caught it), warn-mode as the validated unblock, bounded-page-slack as the recommended
 structural fix. Integrity: validation caught my over-engineering — the intended purpose. Decode-tail WIN + lossless +
 benign-diagnosis all UNCHANGED. NEXT: correct paper; optionally implement+validate bounded-page-slack (3rd fix run).
+
+### Paper 5 COMPLETE + next-lead identified (2026-07-17 ~00:00) — bounded-slack fix IMPLEMENTED (validation deferred, fair-share)
+Paper 5 is data-complete + honest + QA-clean, all pushed (5 papers registered). Bounded-page-slack fix IMPLEMENTED in
+_check_full_pool (SGLANG_HICACHE_IDLE_PAGE_SLACK_PAGES, default 0=stock, mirrors DCP precedent) — the recommended fix
+now lives in the codebase; its end-to-end validation is DEFERRED because the cluster is saturated (10 alloc / 2 idle
+=bad nodes) with 4 SIBLING jobs PENDING → launching a 4th run for a refinement while siblings queue = not good-citizen.
+Will validate when fair capacity frees (mixed-chunk + SGLANG_HICACHE_IDLE_PAGE_SLACK_PAGES=16 + NO STRICT env, λ3 →
+expect 0 crash + completes = validates the recommended fix, upgrades §5 recommended→validated).
+★★NEXT GENUINE LEAD (P5 extension, GPU-gated + fair-share-gated): mixed-chunk + SRPF = BOTH-TAILS. P4 established SRPF
+(prefill/TTFT lever) ⟂ mixed-chunk (decode lever) are ORTHOGONAL. P5's honest limitation is the TTFT regression
+(neutral@λ3 → 1.4-2.8× worse@λ5-10). SRPF cuts the TTFT tail ~70% (P1/P2, same-node). ⇒ HYPOTHESIS: mixed-chunk +
+`--schedule-policy srpf` + warn-mode cuts BOTH tails simultaneously, losslessly → removes P5's tradeoff → a strictly
+stronger positive ("both prefill AND decode tails fixable together"). SRPF is charter-DISQUALIFIED as a standalone
+mechanism, but COMBINING it with mixed-chunk to show both-tails-cut is a MEASUREMENT result (SRPF cited as known lever,
+not claimed novel) — charter-valid, strengthens P5. Experiment when fair compute exists: same-node A/B, λ5 (where the
+TTFT tradeoff bites), stock vs mixed-chunk vs mixed-chunk+srpf; measure TTFT p99 AND ITL/TPOT/E2E p99 + out_tok. If
+both tails drop losslessly → fold into P5 §7 (or a P6). Do NOT launch while cluster saturated + siblings pending.

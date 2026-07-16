@@ -27,15 +27,16 @@ for i in $(seq 1 360); do   # up to 6h
   sleep 60
 done
 
-# 2) acquire a fresh node (retry a few times if contended)
-for a in 1 2 3 4 5 6; do
-  bash analysis/acquire_node.sh 9 >> "$L" 2>&1
+# 2) acquire a fresh node — PATIENT but good-neighbor (only grabs an IDLE certified node, never preempts).
+#    Retry every 5 min for ~2h; co-design is optional polish, so don't hog scarce nodes indefinitely.
+for a in $(seq 1 24); do
+  bash analysis/acquire_node.sh 5 >> "$L" 2>&1
   NODE=$(cat /tmp/turing_node.txt 2>/dev/null); JID=$(cat /tmp/turing_hold_jid.txt 2>/dev/null)
-  # confirm running
-  if [ -n "$JID" ] && squeue -j "$JID" -h -t R 2>/dev/null | grep -q .; then
+  # confirm running AND it is a fresh hold (not the old 20243)
+  if [ -n "$JID" ] && [ "$JID" != "20243" ] && squeue -j "$JID" -h -t R 2>/dev/null | grep -q .; then
     echo "[cdcur] node $NODE (jid $JID) RUNNING $(date -u +%H:%M:%S)" >> "$L"; break
   fi
-  echo "[cdcur] acquire attempt $a: node not running yet, wait 120s" >> "$L"; sleep 120
+  echo "[cdcur] acquire attempt $a/24: no idle certified node yet, wait 300s" >> "$L"; sleep 300
 done
 NODE=$(cat /tmp/turing_node.txt 2>/dev/null); JID=$(cat /tmp/turing_hold_jid.txt 2>/dev/null)
 if [ -z "$JID" ] || ! squeue -j "$JID" -h -t R 2>/dev/null | grep -q .; then

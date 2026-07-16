@@ -1074,3 +1074,13 @@ CO-DESIGN (+53% claim): 6.33 (v17_accel_wb) was on an EARLIER commit → vs curr
 accel-alone mean 5.78 = +9.5% additional (write_back h-lever on top of accel K-lever). Correct +53%→+31% and flag the
 co-design leg as earlier-commit; the STACKING (K-lever then h-lever) is qualitatively robust.
 v23_stockcap2 (stock n=2 same-commit) running (~00:25) to firm the 4.83 baseline; will fold in.
+
+## DECISION: NOT pursuing accel+SRPF composition (feasibility-checked 2026-07-16 21:40)
+Flagship §6 flags "do the two residency levers (accel + whole-request SRPF) compose?" as an open extension.
+Feasibility (non-GPU): (1) --schedule-policy is ON-CONTRACT (not in eval.sh FORBIDDEN regex). (2) BUT sglang v0.31
+exposes only lpm/fcfs/lof/random/dfs-weight — NO built-in shortest-first (SJF/SRPF). Testing accel+SRPF would require
+IMPLEMENTING a textbook SRPF policy (doesn't count as my contribution per charter: textbook policies excluded), it
+OVERLAPS a sibling's lever, and carries server-stall risk (my v0.2 custom-spf STALLED the server). ⇒ Not worth it;
+leave as a stated open extension in the flagship. Giant-acceleration (my novel intra-step prefill lever) is fully
+explored (dose-response f=2 optimum, trigger-robustness, direct step-count evidence, capacity +22%). The last remaining
+firming = same-commit co-design (Fig2 polish, in flight via chain_cdcur). Portfolio complete + honest + corrected.

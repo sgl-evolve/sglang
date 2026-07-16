@@ -958,3 +958,22 @@ GPU-confirmed; preemption argued via sim + shared failure mode + costs; direct G
 ★Two directions opened this session (D5 reuse-prefetch, D6 preemption) — both fast-screened NEGATIVE, each
 firming an existing paper's map (D5→P3 movement-family bound; D6→P4 both-primitives closure). Design space
 further bounded; no non-textbook lossless positive found (consistent with the bounded-impossibility thesis).
+
+### 2026-07-16: P5 (5th paper) — kv-movement-nonlever (movement-axis deep-dive negative)
+Per program ("series of deep papers, growing list"), turned D5's load-back finding into a full companion paper —
+the movement/transfer axis was the one P3 map-axis lacking a deep-dive (caching→P2, admission→P1,
+chunk-sched→P4, but transfer only a P3 row). NEW paper `submissions/kv-movement-nonlever/paper.html`:
+- CLAIM: the L2→L1 movement tier is NOT a goodput lever. Load-back volume is large + load-GROWING (0.37→1.36B
+  tokens λ3→10) but each op <30ms (≥99.4% <10ms; mean DROPS 1.54→1.31ms under load) ⇒ ≈10M tok/s HBM↔DRAM
+  (page_first_direct+direct IO); <0.2% of the queueing-dominated TTFT; on the pre-prefill critical path
+  (init_load_back→loading_check, code-verified) yet negligible.
+- Bounds the whole movement-optimization FAMILY (prefetch, transfer/compute overlap, layout/paging, conversation
+  co-residency) — none has goodput headroom (all target a cost that's already ~ms).
+- ★SLOW-TIER BOUNDARY criterion (generality, analog of P2's phase boundary): movement matters iff a tier's
+  transfer C_move=(reused-prefix-tokens/BW) is a material TTFT fraction — fast 2-tier HBM+DRAM = non-binding;
+  the movement lever lives BELOW L2 (L3/disk). Locates where movement optimization would pay.
+- Mirrors P2 on the movement axis: retention AND movement both non-levers; lever = scheduling cold prefills.
+- Evidence = existing load-back Prometheus histogram (load_back_stats.py); NO new GPU. Measurement (not ablation):
+  the histogram bounds achievable gain above by <0.2%, so no impl can beat it (honestly disclosed).
+- Integrity pass: reframed disk-tier remarks as PREDICTIONS from my criterion (no external/sibling results).
+Registered in INDEX (now 5 papers; every P3 map-axis has a companion). Commits a3370e588/8e702f63d.

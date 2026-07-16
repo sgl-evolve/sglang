@@ -106,8 +106,10 @@ hit whenever resident.
 <p>
 <b>Fixed evaluation (never modified).</b> A Poisson open-loop rate sweep λ∈{3,5,7,10} over 1553 multiturn
 conversations (7163 turns) from a Mooncake-style long-document mix, full decode, <code>max-concurrency</code>
-256. <b>Headline metric: goodput@SLO</b> = the max sustained req/s with p99 TTFT ≤ 8&nbsp;s. Honest controls
-(peak tok/s, peak req/s) are decode-bound and ~flat by construction.
+256. <b>Headline metric: goodput@SLO</b> = the max sustained req/s with p99 TTFT ≤ 8&nbsp;s. Honest controls: peak
+throughput (tok/s, req/s) is <em>not</em> moved by scheduling (which reorders prefill work, not reduces it); it
+is a prefill-work ceiling that only prefill-work reduction raises (e.g. <code>write_back</code>'s +7%, §3), and
+goodput sits below it regardless — so a curve shift must come from the SLO tail, not the throughput ceiling.
 </p>
 <p>
 <b>Method — diagnosing a variance-dominated tail metric.</b> goodput@SLO is a tail metric and, at λ=3, a

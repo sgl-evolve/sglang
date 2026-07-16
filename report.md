@@ -1296,3 +1296,21 @@ change the admission conclusion). P1 §2.3 ceiling band (~4.2–5) already rough
 top). P4/P5 verified clean of the overclaim. ⇒ the write_back ceiling-implication is now fully propagated across
 ALL papers (P1/P2/P3 corrected; P4/P5 clean). Commit 1d68fad9d. Genuine cross-session integrity fix, not gilding —
 validates that careful probing in watch-mode still catches real inconsistencies.
+
+---
+## Cross-session consistency sweep — write_back propagation completed (07-16, cycle post-P1-fix)
+Triggered by last cycle's find (P1 §2.4 stale "no policy crosses the ceiling"). A full grep-sweep across
+all 5 papers for ceiling/cap/flat-control framing caught two more residual inconsistencies where the
+write_back finding (peak req/s +7%, prefill-side, lossless) had not been fully propagated:
+- **P3 line 110** (eval-description "honest controls"): "peak tok/s, peak req/s are decode-bound and ~flat
+  by construction" — internally inconsistent with P3's own corrected compute-ceiling row. Fixed → peak
+  throughput is a prefill-work ceiling not moved by scheduling; only prefill-work reduction (write_back +7%)
+  raises it; goodput sits below it regardless. (commit a4bfdcf28)
+- **P3 line 386** (g_ceil glossary def): "the work-conservation cap no policy beats" — write_back lowers E[W],
+  raising g_ceil. Fixed → "no *scheduling* policy beats (fixed E[W]); reducing E[W] itself raises it ~7%."
+  (commit 43bb6d424)
+Re-sweep confirms ZERO remaining unscoped ceiling/cap claims across P1–P5; write_back numbers consistent
+(4.7/4.72 band, 5.09 raised, +7.4%). P3 well-formed. LESSON (reinforced): a finding that touches a
+cross-cutting concept (here: the throughput ceiling) must be grepped across ALL papers — number-focused
+reviews and even a fresh full-paper review of the *changed* paper missed these two eval-description/glossary
+lines because they carry no headline number. Eval frozen (07-12), WARNINGS clean, web blocked, no new lever.

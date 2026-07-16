@@ -1511,3 +1511,20 @@ this is a solid mechanism-level losslessness case. HONEST CAVEAT (refinement #6)
 claim bitwise token identity under concurrent load (even stock-vs-stock can differ); the claim is distributional + structural +
 code-level — the same bar by which mixed-chunk is accepted upstream. OPTIONAL hard proof still available: max-concurrency=1
 deterministic replay (byte-identical text) — cheap follow-up if a reviewer demands token-level identity.
+
+### ★ PROPER-FIX path found (19:52) — in-code DCP precedent + over-count is EXACT page multiples ⇒ principled lossless invariant fix
+_check_full_pool (invariant_checker.py:84-127) ALREADY tolerates this exact class of false-positive for DCP: it rounds
+full_evictable_size up to page units, and if a leak still trips it returns (False, "dcp_physical_page_slack_allowed=True") because
+"Partial physical pages can leave a small page-level slack even when all pages are owned by either the allocator or the prefix
+cache" (logical-token counters vs physical-page allocation). ★My over-counts are EXACT page multiples: 256=4×64, 320=5×64
+(page_size=64) ⇒ the SAME logical-vs-physical page-slack phenomenon, here induced by mixed-chunk + hicache write_through (pages
+transiently owned by both the allocator free-list and the tree-evictable set during in-flight write-through) rather than DCP. ⇒ The
+principled, well-precedented, LOSSLESS fix: extend the bounded page-slack tolerance to the hierarchical-cache write-through path
+(or account for in-flight write-through pages explicitly, like the hisparse clamp) so the idle invariant stops false-positiving
+WITHOUT globally disabling it via the STRICT env var. This touches ONLY the safety assertion (invariant_checker.py), never
+scheduling/KV compute ⇒ lossless by construction (same class as the existing DCP slack). This ELEVATES the contribution from
+"stock flag + env" to a real correctness fix that unblocks a ~15× decode-tail win. Must bound the tolerance (a few pages) so it
+still catches REAL (unbounded/growing) leaks — the observed slack is bounded+oscillating (256-320), well within a small page bound.
+PLAN: (A) queue full mixed-chunk sweep now (STRICT=0, empirical backbone — decode-tail vs load λ3/5/7/10, doesn't depend on the fix);
+(B) build the principled page-slack fix in invariant_checker.py + verify it (no false-positive, still catches real leaks, mixed-chunk
+runs clean without STRICT env); (C) same-node stock-vs-mixedchunk control. Then Paper 5.

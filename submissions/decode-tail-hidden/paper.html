@@ -193,7 +193,7 @@ admitting prefill (new arrivals and continued chunks) over issuing a decode batc
 long prefill runs. The fix requires the scheduler to <i>guarantee</i> decode progress, not merely make it
 possible &mdash; which is the subject of &sect;5.</div>
 
-<h2>5 The decode tail is not cheaply recoverable: the textbook fix destabilizes</h2>
+<h2>5 The decode tail resists fixing: the textbook fix crashes, a safe scheduler trades goodput</h2>
 <p>Is the decode tail a mere mis-configuration &mdash; one flag away from fixed? We tested the textbook mitigation.
 The standard answer to decode-stall-under-prefill is <b>stall-free / mixed batching</b> (co-scheduling decode
 tokens into the same forward pass as a prefill chunk, so decode never waits for prefill; Sarathi-Serve), exposed

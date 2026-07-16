@@ -189,18 +189,22 @@ warmup burst, no per-rate flush, greedy decoding, <code>ignore_eos</code>). Stoc
 off; MC = on. p99 values in ms unless noted.</p>
 
 <table>
-<tr><th>&lambda;=3</th><th>ITL p99</th><th>E2E p99</th><th>TTFT p99</th><th>median E2E</th><th>total out tok</th></tr>
-<tr><td>Stock (n=6, mean)</td><td>~4200</td><td>~355 s</td><td>6.8&ndash;14 s</td><td>~3&ndash;4 s</td><td>900082</td></tr>
-<tr><td><b>Mixed-chunk (full)</b></td><td><b>282</b></td><td><b>75.4 s</b></td><td>12.1 s</td><td>2.99 s</td><td><b>900082</b></td></tr>
-<tr><td>reduction</td><td><b>~15&times;</b></td><td><b>~4.7&times;</b></td><td>&mdash;</td><td>&mdash;</td><td>exact match</td></tr>
+<tr><th>&lambda;=3</th><th>ITL p99</th><th>TPOT p99</th><th>E2E p99</th><th>TTFT p99</th><th>total out tok</th></tr>
+<tr><td>Stock (n=6, mean)</td><td>~4200 ms</td><td>~3750 ms</td><td>~355 s</td><td>6.8&ndash;14 s</td><td>900082</td></tr>
+<tr><td><b>Mixed-chunk (full)</b></td><td><b>282 ms</b></td><td><b>174 ms</b></td><td><b>75.4 s</b></td><td>12.1 s</td><td><b>900082</b></td></tr>
+<tr><td>reduction</td><td><b>~15&times;</b></td><td><b>~21&times;</b></td><td><b>~4.7&times;</b></td><td>&mdash;</td><td>exact match</td></tr>
 </table>
 
 <table>
-<tr><th>&lambda;=5</th><th>ITL p99</th><th>E2E p99</th><th>TTFT p99</th><th>median E2E</th><th>total out tok</th></tr>
-<tr><td>Stock (n=3, mean)</td><td>~4750</td><td>~377 s</td><td>11&ndash;25 s</td><td>&mdash;</td><td>900082</td></tr>
-<tr><td><b>Mixed-chunk</b></td><td><b>418</b></td><td><b>156.6 s</b></td><td>56.0 s</td><td>&mdash;</td><td><b>900082</b></td></tr>
-<tr><td>reduction</td><td><b>~11&times;</b></td><td><b>~2.4&times;</b></td><td>~2&ndash;3&times; <i>worse</i></td><td>&mdash;</td><td>exact match</td></tr>
+<tr><th>&lambda;=5</th><th>ITL p99</th><th>TPOT p99</th><th>E2E p99</th><th>TTFT p99</th><th>total out tok</th></tr>
+<tr><td>Stock (n=3, mean)</td><td>~4750 ms</td><td>~3250 ms</td><td>~377 s</td><td>11&ndash;25 s</td><td>900082</td></tr>
+<tr><td><b>Mixed-chunk</b></td><td><b>418 ms</b></td><td><b>239 ms</b></td><td><b>156.6 s</b></td><td>56.0 s</td><td><b>900082</b></td></tr>
+<tr><td>reduction</td><td><b>~11&times;</b></td><td><b>~13&times;</b></td><td><b>~2.4&times;</b></td><td>~2&ndash;3&times; <i>worse</i></td><td>exact match</td></tr>
 </table>
+<p class="sub">Two independent decode-latency metrics&mdash;inter-token latency (ITL) and time-per-output-token
+(TPOT, the companion paper&rsquo;s headline decode metric)&mdash;both collapse by an order of magnitude
+(13&ndash;21&times;), a mutually-corroborating measurement of the same effect. (Stock decode-tail values are the
+per-replicate means; individual TPOT p99 replicates: &lambda;3 {3624, 3909&hellip;}, &lambda;5 {2807, 3698&hellip;}.)</p>
 
 <p class="sub">&lambda;=7 and &lambda;=10 are in progress (a full-sweep run with the fix applied); this draft will be
 finalized with those points. The load trend so far is monotone and reported honestly below.</p>

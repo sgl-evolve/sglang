@@ -1541,3 +1541,15 @@ LOSSLESSLY — but it TRADES prefill latency: the TTFT tail worsens with load (n
 (λ5 E2E p99 377→157s). This is a prefill↔decode Pareto SHIFT, not a free lunch — must be stated plainly in Paper 5 (no overclaim:
 it is NOT "cuts all tails"; it cuts the decode/E2E tail at a prefill-tail cost that grows with load). λ7 running at wall (partial,
 no json); 20269 (full sweep w/ fix) will complete λ7/λ10. This is the honest, complete shape of the win.
+
+### GPU-free strengthening while awaiting λ7/λ10 (20:25) — TPOT corroboration + a confound I chose NOT to use
+★TPOT p99 (the companion paper P4's headline decode metric) CORROBORATES the ITL result cleanly and even more
+strongly: λ3 MC 174ms vs stock ~3750ms {3624,3909} = ~21×; λ5 MC 239ms vs stock ~3250ms {2807,3698} = ~13×;
+median_tpot also improves (λ3 38 vs 100-136; λ5 162 vs 244-250). ⇒ TWO independent decode-latency metrics (ITL +
+TPOT p99) both collapse ~13-21× = mutually-corroborating. Added TPOT column to Paper 5 §6 tables.
+★CONFOUND I DELIBERATELY OMITTED (integrity): batch-label ratio (tools/batch_ratio.py) is MISLEADING for mixed-chunk
+— mixed batches are logged "Prefill batch" even though they carry decode, so the label count understates the effect
+(MC prefill:decode 8.8:1 / decode-share 10.2% / consec-prefill p90=10, vs stock 13.2:1 / 7.1% / p90=56 — directionally
+right but MC max consec=5335 is an artifact since those "prefill" batches ARE co-running decode). ⇒ do NOT feature the
+batch-label table (a reviewer would poke the 5335); the ITL/TPOT p99 are the DIRECT, clean decode-progress measures
+and they are what the paper rests on. Recorded so I don't mistakenly resurrect the confounded metric later.

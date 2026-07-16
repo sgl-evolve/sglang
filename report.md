@@ -1054,3 +1054,27 @@ inventory of ALL stock sglang KV/scheduler primitives and cross-referenced each 
 **Net:** the fresh inventory + trace diagnosis independently RE-CONFIRM the design-space bound (every stock/own
 primitive maps onto an existing non-lever) and add one genuinely-new trace-negative axis. No un-mapped novel
 lossless positive lever exists on this frozen eval. Continuing to hunt (prior-art scan next).
+
+### 2026-07-16: attacked the caching-under-load crack → P2 fortified (live mirage), no lever
+Charter demands I keep probing, not re-declare bounded. This cycle I interrogated a specific crack I had NOT
+closed rigorously: P2's caching-mirage was established **offline** (trace replay at full capacity, LRU=Belady),
+but the **live** hit rate *declines under load*. Since the request mix is identical at every rate (same 1553
+convs / 7037 reqs replayed), any λ3→λ10 hit decline is load-induced, not a mix artifact — potentially the
+charter's "gap between resident and about-to-be-reused KV widens under concurrency," i.e. a possible reuse-aware
+eviction/admission LEVER.
+- **Quantified (`analysis/hit_vs_load.py`):** the decline is real, small, monotonic, and CONSISTENT across every
+  full sweep and BOTH scheduling policies: −1.86pp (v0-stock 0.678→0.659), −1.85 (stock-samenode), −1.87
+  (srpf-full 0.675→0.656), −3.30 (srpf-samenode 0.705→0.672).
+- **Verdict = NOT a lever (bounded):** the decline is (a) policy-invariant — stock FCFS and SRPF show the same
+  slope (so not scheduling-related), and (b) eviction-policy-invariant by P2 §3.1 (LRU=LFU=Belady; the reuse
+  structure is binary — singleton or short-stack-distance — so recency already tracks future reuse, no policy
+  can keep more about-to-be-reused KV). It reflects the **frozen KV budget** shared with the growing
+  running-request working set as concurrency rises — capacity, not a suboptimal cache decision. A reuse-aware
+  policy can't recover it (the space is taken by un-evictable RUNNING KV, not mis-evicted reuse-prefixes).
+- **Integrity:** the per-rate metrics_r*.txt are end-of-phase idle snapshots (running-reqs=0), so I could NOT
+  cleanly isolate the in-phase concurrency mechanism → I did NOT state an unverified attribution; I stated only
+  what's verified (policy-invariance + capacity framing).
+- **Output:** fortified P2 with a verified "the mirage holds live, under load" paragraph (§3.1) — closing the #1
+  hostile-PC attack on an offline caching analysis (does it hold in the live system?). Commit 2c75f81b9, pushed.
+**Net:** another genuine crack attacked and found bounded; a real live-validity fortification of P2 (not gilding —
+it closes a distinct offline-vs-live gap). No un-mapped lossless lever. Design space stays bounded.

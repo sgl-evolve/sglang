@@ -312,7 +312,7 @@ law</b>&mdash;clearing giants faster lets more requests flow per unit time; the 
 shortest-first, via a distinct mechanism. Whether the raised capacity yields a higher goodput@SLO is <em>coin-flip-limited</em>
 (&sect;6): raising C to ~5.9 brings &lambda;=5 within capacity and accel <em>can</em> pass it (good-basin draws hit
 3.4/4.7&nbsp;s where stock fails), but other draws hit ~18&nbsp;s&mdash;&lambda;=5 is a 2/5 coin-flip (firmed n=5). This is precisely the
-margin&ndash;reliability law: the accel margin at &lambda;=5 is only C&minus;&lambda;=0.65 (metastable), versus 2.65 at
+margin&ndash;reliability law: the accel margin at &lambda;=5 is only C&minus;&lambda;=0.90 (metastable), versus 2.90 at
 &lambda;=3 (reliable 7/7). So the firm goodput@SLO win is at &lambda;=3; &lambda;=5 is made feasible but not yet
 reliable&mdash;a single-run reading of "3&rarr;5" over-stated a coin-flip and replication corrected it.</p>
 
@@ -335,15 +335,15 @@ does: across &lambda;=3 replicates (multiple nodes), acceleration's p99 stays in
 (&sigma;&nbsp;&asymp;&nbsp;0.85&nbsp;s, 7/7 pass) versus stock's wild 6.2&ndash;28.9&nbsp;s scatter
 (&sigma;&nbsp;&asymp;&nbsp;7&nbsp;s, 1/8 pass)&mdash;roughly an 8&times; variance reduction <em>and</em> a shift under
 the SLO. The law is confirmed at <em>both</em> ends of the margin: at
-&lambda;=5, acceleration's margin is only C&minus;&lambda;=0.65 (small), and there its goodput@SLO is a genuine
+&lambda;=5, acceleration's margin is only C&minus;&lambda;=0.90 (small), and there its goodput@SLO is a genuine
 coin-flip&mdash;<b>firmed to n=5: 2/5</b>, bimodally either a good basin (3.4/4.7&nbsp;s) or a bad one
 (~18&nbsp;s)&mdash;a direct, if humbling, confirmation that <em>even a capacity-raising mechanism inherits the
 metastable coin-flip when its margin is thin</em>. Reducing residency thus buys reliability where the margin is large
 (&lambda;=3) but not where it is small (&lambda;=5); this both confirms the theory (P6 &times; P3) and bounds the
 mechanism's headline&mdash;acceleration reliably raises capacity, but converting that into reliable goodput@SLO needs
 margin, i.e. C comfortably above &lambda;. <b>Stacking capacity does not shortcut this.</b> Co-designing both levers
-(acceleration + write-back cache; earlier commit) lifts C to 6.33, so the &lambda;=5 margin rises to 1.33 (~2&times; the
-accel-alone margin on that commit)&mdash;yet &lambda;=5
+(acceleration + write-back cache; earlier commit) lifts C to 6.33, so the &lambda;=5 margin rises to 1.33&mdash;higher
+than accel-alone's ~0.9&mdash;yet &lambda;=5
 still fails in <b>0/4</b> independent draws (14.3&ndash;15.9&nbsp;s, tightly clustered). Raising C to the co-design 6.33
 does not buy knee-rate reliability: acceleration alone is a 2/5 coin-flip and co-design 0/4, so the higher-capacity
 config reached the good basin no more often (if anything less, and more <em>consistently</em> bad-basin&mdash;but this

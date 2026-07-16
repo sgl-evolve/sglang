@@ -66,7 +66,7 @@ companion capacity law C=K/(1&minus;h), of magnitude comparable to shortest-firs
 Whether this raised capacity translates into a higher goodput@SLO is coin-flip-limited: raising C to 5.9 brings
 &lambda;=5 within capacity and accel <em>can</em> pass it (good-basin draws hit 3.4/4.7&nbsp;s where stock fails), but
 other draws land ~18&nbsp;s&mdash;&lambda;=5 is a <b>2/5</b> coin-flip (firmed n=5), exactly as the companion
-margin&ndash;reliability law predicts at the small resulting margin (C&minus;&lambda;=0.65). So the firm goodput@SLO win is at &lambda;=3 (7/7
+margin&ndash;reliability law predicts at the small resulting margin (C&minus;&lambda;=0.90). So the firm goodput@SLO win is at &lambda;=3 (7/7
 vs stock 1/8); &lambda;=5 is made feasible but not yet reliable. A factor sweep confirms a <b>sharp optimum at f=2</b>
 (both under- and over-boosting raise raw capacity but lose the tail), so acceleration is a tuned, not monotone, lever.
 Finally, the boost is <em>robust to its trigger signal</em>: gating on device-KV occupancy, on waiting-queue depth
@@ -269,7 +269,7 @@ offered load at high &lambda;; the achieved rate <em>is</em> the effective capac
 <figcaption style="font-size:.82rem;color:#666;margin-top:.2rem">Figure 1. p99 TTFT vs offered rate. Acceleration
 (green) reliably passes &lambda;=3 (&#10003;, 7/7). At &lambda;=5 it is a <b>coin-flip</b> (firmed n=5, <b>2/5</b>):
 good-basin draws hit 3.4/4.7&nbsp;s (3.4 plotted) but others hit ~18&nbsp;s (open red marker)&mdash;because the accel
-margin there (C&minus;&lambda;=0.65) is small. Both curves diverge past capacity (stock at &lambda;&ge;5, accel at &lambda;=7).
+margin there (C&minus;&lambda;=0.90) is small. Both curves diverge past capacity (stock at &lambda;&ge;5, accel at &lambda;=7).
 Stock &lambda;=3 is itself a coin-flip (6&ndash;14&nbsp;s; the plotted 11.5&nbsp;s run is one draw). The robust
 result is the capacity ceiling (achieved throughput), measured same-commit, same-node, back-to-back:
 4.83&rarr;5.90 (+22%).</figcaption>
@@ -291,8 +291,8 @@ batch faster so more requests flow per unit time.
 <br><br><b>Does this reach goodput@SLO=5? Only as a coin-flip.</b> Raising C to ~5.9 brings &lambda;=5 <em>within</em>
 capacity, and accel <em>can</em> pass &lambda;=5 (good-basin draws hit 3.4/4.7&nbsp;s) where stock cannot. But other
 draws land in the bad basin (~18&nbsp;s): firmed to n=5, &lambda;=5 is <b>2/5</b>, a genuine coin-flip. This is exactly what the companion
-margin&ndash;reliability law predicts&mdash;at &lambda;=5 the accel margin is only C&minus;&lambda;&nbsp;=&nbsp;0.65
-(small &rArr; metastable), whereas at &lambda;=3 the margin is 2.65 (large &rArr; the reliable 7/7 win). So the honest
+margin&ndash;reliability law predicts&mdash;at &lambda;=5 the accel margin is only C&minus;&lambda;&nbsp;=&nbsp;0.90
+(small &rArr; metastable), whereas at &lambda;=3 the margin is 2.90 (large &rArr; the reliable 7/7 win). So the honest
 statement is: <b>acceleration reliably raises capacity (+22%) and reliably wins goodput@SLO at &lambda;=3 (7/7 vs
 stock 1/8); it makes &lambda;=5 feasible but not yet reliable</b> (goodput@SLO=5 is a coin-flip at the current margin;
 reaching it dependably would need still-higher C). Two earlier readings over-stated and were corrected by replication:
@@ -398,7 +398,7 @@ occupancy-adaptive giant-acceleration policy for goodput@SLO is new.</p>
 <h2>8 Limitations &amp; when it fails</h2>
 <ul>
 <li><b>The reliable win is &lambda;=3; higher rates are capacity-not-goodput.</b> At &lambda;=5 the goodput is a
-coin-flip (2/5, firmed n=5; margin C&minus;&lambda;=0.65), and at &lambda;=7/10 accel raises throughput (5.62/5.90 vs stock
+coin-flip (2/5, firmed n=5; margin C&minus;&lambda;=0.90), and at &lambda;=7/10 accel raises throughput (5.62/5.90 vs stock
 4.58/4.83, same-commit paired) but still fails the SLO (p99 29.2/37.8&nbsp;s). Acceleration is a robust <em>capacity</em> lever
 (+22%) but a <em>reliable goodput</em> lever only where the margin is large. Because C is near its achievable ceiling
 (accel+write-back 6.33), &lambda;=5-reliable is not attainable with this mechanism alone.</li>

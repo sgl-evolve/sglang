@@ -1290,3 +1290,16 @@ prevents). Await v16 ITL/TPOT p99 (bench) for the actual tail-cut magnitude; dec
 but partial improvement. OPTION if v16 ITL-cut disappointing: v17 WITHOUT guard (allocate-then-discard leak is
 already fixed independently; interrupting chunked prefill MAY be safe since existing chunked_req stash/resume
 machinery handles it) — but test carefully (risk re-crash). Don't kill running v16.
+
+### decode-QoS λ3 RESULT (2026-07-16, v16 K=4 vs stock-r3, lossless: completed 7037/7037)
+ttft_p99 6786→29367ms (+333%, PASS→FAIL); itl_p99 4121→3942 (-4%, FLAT); tpot_p99 3624→9087 (+151% WORSE);
+e2e_p99 346896→235619 (-32%); tpot_MEDIAN 99.5→45.3 (-54%); req/s 3.0→3.0. ★INTERPRETATION: decode-QoS is a
+genuine prefill-decode PARETO but NOT a decode-TAIL fix. It runs decode earlier → MEDIAN decode −54% + E2E p99
+−32%, but WRECKS TTFT-goodput (+333%, breaks the SLO) and does NOT cut the p99 decode TAIL (itl flat, tpot p99
+worse). WHY: the p99 tail stalls happen DURING heavy-doc chunked prefills, which the chunked_req guard doesn't
+interrupt (per batch_ratio: runs escape to 388 during chunked prefills). ⇒ §5 STORY (stronger + honest): the
+metric-hidden decode tail RESISTS fixing — mixed-chunk CRASHES (pool leak), and safe decode-QoS trades away
+TTFT-goodput for median/E2E gains WITHOUT cutting the p99 tail (which is bound to un-interruptible heavy-doc
+prefills). No cheap fix; the tail is a genuinely hard open problem. This REINFORCES P4's thesis. ★NOTE: ttft
++333% (29s) exceeds the stock coin-flip band (6.8-14s) so the TTFT-degradation is real despite cross-node.
+Let v16 finish for λ5/7/10 confirmation, then integrate as P4 §5 (Pareto + tail-resists-fixing).

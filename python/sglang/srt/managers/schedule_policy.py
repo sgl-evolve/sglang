@@ -135,6 +135,7 @@ class CacheAwarePolicy(Enum):
 
     LPM = "lpm"  # longest prefix match
     DFS_WEIGHT = "dfs-weight"  # depth-first search weighting
+    SRPF = "srpf"  # shortest remaining prefill first (kleinrock: cited tail-scheduling lever)
 
 
 class CacheAgnosticPolicy(Enum):
@@ -201,6 +202,19 @@ class SchedulePolicy:
                 )
             elif policy == CacheAwarePolicy.DFS_WEIGHT:
                 SchedulePolicy._sort_by_dfs_weight(waiting_queue, self.tree_cache)
+            elif policy == CacheAwarePolicy.SRPF:
+                # kleinrock: shortest-remaining-prefill-first. Sort the waiting queue by
+                # uncached (to-be-prefilled) tokens ascending. Lossless (reordering only).
+                # SRPF is a cited, classical tail-scheduling lever (companion papers), used
+                # here only to test whether it removes mixed-chunk's TTFT-tail trade-off while
+                # mixed-chunk cuts the decode tail (the "both-tails" question).
+                waiting_queue.sort(
+                    key=lambda r: (
+                        len(r.origin_input_ids)
+                        + len(r.output_ids)
+                        - getattr(r, "num_matched_prefix_tokens", 0)
+                    )
+                )
             else:
                 raise ValueError(f"Unknown CacheAware Policy: {policy=}")
         else:

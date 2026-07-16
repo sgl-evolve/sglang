@@ -389,7 +389,7 @@ occupancy-adaptive giant-acceleration policy for goodput@SLO is new.</p>
 <h2>8 Limitations &amp; when it fails</h2>
 <ul>
 <li><b>The reliable win is &lambda;=3; higher rates are capacity-not-goodput.</b> At &lambda;=5 the goodput is a
-coin-flip (1/2, margin C&minus;&lambda;=0.65), and at &lambda;=7/10 accel raises throughput (5.20/5.65 vs stock
+coin-flip (2/5, firmed n=5; margin C&minus;&lambda;=0.65), and at &lambda;=7/10 accel raises throughput (5.20/5.65 vs stock
 3.99/4.14) but still fails the SLO (p99 29.8/37.9&nbsp;s). Acceleration is a deterministic <em>capacity</em> lever
 (+36%) but a <em>reliable goodput</em> lever only where the margin is large. Because C is near its achievable ceiling
 (accel+write-back 6.33), &lambda;=5-reliable is not attainable with this mechanism alone.</li>

@@ -1078,3 +1078,27 @@ eviction/admission LEVER.
   hostile-PC attack on an offline caching analysis (does it hold in the live system?). Commit 2c75f81b9, pushed.
 **Net:** another genuine crack attacked and found bounded; a real live-validity fortification of P2 (not gilding —
 it closes a distinct offline-vs-live gap). No un-mapped lossless lever. Design space stays bounded.
+
+### 2026-07-16: GPU eviction A/B — scan-resistant SLRU CRATERS (completes the caching-under-load thread)
+Last cycle I quantified a load-induced hit decline and argued it's not a lever. This cycle I TESTED the
+sharpest lever hypothesis on GPU: the workload is 97% singletons = a massive scan; LRU is classically
+scan-susceptible; so under load-shrunk effective capacity a SCAN-RESISTANT policy (SLRU: protect hit_count≥2,
+evict singletons first) MIGHT protect about-to-be-reused KV that LRU evicts → recover the decline → a lever.
+- **GPU A/B (job 20180, node 0-3, FCFS, differs only in eviction; vs same-node stock LRU v-stock-samenode-1):**
+  SLRU **CRATERS** — hit −18.7/−24.1/−25.5/−26.8 pp (λ3/5/7/10: 0.485/0.421/0.402/0.386 vs LRU
+  0.673/0.662/0.657/0.654), **goodput 0** (p99 24–41 s, fails every rate). SLRU's own load-decline (−9.9pp)
+  is also steeper than LRU's (−1.85pp) → it degrades WORSE under load. Provenance-checked (SLRU stock in base
+  a334877e5), verified active on the UnifiedRadixCache path (not dead), lossless (eviction ≠ outputs).
+- **Mechanism (generalizes, the real contribution):** in multiturn serving a turn-0 doc has hit_count=1 when
+  its OWN conversation's next turn reuses it — **indistinguishable from a never-reused singleton by access
+  count**. SLRU (and any frequency signal) puts both in probationary and evicts them first → discards
+  about-to-be-reused turn-0 KV BEFORE its first reuse. **Recency (LRU) is uniquely right** (a recently-seen
+  turn-0 doc is precisely the one about to be reused). Design rule: for multiturn KV reuse, evict by recency,
+  not frequency.
+- **Value:** GPU-confirms the P2 §3.1 LRU=Belady PROOF from the opposite direction — the "smarter" scan-resistant
+  policy is strictly & severely worse — my first COMPLETED live alternative-eviction sweep. Upgraded P2 §3.3 +
+  abstract (from "partial LFU run" → completed same-node A/B) and P3's residency/eviction map row. This is a
+  genuine new GPU result strengthening the caching-mirage claim, not gilding. W&B v-evict-slru; commit 5227d49e2.
+  GPU economy: cancelled the redundant LRU control (v-stock-samenode-1 already IS the same-node LRU baseline).
+**Net:** hypothesis tested on GPU → decisive NEGATIVE (SLRU craters) with a generalizing mechanism. Design space
+stays bounded; eviction axis now GPU-confirmed live (not just offline). Keep probing.

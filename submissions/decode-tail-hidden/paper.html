@@ -49,10 +49,11 @@ batches during which hundreds of decoding requests advance no tokens. <b>(4)</b>
 the textbook mitigation (mixed/stall-free batching, <code>--enable-mixed-chunk</code>) crashes the server here
 (a KV-pool-leak abort reproducing a companion budget-sharing mechanism's failure), and a safe decode-QoS scheduler
 we build &mdash; forcing a decode batch after every <i>K</i> prefill batches, lossless &mdash; reveals a genuine
-prefill&ndash;decode <b>Pareto</b>: it trades TTFT-goodput (p99 6.8&rarr;29&nbsp;s, PASS&rarr;FAIL) for typical-case
-decode latency (median TPOT &minus;54%, p99 E2E &minus;32%) yet <b>cannot cut the worst-case decode tail</b> (p99
-ITL flat), which is bound to the heavy documents' un-interruptible chunked prefill. No cheap fix exists, and the
-TTFT-only metric gives no incentive to attack it. The lesson: goodput@SLO
+prefill&ndash;decode <b>Pareto</b>: it trades TTFT-goodput for decode latency, but at <b>no operating point cuts
+the worst-case decode tail while preserving goodput</b> (at &lambda;=3 it breaks goodput, p99 TTFT
+6.8&rarr;29&nbsp;s PASS&rarr;FAIL, with the tail untouched; at &lambda;=5 it trims the tail &minus;14% but goodput
+is already lost). The tail is bound to the heavy documents' un-interruptible chunked prefill. No cheap fix exists,
+and the TTFT-only metric gives no incentive to attack it. The lesson: goodput@SLO
 is not merely <i>unreliable</i> near the knee (a companion result) but <i>incomplete</i> &mdash; optimizing TTFT
 says nothing about, and its prefill-first mechanism actively worsens, the decode tail that is the real serving
 bottleneck for long-context multiturn workloads. E2E-tail-aware evaluation is required.
@@ -86,8 +87,9 @@ time-sharing.</li>
 <li><b>Fixability &mdash; it resists fixing (&sect;5).</b> The textbook fix (<code>--enable-mixed-chunk</code>)
 destabilizes the server (KV-pool leak, reproducing a companion budget-sharing mechanism's identical failure). A safe
 decode-QoS scheduler we build and test (lossless; force a decode batch after every <i>K</i> prefill batches) reveals
-a genuine prefill&ndash;decode Pareto &mdash; it trades TTFT-goodput for typical-case decode latency but cannot cut
-the worst-case decode tail (bound to the heavy documents' chunked prefill). No cheap fix; the metric rewards none of it.</li>
+a genuine prefill&ndash;decode Pareto &mdash; it trades TTFT-goodput for decode latency but at no operating point
+cuts the worst-case decode tail while preserving goodput (bound to the heavy documents' chunked prefill). No cheap
+fix; the metric rewards none of it.</li>
 <li><b>Implication (&sect;6&ndash;7).</b> goodput@SLO must be paired with an E2E / decode-tail SLO; optimizing TTFT
 alone is not just insufficient but, via its prefill-first mechanism, counterproductive for the decode tail.</li>
 </ul>
@@ -224,38 +226,40 @@ clean (no crash). But applied at <i>K</i>=4 to the very run that <b>passes</b> g
 (&lambda;=3), it exposes a brutal trade-off (Table&nbsp;3).</p>
 
 <table>
-<caption class="disc">Table 3. decode-QoS (K=4) vs. stock at &lambda;=3 (the goodput-passing case; lossless,
-7,037/7,037 served). It improves the <i>typical</i> case but wrecks TTFT-goodput and does <b>not</b> cut the
-worst-case decode-stall tail.</caption>
-<tr><th>metric</th><th>stock</th><th>decode-QoS K=4</th><th>&Delta;</th></tr>
-<tr><td>p99 TTFT <i>(the goodput metric)</i></td><td>6.8&nbsp;s &mdash; PASS</td><td>29.4&nbsp;s &mdash; FAIL</td><td>+333%</td></tr>
-<tr><td>p99 ITL <i>(decode-stall tail)</i></td><td>4.12&nbsp;s</td><td>3.94&nbsp;s</td><td>&minus;4% (flat)</td></tr>
-<tr><td>p99 TPOT</td><td>3.62&nbsp;s</td><td>9.09&nbsp;s</td><td>+151%</td></tr>
-<tr><td>median TPOT <i>(typical decode)</i></td><td>99&nbsp;ms</td><td>45&nbsp;ms</td><td>&minus;54%</td></tr>
-<tr><td>p99 E2E</td><td>347&nbsp;s</td><td>236&nbsp;s</td><td>&minus;32%</td></tr>
+<caption class="disc">Table 3. decode-QoS (K=4) vs. stock, at &lambda;=3 (unsaturated, the goodput-passing case of
+&sect;2) and &lambda;=5 (saturated). Lossless (7,037/7,037 served each). The trade-off is <b>load-dependent</b>:
+at &lambda;=3 it breaks goodput without cutting the tail; at &lambda;=5 it modestly cuts the tail but goodput is
+already lost.</caption>
+<tr><th>metric</th><th>&lambda;3 stock</th><th>&lambda;3 K=4</th><th>&lambda;5 stock</th><th>&lambda;5 K=4</th></tr>
+<tr><td>p99 TTFT <i>(goodput metric)</i></td><td>6.8&nbsp;s PASS</td><td>29.4&nbsp;s FAIL</td><td>25.4&nbsp;s fail</td><td>23.1&nbsp;s fail</td></tr>
+<tr><td>p99 ITL <i>(decode-stall tail)</i></td><td>4.12&nbsp;s</td><td>3.94&nbsp;s (&minus;4%)</td><td>5.10&nbsp;s</td><td>4.34&nbsp;s (&minus;14%)</td></tr>
+<tr><td>median TPOT <i>(typical)</i></td><td>99&nbsp;ms</td><td>45&nbsp;ms</td><td>312&nbsp;ms</td><td>225&nbsp;ms</td></tr>
+<tr><td>p99 E2E</td><td>347&nbsp;s</td><td>236&nbsp;s</td><td>400&nbsp;s</td><td>337&nbsp;s</td></tr>
 </table>
 
-<p>Running decode earlier <b>improves the typical case</b> (median TPOT halves; aggregate p99 E2E drops 32%), but it
-<b>wrecks TTFT-goodput</b> (p99 6.8&rarr;29&nbsp;s, PASS&rarr;FAIL &mdash; far outside the stock coin-flip band of
-6.8&ndash;14&nbsp;s, so real despite the cross-node comparison) and, decisively, does <b>not cut the worst-case
-decode-stall tail</b> (p99 ITL flat; p99 TPOT worse). The batch trace explains it: decode-QoS raises the
-decode-batch share from 4.5% to 11.8% and caps the <i>common</i> prefill runs at ~<i>K</i>, but the <i>tail</i>
-runs still escape (to 388) &mdash; because the worst stalls occur <i>during</i> a heavy document's chunked prefill,
-and interrupting that is exactly what the pool-leak guard forbids. The p99 decode tail is bound to the
-un-interruptible prefill of the heavy documents.</p>
+<p>The effect is <b>load-dependent, and never a clean win</b>. At <b>&lambda;=3</b> (unsaturated &mdash; the exact
+run that passes goodput@SLO at 347&nbsp;s E2E) decode-QoS <b>breaks goodput</b> (p99 TTFT 6.8&rarr;29&nbsp;s,
+PASS&rarr;FAIL, far outside the stock coin-flip band of 6.8&ndash;14&nbsp;s so real despite the cross-node
+comparison) while barely touching the decode tail (p99 ITL &minus;4%). At <b>&lambda;=5</b> (saturated) it modestly
+cuts the tail (p99 ITL &minus;14%, p99 E2E &minus;15%) &mdash; but goodput is already lost (both fail). At both
+loads it lowers the <i>typical</i> decode latency (median TPOT &minus;28 to &minus;54%). The p99 tail is stubborn
+for a structural reason visible in the batch trace: decode-QoS raises the decode-batch share from 4.5% to 11.8% and
+caps the <i>common</i> prefill runs at ~<i>K</i>, but the <i>tail</i> runs still escape (to 388) &mdash; the worst
+stalls occur <i>during</i> a heavy document's chunked prefill, which the pool-leak guard must not interrupt.</p>
 
-<div class="key"><b>The metric-hidden decode tail resists fixing.</b> The textbook mitigation (mixed batching)
-<b>crashes</b>; a safe decode-QoS scheduler reveals a genuine prefill&ndash;decode <b>Pareto</b> &mdash; it can
-trade TTFT-goodput for typical-case decode latency &mdash; but <b>cannot cut the worst-case decode tail</b>, which
-is structurally tied to the heavy documents' chunked prefill. There is no cheap fix. And goodput@SLO gives no
-incentive to attack any of this: a server passing at 347&nbsp;s E2E already looks optimal on the scoreboard.</div>
+<div class="key"><b>The metric-hidden decode tail resists a clean fix.</b> The textbook mitigation (mixed batching)
+<b>crashes</b>; a safe decode-QoS scheduler is a genuine prefill&ndash;decode <b>Pareto</b> knob &mdash; it trades
+TTFT-goodput for decode latency &mdash; but there is <b>no operating point that cuts the worst-case decode tail
+while preserving goodput</b>: where goodput passes (&lambda;=3) the tail is untouched and goodput breaks; where the
+tail yields (&lambda;=5) goodput is already gone. goodput@SLO gives no incentive to attack any of it &mdash; a
+server passing at 347&nbsp;s E2E already looks optimal on the scoreboard.</div>
 
 <p class="disc"><b>Scope.</b> decode-QoS is our own mechanism, reported as a <i>probe of fixability</i> (a bounded
-negative), not claimed as a solution. We show the &lambda;=3 point &mdash; the cleanest (unsaturated) and the exact
-goodput-passing case of &sect;2. The trade-off is structural, not load-specific: forcing decode necessarily delays
-prefill (TTFT&uarr;), while the worst stalls remain inside the heavy-document chunked prefills the guard must not
-interrupt (tail unmoved). Dropping the guard could cap all runs, but only by delaying the heavy documents further
-(a larger TTFT cost) or re-incurring the pool-leak &mdash; either way the Pareto stands.</p>
+negative), not a claimed solution. The tail is bound to the heavy documents' un-interruptible chunked prefill;
+dropping the guard could cap all runs, but only by delaying the heavy documents further (a larger TTFT cost) or by
+re-incurring the pool-leak &mdash; either way the Pareto stands. A decode-QoS design that actually cuts the tail
+without sacrificing goodput (e.g. safe chunked-prefill interruption, or prefill&ndash;decode disaggregation)
+remains open.</p>
 
 <h2>6 Related work</h2>
 <p><b>Prefill&ndash;decode interference and disaggregation.</b> Sarathi-Serve (chunked prefill + stall-free

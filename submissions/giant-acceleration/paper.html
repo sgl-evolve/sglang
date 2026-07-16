@@ -114,6 +114,17 @@ concurrency <em>and</em> equal resident-KV footprint&mdash;0.33 vs 0.33&mdash;so
 effect, not a batch-size or KV-footprint effect). The net is residency reduction via step-count amortization and reduced
 prefill&harr;decode interference, yielding +36% effective prefill throughput (&sect;4) and the &minus;25% decode
 speedup.</div>
+<div class="keyfinding"><b>Direct log evidence the boost fires and cuts step count.</b> Parsing the server logs'
+per-step <span class="mono">Prefill batch &hellip; #new-token</span> records confirms the mechanism operates exactly
+as designed and is not an artifact of the outcome metrics. (i) <b>The boost fires:</b> in accel runs,
+<b>27.7% of prefill steps commit &gt;6144 tokens</b>, with a maximum of <b>exactly 12&nbsp;288 = 2&times;6144</b> (the
+f=2 cap); stock <em>never</em> exceeds 6144 (0% of steps, max exactly 6144&mdash;the frozen
+<span class="mono">chunked_prefill_size</span>). (ii) <b>Fewer steps for identical work:</b> accel finishes the
+same 7&nbsp;037-request workload in a median of <b>9&nbsp;737 prefill steps vs stock's 11&nbsp;177 &mdash; a 12.9%
+reduction</b> (n=7 accel / 6 stock). Because the total prefill tokens are identical, this step-count drop is the
+mechanism in the raw: fewer, larger steps amortize the per-step overhead (the 19% AllReduce) and interrupt the
+interleaved decode fewer times. The aggregate 12.9% is diluted by the many one-step short requests that never trigger
+the boost; on the boosted giants themselves the per-giant step count roughly halves.</div>
 <p><b>Why occupancy-gating, not a larger global chunk?</b> One might ask whether simply raising
 <span class="mono">chunked_prefill_size</span> from 6144 to 16384 everywhere would do the same. It would not, for two reasons.
 First, an unconditional larger chunk enlarges <em>every</em> prefill step, worsening prefill&harr;decode interference in
@@ -382,13 +393,16 @@ occupancy-adaptive giant-acceleration policy for goodput@SLO is new.</p>
 <span class="mono">add_chunked_req</span>. Env <span class="mono">SGLANG_TURING_GIANT_ACCEL=1
 SGLANG_TURING_ACCEL_THETA=0.85 SGLANG_TURING_ACCEL_FACTOR=2.0</span>.</li>
 <li>Eval harness, dataset, model, TP8, rate sweep, warmup, seeded arrivals: unchanged from contract. The &sect;3
-result uses n=7 accel vs n=7 stock &lambda;=3 replicates (<span class="mono">v10*_accel</span> +
-<span class="mono">v18_faccel1&ndash;3</span> vs <span class="mono">v9/v11/v12/v18_fstock*</span> + 2 other-node
+result uses n=7 accel vs n=8 stock &lambda;=3 replicates (<span class="mono">v10*_accel</span> +
+<span class="mono">v18_faccel1&ndash;3</span> vs <span class="mono">v9/v11/v12/v18_fstock1&ndash;3</span> + 2 other-node
 stock), spanning multiple nodes; the &sect;4 frontier is a full &lambda;&isin;{3,5,7,10} sweep
 (<span class="mono">v13_accelfull</span>) vs the stock companion curve.</li>
 <li>Trigger-signal ablation (&sect;3.1): <span class="mono">SGLANG_TURING_ACCEL_SIGNAL</span>&isin;{occ,queue,either}
 with <span class="mono">SGLANG_TURING_ACCEL_QTHRESH=2</span> (default <span class="mono">occ</span> is byte-identical
 to the original), runs <span class="mono">v19_{occ,queue,either}*</span>, same node.</li>
+<li>Direct step-count evidence (&sect;2): <span class="mono">analysis/analyze_steps.py</span> parses each run's
+<span class="mono">server.log</span> per-step <span class="mono">#new-token</span> records (boost-fired fraction,
+total prefill steps, max chunk) &mdash; no GPU, from the same runs.</li>
 </ul>
 
 </body>

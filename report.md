@@ -1048,3 +1048,17 @@ conversation caching moves the tail" loophole a skeptical PC would raise. GPU-fr
 (clean same-node ablation, destabilization onset) + deferral-specificity + defer-don't-throttle + coin-flip-
 collapse bridge. Comprehensive, rigorous, honest. Space mapped (caching provably out for the tail; scheduling =
 deferral, disqualified/sibling-owned so cited-only; my reserve/LOF negatives). Won't fabricate; stay ready for triggers.
+
+### ★ Paper 2 §5.4 GENERALITY + §5.2 λ7 refinement (2026-07-16, GPU-free, commit 52e68847c)
+Built tools/hol_sim.py — minimal discrete-event sim of the single-chunked-prefill queue (one server, 6144
+budget, one-chunked-req-at-a-time, non-preemptive), driven ONLY by the measured doc distribution + Poisson(λ);
+no engine/cache/sglang. Calibrate P to FCFS λ5, then PREDICT deferral. Reproduces the STRUCTURE from first
+principles: FCFS tiny-req p99 grows then EXPLODES with load (12.7→36.8→341s @λ3/5/7), deferral flat-low
+(4.6/5.6/2.3s); fail→pass at λ≤5; λ5 relative cut matches measured (−70%..−85%). ⇒ defer-don't-throttle is
+GENERIC to heavy-tailed prefill under FCFS-vs-shortest-first, NOT sglang-specific (structural generality, not
+point prediction — single-server idealization omits decode/concurrency, like P1's coinflip_sim). ★ADVERSARIAL
+CATCH: sim shows short reqs stay FAST at λ7 (2.3s) → the measured srpf λ7 goodput FAIL (9.6s aggregate) is
+BACKLOG-bound (deferred heavy docs + saturation), NOT slow short reqs → CORRECTED §5.2's unverified claim
+"backlog keeps even the reordered short requests above SLO" (I have no per-req srpf-λ7 dump; sim disputed it) to
+the honest backlog-bound framing. §5.4 added, §1/§8 updated. Paper 2 now has generality (a PC strength both my
+papers lacked). HTML valid (6 tables, 10 §§). This cycle = genuine value from GPU-free modeling, not fabrication.

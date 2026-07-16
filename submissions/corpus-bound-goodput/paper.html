@@ -155,7 +155,8 @@ prefill of one of the 887 unique documents. <b>The cold floor is 18.4M tokens an
 a round-robin over the full set — reports up to ~24% "avoidable" recompute; that is an upper bound
 induced by the all-active assumption. The document-keyed, arrival-ordered analysis here shows the
 <em>realizable</em> avoidable work is ≈0 at the actual concurrency and reuse distances, consistent with the
-measured hit rate sitting at the online optimum.)
+measured hit rate sitting at the online optimum <em>for the eviction order</em>. One separate knob — the
+L1→L2 <em>backup</em> policy — does move the hit rate (§3.4); tellingly, even it does not move goodput.)
 </p>
 <p>
 <b>The mirage holds live, under load — not just in the offline replay.</b> The natural objection to a
@@ -217,7 +218,26 @@ documents — a conversation's document after its single reuse, never needed aga
 so live hit degrades even though offline avoidable does not.) Eviction policy is thus a non-lever for
 <em>improving</em> goodput — dispositively by the LRU=Belady proof, and GPU-confirmed by a completed
 three-policy sweep (LRU optimal; LFU and SLRU both strictly worse).</p>
-<h3>3.4 Generalization: a caching-headroom phase boundary</h3>
+<h3>3.4 The one cache knob that <em>does</em> raise hit — and still misses goodput</h3>
+<p>
+Eviction is not the only cache-policy knob; the L1→L2 <em>backup</em> policy is another
+(<code>--hicache-write-policy</code>). The stock default, <code>write_through</code>, backs a node up to
+host memory on its <em>first</em> eviction — which means it copies the 97% of documents that are singletons
+(never re-used) into L2, evicting genuinely re-used prefixes to make room. The <code>write_back</code> policy
+(backup on the <em>second</em> eviction) never backs up singletons, so L2 holds only re-used content. This is
+the one policy we found that <em>moves the hit rate</em>: on a clean same-node A/B (node&nbsp;1-1, FCFS, differing
+<em>only</em> in write policy; <code>runs/v-writeback</code> vs <code>runs/v-wt-ctl-n11</code>), write_back
+raises the hit rate by <b>+4.9 to +6.6&nbsp;pp</b> (0.70→0.74 at λ=3, 0.66→0.73 at λ=10) and peak throughput by
+<b>+7.4%</b> (4.74→5.09&nbsp;req/s at λ=10) — a real, lossless prefill-work reduction (write_back changes only
+<em>when</em> a node is copied to L2, never any KV value; a hit serves the same exact KV). <b>Yet goodput@SLO
+is unchanged: write_back's p99 TTFT fails at every rate (25–43&nbsp;s), exactly like write_through.</b> This is
+the sharpest statement of the mirage: even the one knob that provably improves the hit rate and the throughput
+ceiling leaves goodput untouched — because goodput is set by the <em>tail</em> (first-sight prefills of the few
+huge cold documents), which no cache policy can help, not by the mean hit rate. (<code>write_back</code> is a
+stock configuration flag, not a contribution of this paper — the charter excludes config flags; we report it
+purely as evidence that hit-rate and goodput are decoupled.)
+</p>
+<h3>3.5 Generalization: a caching-headroom phase boundary</h3>
 <p>
 The mirage generalizes through a simple, measurable boundary — the classic LRU <em>stack-distance</em>
 property (Mattson et&nbsp;al. 1970; Denning's working-set theory), which we apply at <em>document</em>
@@ -467,7 +487,7 @@ workload-, not implementation-, specific.
 replay results (§3), and the cold floor; <code>analysis/reuse_distance.py</code> measures the real corpus's
 reuse stack-distance and <code>analysis/phase_boundary.py</code> validates the phase-boundary step function
 on constructed corpora and <code>analysis/phase_boundary_realcorpora.py</code> confirms it across four real
-long-document corpora (§3.4); <code>analysis/goodput_vs_hitrate.py</code> shows the p99 per-request
+long-document corpora (§3.5); <code>analysis/goodput_vs_hitrate.py</code> shows the p99 per-request
 prefill-work floor is caching-policy-invariant. Throughput/floor constants (§4) come from the stock full
 sweep (<code>runs/v0-stock</code>) and the SRPF sweep (<code>runs/v-srpf-r1</code>)
 and server logs. The live eviction path (§3.3) is <code>UnifiedRadixCache</code> →

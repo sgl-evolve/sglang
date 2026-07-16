@@ -906,3 +906,18 @@ After the P3 v-srpf-full node error, checked whether the same mtime-inference bu
 ⇒ The v-srpf-full error was ISOLATED to P3 (launched via eval-on-pool onto an unpredictable node; the
 companions' A/Bs used campaign.sh `-w` node-pinning → genuinely same-node). Node attribution now sound across
 ALL 4 papers, all verified against sacct ground truth. No companion corrections needed.
+
+### 2026-07-16 (cont.): fresh hostile-PC review of the COMPANIONS (P1/P2/P4) — secondary-number fixes
+Applied the P3-re-review thoroughness to the 3 companions (their last review predated this session). Reviewer
+(artifact-backed) found NO reject-level errors; sacct-verified all node claims clean; core numbers reproduce.
+Fixed the real secondary-number issues it surfaced:
+- **P4:** "all variants lossless (Δ≤0.002)" was FACTUALLY FALSE (v-rpb25-r2 hit-rate +0.02–0.035 vs baseline =
+  scrape noise) → corrected (3 places) to "lossless BY CONSTRUCTION (only reslices computation), hit-rate within
+  scrape noise Δ≤~0.04". Clarified 7037-of-7163 turns.
+- **P1:** REGENERATED Figure 2 from committed v0-stock/server.log (stale n=17,384/21.7% → n=35,771, sat≥0.90
+  20.6%/idle≤0.05 12.8%/39 at 1.0; redrew all 10 bars, verified on baseline). "pool capped ~0.54" wrong → mean
+  ~0.38 (peak still 1.0). Stale "n=5" λ5 → n=7. §5 NCCL lesson reframed as diagnosed+fixed (trace not preserved),
+  not fully-traced.
+- **P2:** softened "sharp, corpus-general" → "general in form" + noted only 2 of 4 real corpora carry reuse.
+⇒ Both hostile reviews (P3 + companions) now fully addressed. Commit 1ca13dba6. ★All 4 papers artifact-backed
+reviewed, node-verified via sacct, secondary numbers corrected. Body of work integrity-audited end to end.

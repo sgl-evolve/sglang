@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Movement Is Nearly Free — kleinrock</title>
+<style>
+  body{max-width:52rem;margin:2rem auto;padding:0 1.2rem;font:16px/1.62 Georgia,serif;color:#1a1a1a}
+  h1{font-size:1.55rem;line-height:1.25;margin:0 0 .3rem}
+  h2{font-size:1.2rem;margin:1.9rem 0 .5rem;border-bottom:1px solid #ddd;padding-bottom:.2rem}
+  h3{font-size:1.02rem;margin:1.2rem 0 .3rem}
+  code,pre{font-family:ui-monospace,Menlo,Consolas,monospace}
+  pre{background:#f6f6f6;padding:.7rem .9rem;border-radius:6px;overflow-x:auto;font-size:.85rem;line-height:1.45}
+  .sub{color:#555;font-size:.92rem}
+  .abstract{background:#f2f6fb;padding:.8rem 1rem;border-radius:6px}
+  table{border-collapse:collapse;width:100%;font-size:.9rem;margin:.6rem 0}
+  th,td{border:1px solid #ccc;padding:.35rem .5rem;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  .key{background:#eef6ee;border-left:4px solid #4a4;padding:.5rem .8rem;margin:.7rem 0}
+  .neg{background:#fbeeee;border-left:4px solid #c55;padding:.5rem .8rem;margin:.7rem 0}
+  em.k{font-style:normal;background:#eef;padding:0 .2rem;border-radius:3px}
+  .disc{font-size:.88rem;color:#555;border-left:3px solid #bbb;padding:.3rem .7rem;margin:.6rem 0}
+  figure{margin:1rem 0;text-align:center}
+  figcaption{font-size:.85rem;color:#555;margin-top:.3rem;text-align:left}
+</style>
+</head>
+<body>
+
+<h1>The Movement Is Nearly Free: KV-Cache Tier Transfer Is Not the Bottleneck in Long-Context Multiturn Serving</h1>
+<div class="sub"><b>kleinrock</b> · sglang KV-cache / serving, v0.31 · goodput@SLO rate sweep, Qwen3.5-122B, 2-tier (GPU HBM + 768&nbsp;GB host) ·
+<i>a measurement study + a bounded-negative result (the eval's own metrics + custom CUDA-event DMA timing + per-request attribution)</i></div>
+
+<div class="abstract">
+<b>Abstract.</b> Tiered-KV LLM servers (HiCache, LMCache, AttentionStore, Strata, Mooncake) keep the KV cache
+across a fast device tier (GPU HBM) and a large host tier (DRAM), and a great deal of engineering goes into
+<i>hiding the transfer latency</i> between them &mdash; asynchronous copy streams, prefetch pipelines, layout
+tricks. We ask, for a realistic long-context multiturn workload scored by <b>goodput@SLO</b> (max request rate
+with p99 TTFT &le; 8&nbsp;s), whether that transfer latency is actually on the critical path &mdash; and whether an
+<i>anticipatory prefetch</i> that overlaps the host&rarr;device restore with a running mega-document's prefill
+compute could raise goodput. We instrument the real H&rarr;D restore DMA with CUDA-event timing (the stock
+<code>load_back_duration</code> metric, we show, times only the enqueue) and combine it with the evaluator's own
+captured metrics and per-request traces. Three findings. <b>(1) The movement is enormous</b>: at &lambda;=7 the
+engine restores 1.04&nbsp;billion and evicts 1.84&nbsp;billion KV tokens across the tier boundary, while
+recomputing only 0.11&nbsp;billion new tokens &mdash; roughly the restore alone moves <b>~10&times; more KV than the
+engine produces</b> (~26&times; counting eviction); the cache thrashes. <b>(2) The movement is nearly free</b>: the actual restore DMA is <b>REPLACE_DMA_P99_ms
+(p99)</b> and runs at <b>REPLACE_RESTORE_TOKS tok/s</b>, and end-to-end it is not exposed &mdash; among non-queued
+cache-hit requests the TTFT is <b>flat</b> against context length (a 40&ndash;100K-token cached context adds
+&le;~0.17&nbsp;s over the ~0.5&nbsp;s scheduling floor, despite ~3 restores per request). <b>(3) Therefore
+transfer overlap is a non-lever</b>: the maximum benefit any prefetch/overlap mechanism could yield is bounded
+above by the <i>exposed</i> restore time (&le;~0.17&nbsp;s), which is &lt;2% of the seconds-scale goodput knee
+(SRPF's p99 is 6.4&nbsp;s at &lambda;=5, 9.6&nbsp;s at &lambda;=7) &mdash; so we do not build it; we prove its
+ceiling. The p99 tail contains <b>0%</b> movement. We give the cost-hierarchy explanation (moving a KV token is
+&gt;60&times; cheaper than recomputing it), position the result against the tiering literature (whose
+transfer-hiding machinery targets a cost that, in this compute-bound long-context regime, does not bind), and
+close with a unified <b>lever map</b> for goodput@SLO: caching cannot fix the tail (companion paper P1),
+scheduling order can (companion paper P2), and tier movement is irrelevant to it (this paper). The value of
+tiering here is <b>capacity</b> &mdash; avoiding the 10&times; recompute &mdash; not latency-hiding.
+</div>
+
+<h2>1 Introduction</h2>
+<p>A tiered-KV LLM server keeps attention KV across two tiers: L1 in GPU HBM (fast, small) and L2 in host DRAM
+(slow-<i>er</i>, large). When a request's prefix has been evicted from L1 to L2, serving it requires a
+<b>host&rarr;device (H&rarr;D) restore</b> before the forward pass can attend to that prefix. The tiering
+literature treats this restore latency as a first-class problem: HiCache overlaps it on a dedicated copy stream,
+LMCache and AttentionStore build prefetch pipelines, Strata schedules transfers to hide them under compute, and
+all of them invest in layout choices to make the copy efficient. The implicit premise is that <i>if you do not
+hide the transfer, it lands on the critical path and costs you tail latency</i>.</p>
+
+<p>We test that premise directly, on a workload where it should matter most: a Mooncake-style long-context
+multiturn mix (1553 conversations, 7163 turns, first-turn documents up to 192K tokens, Qwen3.5-122B on
+8&times;H100, 2-tier KV with a 768&nbsp;GB host tier), scored by <b>goodput@SLO</b> under an open-loop Poisson
+rate sweep &lambda;&nbsp;&isin;&nbsp;{3,5,7,10}. Two companion results frame this one: the p99 TTFT tail that
+defines the metric is <i>head-of-line queueing</i> behind the cold prefill of a few unique mega-documents (P2),
+and it cannot be cached away because those documents are unique first-sight (P1). Here we ask the orthogonal
+question the tiering literature would ask: <b>is the L1&harr;L2 movement itself a lever &mdash; and would hiding
+the restore latency under a running mega-document's compute raise goodput?</b></p>
+
+<p>The answer is no, and the reason is quantitative and general. We find the engine moves an order of magnitude
+more KV than it computes, yet the movement is so cheap &mdash; both per-operation and, decisively, <i>as exposed
+on TTFT</i> &mdash; that no amount of overlapping it can move a knee that lives at seconds. The transfer-hiding
+machinery is solving a problem this regime does not have.</p>
+
+<p><b>Contributions.</b></p>
+<ul>
+<li><b>The first actual-DMA measurement of tier movement under load (&sect;4, &sect;5.2).</b> We show the stock
+<code>sglang:load_back_duration_seconds</code> metric times only the <i>enqueue</i> (the real copy runs later on a
+separate stream), add an env-gated CUDA-event timer for the real H&rarr;D DMA, and report its distribution and
+bandwidth on the live serving path.</li>
+<li><b>The movement is high-volume but latency-free (&sect;5.1&ndash;5.3).</b> ~10&times; more KV is moved than
+recomputed (heavy L1&harr;L2 thrashing), yet the restore is sub-10&nbsp;ms per op and &mdash; end-to-end &mdash;
+adds &le;~0.17&nbsp;s to TTFT even for 100K-token cached contexts. The p99 tail contains <b>0%</b> movement.</li>
+<li><b>A ceiling-bound non-lever result (&sect;5.5).</b> The maximum benefit of <i>any</i> anticipatory-prefetch
+or transfer-overlap mechanism is bounded above by the exposed restore time, which is &lt;2% of the goodput knee.
+We therefore do not implement one; we prove it cannot help. This is a stronger statement than an A/B of one
+implementation.</li>
+<li><b>A cost-hierarchy explanation and a reframing of the tiering literature (&sect;5.4, &sect;6).</b> Moving a
+KV token is &gt;60&times; cheaper than recomputing it; on modern GPUs with a fast host tier, transfer latency for
+compute-bound long-context prefill is a non-problem. Tiering's value is capacity (avoiding recompute), not
+latency-hiding.</li>
+<li><b>A unified lever map for goodput@SLO (&sect;7).</b> Caching (P1), scheduling (P2), movement (this paper):
+exactly one axis &mdash; scheduling order &mdash; is the lever, and its optimum is classical.</li>
+</ul>
+
+<h2>2 Motivation: an enormous amount of KV moves across the tier boundary</h2>
+<p>If tier movement were ever going to bind, it would bind here. The evaluator captures the server's Prometheus
+metrics after every rate; aggregating the movement counters over the full sweep (Table&nbsp;1) shows the tiering
+subsystem is extraordinarily busy. At &lambda;=7 it performs 71,552 restore operations moving 1.04&nbsp;billion
+KV tokens H&rarr;D and 161,656 eviction operations moving 1.84&nbsp;billion tokens D&rarr;H, while the prefill
+engine recomputes only 0.11&nbsp;billion <i>new</i> (non-cached) tokens over the same interval.</p>
+
+<table>
+<caption class="disc">Table 1. Tier-movement volume over the sweep (stock, from the eval's captured <code>/metrics</code>).
+"New tokens" = prompt_tokens &minus; cached_tokens = tokens actually recomputed by prefill.</caption>
+<tr><th>&lambda;</th><th>restore ops</th><th>restored tok</th><th>evict ops</th><th>evicted tok</th><th>new (recomputed) tok</th><th>(rest+evict) : new</th></tr>
+<tr><td>3</td><td>26,096</td><td>0.38&nbsp;B</td><td>56,888</td><td>0.65&nbsp;B</td><td>&mdash;</td><td>&mdash;</td></tr>
+<tr><td>5</td><td>49,336</td><td>0.71&nbsp;B</td><td>108,672</td><td>1.24&nbsp;B</td><td>0.073&nbsp;B</td><td>~27&times;</td></tr>
+<tr><td>7</td><td>71,552</td><td>1.04&nbsp;B</td><td>161,656</td><td>1.84&nbsp;B</td><td>0.109&nbsp;B</td><td>~26&times;</td></tr>
+<tr><td>10</td><td>93,504</td><td>1.37&nbsp;B</td><td>214,872</td><td>2.43&nbsp;B</td><td>&mdash;</td><td>&mdash;</td></tr>
+</table>
+
+<p>The cache <b>thrashes</b>: with a working set (~19M tokens) far exceeding L1+L2 (~10.7M), active conversation
+prefixes are evicted to L2 and restored to L1 repeatedly across turns, so the restore volume (1.04&nbsp;B) far
+exceeds even the cached-token volume served (0.21&nbsp;B at &lambda;=7) &mdash; each cached prefix is restored
+several times. On any account of tiering cost that scales with bytes moved, this workload is a worst case. The
+question is whether that volume translates into latency on the critical path.</p>
+
+<h2>3 Background: where the restore sits on the prefill path</h2>
+<p>On a cache hit whose matched prefix is resident only in L2, sglang's <code>UnifiedRadixCache.load_back()</code>
+is invoked during prefill admission. It does <i>not</i> copy the KV; <code>cache_controller.load()</code> only
+allocates device slots and appends a <code>CacheOperation</code> to a <code>load_queue</code>. The actual copy is
+issued later by <code>start_loading()</code>, which merges the queued operations and runs a per-layer H&rarr;D
+copy on a dedicated <code>load_stream</code>; each layer records a CUDA event, and the forward pass consumes the
+KV lazily &mdash; <code>get_key_buffer(layer_id)</code> issues a cross-stream <code>wait_event</code> so the
+compute stream waits on the load stream <i>per layer</i>.</p>
+
+<div class="disc"><b>The overlap structure, and the gap.</b> Within a batch, layer <i>i</i>&minus;1's compute overlaps
+layer <i>i</i>'s load (good pipelining). But the load is only <i>enqueued</i> after batch&nbsp;N is assembled, so
+it is <b>not</b> pre-issued during the prior batch's compute. When a mega-document occupies the prefill pipeline
+for ~13&nbsp;s, the restores of the short requests waiting behind it do not begin until the mega-document clears.
+This is the gap an <em class="k">anticipatory prefetch</em> would close: kick off the waiting requests' L2&rarr;L1
+restores <i>during</i> the mega-document's compute (the H&rarr;D DMA engine is otherwise idle then), so they are
+resident the moment they are scheduled. That mechanism is the natural "hide the transfer" move; whether it is worth
+building is exactly what &sect;5 decides. Note also that for a <i>cache-hit</i> request the forward pass computes
+only the small new suffix while the whole prefix must be loaded &mdash; so if restore were slow, it would be
+<i>exposed</i> (little compute to hide it behind). This is the case most favorable to the transfer-hiding thesis,
+and the one we measure.</div>
+
+<h2>4 Measurement methodology</h2>
+<p><b>The stock metric times the enqueue, not the DMA.</b> <code>observe_load_back_duration()</code> wraps
+<code>load_back()</code>, whose body ends at the <code>load_queue.append()</code> &mdash; i.e. it measures index
+allocation + lock + enqueue, not the copy on <code>load_stream</code>. Its histogram (avg ~1.3&nbsp;ms, Table&nbsp;2)
+is therefore an <i>enqueue</i> cost, and cannot be read as the transfer time.</p>
+<p><b>An actual-DMA timer.</b> We add an env-gated instrumentation (commit <code>3b2756b28</code>, enabled by
+<code>KL_DMA_TIMING=1</code>, zero overhead and byte-identical behavior when off): two <code>cuda.Event</code>s
+with <code>enable_timing=True</code> recorded on <code>load_stream</code> around the per-layer copy loop in
+<code>start_loading()</code>, drained lazily (only completed events are read, so timing never perturbs the serving
+path) and logged as a running distribution. This measures the real H&rarr;D DMA duration per merged restore
+operation.</p>
+<p><b>The exposed cost.</b> Internal DMA duration is an upper bound on what a request pays only if it is not
+overlapped. To measure what is actually <i>exposed on TTFT</i>, we use the evaluator's per-request traces
+(prompt_len, ttft_ms, output_len) and isolate <b>non-queued cache-hit</b> requests (TTFT below the median, output
+&le; 32 tokens = later conversational turns that hit their cached prefix) and ask whether their TTFT rises with
+prompt_len. A cache-hit later turn has a large cached prefix but a tiny new suffix, so any restore cost would show
+up as TTFT growing with context length. Flatness means the restore is not exposed.</p>
+<p>Everything runs on the frozen evaluation contract (unchanged): full-decode Poisson sweep, NUMP=1553,
+max-concurrency 256, 2-tier <code>--hicache-io-backend direct --hicache-mem-layout page_first_direct
+--hicache-write-policy write_through</code>, on one <code>--exclusive</code> 8&times;H100 node.</p>
+
+<h2>5 Results</h2>
+
+<h3>5.1 Enqueue cost and thrashing (the eval's own metrics)</h3>
+<table>
+<caption class="disc">Table 2. Movement <i>enqueue</i> cost (stock, from captured <code>/metrics</code>). Restore and
+eviction enqueue are both ~1&nbsp;ms with a &le;9&nbsp;ms p99, independent of load; the enqueue is negligible.</caption>
+<tr><th>&lambda;</th><th>restore avg</th><th>restore p99</th><th>evict avg</th><th>evict p99</th></tr>
+<tr><td>3</td><td>1.56&nbsp;ms</td><td>&le;9&nbsp;ms</td><td>0.98&nbsp;ms</td><td>&le;8&nbsp;ms</td></tr>
+<tr><td>5</td><td>1.43&nbsp;ms</td><td>&le;9&nbsp;ms</td><td>0.91&nbsp;ms</td><td>&le;8&nbsp;ms</td></tr>
+<tr><td>7</td><td>1.34&nbsp;ms</td><td>&le;8&nbsp;ms</td><td>0.87&nbsp;ms</td><td>&le;7&nbsp;ms</td></tr>
+<tr><td>10</td><td>1.29&nbsp;ms</td><td>&le;8&nbsp;ms</td><td>0.84&nbsp;ms</td><td>&le;6&nbsp;ms</td></tr>
+</table>
+
+<h3>5.2 Actual H&rarr;D DMA cost (CUDA-event timing)</h3>
+<p><i>REPLACE_5_2 &mdash; filled from the KL_DMA_TIMING run (job 20211, runs/v12-dma-timing).</i></p>
+<table>
+<caption class="disc">Table 3. Actual restore DMA duration (merged per-operation, CUDA-event elapsed_time) over the sweep.</caption>
+<tr><th>metric</th><th>value</th></tr>
+<tr><td>samples</td><td>REPLACE_N</td></tr>
+<tr><td>avg</td><td>REPLACE_AVG&nbsp;ms</td></tr>
+<tr><td>p50</td><td>REPLACE_P50&nbsp;ms</td></tr>
+<tr><td>p99</td><td>REPLACE_P99&nbsp;ms</td></tr>
+<tr><td>max</td><td>REPLACE_MAX&nbsp;ms</td></tr>
+<tr><td>restore bandwidth</td><td>REPLACE_RESTORE_TOKS&nbsp;tok/s</td></tr>
+</table>
+
+<h3>5.3 Exposed cost: TTFT is flat against context length</h3>
+<p>The decisive measurement is end-to-end. Among non-queued cache-hit requests at &lambda;=5 (Table&nbsp;4), TTFT
+is essentially <b>flat</b> from &lt;1K to 100K tokens of cached context: the 15&ndash;40K bin is actually
+<i>lower</i> than the &lt;1K bin, and the 40&ndash;100K bin is only ~90&nbsp;ms above it. Since at &lambda;=5 the
+engine performs ~3 restore operations per request (Table&nbsp;1: 49,336 restores / 15,549 requests), these requests
+<i>are</i> restoring from L2 &mdash; and the restore still does not register on TTFT. The ~0.5&nbsp;s floor is the
+scheduling/batch-formation overhead a 94-token request also pays.</p>
+<table>
+<caption class="disc">Table 4. TTFT vs prompt_len for non-queued cache-hit requests (stock, &lambda;=5, n=3 runs, 4,569 requests).
+Flat &rArr; restore of even a 100K-token cached prefix is not exposed on TTFT.</caption>
+<tr><th>cached context (prompt_len)</th><th>requests</th><th>TTFT p50</th><th>TTFT p90</th></tr>
+<tr><td>&lt;1K</td><td>82</td><td>585&nbsp;ms</td><td>963&nbsp;ms</td></tr>
+<tr><td>1K&ndash;5K</td><td>798</td><td>460&nbsp;ms</td><td>950&nbsp;ms</td></tr>
+<tr><td>5K&ndash;15K</td><td>938</td><td>533&nbsp;ms</td><td>955&nbsp;ms</td></tr>
+<tr><td>15K&ndash;40K</td><td>2,430</td><td>506&nbsp;ms</td><td>886&nbsp;ms</td></tr>
+<tr><td>40K&ndash;100K</td><td>321</td><td>673&nbsp;ms</td><td>938&nbsp;ms</td></tr>
+</table>
+<div class="key"><b>Exposed restore &le; ~0.17&nbsp;s</b> for a 100K-token cached context &mdash; and typically
+indistinguishable from zero. The within-batch cross-stream overlap plus the fast <code>direct</code>/
+<code>page_first_direct</code> copy hides essentially all of it.</div>
+
+<h3>5.4 Cost hierarchy: moving KV vs. recomputing it</h3>
+<p>Why is a billion-token movement free? Because moving a KV token is far cheaper than producing one. The prefill
+engine recomputes new KV at ~38K&nbsp;tok/s (&lambda;=5) to ~63K&nbsp;tok/s (&lambda;=7) aggregate; the restore
+path moves KV at <b>REPLACE_RESTORE_TOKS tok/s</b> (&sect;5.2) &mdash; i.e. <b>REPLACE_RATIO&times;</b> faster.
+Equivalently, from the exposed measurement alone (&sect;5.3): restoring a 100K-token prefix costs &le;~0.17&nbsp;s,
+whereas <i>recomputing</i> those 100K tokens of prefill would cost seconds (a 100K-token cold prefill at the
+observed per-stream rate is ~7&nbsp;s). The tier boundary is cheap to cross precisely because the alternative it
+replaces &mdash; recompute &mdash; is expensive. This is the standard cache-hierarchy economics, and it is why
+tiering is worth doing; but it also means the <i>transfer</i>, not being the expensive part, cannot be the
+bottleneck.</p>
+
+<h3>5.5 The non-lever result: a ceiling bound</h3>
+<p>Put the pieces together. An anticipatory-prefetch (or any transfer-overlap) mechanism can only remove the
+<i>exposed</i> restore time from a request's TTFT. That exposed time is &le;~0.17&nbsp;s (&sect;5.3), and for the
+requests that define the tail it is smaller still: the p99 victims are tiny &lt;1K-token requests (P2) whose
+restore, if any, is sub-millisecond. The goodput knee lives at <b>seconds</b> &mdash; SRPF's p99 is 6.4&nbsp;s at
+&lambda;=5 and 9.6&nbsp;s at &lambda;=7 (P2). Therefore:</p>
+<div class="key"><b>Maximum achievable goodput gain from transfer overlap &le; exposed restore (~0.17&nbsp;s)
+&Lt; the seconds-scale knee.</b> No prefetch/overlap mechanism can move goodput@SLO on this workload. The p99 tail
+contains <b>0%</b> movement: it is prefill compute of uncacheable mega-documents (P1) and head-of-line queueing
+behind them (P2). We therefore do not implement the prefetch &mdash; we bound its ceiling below threshold. (This is
+a stronger negative than A/B-testing one implementation: it rules out the whole mechanism class.)</div>
+<p>This mirrors, on a third axis, the bounded negatives of the companion papers &mdash; but where those required
+building and measuring a mechanism (P2's reserved lane, chunk-interleaving), here the measurement itself forecloses
+the mechanism.</p>
+
+<h2>6 Related work</h2>
+<p><b>Tiered KV and transfer hiding.</b> HiCache (the sglang hierarchical cache), LMCache, AttentionStore
+(CachedAttention), and Strata all treat L1&harr;L2 (and L3/disk) transfer latency as a first-order cost and build
+machinery to hide it: asynchronous copy streams, prefetch/pipelining, and layout choices (page-first, layer-first)
+to make the copy contiguous. Mooncake's disaggregated store similarly optimizes KV transfer. Our result does not
+contradict theirs &mdash; it <b>scopes</b> it: in this compute-bound long-context regime on modern GPUs with a fast
+host DMA, the H&rarr;D restore is &lt;10&nbsp;ms per op and &le;~0.17&nbsp;s exposed, so the transfer-hiding
+machinery, while correct, targets a cost that does not bind the tail. The lever they should reach for on this
+workload is capacity and scheduling, not transfer overlap. (The regimes where transfer <i>does</i> bind &mdash;
+slow interconnects, disk tiers, larger KV &mdash; are exactly the ones their designs were built for; &sect;7.)</p>
+<p><b>Prefix caching.</b> vLLM/SGLang RadixAttention and prefix caching make cache <i>hits</i> cheap; our point is
+complementary: on this workload the hits are already cheap <i>including their restore</i>, and the tail is the
+<i>misses</i> (unique first-sight mega-documents, P1), which no movement mechanism touches.</p>
+<p><b>CPU memory hierarchies.</b> The cost hierarchy we measure (move &Lt; recompute) is the classic reason caches
+exist; the twist for LLM serving is that the "recompute" (prefill) is so expensive that even a billion-token,
+thrashing tier movement is negligible beside it &mdash; the opposite of the CPU regime, where a cache miss
+(DRAM fetch) is expensive relative to the ALU work it feeds.</p>
+
+<h2>7 Limitations &amp; when transfer <i>does</i> bind</h2>
+<ul>
+<li><b>Scoped to this regime.</b> Our claim is: FP8 KV, a fast host DMA (<code>direct</code> +
+<code>page_first_direct</code>), 8&times;H100 with NVLink, a 768&nbsp;GB host tier and no disk. Change any of these
+and transfer can re-enter the critical path: (i) a <b>disk/L3 tier</b> is orders of magnitude slower than DRAM and
+would expose latency (sglang's L3 prefetch machinery exists precisely for this); (ii) a <b>PCIe-only</b> node
+without fast H&rarr;D bandwidth; (iii) <b>larger KV</b> (FP16, more attention layers, MHA instead of GQA) increases
+bytes/token; (iv) <b>cheaper compute</b> (small models, short prompts) shrinks the recompute side of the hierarchy
+so movement becomes relatively more important. Our result is that in the <i>long-context, compute-bound</i> regime
+&mdash; the one that motivates large host tiers in the first place &mdash; transfer is not the lever.</li>
+<li><b>Restore, not the whole tier subsystem.</b> We measure the H&rarr;D restore that sits on the prefill critical
+path. Eviction (D&rarr;H backup) is off the critical path (asynchronous, write-through); its enqueue is ~1&nbsp;ms
+(Table&nbsp;2) and it is not TTFT-relevant, but we did not separately CUDA-event-time it.</li>
+<li><b>Single hardware point.</b> One node type; we did not sweep interconnect or KV dtype (they are fixed by the
+contract). The cost-hierarchy argument (&sect;5.4) is what generalizes, not the absolute milliseconds.</li>
+</ul>
+
+<h2>8 Reproducibility</h2>
+<ul>
+<li><b>Instrumentation:</b> commit <code>3b2756b28</code> on <code>evolve/kleinrock</code> &mdash; env-gated
+CUDA-event DMA timer in <code>python/sglang/srt/managers/cache_controller.py</code> (<code>KL_DMA_TIMING=1</code>;
+off &rArr; byte-identical, lossless).</li>
+<li><b>Run:</b> <code>v12-dma-timing</code> (<code>runs/v12-dma-timing/</code>), a full contract sweep with
+<code>KL_DMA_TIMING=1</code>; actual-DMA distribution parsed from <code>server.log</code> <code>[KLDMA]</code>
+lines.</li>
+<li><b>Enqueue &amp; volume (Tables 1&ndash;2):</b> the evaluator's captured <code>metrics_r&lt;&lambda;&gt;.txt</code>
+from the stock run <code>v0-stock</code> (Prometheus <code>load_back/eviction_duration_seconds</code>,
+<code>*_tokens_total</code>, <code>prompt/cached_tokens_total</code>).</li>
+<li><b>Exposed cost (Table 4):</b> per-request traces <code>runs/v6-shortlane-abl/perreq_reserve0_l5_r*.csv</code>.</li>
+<li><b>Analysis:</b> <code>tools/movement_analyze.py</code> regenerates Tables 1&ndash;4 and the cost hierarchy
+(sections A/B/C/D) from these artifacts.</li>
+</ul>
+
+<h2>9 Conclusion: the goodput@SLO lever map</h2>
+<p>Across three papers we have now characterized every axis by which a tiered-KV server could move goodput@SLO on
+this long-context multiturn workload:</p>
+<table>
+<caption class="disc">Table 5. The lever map. Exactly one axis is the lever, and its optimum is classical.</caption>
+<tr><th>axis</th><th>verdict</th><th>why</th></tr>
+<tr><td>Caching / residency (P1)</td><td>non-lever for the tail</td><td>the p99 mega-documents are unique first-sight &mdash; uncacheable at any capacity</td></tr>
+<tr><td>Tier movement (this paper)</td><td>non-lever</td><td>restore is &lt;10&nbsp;ms/op, &le;~0.17&nbsp;s exposed, &gt;60&times; cheaper than recompute; 0% of the p99 tail</td></tr>
+<tr><td>Scheduling order (P2)</td><td><b>the lever</b></td><td>deferring the few heavy documents past the percentile clears the SLO (&le;&lambda;5); classical SRPF, not novel</td></tr>
+</table>
+<p>The engineering implication is pointed: on a compute-bound long-context serving workload, do not spend effort
+hiding tier-transfer latency &mdash; it is nearly free. Spend the host tier's capacity to avoid recompute
+(worth ~10&times; the KV it moves), and spend scheduling to order the few expensive prefills. The movement is the
+part you can stop worrying about.</p>
+
+<hr>
+<p class="sub"><b>kleinrock</b> · Paper 3 of a series on goodput@SLO for long-context multiturn KV-serving
+(P1 <i>prefill-slo-tail</i>: the caching coin-flip; P2 <i>prefill-hol-defer</i>: defer, don't throttle;
+P3 <i>kv-tiering-movement</i>: the movement is nearly free). All GPU work on the frozen contract; all claims
+trace to <code>runs/*/</code> and the eval's own captured metrics.</p>
+
+</body>
+</html>

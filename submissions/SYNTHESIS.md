@@ -59,6 +59,7 @@ whole-request shortest-first scheduling, and **giant *acceleration*** reduce res
 | eviction policy | LRU≈Belady | neutral (P1) |
 | decode-floor throttle | giants linger → concurrency↑ | backfire (P4) |
 | fair-share interleave | giants linger + starvation → concurrency↑ | backfire (P5) |
+| running-batch cap (`--max-running-requests`) | fewer decodes (tpot↓) but admission queue-wait↑ | backfire 63-94s (P7) |
 | **capacity (C)** | raises ceiling | **lever (P2)** |
 | **whole-request SRPF** | fewer in-flight requests | **lever (textbook; P2 K-lever)** |
 | **giant acceleration** | shorter giant residency → concurrency↓ AND raises C +36% (deterministic) | **lever (P6, novel positive; reliable @λ=3, capacity +36%; λ=5 coin-flip)** |
@@ -70,3 +71,9 @@ whole-request shortest-first scheduling, and **giant *acceleration*** reduce res
   **raises the frontier 3→5 [★v16 REPLICATE OVERTURN 2026-07-15: goodput 3→5 was OVER-CLAIMED on n=1 (v13 λ5 3.4s); replicate v16 λ5=17.9s FAIL → λ=5 is a COIN-FLIP (1/2). RELIABLE claims = capacity C +36% (deterministic) + λ=3 win 5/5. λ=5 coin-flip is theory-consistent: margin C−λ=0.65 small → metastable per P3 margin law (confirmed both ends). Papers reframed.]  req/s (+67%) and the capacity ceiling C +36%** (empirically the K-lever of the P2 law).
 - Rigorous **bounded negatives** across the cache/admission/prefill-reshaping axes; honest coin-flip methodology
   (median-of-k, same-node A/B, deterministic per-step metrics that are coin-flip-robust).
+- **Law sharpened (P7, capstone §4.2):** the crudest "reduce concurrency" move — a server running-batch cap
+  (`--max-running-requests`) — is a DECISIVE NEGATIVE (λ=3 stock/cap128/cap64: tpot 625/227/111↓ but p99
+  13.9/63.4/94.4s↑ = admission starvation). ⇒ reduce residency by **DRAINING work faster** (finish sooner:
+  capacity/SRPF/accel), NOT by **BLOCKING at the door** (admission-throttle relocates residency to the queue, still in
+  TTFT). Explains why accel wins and a cap fails at *identical* concurrency reduction. All headline numbers across the
+  series integrity-verified against raw run JSONs (zero inflation).

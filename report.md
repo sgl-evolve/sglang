@@ -1107,3 +1107,15 @@ repeated/chunk-level deferral (interleaving) OVER-defers heavy docs → wrecks t
 2-3 + λ5 to firm; then fold as a characterized negative into Paper 2 §4 (a 3rd failed alternative to SRPF, after
 reserve[throttle] and LOF[wrong-key]: interleave[over-defer]). SRPF remains the unique deferral sweet spot.
 LESSON: sim must measure the SAME metric as the eval (aggregate p99), not a proxy (tiny-req p99).
+
+### ★ CHUNK-INTERLEAVE NEGATIVE — CONFIRMED at BOTH loads (2026-07-16)
+Complete same-node A/B (fcfs/srpf/interleave):
+- λ5 (node 0-1): fcfs {25.9,23.3,24.0} med 24s 0/3 / srpf {6.8,6.2,6.4} med 6.4s **3/3 PASS** / interleave rep1 **92.8s FAIL**.
+- λ7 (node 0-0): fcfs {12.2,33.9,35.0} med 34s 0/3 / srpf {9.6,9.6,8.4} med 9.6s 0/3 / interleave rep1 **90.1s FAIL**.
+⇒ interleave is CATASTROPHICALLY worse (~90s) at BOTH loads — 2 independent confirmations. At λ5 it DESTROYS the
+goodput srpf cleanly achieves (6.4s pass → 92.8s fail). DECISIVE negative (~10-15× worse; over-defers mega-docs).
+Good-neighbor: 2 jobs pending → let l7 il rep2 finish (n=2 λ7) then CANCEL both to free nodes. n=1-per-load +
+cross-load consistency = firm enough for a bounded negative (report n honestly, as with reserve-4096 n=1).
+INTEGRATION: Paper 2 §4 gains interleave as the 4th failed point mapping the deferral design space — the sweet
+spot is UNIQUE (SRPF defer-at-admission-then-run): under-defer=FCFS, throttle=reserve, wrong-key=LOF,
+over-defer=interleave ALL fail. + methodology lesson (sim must measure the eval metric, not a tiny-req proxy).

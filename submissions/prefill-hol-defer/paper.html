@@ -1172,7 +1172,7 @@ reserve negative's throughput <i>drop</i> (3.64 req/s at <i>R</i>=0 &rarr; 2.47 
 goodput pass only below severe saturation:</p>
 <table>
 <tr><th>&lambda; (same node, n=3, deferral vs FCFS)</th><th>FCFS p99</th><th>deferral p99</th><th>&Delta;</th><th>deferral goodput</th></tr>
-<tr><td>3 (knee, n=5)</td><td>22.0&nbsp;s (coin-flip 9.7&ndash;35.9)</td><td>6.7&nbsp;s</td><td>&minus;70%</td><td><b>5/5 pass</b> (variance collapses, &sect;5.3)</td></tr>
+<tr><td>3 (knee, n=5)</td><td>22.0&nbsp;s (9.7&ndash;35.9, &sigma;/m 0.53)</td><td>6.7&nbsp;s</td><td>&minus;70%</td><td><b>5/5 pass</b> (variance collapses, &sect;5.3)</td></tr>
 <tr><td>5 (saturation)</td><td>23.9&nbsp;s</td><td>7.0&nbsp;s</td><td>&minus;71%</td><td>pass</td></tr>
 <tr><td>7 (severe saturation)</td><td>33.3&nbsp;s</td><td>9.6&nbsp;s</td><td>&minus;71%</td><td>fail</td></tr>
 </table>
@@ -1195,11 +1195,14 @@ passing? We answer with a same-node K=5 A/B at &lambda;=3 (fcfs vs the deferral 
 <tr><td>fcfs (stock)</td><td>9671, 12265, 22035, 34132, 35870</td><td>22.0&nbsp;s</td><td>0.53</td><td>0/5</td></tr>
 <tr><td>deferral (SRPF ref.)</td><td>6177, 6225, 6665, 6711, 6755</td><td>6.7&nbsp;s</td><td><b>0.04</b></td><td><b>5/5</b></td></tr>
 </table>
-<div class="key">Deferral cuts the knee median p99 <b>&minus;70%</b> (Fisher exact p=0.008; the distributions are
-disjoint &mdash; srpf max 6.76&nbsp;s &lt; fcfs min 9.67&nbsp;s) <b>and collapses the run-to-run variance
-&sim;13&times;</b> (&sigma;/m 0.53&rarr;0.04): the fcfs spread is 3.7&times; (a wide straddle of the SLO), the
-deferral spread just 1.09&times; (tight, entirely under it). p50, hit rate, and request throughput are flat
-(lossless, throughput-neutral). So the goodput@SLO knee coin-flip is a <b>schedulability artifact</b>: a
+<div class="key">Deferral does two things at once. It <b>shifts the median</b> p99 <b>&minus;70%</b> (22.0&rarr;6.7&nbsp;s,
+0/5&rarr;5/5; Fisher exact p=0.008; the distributions are disjoint &mdash; srpf max 6.76&nbsp;s &lt; fcfs min
+9.67&nbsp;s), and it <b>collapses the run-to-run variance ~13&times;</b> (&sigma;/m 0.53&rarr;0.04): the fcfs
+spread is 3.7&times; (9.7&ndash;35.9&nbsp;s, wide) versus the deferral spread of just 1.09&times; (6.2&ndash;6.8&nbsp;s,
+tight). On this node fcfs's median sits well above the SLO with <i>coin-flip-band</i> variance (&sigma;/m 0.53, in
+the &rho;&asymp;0.5&ndash;0.7 band the companion paper identifies as the metastable regime) &mdash; it is that
+variance, the mechanism of the near-knee coin-flip, that deferral removes. p50, hit rate, and request throughput
+are flat (lossless, throughput-neutral). So the metric's near-knee variance is a <b>schedulability artifact</b>: a
 well-ordered (deferred) queue is not only faster but ~13&times; more predictable.</div>
 <p>This completes, rather than contradicts, the companion paper: the coin-flip is real and caching is blind to it,
 but it is <i>caused</i> by the head-of-line queue's sensitivity to arrival ordering (&sect;3), which deferral

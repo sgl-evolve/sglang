@@ -1363,3 +1363,13 @@ check is over-strict) or (b) the inflated evictable counter misleads eviction (r
 20257 (queued, cluster saturated 10 alloc/2 idle): completes losslessly → (a) counter bug, fix = correct the
 drift → unblocks decode-tail mitigation; OOM/abnormal → (b) real. Pinpoint-on-confirm: add a debug walk of the
 LRU list summing actual ref==0 tokens vs the counter to locate the drift site empirically.
+
+### Direction 6 refinement #3 (2026-07-16): built-in tree-sanity check disambiguates the diagnostic
+mamba_radix_cache.py:402-410 sanity_check() ALREADY walks the LRU list and asserts full_evictable_size_ (counter)
+== sanity_check_evictable_size() (physical ref==0 walk). Runs in on_idle at line 3547, AFTER the pool invariant
+(3539); it's a plain assert (NOT gated by SGLANG_ENABLE_STRICT_MEM_CHECK_DURING_IDLE). ⇒ diagnostic 20257 (IDLE=0
+→ pool check warns) now cleanly disambiguates: (a) crashes at tree-sanity assert (409, "evictable size X != lru
+list Y") → COUNTER DRIFT (fixable false-positive; fix = find/fix the drift site so counter==physical); (b)
+COMPLETES past on_idle → counter consistent + pool-invariant over-strict → benign/LOSSLESS (fix = correct the
+pool invariant to model whatever it misses); (c) OOM → REAL over-commit (fundamental → P4 firmed). No more source
+speculation needed — the empirical run decides. 20257 queued (cluster saturated 10 alloc/2 idle; next-priority).

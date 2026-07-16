@@ -40,7 +40,10 @@ chunks) — and above the knee the GPU is compute-bound (raw throughput saturate
 measured at λ=10; 99% of forward steps are already prefill). Serving the small turns first (SRPF, a textbook
 policy) turns stock's stable λ=5 failure (17–24&nbsp;s, n=7) into a pass, lifting goodput@SLO from the
 stock coin-flip (≤3&nbsp;req/s, λ=3-bound) to <b>4.0&nbsp;req/s</b> (the λ=5 rate, full contract sweep) —
-purely by reordering, with cache contents untouched. Goodput is bounded not by raw compute (throughput
+purely by reordering, with cache contents untouched. The converse sharpens the point: a KV-cache config that
+<em>does</em> improve caching — the <code>write_back</code> backup policy, +5–7&nbsp;pp hit rate and +7% throughput
+ceiling — leaves goodput <em>unchanged</em>, the clearest evidence that goodput is decoupled from the hit rate
+(set by the tail, not the mean). Goodput is bounded not by raw compute (throughput
 climbs to ~4.7 at λ=10) but by the head-of-line <em>tail</em> crossing the SLO between λ=5 (7.8&nbsp;s) and
 λ=7 (10.3&nbsp;s). Finally we give a <em>predictive criterion</em>
 for when caching <em>would</em> matter: a reuse-stack-distance-vs-cache-horizon phase boundary, validated on

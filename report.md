@@ -1528,3 +1528,16 @@ still catches REAL (unbounded/growing) leaks — the observed slack is bounded+o
 PLAN: (A) queue full mixed-chunk sweep now (STRICT=0, empirical backbone — decode-tail vs load λ3/5/7/10, doesn't depend on the fix);
 (B) build the principled page-slack fix in invariant_checker.py + verify it (no false-positive, still catches real leaks, mixed-chunk
 runs clean without STRICT env); (C) same-node stock-vs-mixedchunk control. Then Paper 5.
+
+### λ5 harvested (20:15) — decode-tail win HOLDS at higher load (~11×), with an HONEST TTFT tradeoff that grows with load
+MC λ5 completed 7037/7037 (tree fail/crash still 0 all run; survived λ3 AND λ5 full drains). Metrics (mixed-chunk vs stock n=3):
+  ITL p99 (decode tail): stock {4756,4603,5099}≈4750 → MC **418 ms = ~11× cut**. (λ3 was ~15×.)
+  E2E p99:               stock {372,358,400}≈377 s  → MC **156.6 s = ~2.4× cut**. (λ3 was ~4.7×.)
+  TTFT p99:              stock {11.1,23.8,25.4}≈20 s → MC **56.0 s = ~2-3× WORSE.** (λ3 TTFT 12s was within stock noise.)
+  total_output_tokens: MC 900082 = stock 900082 EXACT ⇒ lossless holds at λ5. output_throughput MC 601 (high, GPU kept busy).
+HONEST READ: mixed-chunk dramatically cuts the DECODE tail (~11-15× ITL p99) and improves E2E p99 (2.4-4.7×) at both λ3 and λ5,
+LOSSLESSLY — but it TRADES prefill latency: the TTFT tail worsens with load (neutral@λ3, ~2-3× worse@λ5) because prefill is chunked
+& interleaved to yield decode slots. Net E2E still improves (the decode tail dominated E2E — P4), so user-experienced latency drops
+(λ5 E2E p99 377→157s). This is a prefill↔decode Pareto SHIFT, not a free lunch — must be stated plainly in Paper 5 (no overclaim:
+it is NOT "cuts all tails"; it cuts the decode/E2E tail at a prefill-tail cost that grows with load). λ7 running at wall (partial,
+no json); 20269 (full sweep w/ fix) will complete λ7/λ10. This is the honest, complete shape of the win.

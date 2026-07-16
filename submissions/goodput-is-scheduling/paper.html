@@ -158,7 +158,7 @@ therefore cannot be a per-request prefill floor — it is queue-wait.</li>
 11.9, p90 33, max 183) than during all other prefill steps (mean 1.2, p90 0) — small turns pile up behind
 the cold grind (<code>analysis/hol_trace.py</code>). The <em>same</em> monopolization stalls the decode side:
 while a big cold doc grinds its back-to-back chunks the GPU runs no decode step, so running requests wait
-<b>24.5&nbsp;s between tokens on average (p90 37&nbsp;s, max 182&nbsp;s) vs 1.8&nbsp;s otherwise — a 13.6×
+<b>24.5&nbsp;s between tokens on average (p90 37&nbsp;s, max 182&nbsp;s) vs 1.8&nbsp;s otherwise — a ~13×
 decode stall</b> (<code>analysis/hol_decode.py</code>). One mechanism, two victims: the metric-visible TTFT
 tail (waiting turns) and the metric-invisible E2E/TPOT tail (running decodes) — which is why p99 E2E is
 minutes (§8) even where TTFT passes.</li>
@@ -434,7 +434,7 @@ prefill context-parallelism is unavailable for this hybrid model in-engine and q
 contract-frozen; we treat the ceiling as fixed.</li>
 <li>We are scoped to the fixed headline metric, goodput@SLO on p99 TTFT; we do not optimize E2E latency or
 TPOT. These are catastrophic (p99 E2E is minutes) for a mechanistic reason we identify in §4: the same
-big-cold-doc prefill monopolization that causes the TTFT head-of-line also stalls running decodes 13.6×
+big-cold-doc prefill monopolization that causes the TTFT head-of-line also stalls running decodes ~13×
 (24.5&nbsp;s vs 1.8&nbsp;s between tokens) — a decode-side head-of-line the TTFT metric does not see.
 Importantly, SRPF's TTFT win is <em>not</em> bought at the expense of end-to-end latency: from the same runs
 SRPF's p99 E2E <em>improves</em> over stock (λ=3 322&nbsp;s vs 438&nbsp;s), because reordering clears the

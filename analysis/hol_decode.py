@@ -8,7 +8,7 @@ tokens. We measure the inter-Decode-batch gap and split by whether a big-cold-do
 (#new-token>=6144, #cached-token==0) occurred in the gap.
 
 Result: gap WITH a big-cold-doc chunk = mean 24.5s (p50 21, p90 37, max 182); gap otherwise = mean 1.8s
-(p50 1, p90 4) => ~13.6x longer decode stall. This is why p99 E2E/TPOT are catastrophic (minutes) even at
+(p50 1, p90 4) => ~13x longer decode stall (ratio of full-precision means; 13.3 rounded). This is why p99 E2E/TPOT are catastrophic (minutes) even at
 lambda=3: one head-of-line mechanism (big cold docs monopolizing prefill) damages BOTH the TTFT tail
 (waiting turns) AND decode (running requests). SRPF relieves the TTFT side by reordering; the decode stall
 is inherent to serializing a big cold prefill and motivates the compute-side lever (context-parallel

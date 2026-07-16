@@ -117,8 +117,8 @@ the decode tail &ldquo;is not one flag away.&rdquo;</p>
 <h2>4 The crash is a false positive</h2>
 <p>We re-ran mixed-chunk with the idle check downgraded from raise to warn
 (<code>SGLANG_ENABLE_STRICT_MEM_CHECK_DURING_IDLE=0</code>, a stock environment variable that changes only
-raise-vs-warn on the <i>assertion</i>, never any computation) and instrumented every idle event. Four facts
-establish that the reported leak is spurious.</p>
+raise-vs-warn on the <i>assertion</i>, never any computation) and instrumented every idle event. The following
+observations establish that the reported leak is spurious (&sect;4.1&ndash;4.2) and identify its cause (&sect;4.3).</p>
 
 <h3>4.1 The over-count is bounded, page-aligned, and non-accumulating</h3>
 <p>Across the full run the invariant&rsquo;s over-count (accounted &minus; total) at full idle
@@ -301,24 +301,16 @@ and mixed-chunk TTFT already exceed the 8&nbsp;s SLO, so goodput is unaffected b
 is the mean of two near-identical runs; the guard-enabled run replicates the warn-mode run to within run-to-run variance.)</p>
 
 <div class="key">
-<b>The win holds across the full sweep.</b> The decode/E2E-tail reduction is not a low-load artifact: ITL p99 is cut
-8&ndash;15&times; and E2E p99 2.3&ndash;4.7&times; at <i>every</i> load &lambda;=3,5,7,10, losslessly. The E2E benefit is
-largest where the server is unsaturated (4.7&times; at &lambda;3) and settles to a stable ~2.3&ndash;2.4&times; at
-&lambda;5&ndash;10; the prefill/TTFT cost grows with load but is immaterial to goodput once stock TTFT itself exceeds the
-SLO (&lambda;&ge;5). Mixed-chunk is
-therefore a strict decode- and end-to-end-latency win at every load, most valuable wherever end-to-end latency&mdash;not
-just first-token&mdash;is the SLO.
-</div>
-
-<p class="sub">&lambda;=7 and &lambda;=10 are in progress (a full-sweep run with the fix applied); this draft will be
-finalized with those points. The load trend so far is monotone and reported honestly below.</p>
-
-<div class="key">
-<b>The decode tail is real and removable.</b> Mixed-chunk cuts ITL p99 by an order of magnitude at both measured
-loads&mdash;from multi-second per-token stalls to sub-500&nbsp;ms&mdash;and cuts E2E p99 from minutes to tens of
-seconds. The effect (11&ndash;15&times;) dwarfs the run-to-run variance on either side (stock ITL p99 spans only
-3915&ndash;5099&nbsp;ms; MC 282&ndash;418&nbsp;ms), so&mdash;unlike the goodput knee&mdash;this is <b>not a coin-flip</b>;
-ITL is queue-independent (companion paper &sect;3).
+<b>The win holds across the full sweep, and it is not variance.</b> The decode/E2E-tail reduction is not a low-load
+artifact: ITL p99 is cut 8&ndash;15&times; and E2E p99 2.3&ndash;4.7&times; at <i>every</i> load &lambda;=3,5,7,10,
+losslessly&mdash;multi-second per-token stalls become sub-600&nbsp;ms, and minutes of end-to-end latency become tens of
+seconds. The effect dwarfs the run-to-run variance on either side (stock ITL p99 spans only ~3900&ndash;5100&nbsp;ms
+across all loads; mixed-chunk 282&ndash;574&nbsp;ms), so&mdash;unlike the goodput knee (companion paper)&mdash;this is
+<b>not a coin-flip</b>; ITL is queue-independent. The E2E benefit is largest where the server is unsaturated
+(4.7&times; at &lambda;3) and settles to a stable ~2.3&ndash;2.4&times; at &lambda;5&ndash;10; the prefill/TTFT cost grows
+with load but is immaterial to goodput once stock TTFT itself exceeds the SLO (&lambda;&ge;5). Mixed-chunk is therefore a
+strict decode- and end-to-end-latency win at every load, most valuable wherever end-to-end latency&mdash;not just
+first-token&mdash;is the SLO.
 </div>
 
 <h3>6.1 Losslessness</h3>

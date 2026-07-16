@@ -35,9 +35,11 @@ which no eviction or retention policy can remove. The only "avoidable" re-prefil
 benchmark artifact of sweeping four request rates over the same conversation set, and even that is
 un-capturable by any online policy (LFU ≈ LRU; only a clairvoyant oracle recovers it). The eviction
 policy is a live, pluggable knob on the active cache, but since LRU is already Belady-optimal here no
-policy can beat it — the dispositive evidence is the LRU=Belady proof itself; a live LFU run is consistent
-(it builds a ~3× deeper prefill queue than LRU at λ=3). <b>Caching is thus a mirage for this workload: no
-eviction or retention policy improves goodput.</b> But that does not mean goodput is fixed — it means the lever is
+policy can beat it — the dispositive evidence is the LRU=Belady proof itself, now GPU-confirmed by a completed
+same-node A/B: a scan-resistant SLRU policy <em>craters</em> hit rate −19..−27&nbsp;pp (goodput→0), because in
+multiturn serving a turn-0 document is hit_count=1 at its first reuse and thus indistinguishable from a
+never-reused singleton by access count — so recency (LRU), not access frequency, is the right signal.
+<b>Caching is thus a mirage for this workload: no eviction or retention policy improves goodput.</b> But that does not mean goodput is fixed — it means the lever is
 elsewhere. We show the actual bottleneck is <em>scheduling</em>: the few large cold-document prefills run
 back-to-back and cause <em>head-of-line blocking</em> (the p99 TTFT of 6–11&nbsp;s is queue-wait, since
 &lt;0.1% of turns prefill ≥6&nbsp;s), and shortest-prefill-first scheduling relieves it (in a calibrated
@@ -189,15 +191,24 @@ The eviction policy <em>is</em> a live, pluggable knob on the active cache: the 
 <code>--radix-eviction-policy {lru,lfu,slru,priority,…}</code> (default LRU). So a policy A/B is
 meaningful, not a no-op. But §3.1 already settles the outcome: since single-pass LRU is Belady-optimal
 (zero avoidable re-prefill), <em>no</em> eviction policy can beat LRU on this workload — the only thing a
-different policy can do is match it or do worse. This is dispositive by proof, so we do not rely on a policy
-sweep. A partial live LFU run is <em>consistent</em> with it but is not itself load-bearing: the LFU
-benchmark did not complete a clean p99 (we report no LFU goodput number), and from its server log LFU builds
-a markedly deeper prefill queue than stock LRU at λ=3 — overall queue-depth mean 24.7 (p50 7, p90 91) versus
-stock's overall mean 7.8 (p50 1, p90 16), a ~3× deeper queue. That is directional corroboration only (deeper
-queue, no measured goodput gain), in line with prior reports that frequency-based eviction is
-neutral-to-catastrophic on serving workloads; the <em>proof</em>, not this run, is what establishes the
-result. Eviction policy is thus a non-lever for
-<em>improving</em> goodput — dispositively by the LRU=Belady proof, and corroborated empirically.</p>
+different policy can do is match it or do worse. This is dispositive by proof; a completed live A/B now confirms it <em>and reveals why</em>.
+On the same node (0-3, FCFS scheduling, differing <em>only</em> in eviction policy — a clean same-node A/B
+against the stock LRU run <code>v-stock-samenode-1</code>), a scan-resistant <b>SLRU</b> policy — the natural
+candidate for a 97%-singleton workload, since it protects twice-hit nodes from the singleton scan — does not
+help; it <b>craters</b> the cache. Hit rate collapses by <b>−19 to −27&nbsp;pp</b> at every rate (0.67→0.49 at
+λ=3, monotonically to 0.65→0.39 at λ=10) and <b>goodput drops to 0</b> (p99 24–41&nbsp;s, failing every rate;
+<code>runs/v-evict-slru</code>). The mechanism is a clean generalization: in multiturn serving a turn-0 document
+has been accessed exactly <em>once</em> (hit_count = 1) when its own conversation's next turn re-uses it —
+<em>indistinguishable, by access count, from a never-re-used singleton</em>. SLRU (and any access-frequency
+signal) places both in the probationary segment and evicts them first, so it discards about-to-be-re-used
+turn-0 KV <em>before</em> its first re-use. Recency (LRU) is exactly the right signal: a recently-seen turn-0
+document is precisely the one about to be re-used. This confirms the LRU=Belady proof of §3.1 from the opposite
+direction — the "smarter," scan-resistant policy is strictly and severely worse — and sharpens it into a design
+rule: <b>for multiturn KV reuse, evict by recency, not by access frequency.</b> (A partial LFU run corroborates
+directionally: LFU builds a ~3× deeper prefill queue than LRU at λ=3 — overall queue-depth mean 24.7 vs 7.8 —
+consistent with frequency-based eviction being neutral-to-harmful; it did not complete a clean p99, so we
+report no LFU goodput number.) Eviction policy is thus a non-lever for <em>improving</em> goodput —
+dispositively by the LRU=Belady proof, and now GPU-confirmed by a completed same-node A/B.</p>
 <h3>3.4 Generalization: a caching-headroom phase boundary</h3>
 <p>
 The mirage generalizes through a simple, measurable boundary — the classic LRU <em>stack-distance</em>

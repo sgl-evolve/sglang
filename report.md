@@ -1222,3 +1222,13 @@ Consecutive-prefill-run length (# prefill batches decode waits through): p50=5, 
 (n=1289 runs). Prefill:decode batch ratio 21:1 (34071:1621). Clean decode-stall = client-side ITL p99 ~4.5s /
 TPOT p99 ~3.5s (bench); present at λ3 → STARVATION not saturation. CAVEAT: raw server-log inter-decode gaps
 (p99 41s) are idle/flush-contaminated — use ITL (client) + run-length (structural), not raw gaps, in the paper.
+
+### P4 KEY RESULT (2026-07-16, GPU-free from stock replicates) — the metric is BLIND to the decode tail
+★★ v0-stock-r3 λ3: p99 TTFT=6786ms → goodput@SLO **PASSES** (≤8s) — yet E2E p99=**346896ms (347s)**, ITL p99=4121ms,
+TPOT p99=3624ms. THE HEADLINE METRIC REPORTS SUCCESS WHILE E2E IS 347 SECONDS. Decode tail is STABLE across all 3
+stock replicates × both λ (itl_p99 4.1-5.1s, tpot_p99 2.8-4.3s, e2e_p99 347-446s) regardless of TTFT pass/fail →
+a separate, INVARIANT pathology, orthogonal to BOTH the TTFT coin-flip (P1) and the prefill-ordering lever (P2/SRPF).
+⇒ P4 THESIS STRENGTHENED to a METRIC-BLINDNESS result (not just config-critique): goodput@SLO (TTFT) is not only
+unreliable (P1 coin-flip) but INCOMPLETE — it hides a decode tail ~50× larger that dominates real E2E latency.
+This is a genuine measurement/critique contribution (like P1's methodology) REGARDLESS of the mixed-chunk fix
+outcome (job 20231). Table for paper: {run, λ, ttft_p99, goodput, itl_p99, tpot_p99, e2e_p99} from v0-stock{,-r2,-r3}.

@@ -998,3 +998,15 @@ concurrency — capping trades decode-interference (fixed) for admission queue-w
 capacity) → wins; reduce it by THROTTLING ADMISSION (cap) → catastrophic. Mapping threshold now (chain_cap2.sh λ=3-only:
 stock0/cap128/cap96/cap192). Framing: fold into capstone design-space map as the decisive concurrency-cap row (not a
 standalone paper — config-knob negative, but a clean theory-confirming data point that completes the map).
+
+## SESSION 2 cont. (07-16 ~07:00): P7 cap-axis MAP complete → folded into capstone §4.2 (v3)
+3-point cap map (λ=3, stock-based, same-node where clean): stock0 p99 13.9s/tpot 625 → cap128 63.4s/tpot 227 →
+cap64 94.4s/tpot 111. MONOTONIC: tighter cap ⇒ decode tpot FALLS (memory-bound, fewer running) but p99 TTFT RISES
+(admission queue-wait, ~194 queued at cap64). Even moderate cap128 (inside natural λ=3 conc 74-166) = 7.9× SLO ⇒ NOT
+extreme-value strawman; any BINDING cap starves admission. ★SHARPENED LAW (capstone §4.2 new): reduce residency by
+DRAINING work faster (finish giants/reqs sooner: capacity/SRPF/accel) NOT by BLOCKING at the door (admission-throttle
+just relocates residency to the queue, still in TTFT) — explains why accel wins & cap fails at IDENTICAL concurrency
+reduction. Capstone→v3 (design-space row P7 + §4.2 + §9 repro + analyze_cap.py). Node released (good-neighbor; skipped
+cap192 non-binding sanity as redundant). OPS: DRAM-race gate≥1600+settle INSUFFICIENT for full-KV-pool back-to-back
+(768GB pool allocated regardless of --max-running-requests; kernel reports avail before reclaim complete) → launch each
+from CLEAN ~1816 DRAM (stock0/cap128 crashed on back-to-back, succeeded from clean). Commit e310bead3.

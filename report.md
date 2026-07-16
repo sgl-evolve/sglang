@@ -1393,3 +1393,24 @@ FIRM P4's 'resists fixing', not unlock a fix). So Direction 6 is NO LONGER "like
 GENUINELY UNCERTAIN (false-positive vs real), and the diagnostic 20257 (tree-sanity assert: counter==LRU-walk?)
 is the ONLY reliable disambiguator. Do not overstate. If diagnostic stays GPU-blocked, Direction 6 remains an
 open, honestly-uncertain lead (not a claimed positive). Campaign core = the 4 verified papers.
+
+### Direction 6 refinement #5 (GPU-free) — the diagnostic is WELL-FORMED; validated its signal path before spending the scarce GPU slot
+Traced the exact disambiguation path so the pending run (job **20258**: mixed-chunk + `SGLANG_ENABLE_STRICT_MEM_CHECK_DURING_IDLE=0`)
+is guaranteed to yield signal. `on_idle` (scheduler.py:3531, runs only at `is_fully_idle()`): (1) `_check_all_pools` → if leak,
+`_report_leak("pool", …)` which under STRICT_MEM_CHECK_DURING_IDLE=0 WARNS-not-raises (lets the server survive the pool-invariant
+trip that stock mixed-chunk dies on); then (2) UNCONDITIONALLY `_check_tree_cache()` (3547) → `MambaRadixCache.sanity_check` →
+`full_lru_list.sanity_check(self)` + `mamba_lru_list.sanity_check(self)`. That tree sanity_check (mamba_radix_cache.py:361-418) is a
+chain of BARE asserts (NOT gated by STRICT_MEM_CHECK): node-order vs a re-heapified tree walk, `full_lock_ref==0`/`mamba_lock_ref==0`
+"when idle" (394/397), and the counter-vs-reality `evictable_size == lru_list_evictable_size` (408-410). On any failure it logs
+`Mamba Radix tree sanity check failed, ping @yizhang2077: {e}`, pretty-prints tree + both LRU lists, and RE-RAISES → scheduler crash.
+Gate for the tree check = `is_hybrid_ssm and supports_mamba()` (invariant_checker.py:437,448) → our hybrid-Mamba Qwen3.5 satisfies it.
+⇒ THREE clean, greppable outcomes at the first idle after warmup/λ3:
+  (A) pool WARNS, tree PASSES, server continues past λ3 → radix tree internally consistent; the pool-invariant "leak" is pool-level
+      over-commit or external drift, NOT a tree-counter bug → FIRMS P4 "resists fixing" (structural, not trivially fixable).
+  (B) crash `evictable size X != lru list evictable size Y` → `full_evictable_size_` drifted from actual LRU contents → genuine
+      counter-drift → fixable-false-positive candidate → potential POSITIVE (fix could unlock decode-tail mitigation, resolve P4 §5).
+  (C) crash `x_lru should not be locked when idle, full_lock_ref=N` → a node stayed locked at idle → lock-leak on the mixed-chunk
+      chunked-prefill edge path (consistent with "primary inc/dec_lock_ref correct, but chunked path exercises a different release").
+All three are honest + valuable; the run is worth its slot. NO positive claim without a losslessness/output-equivalence proof
+(bench jsons lack outputs). Compute status: 20258 top-priority PENDING, est start ~19:54 (good nodes ondem-0/1 completing); the two
+idle nodes are the excluded bad ones (1-0 OOMs the 122B load, -2 GPU-less). Fair queue, priority 1 — harvest when it runs.

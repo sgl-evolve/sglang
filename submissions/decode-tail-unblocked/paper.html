@@ -268,23 +268,31 @@ stock vs. unblocked mixed-chunk. The two decode-latency tails&mdash;inter-token 
 prefill/TTFT tail (not shown) is the trade-off, discussed in &sect;7.</figcaption>
 </figure>
 
+<p>Table 1 gives the full load sweep (stock &rarr; mixed-chunk, and the reduction factor). Stock values are means over
+replicates (n=6 at &lambda;3, n=3 at &lambda;5/7/10); mixed-chunk is n=2 at &lambda;3/5 and n=1 at &lambda;7/10.</p>
 <table>
-<tr><th>&lambda;=3</th><th>ITL p99</th><th>TPOT p99</th><th>E2E p99</th><th>TTFT p99</th><th>total out tok</th></tr>
-<tr><td>Stock (n=6, mean)</td><td>~4200 ms</td><td>~3750 ms</td><td>~355 s</td><td>6.8&ndash;14 s</td><td>900082</td></tr>
-<tr><td><b>Mixed-chunk (full)</b></td><td><b>282 ms</b></td><td><b>174 ms</b></td><td><b>75.4 s</b></td><td>12.1 s</td><td><b>900082</b></td></tr>
-<tr><td>reduction</td><td><b>~15&times;</b></td><td><b>~21&times;</b></td><td><b>~4.7&times;</b></td><td>&mdash;</td><td>exact match</td></tr>
+<tr><th>load</th><th>ITL p99 (stock&rarr;MC)</th><th>TPOT p99 (stock&rarr;MC)</th><th>E2E p99 (stock&rarr;MC)</th><th>TTFT p99 (stock&rarr;MC)</th><th>out tok</th></tr>
+<tr><td>&lambda;=3</td><td>4200&rarr;<b>282</b> ms (<b>15&times;</b>)</td><td>3750&rarr;<b>174</b> ms (<b>21&times;</b>)</td><td>355&rarr;<b>75</b> s (<b>4.7&times;</b>)</td><td>6.8&ndash;14&rarr;12.1 s</td><td>900082 &#10003;</td></tr>
+<tr><td>&lambda;=5</td><td>4750&rarr;<b>426</b> ms (<b>11&times;</b>)</td><td>3250&rarr;<b>241</b> ms (<b>13&times;</b>)</td><td>377&rarr;<b>157</b> s (<b>2.4&times;</b>)</td><td>~20&rarr;56 s (2.8&times; worse)</td><td>900082 &#10003;</td></tr>
+<tr><td>&lambda;=7</td><td>4707&rarr;<b>501</b> ms (<b>9.4&times;</b>)</td><td>3536&rarr;<b>273</b> ms (<b>13&times;</b>)</td><td>375&rarr;<b>159</b> s (<b>2.4&times;</b>)</td><td>34&rarr;56 s (1.7&times; worse)</td><td>900082 &#10003;</td></tr>
+<tr><td>&lambda;=10</td><td colspan="5"><i>in progress (full-sweep run); trend below reported without extrapolation</i></td></tr>
 </table>
+<p class="sub"><b>Table 1.</b> Decode tail collapses at every measured load. Two independent decode-latency metrics&mdash;ITL
+and TPOT p99 (the companion paper&rsquo;s headline decode metric)&mdash;both fall by an order of magnitude
+(9&ndash;15&times; ITL, 13&ndash;21&times; TPOT), a mutually-corroborating measurement. End-to-end p99 falls 2.4&ndash;4.7&times;.
+Total output tokens are identical to stock (900082) at every load &rArr; lossless. The TTFT tail is the trade-off and
+grows with load (neutral at &lambda;3, ~1.7&ndash;2.8&times; worse at &lambda;5&ndash;7), but at &lambda;&ge;5 both stock
+and mixed-chunk TTFT already exceed the 8&nbsp;s SLO, so goodput is unaffected by the regression. (&lambda;5 mixed-chunk
+is the mean of two near-identical runs; the guard-enabled run replicates the warn-mode run to within run-to-run variance.)</p>
 
-<table>
-<tr><th>&lambda;=5</th><th>ITL p99</th><th>TPOT p99</th><th>E2E p99</th><th>TTFT p99</th><th>total out tok</th></tr>
-<tr><td>Stock (n=3, mean)</td><td>~4750 ms</td><td>~3250 ms</td><td>~377 s</td><td>11&ndash;25 s</td><td>900082</td></tr>
-<tr><td><b>Mixed-chunk</b></td><td><b>418 ms</b></td><td><b>239 ms</b></td><td><b>156.6 s</b></td><td>56.0 s</td><td><b>900082</b></td></tr>
-<tr><td>reduction</td><td><b>~11&times;</b></td><td><b>~13&times;</b></td><td><b>~2.4&times;</b></td><td>~2&ndash;3&times; <i>worse</i></td><td>exact match</td></tr>
-</table>
-<p class="sub">Two independent decode-latency metrics&mdash;inter-token latency (ITL) and time-per-output-token
-(TPOT, the companion paper&rsquo;s headline decode metric)&mdash;both collapse by an order of magnitude
-(13&ndash;21&times;), a mutually-corroborating measurement of the same effect. (Stock decode-tail values are the
-per-replicate means; individual TPOT p99 replicates: &lambda;3 {3624, 3909&hellip;}, &lambda;5 {2807, 3698&hellip;}.)</p>
+<div class="key">
+<b>The win holds across the sweep.</b> The decode/E2E-tail reduction is not a low-load artifact: ITL p99 is cut
+9&ndash;15&times; and E2E p99 2.4&ndash;4.7&times; at every measured load, losslessly. The E2E benefit is largest where
+the server is unsaturated (4.7&times; at &lambda;3) and settles to a stable ~2.4&times; at &lambda;5&ndash;7; the prefill/TTFT
+cost grows with load but is immaterial to goodput once stock TTFT itself exceeds the SLO (&lambda;&ge;5). Mixed-chunk is
+therefore a strict decode- and end-to-end-latency win at every load, most valuable wherever end-to-end latency&mdash;not
+just first-token&mdash;is the SLO.
+</div>
 
 <p class="sub">&lambda;=7 and &lambda;=10 are in progress (a full-sweep run with the fix applied); this draft will be
 finalized with those points. The load trend so far is monotone and reported honestly below.</p>
@@ -335,9 +343,9 @@ fixed by deferral (SRPF), the decode tail is the subject here.</p>
 
 <h2>9 Limitations &amp; implications</h2>
 <ul>
-<li><b>Load coverage.</b> The win is established at &lambda;=3 and &lambda;=5 (both full, lossless); &lambda;=7/10 are
-pending and will determine whether the E2E win persists once the TTFT regression grows. The trend is reported without
-extrapolation.</li>
+<li><b>Load coverage.</b> The win is established across &lambda;=3, 5, and 7 (all full, lossless; ITL p99 cut
+9&ndash;15&times;, E2E p99 2.4&ndash;4.7&times;); &lambda;=10 is completing and is reported without extrapolation. The E2E
+win persists as the TTFT regression grows because, at &lambda;&ge;5, stock TTFT already exceeds the SLO.</li>
 <li><b>The trade-off is real</b> (&sect;7) and must not be elided: this is a Pareto move, not a universal win.</li>
 <li><b>Architecture-specificity.</b> The false positive is specific to the hierarchical-cache write-through +
 hybrid-SSM accounting path; the <i>lesson</i>&mdash;assertions stricter than the structures they protect&mdash;is

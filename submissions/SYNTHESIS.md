@@ -36,8 +36,8 @@ whole-request shortest-first scheduling, and **giant *acceleration*** reduce res
 6. **giant-acceleration** (SUBMITTED) — *The lever that works, AND a capacity lever.* The DUAL of the law: ACCELERATE
    the in-flight giant (boost its per-step chunk to f·B under occupancy pressure) so it exits sooner → concurrency↓ →
    memory-bound decode↓ → p99↓. A/B λ=3 (★FIRMED n=7 each, multi-node): accel PASS the 8s SLO **7/7** (p99 median 4.7,
-   4.5-7.0 s) vs stock **1/7** (median 11.5, 6.2-22.0 s); DOUBLY SIGNIFICANT — Fisher SLO-pass p=0.0023 (tightened
-   0.040→0.0023 as n=4→7) + Mann-Whitney tpot p=0.0006/conc p=0.0003 (coin-flip-robust; distributions NON-overlapping).
+   4.5-7.0 s) vs stock **1/8** (median 12.9, 6.2-28.9 s); DOUBLY SIGNIFICANT — Fisher SLO-pass p=0.0012 (tightened
+   0.040→0.0012 as n=4→7 accel) + Mann-Whitney tpot p=0.0003/conc p=0.0002 (coin-flip-robust; distributions NON-overlapping).
    ★TRIGGER-ROBUST (§3.1): boost gates equally well on occupancy / waiting-queue-depth (P5 HOL signal) / either — all
    PASS λ=3, conc 18-23/tpot 109-131 → ties P5 diagnosis to P6 cure.
    First positive, lossless, on-contract mechanism. Why it works (kernel-profile-corrected mechanism): prefill runs as
@@ -46,7 +46,7 @@ whole-request shortest-first scheduling, and **giant *acceleration*** reduce res
    releasing the single-chunked-req admission block sooner, and interrupting the interleaved decode fewer times → decode
    tpot 561→423 (−25%) at EQUAL concurrency AND equal KV-footprint (0.33=0.33, verified: interference not footprint).
    **★FRONTIER (full sweep): accel raises capacity C ~4.14→~5.65 (+36%, DETERMINISTIC) = empirical K-lever of P2, and
-   reliably wins goodput@SLO at λ=3 (FIRMED 7/7 vs stock 1/7, Fisher p=0.0023); the goodput extension to λ=5 is a COIN-FLIP (1/2: v13 3.4s pass,
+   reliably wins goodput@SLO at λ=3 (FIRMED 7/7 vs stock 1/8, Fisher p=0.0012); the goodput extension to λ=5 is a COIN-FLIP (1/2: v13 3.4s pass,
    v16 replicate 17.9s fail) — small margin C−λ=0.65 per P3 (single-run '3→5' overturned by replication). ★DOSE-RESPONSE (inverted-U): f=2 OPTIMAL; f=3 is a
    TAIL failure (sat C 5.46≈f=2 but p99 craters λ5→20.5s → goodput back to 3) — over-accel lengthens prefill
    monopolization, mirroring decode-floor/fair-share backfires.**

@@ -1078,3 +1078,17 @@ metric-gaming caution connecting to P1. Also: sim assumes cached follow-ups (rea
 mega-doc follow-ups = heavier) → ONLY a GPU A/B resolves it. PLAN: build chunk-interleave engine mechanism (new
 branch evolve/kleinrock-interleave) → same-node A/B fcfs vs srpf vs interleave @λ5(margin)+λ7(the win) WITH
 per-req dump (measure BOTH short-req p99 AND mega-doc starvation, honestly). If it passes λ7 losslessly → P3.
+
+### ★★ IN FLIGHT (2026-07-16): chunk-interleave engine A/B — candidate TOP-PRIZE mechanism
+BUILT --prefill-interleave-defer (branch evolve/kleinrock-interleave @ 477f03005, off srpf so 1 binary =
+fcfs/srpf/interleave; 4 localized edits: server_args flag, scheduler park-gate at add_chunked_req +
+_interleave_should_yield()+yield counter, add_one_req has_chunked_req guard [no-op for stock/srpf]). Mechanism:
+park the in-flight chunked mega-doc for an iter when shorts wait (HOL ~1 chunk) w/ progress guarantee (max_yield=2
+→ mega-doc advances ≥1 chunk/3 iters, no starvation; full-budget iters, no throttle). Distinct from SRPF (pins
+started chunked_req), reserve (throttle), LOF. Launched jobs 20162 (il-l7, node 0-0, λ7 K3) + 20163 (il-l5, node
+0-1, λ5 K3), 3 arms fcfs/srpf/interleave, isolated caches. runs/v11-interleave-{l7,l5}. ★DECISIVE: does interleave
+PASS goodput@SLO at λ7 (aggregate p99<8s) where SRPF fails (9.6s)? Sim predicts interleave short-req p99 {1.1,1.9,
+1.7}s@λ3/5/7 << srpf. If it passes λ7 losslessly → novel mechanism EXTENDS the goodput ceiling past SRPF = P3
+(with honest mega-doc-starvation disclosure + metric-gaming caution connecting to P1). If neutral/heavier-than-sim
+→ characterized. RESUME: analyze runs/v11-interleave-{l7,l5}/srpf_ab.csv via ab_analyze.py; verify LOSSLESS (stock
+outputs match) if interleave wins; if a job died + csv incomplete, resubmit the sbatch on any idle a3 node (NOT -2).

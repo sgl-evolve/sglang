@@ -1019,3 +1019,11 @@ these levers; coin-flip metric; prefill-side-only levers; on-contract scope). Fl
 not-goodput at high λ; needs monopolizing-giant tail; hit −2.5pp; f=2/θ tuned; single system+coin-flip). P5 §7 (saturated-
 regime scope; single-chunked-req-invariant-bound; single system). No compute; renumbered Conclusion/Repro. Commit c582016c1.
 Portfolio: 6 papers, all firmed + cross-consistent + spec-compliant (Limitations everywhere) + submission-ready.
+
+## SESSION 2 cont. (07-16 ~08:00): INTEGRITY PASS — flagship numbers verified against raw run JSONs (zero inflation)
+Charter core ("claims must match raw runs/*/summary.json; never inflate"). Directly verified every key flagship number:
+CAPACITY — stock 4.14 (v1_stock λ10 curve 2.83/3.59/3.99/4.14) ✓; accel 5.65 (v13_accelfull λ10) ✓ / 5.79 (v16 λ10) ✓;
+co-design 6.33 (v17_accel_wb λ10) ✓; +36%=5.65/4.14 ✓. DOSE-RESPONSE — f=1.5 sat 5.44 / λ5 p99 20738ms=20.7s (v15) ✓;
+f=3 sat 5.46 / λ5 20471ms=20.5s (v14) ✓. λ=3 STATS verified-by-construction via analyze_firm (7/7 vs 1/8, Fisher
+0.0012, MWU 0.0003/0.0002 read from raw bench_r3.json); STEP-COUNT via analyze_steps (27.7% >6144, 9737 vs 11177).
+ALL MATCH the paper exactly — no discrepancy, no inflation. Flagship quantitative integrity systematically confirmed.

@@ -947,3 +947,16 @@ SLO-pass p=0.0397 (weakest leg; MWU tpot p=0.016 / conc p=0.008 already <0.02, c
 replicate loop (kill server after bench_r3, ~55min each) adds SAME-NODE paired accel/stock replicates under NEW names
 (v18_faccel1-3 / v18_fstock1-3) to push Fisher p<0.01. Theory: accel at λ=3 has margin C−λ=2.65 (large) → should pass
 reliably; stock is coin-flip. analyze_firm.py auto-folds v18_f* into the Fisher + MWU. Wall-time-guarded under the 9h hold.
+
+## SESSION 2 cont. (07-16 ~01:00): headline FIRMED (7/7 vs 1/7, p=0.0023) + trigger-robustness ablation
+Two same-node λ=3-only replicate chains (DRAM-race fixed: gate≥1600+60s settle) firmed the flagship.
+**FIRMING (giant-acceleration §3):** accel now **7/7** (v10a-d + v18_faccel1-3; p99 4.5-7.0s, median 4.7) vs
+**stock 1/7** (median 11.5, range 6.2-22.0). Fisher SLO-pass **0.040→0.0023** (tightened monotonically with n=4→7
+= real-effect signature); coin-flip-robust MWU **tpot 0.016→0.0006, conc 0.008→0.0003** (distributions now COMPLETELY
+non-overlapping: accel conc {18..57} vs stock {74..166}, tpot {120..333} vs {319..607}). Multi-node → node-robust.
+Resolved the audit's §3(4/4)-vs-§4(5/5) count inconsistency → unified to 7/7 vs 1/7 everywhere.
+**TRIGGER ABLATION (new §3.1):** which signal gates the boost? occ (occupancy, original), queue (waiting-queue depth =
+P5's HOL signal, qthresh=2), either. All PASS λ=3, near-identical deterministic metrics: occ n=2 (4.6/4.7s, conc 19),
+queue n=2 (3.6/4.1s, conc 21/23), either n=1 (3.4s, conc 18). ⇒ boost is ROBUST to trigger signal — under a
+monopolizing giant, "device-KV full" and "shorts waiting" are the SAME event. Ties P5 diagnosis → P6 cure. Code
+54aa8eb75 (SGLANG_TURING_ACCEL_SIGNAL/QTHRESH, default occ byte-identical). Flagship committed 5386e12e8.

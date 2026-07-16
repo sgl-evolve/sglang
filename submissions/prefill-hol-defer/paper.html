@@ -73,7 +73,9 @@ one that backfires.</p>
 <li><b>Diagnosis (&sect;3).</b> Direct per-request attribution shows the p99 tail is not the heavy documents but
 the <b>head-of-line victims</b> queued behind them: tiny requests (&lt;1K tokens, whose own prefill is &lt;0.3&nbsp;s)
 have a <i>higher</i> p99 TTFT than the heavy documents themselves. A 27-token request with a 27&nbsp;s TTFT is,
-definitionally, pure queueing.</li>
+definitionally, pure queueing. We further show, from workload structure, that the p99-causing mega-documents are
+<b>unique first-sight documents</b> (each appears exactly once in the trace) &mdash; so the tail cannot be cached
+away at any capacity and is <i>necessarily</i> a scheduling problem, not a caching one.</li>
 <li><b>A bounded negative (&sect;4.2) &mdash; the core result.</b> We design and evaluate a fair, non-starving,
 lossless alternative to deferral (a reserved short-prefill lane that keeps the heavy document progressing while
 sharing budget with short requests) and show it <b>fails at every reserve size</b> with no crossover, and
@@ -1063,9 +1065,20 @@ for documents &ge;50K tokens. 27&ndash;40% of the p99 tail are tiny requests, an
 8&nbsp;s SLO &mdash; up to ~40&nbsp;s &mdash; purely by queueing behind serialized cold-document prefill, while
 the heavy documents themselves (blue, &ge;50K) mostly sit at low TTFT (they are few, and cached follow-ups reuse
 them). The victims of head-of-line blocking suffer a worse tail than the documents that cause it.</figcaption></figure>
-<p>Because the p99 tail is queueing behind a <i>few</i> heavy documents (only ~3&ndash;4 documents exceed 100K
-tokens, so they lie beyond the 99th percentile), it is <i>schedulable</i>: reordering which requests wait can
-move it. The rest of the paper asks <i>which</i> class of fix works &mdash; and finds the answer is narrow.</p>
+<p>Because the p99 tail is queueing behind a <i>few</i> heavy documents (exactly 3 documents exceed ~100K tokens
+in this 1553-conversation workload &mdash; ~109K, ~150K, and ~190K tokens &mdash; so they lie beyond the 99th
+percentile), it is <i>schedulable</i>: reordering which requests wait can move it.</p>
+<div class="key"><b>The p99 tail is not a caching problem at any capacity.</b> A workload-structure analysis
+(<code>tools/doc_reuse_analyze.py</code>) shows those three p99-causing mega-documents each appear <b>exactly
+once</b> in the 1553 conversations &mdash; they are unique, first-sight documents. Cross-conversation document
+reuse <i>does</i> exist in this trace (665 of 1553 conversations, 43%, share an exact document with another), but
+it is overwhelmingly among <i>short</i> documents (18 of the 30 reused docs are &lt;10K tokens; only 4 exceed 25K
+tokens, contributing ~0.26% avoidable prefills) &mdash; never the p99 mega-docs. So <b>no cache &mdash; not
+capacity-scaling, not eviction policy, not even content-addressed / cross-conversation prefix dedup &mdash; can
+convert the p99-tail prefills into hits</b>: those documents are simply never seen twice. The p99 tail is
+therefore <i>necessarily</i> a scheduling problem, which is why our companion caching study finds the metric
+blind to caching and this paper finds it movable by scheduling. The rest of the paper asks <i>which</i> class of
+scheduling fix works &mdash; and finds the answer is narrow.</div>
 
 <h2>4 The design axis: defer, don't throttle</h2>
 <p>All experiments are same-node A/Bs (one exclusive 8&times;H100 node, warm steady state, byte-identical flags
@@ -1242,7 +1255,9 @@ engine change on branch <code>evolve/kleinrock-shortlane</code>: <code>--prefill
 Same-node A/B harnesses <code>tools/shortlane_ab_eval.sh</code> (reserve sweep) and <code>tools/srpf_ab_eval.sh</code>
 (reference), byte-identical eval flags except the scheduling knob; analysis <code>tools/ab_analyze.py</code>;
 per-request HOL attribution via env-gated <code>KLEINROCK_PERREQ_DUMP</code>, analyzed by
-<code>tools/perreq_hol_analyze.py</code>, Figure&nbsp;1 by <code>tools/make_hol_scatter.py</code>. Runs:
+<code>tools/perreq_hol_analyze.py</code>, Figure&nbsp;1 by <code>tools/make_hol_scatter.py</code>; the
+p99-mega-doc-uniqueness / cross-conversation-reuse analysis (&sect;3) by <code>tools/doc_reuse_analyze.py</code>
+(deterministic, GPU-free, over the frozen <code>mooncake_mix_v1.jsonl</code>). Runs:
 the clean same-node reserve ablation of &sect;4.2 is <code>runs/v10-reserve-sweep</code> (&lambda;5,
 <i>R</i>&isin;{0,1024,2048,3072,4096}, one node, <code>tools/reserve_sweep.sbatch</code>); the &sect;5.3
 coin-flip-collapse A/B is <code>runs/v9-defer-knee</code> (&lambda;3 K=5 fcfs vs srpf, one node,

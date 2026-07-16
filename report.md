@@ -1303,3 +1303,13 @@ TTFT-goodput for median/E2E gains WITHOUT cutting the p99 tail (which is bound t
 prefills). No cheap fix; the tail is a genuinely hard open problem. This REINFORCES P4's thesis. ★NOTE: ttft
 +333% (29s) exceeds the stock coin-flip band (6.8-14s) so the TTFT-degradation is real despite cross-node.
 Let v16 finish for λ5/7/10 confirmation, then integrate as P4 §5 (Pareto + tail-resists-fixing).
+
+### decode-QoS λ5 cross-load (2026-07-16, v16, lossless 7037/7037) — LOAD-DEPENDENT, refines §5
+λ5 K=4 vs stock: ttft_p99 25449→23145 (-9%, both FAIL), itl_p99 5099→4341 (-14%), tpot_med 312→225 (-28%),
+e2e_p99 400269→336714 (-15%). ★CONTRAST with λ3: λ3 (unsaturated, PASS case) ttft +333% (PASS→FAIL) / itl -4%
+(FLAT); λ5 (saturated, both fail) ttft -9% / itl -14% (modest cut). ⇒ decode-QoS is a genuine prefill-decode
+PARETO knob, LOAD-DEPENDENT, NEVER a clean win: at the unsaturated goodput-PASS case it BREAKS goodput without
+cutting the tail; at saturation it modestly cuts the tail (itl -14%) but goodput is already lost. NO operating
+point fixes the p99 tail while preserving goodput. ★§5 FIX: don't over-claim "itl flat/doesn't cut the tail"
+universally (λ5 shows -14%); frame as the load-dependent Pareto (λ3 = break-goodput-no-tail-cut; λ5 =
+modest-tail-cut-but-goodput-gone). Await λ7/λ10 then update Table 3 (add λ5, +λ7/λ10) + refine §5 prose.

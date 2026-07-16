@@ -167,8 +167,8 @@ minutes (§8) even where TTFT passes.</li>
 (<code>analysis/hol_sim.py</code>); round-robin interleaving does not. The simulator is calibrated and used
 <em>only at λ=3</em> (the coin-flip regime); it over-serializes above the knee, so no λ≥5 claim rests on it
 (an earlier trace oracle that over-serialized pointed the wrong way — §2 — a mistake this scope limit avoids).</li>
-<li><b>GPU A/B.</b> Same-node SRPF runs (λ=3, node 0-3, n=4) land p99 at 5.9, 6.0, 6.5, 7.4&nbsp;s — all below
-the SLO (4/4), vs stock's λ=3 coin-flip (4/8 overall; 0/2 on this same node) — matching the non-preemptive simulation.</li>
+<li><b>GPU A/B.</b> Same-node SRPF runs (λ=3, node 0-3, n=3) land p99 at 5.9, 6.0, 7.4&nbsp;s — all below
+the SLO (3/3), vs stock's λ=3 coin-flip (4/8 overall; 0/2 on this same node) — matching the non-preemptive simulation.</li>
 </ul>
 <p>
 The mechanism is that a chunked large cold document runs its ceil(work/6144) chunks back-to-back
@@ -226,7 +226,7 @@ by the SLO/tail, not by compute. Reordering prefills, not caching, moves the met
 <caption>Full contract rate sweep λ{3,5,7,10}, stock (FCFS, runs/v0-stock) vs. SRPF (runs/v-srpf-full).
 Goodput@SLO = max rate with p99 TTFT ≤ 8&nbsp;s. SRPF's λ=3,5 are additionally corroborated by n=6 SRPF
 replicates (nodes 0-3 and 1-1) that <em>all</em> clear the SLO at both rates — λ=5 SRPF 6/6 vs stock 0/7,
-Fisher p=0.0006 pooled / p=0.029 strictly same-node (§5) — while stock λ=3 is a coin-flip (4/8 pass).</caption>
+Fisher p=0.0006 pooled / p=0.05 strictly same-node (§5) — while stock λ=3 is a coin-flip (4/8 pass).</caption>
 <tr><th>rate λ</th><th>stock p99 TTFT</th><th>stock req/s</th><th>SRPF p99 TTFT</th><th>SRPF req/s</th><th>SLO (8&nbsp;s)</th></tr>
 <tr><td>3</td><td>11.8&nbsp;s (coin-flip 6.3–11.8)</td><td>2.9</td><td>6.5&nbsp;s</td><td>3.02</td><td class="g">SRPF passes</td></tr>
 <tr><td>5</td><td class="b">17.4&nbsp;s</td><td>3.7</td><td>7.8&nbsp;s</td><td><b>4.00</b></td><td class="g">SRPF passes, stock fails</td></tr>
@@ -247,15 +247,17 @@ run passes</em>, unlike stock which coin-flips at λ=3 (4/8) and fails λ=5 stab
 λ=5 win is a <em>clean, decisive separation</em>: every SRPF λ=5 run (5.85–7.82&nbsp;s) is 2–4× below every
 stock λ=5 run (17–24&nbsp;s), no overlap — a gap a coin-flip cannot manufacture — and statistically
 significant (Fisher exact, SRPF 6/6 vs stock 0/7, one-tailed p=0.0006; both rates pooled 12/12 vs 4/15,
-p=0.0001; <code>analysis/goodput_stats.py</code>). <b>Significant same-node <em>and</em> cross-node:</b> the
-win holds on <em>every node tested</em>. SRPF passes on both node&nbsp;0-3 (n=4: 5.85/6.58/7.46/7.82&nbsp;s) and
-node&nbsp;1-1 (n=2: 6.41/6.58&nbsp;s); stock fails on both node&nbsp;ondem-3 (n=4: 17.4–23.8&nbsp;s) and
-node&nbsp;0-3 (n=3: 22.7/23.5/23.5&nbsp;s). Crucially, on node&nbsp;0-3 — the one node where we hold
-<em>both</em> arms — the <em>strictly same-node</em> A/B is itself significant with <em>zero cross-node
-pooling</em>: SRPF 4/4 (5.85–7.82&nbsp;s) vs stock 0/3 (22.7/23.5/23.5&nbsp;s), Fisher one-tailed p=0.029. So
-the separation is not a cross-node artifact by either measure — the same-node A/B alone establishes it, and the
-treatment gap (min stock 17.4&nbsp;s vs max SRPF 7.82&nbsp;s ≈ 9.5&nbsp;s) dwarfs the ±45% cross-node p99
-variance regardless. At λ=3 SRPF stays 6/6 while stock is a coin-flip — the pass-counts are not cleanly
+p=0.0001; <code>analysis/goodput_stats.py</code>). <b>Cross-node robust, with a same-node corroboration:</b>
+the win holds on <em>every node tested</em> (nodes assigned from the slurm <code>sacct</code> record, not
+inferred). SRPF passes on all three nodes it ran on — node&nbsp;0-3 (n=3: 5.85/6.58/7.46&nbsp;s), node&nbsp;1-2
+(n=1: 7.82&nbsp;s), node&nbsp;1-1 (n=2: 6.41/6.58&nbsp;s); stock fails on both nodes it ran on — ondem-3 (n=4:
+17.4–23.8&nbsp;s) and 0-3 (n=3: 22.7/23.5/23.5&nbsp;s). The treatment gap (min stock 17.4&nbsp;s vs max SRPF
+7.82&nbsp;s ≈ 9.5&nbsp;s) dwarfs the ±45% cross-node p99 variance, so the separation cannot be a node confound.
+On node&nbsp;0-3 — the one node where we hold <em>both</em> arms — the <em>strictly same-node</em> A/B
+corroborates with <em>zero cross-node pooling</em>: SRPF 3/3 (5.85–7.46&nbsp;s) vs stock 0/3
+(22.7/23.5/23.5&nbsp;s), Fisher one-tailed p=0.05 (marginal — n=3 vs n=3 is the most this one node supports).
+The decisive significance is the pooled p=0.0006 and the three-node robustness; the same-node result is a
+confound-free consistency check, not the sole anchor. At λ=3 SRPF stays 6/6 while stock is a coin-flip — the pass-counts are not cleanly
 separable (p=0.07; the two same-node 0-3 controls happened to draw deep into the metastable tail at λ=3,
 23.5 and 31.9&nbsp;s, lowering stock's λ=3 pass-rate to 4/8), so the λ=3 effect is <em>distributional</em>
 (SRPF's tighter, lower tail 5.9–7.4&nbsp;s vs stock's 6.3–31.9&nbsp;s) rather than a pass-rate result; the
@@ -424,7 +426,7 @@ runs clear the SLO: λ=3 {5.89, 6.04, 6.39, 6.50, 6.97, 7.39}&nbsp;s, λ=5 {5.85
 7.82}&nbsp;s, overall range 5.85–7.82&nbsp;s.</b> SRPF has genuine run-to-run spread (worst run 7.82&nbsp;s,
 only 0.2&nbsp;s under the SLO — reported honestly), but every run passes, unlike stock (λ=3 coin-flip 4/8;
 λ=5 stable-fail 0/7, 17–24&nbsp;s). The λ=5 win is a <em>clean separation</em> (every SRPF run 2–4× below
-every stock run, no overlap; Fisher 6/6 vs 0/7, p=0.0006 pooled, p=0.029 strictly same-node on node 0-3); the
+every stock run, no overlap; Fisher 6/6 vs 0/7, p=0.0006 pooled, p=0.05 strictly same-node on node 0-3, 3/3 vs 0/3); the
 λ=3 win is 6/6 vs 4/8 (distributional, not count-separable). We report SRPF's own spread honestly rather than
 cherry-picking its best run.</li>
 <li>The compute ceiling could in principle move compute-side (context-parallel prefill, quantization), but
@@ -434,9 +436,11 @@ contract-frozen; we treat the ceiling as fixed.</li>
 TPOT. These are catastrophic (p99 E2E is minutes) for a mechanistic reason we identify in §4: the same
 big-cold-doc prefill monopolization that causes the TTFT head-of-line also stalls running decodes 13.6×
 (24.5&nbsp;s vs 1.8&nbsp;s between tokens) — a decode-side head-of-line the TTFT metric does not see.
-Importantly, SRPF's TTFT win is <em>not</em> bought at their expense: from the same runs SRPF's p99 E2E
-<em>improves</em> over stock (λ=3 322&nbsp;s vs 438&nbsp;s) and its p99 TPOT is within noise — reordering
-does not worsen decode. But reordering cannot <em>fix</em> the decode stall either (a big cold prefill is
+Importantly, SRPF's TTFT win is <em>not</em> bought at the expense of end-to-end latency: from the same runs
+SRPF's p99 E2E <em>improves</em> over stock (λ=3 322&nbsp;s vs 438&nbsp;s), because reordering clears the
+queue faster. Its p99 TPOT is modestly <em>higher</em>, not lower (λ=3 4.3&nbsp;s vs 3.5&nbsp;s, +25%: more
+decodes run concurrently once the queue drains) — so reordering trades a small per-token decode slowdown for a
+large E2E win, and does not worsen the user-facing latency. But reordering cannot <em>fix</em> the decode stall either (a big cold prefill is
 serialized whichever request goes first); a full fix needs the compute-side lever (parallelizing the
 single big prefill, i.e. context-parallel prefill, unavailable in-engine for this hybrid model — see above),
 motivating that as the highest-value future work.</li>
@@ -451,9 +455,10 @@ Map evidence: <code>analysis/doc_reuse.py</code>, <code>reuse_distance.py</code>
 (head-of-line + compute bounds); <code>slo_sensitivity.py</code> (SLO-threshold robustness), <code>goodput_model.py</code> (the predictive lever model of §6.1), <code>goodput_stats.py</code> (Fisher-exact significance of the n=6 win); the admission
 negative is in the CCA companion. GPU runs:
 <code>runs/v-srpf-full</code> (the headline SRPF full contract sweep λ{3,5,7,10}, goodput 4.0 / ceiling 4.72),
-<code>runs/v0-stock</code> (stock full sweep), <code>runs/v-srpf-r1..r3</code> + <code>v-srpf-full</code> (SRPF λ3,5 on
-node 0-3) and <code>runs/v-srpf-ctl4,ctl5</code> (SRPF on node 1-1) — the n=6 SRPF replicates;
-<code>runs/v-stock-srpfctl</code> + <code>runs/v-stock-n03-*</code> (same-node stock controls on node 0-3). SRPF is <code>--schedule-policy srpf</code> in
+<code>runs/v0-stock</code> (stock full sweep), <code>runs/v-srpf-r1..r3</code> (SRPF on node 0-3),
+<code>v-srpf-full</code> (SRPF on node 1-2), and <code>runs/v-srpf-ctl4,ctl5</code> (SRPF on node 1-1) — the n=6 SRPF
+replicates across three nodes; <code>runs/v-stock-srpfctl</code> + <code>runs/v-stock-n03-*</code> (same-node stock
+controls on node 0-3). Node assignments are the ground-truth slurm <code>sacct</code> NodeList, not mtime-inferred. SRPF is <code>--schedule-policy srpf</code> in
 <code>managers/schedule_policy.py</code>. All numbers derive from the frozen evaluation protocol; no eval
 knobs were changed, and the mechanism is lossless (only <em>when</em> prefills run changes).
 </p>

@@ -18,11 +18,15 @@ except Exception:
 SLO = 8000.0  # ms
 
 # (run, node, p99@λ3 ms, p99@λ5 ms)   — None where a rate was not swept
+# NODE is the GROUND-TRUTH slurm NodeList from `sacct -j <jobid> -o NodeList` (authoritative),
+# NOT mtime-inference: r1=19834/r2=19856/r3=19868/srpfctl=19854/n03-1=20005/n03-2=20019 -> 0-3;
+# full=19901 -> 1-2 (an earlier draft mis-inferred this as 0-3 by mtime — corrected 2026-07-16);
+# ctl4=19915/ctl5=19949 -> 1-1; v0-stock family -> ondem-3.
 SRPF = [
     ("v-srpf-r1",   "0-3", 5892.20, 5850.12),
     ("v-srpf-r2",   "0-3", 6038.66, 7457.23),
     ("v-srpf-r3",   "0-3", 7386.63, 6576.06),
-    ("v-srpf-full", "0-3", 6502.65, 7822.67),
+    ("v-srpf-full", "1-2", 6502.65, 7822.67),
     ("v-srpf-ctl4", "1-1", 6972.59, 6579.98),
     ("v-srpf-ctl5", "1-1", 6393.30, 6411.34),
 ]
@@ -75,17 +79,19 @@ if __name__ == "__main__":
            "both rates pooled:")
 
     print("\n=== STRICTLY same-node (node 0-3 only): no cross-node pooling ===")
-    srpf_03 = passes([r[3] for r in SRPF if r[1] == "0-3"])          # 4 SRPF lambda5 on 0-3
+    srpf_03 = passes([r[3] for r in SRPF if r[1] == "0-3"])          # 3 SRPF lambda5 on 0-3 (r1,r2,r3)
     stock_03 = passes([r[3] for r in STOCK if r[1] == "0-3"])        # 3 stock lambda5 on 0-3 (srpfctl + n03-1,2)
     fisher(srpf_03[0], srpf_03[1] - srpf_03[0], stock_03[0], stock_03[1] - stock_03[0],
            "0-3 lambda5, STRICTLY same-node (no pooling):")
+    print("    (nodes for SRPF lambda5: 0-3={}, 1-2={}, 1-1={} runs)".format(
+        sum(1 for r in SRPF if r[1]=="0-3"), sum(1 for r in SRPF if r[1]=="1-2"), sum(1 for r in SRPF if r[1]=="1-1")))
 
     print("\nInterpretation:")
-    print("  * lambda5 is the decisive, significant separation: SRPF 6/6 pass (5.85-7.82s) vs stock 0/5")
-    print("    fail (17.4-23.8s) - NO distributional overlap; p=0.0022 (pooled). The effect is ROBUST ACROSS")
-    print("    NODES: SRPF passes on BOTH nodes tested (0-3, 1-1); stock fails on BOTH (0-3, ondem-3).")
-    print("  * STRICTLY same-node (node 0-3, ZERO cross-node pooling): SRPF 4/4 vs stock 0/3 -> p=0.029.")
-    print("    This resolves the cross-node-pooling caveat with real same-node data: on the one node where")
-    print("    both arms exist, SRPF passes and stock fails, significantly, with no pooling.")
+    print("  * lambda5 is the decisive, significant separation: SRPF 6/6 pass (5.85-7.82s) vs stock 0/7")
+    print("    fail (17.4-23.8s) - NO distributional overlap; p=0.0006 (pooled). ROBUST ACROSS THREE NODES:")
+    print("    SRPF passes on 0-3 (n=3), 1-2 (n=1), 1-1 (n=2); stock fails on ondem-3 (n=4) and 0-3 (n=3).")
+    print("  * STRICTLY same-node (node 0-3, ZERO pooling): SRPF 3/3 vs stock 0/3 -> p=0.05 (marginal, at the")
+    print("    threshold). The confound-free anchor corroborates; the decisive significance is the pooled")
+    print("    p=0.0006 + the 3-node robustness (treatment gap 9.5s >> +-45% node variance).")
     print("  * lambda3 is a coin-flip regime: stock passes ~4/8 overall, SRPF 6/6 - NOT count-separable; the")
     print("    lambda3 SRPF effect is DISTRIBUTIONAL (tighter, lower tail) not a pass-rate win. Report lambda5.")

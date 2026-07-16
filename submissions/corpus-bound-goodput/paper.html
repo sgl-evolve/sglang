@@ -227,9 +227,11 @@ property of one trace, we apply the criterion to <b>four real long-document QA c
 its constituents at their native reuse structure; offline replay, no GPU):
 </p>
 <table>
-<caption>The caching-headroom criterion on four real long-document corpora. Headroom = fraction of document
+<caption>The caching-headroom criterion on four real long-document corpora (two with document reuse — the eval
+mix and LEval — and two pure-singleton LooGLE variants that are trivially mirage). Headroom = fraction of document
 re-uses at stack-distance &gt; the corpus's own horizon <code>H = CAP/mean-doc</code>. Every corpus is deep
-in the mirage regime (<code>analysis/phase_boundary_realcorpora.py</code>).</caption>
+in the mirage regime (<code>analysis/phase_boundary_realcorpora.py</code>); the non-trivial generality rests on
+the two with reuse.</caption>
 <tr><th>corpus</th><th>doc-convs</th><th>unique docs</th><th>H (docs)</th><th>re-uses</th><th>stack-dist p90 / max</th><th>headroom</th><th>regime</th></tr>
 <tr><td>mooncake_mix (the eval)</td><td>1015</td><td>887</td><td>516</td><td>128</td><td>197 / 518</td><td class="b">0.8%</td><td>mirage</td></tr>
 <tr><td>LEval</td><td>537</td><td>409</td><td>638</td><td>128</td><td>15 / 19</td><td class="b">0.0%</td><td>mirage</td></tr>

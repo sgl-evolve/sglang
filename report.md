@@ -1102,3 +1102,26 @@ evict singletons first) MIGHT protect about-to-be-reused KV that LRU evicts → 
   GPU economy: cancelled the redundant LRU control (v-stock-samenode-1 already IS the same-node LRU baseline).
 **Net:** hypothesis tested on GPU → decisive NEGATIVE (SLRU craters) with a generalizing mechanism. Design space
 stays bounded; eviction axis now GPU-confirmed live (not just offline). Keep probing.
+
+### 2026-07-16: completed LFU sweep → 3-policy GPU eviction characterization (recency>frequency is GENERAL + graded)
+Followed the SLRU crater to test the GENERALITY of the recency>frequency insight: does LFU (soft graded
+frequency, priority (hit_count,last_access)) also degrade, or stay ≈LRU (as offline predicted)? Completed the
+LFU full sweep (job 20207, node 1-1).
+- **LFU DEGRADES** — hit −10.5/−19.9/−23.2/−24.6pp (λ3/5/7/10: 0.568/0.463/0.426/0.408 vs LRU
+  0.673/0.662/0.657/0.654), goodput 0. Less severe than SLRU (−18.7..−26.8pp) but SAME direction and deepening.
+- **Complete 3-policy GPU eviction characterization:** LRU (recency) optimal; LFU (graded freq) −10..−25pp;
+  SLRU (hard-segment freq) −19..−27pp. Severity scales by how hard the policy protects reused-once nodes:
+  **SLRU > LFU > LRU=0. Access frequency is the wrong signal, monotonically.** Both frequency policies goodput 0.
+- **Mechanism (general):** in multiturn serving a turn-0 doc is hit_count=1 at its first reuse = indistinguishable
+  from a never-reused singleton by access count → any frequency policy evicts it before reuse (SLRU hard, LFU soft)
+  → recency (LRU) uniquely right. Design rule: for multiturn KV reuse, evict by recency not frequency.
+- **Integrity refinement:** this sharpens P2's OFFLINE "LFU≈LRU" — that held for the cross-pass avoidable-recompute
+  metric but MISSED the live concurrency effect (under load-shrunk capacity a frequency policy protects stale
+  hit≥2 docs — a conv's doc after its single reuse, never needed again — crowding out fresh turn-0 KV). Added the
+  "on avoidable-recompute" qualifier to the abstract; §3.3 now presents the live 3-policy sweep. (LFU cross-node
+  vs the 0-3 LRU baseline, but −20..−25pp under load dwarfs ~3pp node variance.)
+- **Integrated:** P2 §3.3 (partial→completed 3-policy) + abstract qualifier + P3 residency/eviction map row.
+  W&B v-evict-lfu; commit ffdf14e45. Lossless, on-contract, provenance-clean (LFU stock in base).
+**Net:** the recency>frequency insight is now GPU-confirmed GENERAL across access-count policies (LFU + SLRU,
+graded) — a stronger, more defensible eviction result. Design space stays bounded; caching axis fully
+GPU-characterized (3 policies).

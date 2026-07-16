@@ -1043,3 +1043,13 @@ achieved thr ~5.01 but tail ~15s). ★SHARPENED: higher C (6.33) is if anything 
 basin-metastability-dominated, not capacity-rescuable at moderate margin. Reliability needs C≫λ (write_back margin~2.0
 gave 2/2). Folded into capstone Fig2 caption + §6 (f2dd18ea4). Node released (good-neighbor). This firming turned an
 ambiguous n=1 into a decisive n=4 result that strengthens the "capacity raises ceiling but not knee reliability" bound.
+
+## SESSION 2 cont. (07-16 ~16:00): accel-alone λ=5 FIRMED n=5 = 2/5 (genuine coin-flip); non-monotonicity NOT significant
+Resolved the open non-monotonicity question. accel-alone (C=5.65) λ=5 firmed to n=5: 2/5 PASS (v13 3.4s, acc5_3 4.7s
+good-basin; v16 17.9/acc5_1 18.0/acc5_2 18.1 bad-basin) = genuine BIMODAL coin-flip (~3-5s or ~18s), margin 0.65.
+co-design (C=6.33) λ=5 = 0/4 (all ~15s, consistent bad-basin). ★HONEST RESOLUTION: the 2/5-vs-0/4 hint (higher-C
+co-design reaches good-basin LESS, and more consistently bad) is NOT statistically significant (Fisher one-sided
+p=0.28, small n) → I do NOT claim capacity-raising HURTS the knee; robust claim = capacity does not RESCUE the knee;
+both unreliable at λ=5; knee metastability-dominated regardless of capacity in this range. Qualitative note: accel-alone
+bimodal vs co-design consistent-bad (suggestive only). Firmed flagship (abstract/§4/Fig1/keyfinding/Limitations) +
+capstone §6 to n=5 2/5. Node released (good-neighbor). Commit 488a071ac. This firming turned n=2 (1/2) into n=5 (2/5).

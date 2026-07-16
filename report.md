@@ -1182,3 +1182,19 @@ to backup. Result was a GENUINE SURPRISE that required an integrity correction t
   v-wt-ctl-n11 (both config). Commits 3ca47e6fb→4f5ae12d6.
 **Net:** a genuine new GPU finding that corrected an overstated claim (integrity) AND sharpened the central
 thesis. Fast-screen-then-run discipline paid off (I nearly skipped it as "predictable crater"; it was the opposite).
+
+### 2026-07-16 (cont.): SRPF+write_back composition — analytically bounded + GPU-deferred (bad nodes/congestion)
+Attempted the SRPF+write_back composition (does combining the scheduling lever + write_back's raised throughput
+ceiling push goodput past λ5?). Two launches hit BAD NODES during heavy cluster congestion: job 20264 (node 1-0)
+host DRAM-OOM at init (SIGKILL/-9); job 20267 (node -2) dead CUDA fabric (Error 802 "no accelerator" — node -2
+is a known-bad-fabric node). Cluster was 16 alloc / 2 idle (both idle nodes bad), siblings running many jobs.
+★DECISION: deferred the GPU run — it is ANALYTICALLY BOUNDED and already subsumed by this cycle's compute-ceiling
+correction: write_back raises the throughput ceiling to only ~5.1 req/s, but λ7 offers 7, so λ7 stays overloaded
+(5.1 < 7) → p99 fails → goodput stays ~4.0 (λ5). i.e. raising the throughput ceiling (write_back) cannot move
+goodput to the next grid rate because even the raised ceiling is below it — exactly what P3's corrected
+compute-ceiling row now states ("goodput sits below even the raised ceiling; raising the throughput ceiling does
+not move it"). So the composition needs no separate GPU confirmation; fighting bad nodes for a confirmatory run
+during congestion isn't warranted. ★OPS: node -2 = dead CUDA fabric (avoid); node 1-0 = DRAM-OOM under
+congestion (transient, needs MemAvail headroom); pick a certified/known-good free node, fail-fast on bad ones.
+**Net cycle deliverable = the compute-ceiling INTEGRITY correction (necessitated by write_back): the ~4.7 ceiling
+is a prefill-work ceiling, raisable losslessly, but goodput is tail-bound below it.** Body current + synced.

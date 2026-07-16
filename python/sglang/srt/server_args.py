@@ -747,6 +747,12 @@ class ServerArgs:
         float,
         "How conservative the schedule policy is. A larger value means more conservative scheduling. Use a larger value if you see requests being retracted frequently.",
     ] = 1.0
+    decode_starvation_bound: A[
+        int,
+        "kleinrock (decode-QoS): if >0, force a pure-decode batch after this many consecutive prefill batches "
+        "when decode work is pending, bounding decode starvation / the inter-token-latency tail without changing "
+        "batch composition (unlike --enable-mixed-chunk). 0 = stock prefill-first behavior (lossless no-op).",
+    ] = 0
     page_size: A[Optional[int], "The number of tokens in a page."] = None
     swa_full_tokens_ratio: A[
         float,

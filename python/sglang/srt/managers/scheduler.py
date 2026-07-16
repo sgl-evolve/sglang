@@ -1038,6 +1038,12 @@ class Scheduler(
         )
         self.prefill_delayer: Optional[PrefillDelayer] = None
         self.max_prefill_bs: int = 0
+        # kleinrock (decode-QoS): bound decode starvation by forcing a pure-decode batch after
+        # `decode_starvation_bound` consecutive prefill batches. 0 = stock (lossless no-op).
+        self.decode_starvation_bound: int = getattr(
+            self.server_args, "decode_starvation_bound", 0
+        )
+        self._consec_prefill_batches: int = 0
         if self.server_args.enable_prefill_delayer:
             if self.server_args.disaggregation_mode == "decode":
                 logger.info(
@@ -2701,17 +2707,33 @@ class Scheduler(
             new_batch = self.dp_attn_adapter.maybe_prepare_mlp_sync_batch(new_batch)
             need_mlp_sync = new_batch is None
 
-        if new_batch is not None:
+        # kleinrock decode-QoS: bound decode starvation. Stock is strictly prefill-first (run prefill
+        # whenever any is available), which starves in-flight decodes for long prefill bursts and creates
+        # the inter-token-latency tail. If decode_starvation_bound > 0, after that many consecutive prefill
+        # batches force a pure-decode batch (when decode is pending), capping the starvation window without
+        # changing batch composition (unlike --enable-mixed-chunk). Lossless: only reorders forward passes.
+        decode_available = (
+            not self.running_batch.is_empty() and not self.running_batch.is_prefill_only
+        )
+        force_decode = (
+            self.decode_starvation_bound > 0
+            and self._consec_prefill_batches >= self.decode_starvation_bound
+            and decode_available
+        )
+        if new_batch is not None and not force_decode:
             # Run prefill first if possible
             ret = new_batch
+            self._consec_prefill_batches += 1
         else:
             # Run decode (skip for prefill-only batches)
-            if (
-                not self.running_batch.is_empty()
-                and not self.running_batch.is_prefill_only
-            ):
+            if decode_available:
                 self.running_batch = self.update_running_batch(self.running_batch)
                 ret = self.running_batch if not self.running_batch.is_empty() else None
+                self._consec_prefill_batches = 0
+            elif new_batch is not None:
+                # forced decode but nothing to decode -> fall back to prefill
+                ret = new_batch
+                self._consec_prefill_batches += 1
             else:
                 ret = None
 

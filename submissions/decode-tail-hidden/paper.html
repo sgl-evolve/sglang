@@ -19,6 +19,8 @@
   .key{background:#eef6ee;border-left:4px solid #4a4;padding:.5rem .8rem;margin:.7rem 0}
   .neg{background:#fbeeee;border-left:4px solid #c55;padding:.5rem .8rem;margin:.7rem 0}
   .disc{font-size:.88rem;color:#555;border-left:3px solid #bbb;padding:.3rem .7rem;margin:.6rem 0}
+  figure{margin:1.1rem 0;text-align:center}
+  figcaption{font-size:.85rem;color:#555;margin-top:.3rem;text-align:left}
 </style>
 </head>
 <body>
@@ -104,7 +106,32 @@ metric; "goodput" = p99 TTFT &le; 8&nbsp;s. ITL/TPOT/E2E are the decode tail. Ev
 </table>
 
 <div class="key"><b>goodput@SLO can report PASS at a p99 E2E of 347&nbsp;seconds.</b> The metric optimizes the first
-token and is blind to the other 99% of the request's latency.</div>
+token and is blind to the other 99% of the request's latency (Figure&nbsp;1).</div>
+
+<figure>
+<svg viewBox="0 0 580 195" xmlns="http://www.w3.org/2000/svg" font-family="Georgia,serif" font-size="12">
+  <g stroke="#eee">
+    <line x1="120" y1="34" x2="120" y2="150"/><line x1="266.7" y1="34" x2="266.7" y2="150"/>
+    <line x1="413.3" y1="34" x2="413.3" y2="150"/><line x1="560" y1="34" x2="560" y2="150"/>
+  </g>
+  <line x1="120" y1="150" x2="560" y2="150" stroke="#999"/>
+  <g fill="#888" text-anchor="middle" font-size="11">
+    <text x="120" y="164">1 s</text><text x="266.7" y="164">10 s</text>
+    <text x="413.3" y="164">100 s</text><text x="560" y="164">1000 s</text>
+  </g>
+  <text x="335" y="181" fill="#888" text-anchor="middle" font-size="11">p99 latency (log scale) &#8212; stock run passing goodput@SLO (v0-stock-r3, &#955;=3, unsaturated)</text>
+  <line x1="252.5" y1="30" x2="252.5" y2="150" stroke="#c0392b" stroke-dasharray="4 3"/>
+  <text x="252.5" y="26" fill="#c0392b" text-anchor="middle" font-size="11">8 s SLO</text>
+  <rect x="120" y="46" width="122.1" height="26" fill="#4a7a4a" fill-opacity="0.85"/>
+  <text x="248" y="63" fill="#2f6b2f">p99 TTFT = 6.8 s &#8594; PASS (all the metric sees)</text>
+  <rect x="120" y="98" width="372.6" height="26" fill="#c0392b" fill-opacity="0.85"/>
+  <text x="126" y="115" fill="#fff">p99 E2E = 347 s (what the user gets)</text>
+</svg>
+<figcaption>Figure 1. What goodput@SLO scores vs. what the user experiences, for a stock run that <b>passes</b> the
+metric (v0-stock-r3, &lambda;=3, unsaturated; log scale). goodput@SLO measures only the green bar (p99 TTFT
+6.8&nbsp;s, under the 8&nbsp;s SLO); the red bar &mdash; p99 end-to-end latency of 347&nbsp;s, ~50&times; longer and
+almost entirely decode &mdash; is invisible to it.</figcaption>
+</figure>
 
 <p><b>It is not saturation.</b> The obvious objection is that a 347&nbsp;s E2E is just open-loop queueing above
 capacity. It is not. At &lambda;=3 the server is <b>unsaturated</b> &mdash; achieved throughput is

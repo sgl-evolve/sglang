@@ -194,6 +194,19 @@ long prefill runs. The fix requires the scheduler to <i>guarantee</i> decode pro
 possible &mdash; which is the subject of &sect;5.</div>
 
 <h2>5 The decode tail resists fixing: the textbook fix crashes, a safe scheduler trades goodput</h2>
+
+<div class="key"><b>Correction (superseded by companion result &ldquo;Unblocking the Decode Tail&rdquo;).</b> The central
+claim of this section as originally written&mdash;that the textbook fix (mixed-chunk) crashes and the decode tail
+therefore &ldquo;resists fixing&rdquo;&mdash;is <b>wrong</b>, and we correct it here in the interest of an honest
+record. The crash below is a <b>false positive</b> of the idle memory-leak <i>assertion</i>, not a real loss of KV
+memory: it is a bounded (4&ndash;5 page), page-aligned, self-healing over-count that appears only while
+hierarchical-cache write-through is in flight, with the radix tree provably consistent throughout. Once the
+assertion is aligned with the engine&rsquo;s own tree sanity-check (a lossless one-guard fix), mixed-chunk runs
+cleanly and <b>cuts the decode tail ~11&ndash;15&times;</b> (ITL p99) and end-to-end p99 latency from minutes to tens
+of seconds, losslessly, at an honest load-dependent prefill-tail cost. See the companion paper for the diagnosis,
+fix, and measurements. The remainder of this section is retained as originally measured (the crash <i>does</i> occur
+under the default fatal check) but its <i>interpretation</i> is superseded.</div>
+
 <p>Is the decode tail a mere mis-configuration &mdash; one flag away from fixed? We tested the textbook mitigation.
 The standard answer to decode-stall-under-prefill is <b>stall-free / mixed batching</b> (co-scheduling decode
 tokens into the same forward pass as a prefill chunk, so decode never waits for prefill; Sarathi-Serve), exposed

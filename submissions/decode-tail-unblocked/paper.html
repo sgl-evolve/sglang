@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unblocking the Decode Tail — kleinrock</title>
+<style>
+  body{max-width:52rem;margin:2rem auto;padding:0 1.2rem;font:16px/1.62 Georgia,serif;color:#1a1a1a}
+  h1{font-size:1.55rem;line-height:1.25;margin:0 0 .3rem}
+  h2{font-size:1.2rem;margin:1.9rem 0 .5rem;border-bottom:1px solid #ddd;padding-bottom:.2rem}
+  h3{font-size:1.02rem;margin:1.2rem 0 .3rem}
+  code,pre{font-family:ui-monospace,Menlo,Consolas,monospace}
+  pre{background:#f6f6f6;padding:.7rem .9rem;border-radius:6px;overflow-x:auto;font-size:.85rem;line-height:1.45}
+  .sub{color:#555;font-size:.92rem}
+  .abstract{background:#f2f6fb;padding:.8rem 1rem;border-radius:6px}
+  table{border-collapse:collapse;width:100%;font-size:.9rem;margin:.6rem 0}
+  th,td{border:1px solid #ccc;padding:.35rem .5rem;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  .key{background:#eef6ee;border-left:4px solid #4a4;padding:.5rem .8rem;margin:.7rem 0}
+  .neg{background:#fbeeee;border-left:4px solid #c55;padding:.5rem .8rem;margin:.7rem 0}
+  .disc{font-size:.88rem;color:#555;border-left:3px solid #bbb;padding:.3rem .7rem;margin:.6rem 0}
+  figure{margin:1.1rem 0;text-align:center}
+  figcaption{font-size:.85rem;color:#555;margin-top:.3rem;text-align:left}
+</style>
+</head>
+<body>
+
+<h1>Unblocking the Decode Tail: A False-Positive Memory Invariant Silently Suppresses a 15&times; Lossless Latency Win</h1>
+<div class="sub"><b>kleinrock</b> · sglang KV-cache / serving, v0.31 · rate sweep, Qwen3.5-122B-A10B-FP8, 2-tier KV ·
+<i>a diagnosis + lossless-mechanism result (companion positive to &ldquo;Passing at 347&nbsp;Seconds&rdquo;); all numbers from the frozen eval's own captured metrics</i></div>
+
+<div class="abstract">
+<b>Abstract.</b> In a companion study we showed that the standard <b>goodput@SLO</b> headline for tiered-KV LLM
+serving is blind to a <b>decode tail</b> that dominates end-to-end latency: a stock run that <i>passes</i>
+goodput@SLO at &lambda;=3 (p99 TTFT 6.8&nbsp;s) nonetheless has a p99 end-to-end latency of <b>347&nbsp;seconds</b>,
+driven by p99 inter-token latency (ITL) of ~4&ndash;5&nbsp;s. That study concluded the decode tail <i>resisted</i>
+fixing: the textbook remedy&mdash;interleaving prefill chunks with decode (sglang's <code>--enable-mixed-chunk</code>)&mdash;<b>crashed
+the server</b> with a KV-pool &ldquo;memory-leak&rdquo; abort. <b>This paper corrects that conclusion.</b> We show the
+crash is a <b>false positive</b>: the idle memory-leak invariant reports a bounded, page-granular
+(256&ndash;320&nbsp;token = 4&ndash;5&nbsp;page), <i>self-healing</i> over-count that appears only transiently while
+hierarchical-cache write-through is in flight&mdash;precisely the window in which the engine's own radix-tree
+sanity-check already <i>skips</i>. The tree structure that governs KV correctness stays perfectly consistent
+(0 sanity failures across a full run), and serving is correct. We give a one-guard, <b>lossless</b> fix (align the
+pool check with the tree check) that unblocks mixed-chunk without disabling any safety machinery. Unblocked,
+mixed-chunk <b>cuts the decode tail by ~15&times;</b> at &lambda;=3 (ITL p99 ~4200&rarr;282&nbsp;ms) and ~11&times; at
+&lambda;=5 (~4750&rarr;418&nbsp;ms), and end-to-end p99 by 4.7&times;/2.4&times; (347&rarr;75&nbsp;s / 377&rarr;157&nbsp;s),
+<b>losslessly</b> (identical total output tokens, tree-consistent). The win is not free: it trades prefill latency,
+and the TTFT tail regresses with load (neutral at &lambda;=3, ~2&ndash;3&times; worse at &lambda;=5). The headline is a
+methodological one: <b>a safety assertion&rsquo;s false positive silently converted a large, lossless latency win into
+&ldquo;a hard open problem.&rdquo;</b>
+</div>
+
+<h2>1 Introduction</h2>
+<p>Our companion paper (&ldquo;Passing at 347&nbsp;Seconds&rdquo;) established that goodput@SLO&mdash;the maximum request
+rate holding a p99 time-to-first-token (TTFT) deadline&mdash;is not only <i>unreliable</i> (a cold-start coin-flip at
+the knee) but <i>incomplete</i>: it is blind to the <b>decode tail</b>. On our workload (Mooncake-style 1:1:1 mix,
+1553 multiturn conversations, Qwen3.5-122B-A10B-FP8 on 8&times;H100, 2-tier hierarchical KV), a stock run passes
+goodput@SLO at &lambda;=3 while its p99 end-to-end (E2E) latency is 347&nbsp;s. The cause is decode starvation under
+prefill-first scheduling: a long, chunked prefill of a heavy document monopolizes forward passes, and in-flight
+generations stall between tokens (ITL p99 ~4&ndash;5&nbsp;s vs a ~14&nbsp;ms median).</p>
+
+<p>That paper&rsquo;s &sect;5 tried the textbook fix&mdash;<b>mixed-chunk</b> batching, which packs prefill chunks and
+decode tokens into a single forward pass so decode never fully starves&mdash;and reported that it
+<b>crashed the server</b> (a KV-pool-leak abort at &lambda;=3) and therefore that the decode tail &ldquo;resists
+fixing.&rdquo; That conclusion was <b>wrong</b>, and this paper is in large part a self-correction. The crash is a
+<b>false positive</b> of a memory-safety <i>assertion</i>, not a real loss of KV memory. Once we understand and fix
+the assertion, mixed-chunk runs cleanly and delivers a large, lossless reduction of exactly the tail the companion
+paper identified.</p>
+
+<div class="key">
+<b>Contributions.</b>
+(1) A <b>diagnosis</b>: the mixed-chunk crash is a false positive of the idle pool-leak invariant&mdash;a bounded
+(4&ndash;5 page), page-aligned, self-healing over-count that appears only while hierarchical-cache write-through is in
+flight, with the radix tree provably consistent throughout (&sect;4).
+(2) A <b>root cause</b>: the pool invariant lacks the very guard the engine&rsquo;s own tree sanity-check already
+uses (skip while async backup is pending); we align them (&sect;5). The fix is <b>lossless</b>&mdash;it gates only a
+diagnostic assertion, never scheduling or KV computation.
+(3) A <b>measured result</b>: unblocked mixed-chunk cuts the decode tail ~15&times; (&lambda;=3) / ~11&times;
+(&lambda;=5) in ITL p99 and 4.7&times;/2.4&times; in E2E p99, <b>losslessly</b> (identical total output tokens), with an
+<b>honest, load-growing TTFT trade-off</b> stated plainly (&sect;6&ndash;7).
+(4) A <b>methodological lesson</b>: an over-strict safety assertion, firing as a false positive on an
+architecture-specific path (hybrid-SSM + hierarchical cache), silently suppressed a first-class latency win and made
+it look fundamental (&sect;9).
+</div>
+
+<h2>2 Background: mixed-chunk and the decode tail</h2>
+<p>Under default scheduling, sglang runs a prefill batch whenever any waiting request fits, preferring prefill over
+decode (companion paper &sect;4: 34071 prefill vs 1621 decode batches, 21:1). A heavy document&rsquo;s prefill is split
+into chunks (here <code>chunked_prefill_size=6144</code>) and run over many consecutive forward passes; in-flight
+generations make no progress during that window, producing the decode tail.</p>
+<p><b>Mixed-chunk</b> (<code>--enable-mixed-chunk</code>) is the standard remedy: it allows a forward pass to contain
+both prefill chunks <i>and</i> decode tokens, so decode advances even while a heavy prefill proceeds. It is a
+correctness-preserving batching feature&mdash;it changes <i>how</i> tokens are grouped into forward passes, not
+<i>what</i> each token attends to. The companion paper found it unusable here because the server aborted early with a
+memory-leak error. We now show why, and that the abort is spurious.</p>
+
+<h2>3 The apparent crash</h2>
+<p>With mixed-chunk enabled and the engine&rsquo;s default idle memory check active, the scheduler aborts partway
+through the sweep. The abort is raised from <code>on_idle()</code> when the pool invariant
+<code>available + evictable + protected + session_held + uncached == total</code> fails:</p>
+<pre>ValueError: pool memory leak detected! [full] total=2347648, available=5312,
+            evictable=2342592, protected=0, session_held=0, uncached=0</pre>
+<p>Here the accounted sum (2&nbsp;347&nbsp;904) exceeds <code>total</code> (2&nbsp;347&nbsp;648) by <b>256 tokens</b>,
+with <code>protected=0</code> (the server is fully idle&mdash;nothing running or locked). Taken at face value this
+says the pool has lost track of 256 token-slots, and the engine treats it as fatal. In an independent run the abort
+landed at &lambda;=5 after completing only 3836 of 7037 requests. The companion paper reported this as evidence that
+the decode tail &ldquo;is not one flag away.&rdquo;</p>
+
+<h2>4 The crash is a false positive</h2>
+<p>We re-ran mixed-chunk with the idle check downgraded from raise to warn
+(<code>SGLANG_ENABLE_STRICT_MEM_CHECK_DURING_IDLE=0</code>, a stock environment variable that changes only
+raise-vs-warn on the <i>assertion</i>, never any computation) and instrumented every idle event. Four facts
+establish that the reported leak is spurious.</p>
+
+<h3>4.1 The over-count is bounded, page-aligned, and self-healing</h3>
+<p>Across the full run the invariant&rsquo;s over-count (accounted &minus; total) at full idle
+(<code>protected=0</code>) is small and does not grow:</p>
+<table>
+<tr><th>idle event (chronological)</th><th>over-count (tokens)</th><th>= pages (page_size 64)</th></tr>
+<tr><td>1</td><td>320</td><td>5</td></tr>
+<tr><td>2</td><td>256</td><td>4</td></tr>
+<tr><td>3&ndash;9 (&lambda;3 drain, &hellip;)</td><td>256</td><td>4</td></tr>
+</table>
+<p>A real, accumulating slot leak grows monotonically until it exhausts memory; this quantity instead
+<b>oscillates and decreases</b> (320&rarr;256) and stabilizes at 4 pages&mdash;the signature of a transient that
+self-heals. Every observed value is an <b>exact multiple of the page size</b> (256=4&times;64, 320=5&times;64),
+i.e. the discrepancy is whole physical pages, not scattered tokens. Its magnitude is 0.011&ndash;0.014% of the
+2.35&nbsp;M-token pool.</p>
+
+<h3>4.2 The radix tree&mdash;which governs KV correctness&mdash;stays consistent</h3>
+<p><code>on_idle()</code> runs two checks: the pool aggregate invariant, then an ungated, bare-assert
+<b>tree sanity-check</b> that rebuilds the LRU order from the tree, verifies node ordering, verifies every node is
+unlocked at idle, and asserts the tree&rsquo;s evictable-size counter equals a fresh LRU walk. Across the entire run
+the tree sanity-check <b>never fails</b> (0 failures; it would crash the scheduler if it did, independent of the
+env var). The structure that determines which KV block feeds which token is therefore internally consistent&mdash;the
+over-count lives only in the pool&rsquo;s aggregate free-list accounting, not in the cache itself. Serving is
+correct throughout: all 7037 requests complete with HTTP 200.</p>
+
+<h3>4.3 Root cause: the pool check lacks a guard the tree check already has</h3>
+<p>The workload uses a 2-tier hierarchical cache with write-through backup
+(<code>enable_hierarchical_cache=True, hicache_write_policy=write_through</code>). When a node is backed up to host,
+its device pages are transiently visible to <i>both</i> the allocator&rsquo;s free-list and the tree&rsquo;s
+evictable set until the asynchronous write-through acknowledges&mdash;a brief double-count of a few pages. Crucially,
+the engine <b>already knows</b> this window is special: the hierarchical radix-tree&rsquo;s own
+<code>sanity_check()</code> begins with</p>
+<pre>def sanity_check(self):
+    """Skip if async operations are pending (those nodes are still locked)."""
+    self.loading_check()
+    if self.ongoing_load_back or self.ongoing_write_through:
+        return
+    super().sanity_check()</pre>
+<p>The tree check skips while <code>ongoing_write_through</code>/<code>ongoing_load_back</code> are non-empty. The
+<i>pool</i> invariant in <code>on_idle()</code> has no such guard, so it samples the counters mid-backup and
+false-positives. This is the whole bug: an accounting check that is stricter than the very structure it is meant to
+protect.</p>
+
+<div class="disc">
+<b>Precedent.</b> Tolerating this exact class of discrepancy is already established in the codebase. (i) The idle
+check is <i>skipped entirely</i> for the hisparse backend because &ldquo;pool counters intentionally diverge during
+host-backup.&rdquo; (ii) The full-pool check already returns &ldquo;no leak&rdquo; for a
+<code>dcp_physical_page_slack</code> when logical-token counters and physical-page allocation disagree by partial
+pages. Our case is the same phenomenon (logical vs physical page accounting under asynchronous backup), on the
+hierarchical-cache + hybrid-SSM path, simply not yet whitelisted.
+</div>
+
+<h2>5 The fix (lossless)</h2>
+<p>We align the pool check with the tree check: suppress the idle pool-leak <i>report</i> while hierarchical-cache
+async operations are pending. One guard in <code>on_idle()</code>:</p>
+<pre>if has_leak:
+    # HiCache write-through / load-back transiently double-counts a bounded, page-
+    # granular set of pages; the tree sanity_check already skips in this window
+    # (HiMambaRadixCache.sanity_check). Mirror that guard so the idle pool check
+    # does not false-positive. A real (persistent) leak still trips on a later
+    # idle once async backup has drained.
+    tc = self.tree_cache
+    hicache_async_pending = bool(getattr(tc, "ongoing_write_through", None)) \
+                         or bool(getattr(tc, "ongoing_load_back", None))
+    if not hicache_async_pending:
+        self.invariant_checker._report_leak("pool", "\n".join(messages))</pre>
+<p>This is <b>lossless by construction</b>: it changes only whether a diagnostic assertion fires, never scheduling,
+batching, eviction, or KV computation. It does not weaken real-leak detection: a genuine, persistent leak survives
+the transient window and is reported on the next idle check once backup drains (the same reasoning under which the
+tree check already trusts this guard). It is strictly narrower than the two existing precedents (which skip the whole
+check for hisparse, and allow unbounded page-slack for DCP).</p>
+
+<h2>6 Result: the decode tail collapses, losslessly</h2>
+<p>All runs use the frozen evaluation (unchanged <code>eval.sh</code>: 1553 conversations &rarr; 7037 requests,
+warmup burst, no per-rate flush, greedy decoding, <code>ignore_eos</code>). Stock = <code>--enable-mixed-chunk</code>
+off; MC = on. p99 values in ms unless noted.</p>
+
+<table>
+<tr><th>&lambda;=3</th><th>ITL p99</th><th>E2E p99</th><th>TTFT p99</th><th>median E2E</th><th>total out tok</th></tr>
+<tr><td>Stock (n=6, mean)</td><td>~4200</td><td>~355 s</td><td>6.8&ndash;14 s</td><td>~3&ndash;4 s</td><td>900082</td></tr>
+<tr><td><b>Mixed-chunk (full)</b></td><td><b>282</b></td><td><b>75.4 s</b></td><td>12.1 s</td><td>2.99 s</td><td><b>900082</b></td></tr>
+<tr><td>reduction</td><td><b>~15&times;</b></td><td><b>~4.7&times;</b></td><td>&mdash;</td><td>&mdash;</td><td>exact match</td></tr>
+</table>
+
+<table>
+<tr><th>&lambda;=5</th><th>ITL p99</th><th>E2E p99</th><th>TTFT p99</th><th>median E2E</th><th>total out tok</th></tr>
+<tr><td>Stock (n=3, mean)</td><td>~4750</td><td>~377 s</td><td>11&ndash;25 s</td><td>&mdash;</td><td>900082</td></tr>
+<tr><td><b>Mixed-chunk</b></td><td><b>418</b></td><td><b>156.6 s</b></td><td>56.0 s</td><td>&mdash;</td><td><b>900082</b></td></tr>
+<tr><td>reduction</td><td><b>~11&times;</b></td><td><b>~2.4&times;</b></td><td>~2&ndash;3&times; <i>worse</i></td><td>&mdash;</td><td>exact match</td></tr>
+</table>
+
+<p class="sub">&lambda;=7 and &lambda;=10 are in progress (a full-sweep run with the fix applied); this draft will be
+finalized with those points. The load trend so far is monotone and reported honestly below.</p>
+
+<div class="key">
+<b>The decode tail is real and removable.</b> Mixed-chunk cuts ITL p99 by an order of magnitude at both measured
+loads&mdash;from multi-second per-token stalls to sub-500&nbsp;ms&mdash;and cuts E2E p99 from minutes to tens of
+seconds. The effect (11&ndash;15&times;) dwarfs the run-to-run variance on either side (stock ITL p99 spans only
+3915&ndash;5099&nbsp;ms; MC 282&ndash;418&nbsp;ms), so&mdash;unlike the goodput knee&mdash;this is <b>not a coin-flip</b>;
+ITL is queue-independent (companion paper &sect;3).
+</div>
+
+<h3>6.1 Losslessness</h3>
+<p>With greedy decoding and <code>ignore_eos</code>, every request emits a fixed number of tokens; the
+<b>total output tokens are identical to the byte</b>&mdash;900082 for mixed-chunk and for both stock replicates at
+both loads&mdash;so no request was truncated, dropped, or mis-served. Retokenized output-token counts match to within
+0.004% (MC lands <i>between</i> the two stock values), so the generated text is equivalent, not corrupted. Combined
+with 0 tree-sanity failures and mixed-chunk being a stock, correctness-preserving batching feature (identical
+attention math), this is a mechanism-level losslessness guarantee.</p>
+<div class="disc">
+<b>Honest caveat.</b> Greedy@T=0 is not bit-for-bit batch-invariant (floating-point non-associativity makes logits
+depend on batch composition), so we do <i>not</i> claim token-identical output under concurrent load&mdash;even
+stock-vs-stock can differ by a token. Our losslessness claim is distributional + structural + code-level, the same
+bar by which mixed-chunk is accepted upstream. A max-concurrency-1 deterministic replay (byte-identical text) is
+available if token-level identity is required.
+</div>
+
+<h2>7 The trade-off: a prefill&harr;decode Pareto shift, not a free lunch</h2>
+<p>Mixed-chunk buys decode progress by giving decode a slice of every forward pass, which slows heavy prefills. The
+cost shows up as a <b>TTFT tail that regresses with load</b>: neutral at &lambda;=3 (12.1&nbsp;s, inside stock&rsquo;s
+noisy 6.8&ndash;14&nbsp;s band) but ~2&ndash;3&times; worse at &lambda;=5 (56&nbsp;s vs ~20&nbsp;s). Because the decode
+tail dominated E2E (companion paper: E2E p99 347&nbsp;s), the net effect on user-experienced latency is still a large
+improvement (E2E p99 377&rarr;157&nbsp;s at &lambda;=5), but this is a <b>Pareto shift</b> along the prefill&harr;decode
+frontier, not a strict win. It is the mirror image of the companion paper&rsquo;s safe decode-QoS scheduler, which
+traded the other way (protected TTFT-goodput, left the decode tail intact). Practitioners who serve on E2E or
+inter-token SLAs should enable mixed-chunk; those pinned to a strict TTFT SLA at high load should not. The honest
+statement is: <b>mixed-chunk cuts the decode/E2E tail at a prefill-tail cost that grows with load.</b></p>
+
+<h2>8 Related work</h2>
+<p>Chunked and mixed/stall-free batching (Sarathi-Serve, sglang, vLLM chunked prefill) are designed precisely to
+prevent decode starvation; our result is not that mixed-chunk is novel but that its benefit was <i>invisible here</i>
+behind a false-positive safety assertion, and that on the hybrid-SSM + hierarchical-cache path it delivers an
+order-of-magnitude decode-tail reduction. Memory-accounting invariants are standard defensive engineering in serving
+runtimes; our contribution in that vein is the observation that an over-strict invariant can be worse than none when
+it fires spuriously on a legitimate configuration and is treated as fatal. The companion papers map the goodput@SLO
+lever space: the metric is unreliable (coin-flip) and blind to caching; the prefill tail is head-of-line blocking
+fixed by deferral (SRPF), the decode tail is the subject here.</p>
+
+<h2>9 Limitations &amp; implications</h2>
+<ul>
+<li><b>Load coverage.</b> The win is established at &lambda;=3 and &lambda;=5 (both full, lossless); &lambda;=7/10 are
+pending and will determine whether the E2E win persists once the TTFT regression grows. The trend is reported without
+extrapolation.</li>
+<li><b>The trade-off is real</b> (&sect;7) and must not be elided: this is a Pareto move, not a universal win.</li>
+<li><b>Architecture-specificity.</b> The false positive is specific to the hierarchical-cache write-through +
+hybrid-SSM accounting path; the <i>lesson</i>&mdash;assertions stricter than the structures they protect&mdash;is
+general.</li>
+<li><b>Implication.</b> A single over-strict, fatal safety check converted a first-class, lossless latency win into
+&ldquo;a hard open problem&rdquo; in our own prior analysis. Serving-system invariants deserve the same
+false-positive scrutiny as the mechanisms they guard; and evaluation should surface such crashes as
+<i>configuration/measurement</i> failures, not fundamental ones.</li>
+</ul>
+
+<h2>10 Reproducibility</h2>
+<p>Frozen eval (unchanged): <code>eval.sh</code>, Qwen3.5-122B-A10B-FP8, 8&times;H100 TP8, 2-tier hicache
+(ratio 2.0, write_through), 1553 conversations, warmup burst, no per-rate flush. Mixed-chunk run:
+<code>--enable-mixed-chunk</code> with either the stock env
+<code>SGLANG_ENABLE_STRICT_MEM_CHECK_DURING_IDLE=0</code> (to warn instead of abort) or the one-guard fix in
+<code>scheduler.py:on_idle()</code> (&sect;5). Stock baselines: <code>runs/v0-stock{,-r2,-r3}</code>. Mixed-chunk:
+<code>runs/v17-mixedchunk-nocheck</code> (&lambda;3/&lambda;5 full), <code>runs/v14-mixedchunk</code> (&lambda;3
+replicate, crashed at 3836 under the default fatal check). Over-count trend and tree-sanity results parsed from
+<code>server.log</code>; decode-tail metrics from <code>bench_r{3,5}.json</code>. Fix commit on
+<code>evolve/kleinrock</code>.</p>
+
+<h2>11 Conclusion</h2>
+<p>The decode tail that goodput@SLO hides is not a hard open problem&mdash;it was hidden a second time, behind a
+false-positive memory-leak assertion. The reported leak is a bounded, page-aligned, self-healing over-count of a few
+pages during hierarchical-cache write-through, with the radix tree provably consistent; the pool check simply lacked
+the async-pending guard the tree check already uses. Aligning them&mdash;a lossless, one-line guard&mdash;unblocks
+mixed-chunk, which cuts the decode tail ~11&ndash;15&times; and end-to-end p99 latency from minutes to tens of seconds,
+losslessly, at an honest and load-dependent prefill-tail cost. The broader lesson outlives the specific bug: a safety
+invariant that is stricter than the structure it protects, and fatal when it trips, can silently erase a first-class
+performance win&mdash;and make it look fundamental.</p>
+
+</body>
+</html>

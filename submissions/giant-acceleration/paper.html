@@ -411,10 +411,15 @@ per-step metrics (tpot/concurrency) rather than any single goodput number.</li>
 
 <h2>9 Reproducibility</h2>
 <ul>
-<li>Mechanism commit <span class="mono">8bf42d159</span> on <span class="mono">evolve/turing</span>; base
-<span class="mono">a334877e5</span>. Hook in <span class="mono">scheduler.get_new_batch_prefill</span> before
-<span class="mono">add_chunked_req</span>. Env <span class="mono">SGLANG_TURING_GIANT_ACCEL=1
-SGLANG_TURING_ACCEL_THETA=0.85 SGLANG_TURING_ACCEL_FACTOR=2.0</span>.</li>
+<li><b>Implementation (surgical, not dead code).</b> Mechanism commit <span class="mono">8bf42d159</span> on
+<span class="mono">evolve/turing</span>; base <span class="mono">a334877e5</span>. <b>Single file</b>
+(<span class="mono">python/sglang/srt/managers/scheduler.py</span>), <b>~23 LOC</b> for the core mechanism
+(+16 for the &sect;3.1 trigger-signal ablation, commit <span class="mono">54aa8eb75</span>). Hook in
+<span class="mono">get_new_batch_prefill</span> immediately before <span class="mono">add_chunked_req</span>. It is
+<b>env-gated and default-OFF</b>: below &theta; the schedule is byte-for-byte stock, so the code path is inert unless
+enabled&mdash;and &sect;2 shows it is genuinely <em>exercised</em> when enabled (27.7% of accel prefill steps commit
+&gt;6144 tokens, max exactly 12&nbsp;288; stock 0%), proving it is not dead code. Env
+<span class="mono">SGLANG_TURING_GIANT_ACCEL=1 SGLANG_TURING_ACCEL_THETA=0.85 SGLANG_TURING_ACCEL_FACTOR=2.0</span>.</li>
 <li>Eval harness, dataset, model, TP8, rate sweep, warmup, seeded arrivals: unchanged from contract. The &sect;3
 result uses n=7 accel vs n=8 stock &lambda;=3 replicates (<span class="mono">v10*_accel</span> +
 <span class="mono">v18_faccel1&ndash;3</span> vs <span class="mono">v9/v11/v12/v18_fstock1&ndash;3</span> + 2 other-node

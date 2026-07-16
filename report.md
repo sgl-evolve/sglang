@@ -1216,3 +1216,16 @@ sibling direction + risking duplication). The clean stance = honestly scope my n
 tested + leave chunk-sizing as future work. This makes P4's negative airtight-honest rather than overclaimed.
 **Net cycle: two integrity self-corrections (compute-ceiling from write_back; chunk-scheduling scope) — the body
 is materially more honest; both from probing my OWN claims. No new lossless lever pursued (independence-clean).**
+
+### 2026-07-16 (cont.): consistency check of the write_back/integrity edits + elevated the decoupling evidence to P3 abstract
+The write_back finding + 2 integrity corrections (compute-ceiling, chunk-scheduling scope) were material edits made
+AFTER my last hostile-PC review, so I ran a FOCUSED cross-paper consistency check: (1) write_back figures coherent
+— P2 §3.4 +4.9–6.6pp / P3 +5–7pp, both +7.4% / 4.74→5.09; (2) chunk-scheduling scoped to "reservation" everywhere,
+no residual broad "this granularity does not yield / all chunk-level" overclaim; (3) no stale/contradictory numbers.
+PASSED — body coherent after the recent edits. Then elevated the strongest single piece of evidence for P3's thesis
+(a KV-cache config, write_back, that improves hit +5–7pp and the throughput ceiling +7% yet leaves goodput
+unchanged → goodput decoupled from hit, set by the tail) from the §3 map rows into the P3 ABSTRACT, where a PC
+reads first (framed as evidence — write_back is a stock config, not a contribution). Commit 6225b6b88.
+**Net: body verified coherent + the flagship's central-thesis evidence sharpened at first read. No new lossless
+lever (bounded); chunk-sizing remains an independence-clean deferral (sibling QPAC leaked). Research substantively
+complete; careful maintenance, still probing each cycle.**

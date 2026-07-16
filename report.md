@@ -1182,3 +1182,37 @@ register INDEX (1 line); update memory; push. If 20221 died: check sacct; resubm
 20226 on -0, v13-dma-timing, threshold=25. HARVEST unchanged: grep KLDMA runs/v13-dma-timing/server.log | tail -3
 then python3 tools/movement_analyze.py runs/v13-dma-timing/server.log; fill 11 REPLACE_ tokens; register INDEX.
 ★OPS: node slurm2-a3nodeset1-0 OOM-kills the 122B load even with --mem=0 (RAM too tight); prefer node -0.
+
+---
+## DIRECTION 4 (2026-07-16): THE DECODE TAIL — the metric hides the real tail
+★NOVEL FINDING (GPU-free, from existing stock bench jsons + server.log): the eval's E2E p99 is ~400 SECONDS
+(λ3 446s→λ10 392s), of which DECODE is 89-97% (TTFT is only 3-11%). TPOT median ~220ms (normal) but TPOT p99
+~3.5s and ITL p99 ~4.5s → severe decode STALLS. ★ORTHOGONAL TO SRPF: same-node λ5 n=5, SRPF fixes TTFT p99
+22-28s→5.5-7.8s but leaves TPOT/ITL/E2E p99 UNCHANGED (itl ~4.4-4.9→4.2-4.6s). So the decode tail is NOT
+prefill-ordering — my entire P1/P2/P3 series (all TTFT) MISSED it. ★CAUSE = decode STARVATION under prefill-greedy
+scheduling: stock server.log has 34071 Prefill batches vs 1621 Decode batches (21:1), with runs of up to 661
+CONSECUTIVE prefill batches (256 decode seqs present, not advancing) → decode stalls seconds during prefill bursts.
+NO retraction/preemption events (not retraction-driven). ★THESIS: goodput@SLO (TTFT) HIDES the real tail — in
+long-context multiturn the decode tail (E2E p99 ~400s) is ~50× the TTFT tail and is decode-starvation, a distinct
+axis. Likely a prefill-decode Pareto tradeoff (decode-friendly scheduling costs TTFT). NEXT: read scheduler
+prefill-vs-decode decision; GPU A/B stock vs decode-friendly (measure BOTH TTFT-goodput AND decode/E2E tail) to
+quantify the tradeoff. Candidate mechanism must be novel+lossless (not mixed-chunk config = disqualified); framing
+may be a CHARACTERIZATION/tradeoff paper (charter-valid). Data: runs/v3-srpf-ab/bench_{fcfs,srpf}_l5_r*.json.
+
+### P4 experiment LAUNCHED (2026-07-16): job 20231, v14-mixedchunk (--enable-mixed-chunk full sweep)
+Compare to v0-stock (existing, all λ). RESUME: when 20231 done (runs/v14-mixedchunk/, ~2-2.5h; --mem=0, node -0):
+  python3 - <<'PY'  # decode-tail + goodput Pareto, both arms
+  import json,glob
+  for tag,patt in [("stock","runs/v0-stock/bench_r%s.json"),("mixedchunk","runs/v14-mixedchunk/bench_r%s.json")]:
+    print(tag); 
+    for r in [3,5,7,10]:
+      try:
+        d=json.load(open(patt%r)); print(r, "ttft_p99",d['p99_ttft_ms'],"itl_p99",d['p99_itl_ms'],"tpot_p99",d['p99_tpot_ms'],"e2e_p99",d['p99_e2e_latency_ms'],"reqtput",d['request_throughput'])
+      except Exception as e: print(r,e)
+  PY
+Then: goodput@SLO(TTFT≤8s) each arm from curve.csv; the PARETO = does mixedchunk cut ITL/TPOT p99 (decode tail)
+and at what TTFT-goodput cost? If clear → same-node stock arm (rigor, coin-flip control) then write P4
+CHARACTERIZATION paper "The Hidden Decode Tail" (honest: mixed-chunk is a known config = NOT my mechanism; the
+contribution is the hidden-tail MEASUREMENT + the prefill-decode Pareto + the metric-blind-spot thesis). If
+mixedchunk does NOT help (or the tail is saturation not starvation) → the decode tail is more fundamental →
+re-scope. ⚠️ --mem=0 MANDATORY; node 1-0 OOMs the 122B load; harvest at run END (don't babysit).

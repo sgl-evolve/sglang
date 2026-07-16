@@ -134,17 +134,18 @@ not a KV-pool/retraction failure. This distinction is what dooms admission contr
   <line x1="55" y1="170" x2="600" y2="170" stroke="#333"/><line x1="55" y1="170" x2="55" y2="16" stroke="#333"/>
   <text x="330" y="198" text-anchor="middle" fill="#666">device KV-pool usage bin</text>
   <g fill="#c33">
-    <rect x="62" y="26" width="48" height="144"/><rect x="118" y="158" width="48" height="12"/>
-    <rect x="174" y="96" width="48" height="74"/><rect x="230" y="64" width="48" height="106"/>
-    <rect x="286" y="128" width="48" height="42"/><rect x="342" y="156" width="48" height="14"/>
-    <rect x="398" y="154" width="48" height="16"/><rect x="454" y="135" width="48" height="35"/>
-    <rect x="510" y="69" width="48" height="101"/><rect x="566" y="19" width="48" height="151"/>
+    <rect x="62" y="56" width="48" height="114"/><rect x="118" y="149" width="48" height="21"/>
+    <rect x="174" y="90" width="48" height="80"/><rect x="230" y="58" width="48" height="112"/>
+    <rect x="286" y="109" width="48" height="61"/><rect x="342" y="137" width="48" height="33"/>
+    <rect x="398" y="148" width="48" height="22"/><rect x="454" y="137" width="48" height="33"/>
+    <rect x="510" y="67" width="48" height="103"/><rect x="566" y="20" width="48" height="150"/>
   </g>
   <g fill="#666"><text x="86" y="183" text-anchor="middle">0.0</text><text x="310" y="183" text-anchor="middle">0.4</text><text x="590" y="183" text-anchor="middle">1.0</text></g>
-  <text x="86" y="22" text-anchor="middle" fill="#c33">20.6%</text><text x="590" y="15" text-anchor="middle" fill="#c33">21.7%</text>
+  <text x="86" y="50" text-anchor="middle" fill="#c33">15.6%</text><text x="590" y="14" text-anchor="middle" fill="#c33">20.6%</text>
 </svg>
-<figcaption><b>Figure 2.</b> Stock device-pool usage is bimodal (idle ↔ saturated), n=17,384 samples —
-metastable. But stock retracts 0 times: saturation is handled by prefill-admission stall, not retraction.</figcaption>
+<figcaption><b>Figure 2.</b> Stock device-pool usage is bimodal (idle ↔ saturated), n=35,771 samples
+(idle&nbsp;≤0.05: 12.8%, saturated&nbsp;≥0.90: 20.6%; 39 at exactly 1.0) — metastable. But stock retracts 0
+times: saturation is handled by prefill-admission stall, not retraction. (<code>analysis/pool_hist.py runs/v0-stock/server.log</code>)</figcaption>
 </figure>
 
 <h3>2.3 Two compute bounds that box in the metric</h3>
@@ -207,7 +208,7 @@ TTFT-optimal and not a further lever (shifting steps to decode would only lower 
 deep queue is now meaningful: shortest-prefill-first (SRPF/SJF, a classic scheduling policy) reorders it. The
 full contract sweep sets <b>goodput@SLO = 4.0&nbsp;req/s</b> (SRPF passes λ=3 at 6.5&nbsp;s and λ=5 at
 7.8&nbsp;s, fails λ=7 at 10.3&nbsp;s), and our same-node A/B (plus node-1-1 replicates) corroborates the λ=5 win: <b>λ=5 p99 TTFT 5.85–7.82&nbsp;s
-(n=6, all below the SLO)</b> versus stock's stable λ=5 failure (17–24&nbsp;s across n=5;
+(n=6, all below the SLO)</b> versus stock's stable λ=5 failure (17–24&nbsp;s across n=7;
 the same-node control drew 22.7&nbsp;s) — a clean separation (Fisher 6/6 vs 0/7, p=0.0006 pooled; p=0.05 strictly same-node on node 0-3, 3/3 vs 0/3). So goodput@SLO rises from the λ=3 coin-flip
 (≤3&nbsp;req/s) to <b>4.0&nbsp;req/s</b>. This is SLO-tail-bound, not compute-bound: SRPF's <em>raw</em>
 throughput continues climbing to 4.72&nbsp;req/s at λ=10 while its p99 crosses the SLO, so the binding wall is
@@ -277,7 +278,8 @@ prefills while letting reuse load-backs saturate the pool. An early run with thi
 pool and crashed the server watchdog; we did not preserve its artifact and exclude it from the results
 table, noting only the qualitative hazard (cost misestimation can turn a stable, 0-retract system unstable).</li>
 <li><b>The gentle variant tightens the tail but does not flip the coin.</b> Load-back-only gating never
-touches cold prefills (0 retracts, pool capped ~0.54) and paces the L2→L1 load-backs — a real behavioral
+touches cold prefills (0 retracts; the gate fires — cumulative defer ~100k / force ~3.3k — and paces the
+L2→L1 load-backs, lowering mean device-pool usage to ~0.38, though peak still reaches 1.0) — a real behavioral
 effect that clusters the λ=3 p99 near 8&nbsp;s. But it clusters <em>on</em> the SLO, not below it: at W=0.85
 {7767,8549,8556} (1/3 pass) and W=0.90 {7790,8243} (1/2 pass), every setting straddles the line at the
 <em>same</em> mean as stock (~8&nbsp;s), so it converts an unpredictable coin-flip into a predictable
@@ -317,10 +319,12 @@ cold-document prefill), <em>not</em> KV-cache admission or residency.</p>
 Our first CCA valve force-admitted a request after a wall-clock wait (<code>time.perf_counter()</code>).
 In TP=8 the scheduler runs per-rank and must make <em>identical</em> prefill-admission decisions; a
 per-rank clock diverges the force-admit decision near the boundary, so ranks build <em>different</em>
-prefill batches and the next NCCL collective deadlocks (silent hang → watchdog CUDA coredump). Four
-consecutive CCA runs hung this way while stock ran clean; the stock <code>PrefillDelayer</code>
-all-gathers its decision precisely to avoid this. Replacing the valve with a deterministic per-request
-deferral <em>count</em> (identical across ranks) eliminated the hang. <b>Any per-rank-nondeterministic
+prefill batches and the next NCCL collective deadlocks (silent hang). Four consecutive CCA runs with the
+wall-clock valve stalled and had to be cancelled (~14–21&nbsp;min in) while stock ran clean; replacing the
+valve with a deterministic per-request deferral <em>count</em> (identical across ranks) then ran clean —
+consistent with this rank-divergence mechanism, which we diagnosed from the code and the stall pattern (the
+transient hang traces themselves were not preserved). The stock <code>PrefillDelayer</code> all-gathers its
+decision precisely to avoid this. <b>Any per-rank-nondeterministic
 input (wall clock, RNG, unsynchronized state) in a TP scheduling decision will hang the run.</b></p>
 
 <h2>6 Related work</h2>

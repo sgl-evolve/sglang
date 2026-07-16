@@ -221,9 +221,10 @@ crosses the horizon <code>H = 500</code> documents, then jumps to the full reuse
 <tr><td>1529</td><td>3.06</td><td>1.8M</td><td>0.0M</td><td>1.8M</td><td>caching helps</td></tr>
 </table>
 <p>
-So the mirage is a <em>sharp, corpus-general</em> criterion: caching has online headroom
-<b>iff a workload re-uses documents at stack-distance beyond the cache horizon</b>. To show this is not a
-property of one trace, we apply the criterion to <b>four real long-document QA corpora</b> (the eval mix and
+So the mirage is a <em>sharp</em> criterion, general in <em>form</em> (it is a statement about any corpus's
+stack-distance distribution): caching has online headroom <b>iff a workload re-uses documents at stack-distance
+beyond the cache horizon</b>. To show this is not a property of one trace, we apply the criterion to <b>four
+real long-document QA corpora</b> (of which two carry document reuse — the eval mix and
 its constituents at their native reuse structure; offline replay, no GPU):
 </p>
 <table>

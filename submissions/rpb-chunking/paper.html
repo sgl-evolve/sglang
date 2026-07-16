@@ -52,7 +52,8 @@ serve, not the tiny ones it can. The finding is therefore airtight and general: 
 cannot improve goodput@SLO over whole-request SRPF at any implementation</b> — fixed reservation hurts (waste),
 adaptive reservation is goodput-neutral. Combined with our companion map, this closes the scheduling axis at both
 granularities: whole-request reordering is the lever; chunk-level reservation is not. All variants are lossless
-(hit-rate matched, Δ≤0.002).
+<em>by construction</em> — RPB only reslices prefill computation and never changes cache contents; measured
+hit-rate matches baseline within Prometheus scrape noise (Δ up to ~0.04, uncorrelated with the mechanism).
 </div>
 
 <h2>1 Introduction</h2>
@@ -210,14 +211,14 @@ so non-RPB runs are byte-identical.
 <h2>5 Evaluation</h2>
 <p>
 <b>Setup.</b> Same-node A/B on one 8&times;H100 node (slurm2-a3nodeset1-1), screen λ&isin;{3,5} of the fixed
-protocol (1553 conversations, 7037 turns/rate, warmup, no flush), <b>n=2 per configuration</b>, all on the same
+protocol (1553 conversations, 7037 of 7163 turns completing per rate, warmup, no flush), <b>n=2 per configuration</b>, all on the same
 node back-to-back so deltas isolate the RPB engine mechanism (SRPF config held fixed) with no cross-node variance.
 Runs: baseline <code>--schedule-policy srpf</code> (v-srpf-ctl4, ctl5); fixed <code>+ RPB r=0.25</code> (v-rpb25,
 v-rpb25-r2); adaptive <code>+ --rpb-adaptive</code> (v-rpbA25, v-rpbA25-r2).
 </p>
 <table>
 <caption>Same-node A/B (n=2), SRPF vs fixed SRPF+RPB(r=0.25). p99 shown as mean [run1, run2]; Δ is on the mean.
-Δtok/s exposes the reserve waste; hit-rate (matched, Δ≤0.002) is the lossless check.</caption>
+Δtok/s exposes the reserve waste; hit-rate matches baseline within scrape noise (Δ≤~0.04), corroborating that RPB is lossless by construction.</caption>
 <tr><th>rate λ</th><th>SRPF p99 (mean [runs])</th><th>fixed RPB p99 (mean [runs])</th><th>Δp99 mean</th><th>SRPF / RPB tok/s</th><th>SLO</th></tr>
 <tr><td>3</td><td>6683 [6973, 6393]</td><td>6973 [6300, 7646]</td><td>+290 (within λ3 coin-flip noise)</td><td>387 / 387</td><td class="g">PASS→PASS</td></tr>
 <tr><td>5</td><td>6496 [6580, 6411]</td><td class="b">9607 [9287, 9927]</td><td class="b">+3111 (+48%)</td><td>532 / 482 (−9%)</td><td class="b">PASS→FAIL (both)</td></tr>
@@ -347,7 +348,7 @@ without touching the tail-setting requests. Removing the waste recovers goodput-
 failure gone), is <em>goodput-neutral</em> (no gain, a small p99 tail cost). So chunk-level budget reservation
 cannot improve goodput@SLO over whole-request SRPF at any implementation. (The adaptive control also confirms the
 fixed-RPB diagnosis: removing the waste removes the failure, so the failure <em>was</em> the waste.) All runs are
-lossless (hit-rate matched, Δ ≤ 0.002).
+lossless by construction (hit-rate matches baseline within scrape noise, Δ up to ~0.04).
 </p>
 <p>
 <b>Scope and statistics (stated plainly).</b> These are same-node A/B runs (node fixed, no cross-node variance),

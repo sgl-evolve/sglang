@@ -286,12 +286,12 @@ contract). The cost-hierarchy argument (&sect;5.4) is what generalizes, not the 
 <li><b>Instrumentation:</b> commit <code>3b2756b28</code> on <code>evolve/kleinrock</code> &mdash; env-gated
 CUDA-event DMA timer in <code>python/sglang/srt/managers/cache_controller.py</code> (<code>KL_DMA_TIMING=1</code>;
 off &rArr; byte-identical, lossless).</li>
-<li><b>Run:</b> <code>v12-dma-timing</code> (<code>runs/v12-dma-timing/</code>), a full contract sweep with
+<li><b>Run:</b> <code>v13-dma-timing</code> (<code>runs/v13-dma-timing/</code>), a full contract sweep with
 <code>KL_DMA_TIMING=1</code>; actual-DMA distribution parsed from <code>server.log</code> <code>[KLDMA]</code>
 lines.</li>
 <li><b>Enqueue &amp; volume (Tables 1&ndash;2):</b> the evaluator's captured <code>metrics_r&lt;&lambda;&gt;.txt</code>
-from the stock run <code>v0-stock</code> (Prometheus <code>load_back/eviction_duration_seconds</code>,
-<code>*_tokens_total</code>, <code>prompt/cached_tokens_total</code>).</li>
+(Prometheus <code>load_back/eviction_duration_seconds</code>, <code>*_tokens_total</code>,
+<code>prompt/cached_tokens_total</code>); reproduced across stock runs (<code>v0-stock</code>, <code>v13-dma-timing</code>).</li>
 <li><b>Exposed cost (Table 4):</b> per-request traces <code>runs/v6-shortlane-abl/perreq_reserve0_l5_r*.csv</code>.</li>
 <li><b>Analysis:</b> <code>tools/movement_analyze.py</code> regenerates Tables 1&ndash;4 and the cost hierarchy
 (sections A/B/C/D) from these artifacts.</li>
@@ -304,7 +304,7 @@ this long-context multiturn workload:</p>
 <caption class="disc">Table 5. The lever map. Exactly one axis is the lever, and its optimum is classical.</caption>
 <tr><th>axis</th><th>verdict</th><th>why</th></tr>
 <tr><td>Caching / residency (P1)</td><td>non-lever for the tail</td><td>the p99 mega-documents are unique first-sight &mdash; uncacheable at any capacity</td></tr>
-<tr><td>Tier movement (this paper)</td><td>non-lever</td><td>restore is &lt;10&nbsp;ms/op, &le;~0.17&nbsp;s exposed, &gt;60&times; cheaper than recompute; 0% of the p99 tail</td></tr>
+<tr><td>Tier movement (this paper)</td><td>non-lever</td><td>restore is &le;~0.17&nbsp;s exposed, ~40&times; cheaper than recompute; effectively no p99-tail movement</td></tr>
 <tr><td>Scheduling order (P2)</td><td><b>the lever</b></td><td>deferring the few heavy documents past the percentile clears the SLO (&le;&lambda;5); classical SRPF, not novel</td></tr>
 </table>
 <p>The engineering implication is pointed: on a compute-bound long-context serving workload, do not spend effort

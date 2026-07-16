@@ -1285,3 +1285,14 @@ eviction-optimal-hit, all consistent). write_back honestly framed as stock-confi
 tolerance. Reviewer: "rigorous bounded negative, proven 3 ways, honest execution, no over-claiming." No edits warranted.
 ⇒ Both materially-changed papers (P3 + P2) now fresh-adversarial-reviewed → BOTH ACCEPT, all claims artifact-verified.
 P1/P4/P5 changed less (verified via consistency audit + P3 cross-checks). Body confirmed top-venue-ready. Genuine rigor.
+
+### 2026-07-16 (cont.): cross-session integrity — propagated the write_back ceiling-correction to P1
+Genuine watch-mode probe: does the write_back finding (a LOSSLESS backup policy raises the throughput ceiling
++7%) contradict any PRE-write_back claim in P1/P4/P5? Found one: P1 §2.4 said "the wall that NO POLICY crosses is
+that [~4.7] ceiling" — but write_back crosses it (4.74→5.09). Same issue I corrected in P3's compute-ceiling row,
+not yet propagated to P1. Fixed: scoped to "no SCHEDULING policy crosses it" (scheduling reorders work, doesn't
+reduce it) + noted write_back raises the ceiling losslessly but goodput stays below it (SLO-tail-bound, doesn't
+change the admission conclusion). P1 §2.3 ceiling band (~4.2–5) already roughly consistent (write_back 5.09 ≈ band
+top). P4/P5 verified clean of the overclaim. ⇒ the write_back ceiling-implication is now fully propagated across
+ALL papers (P1/P2/P3 corrected; P4/P5 clean). Commit 1d68fad9d. Genuine cross-session integrity fix, not gilding —
+validates that careful probing in watch-mode still catches real inconsistencies.

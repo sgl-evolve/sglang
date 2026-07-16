@@ -188,6 +188,59 @@ check for hisparse, and allow unbounded page-slack for DCP).</p>
 warmup burst, no per-rate flush, greedy decoding, <code>ignore_eos</code>). Stock = <code>--enable-mixed-chunk</code>
 off; MC = on. p99 values in ms unless noted.</p>
 
+<figure>
+<svg viewBox="0 0 620 344" width="100%" font-family="Georgia,serif" aria-label="Decode-tail collapse at lambda=3">
+  <!-- gridlines + y labels (log axis, ms) -->
+  <g stroke="#ddd" stroke-width="1">
+    <line x1="65" y1="270" x2="605" y2="270"/><line x1="65" y1="210" x2="605" y2="210"/>
+    <line x1="65" y1="150" x2="605" y2="150"/><line x1="65" y1="90" x2="605" y2="90"/>
+    <line x1="65" y1="30" x2="605" y2="30"/>
+  </g>
+  <g font-size="10" fill="#777" text-anchor="end">
+    <text x="60" y="273">0.1s</text><text x="60" y="213">1s</text><text x="60" y="153">10s</text>
+    <text x="60" y="93">100s</text><text x="60" y="33">1000s</text>
+  </g>
+  <text x="16" y="150" font-size="11" fill="#555" transform="rotate(-90 16 150)" text-anchor="middle">p99 latency (log)</text>
+  <!-- bars: stock (#777) vs mixed-chunk (#4a4) -->
+  <g>
+    <!-- ITL -->
+    <rect x="117" y="172" width="32" height="98" fill="#777"/>
+    <rect x="161" y="243" width="32" height="27" fill="#4a4"/>
+    <text x="133" y="167" font-size="10" fill="#333" text-anchor="middle">4.2s</text>
+    <text x="177" y="238" font-size="10" fill="#2a7a2a" text-anchor="middle">282ms</text>
+    <!-- TPOT -->
+    <rect x="297" y="176" width="32" height="94" fill="#777"/>
+    <rect x="341" y="256" width="32" height="14" fill="#4a4"/>
+    <text x="313" y="171" font-size="10" fill="#333" text-anchor="middle">3.75s</text>
+    <text x="357" y="251" font-size="10" fill="#2a7a2a" text-anchor="middle">174ms</text>
+    <!-- E2E -->
+    <rect x="477" y="57" width="32" height="213" fill="#777"/>
+    <rect x="521" y="97" width="32" height="173" fill="#4a4"/>
+    <text x="493" y="52" font-size="10" fill="#333" text-anchor="middle">355s</text>
+    <text x="537" y="92" font-size="10" fill="#2a7a2a" text-anchor="middle">75s</text>
+  </g>
+  <!-- reduction annotations -->
+  <g font-size="12" font-weight="bold" fill="#c55" text-anchor="middle">
+    <text x="155" y="288">15&#215;&#8595;</text><text x="335" y="288">21&#215;&#8595;</text><text x="515" y="288">4.7&#215;&#8595;</text>
+  </g>
+  <!-- group labels -->
+  <g font-size="12" fill="#222" text-anchor="middle">
+    <text x="155" y="308">ITL p99</text><text x="335" y="308">TPOT p99</text><text x="515" y="308">E2E p99</text>
+  </g>
+  <text x="335" y="330" font-size="11" fill="#555" text-anchor="middle">decode-latency tails (ITL, TPOT) and end-to-end, &lambda;=3</text>
+  <!-- legend -->
+  <g font-size="11">
+    <rect x="70" y="20" width="12" height="12" fill="#777"/><text x="86" y="30" fill="#333">stock</text>
+    <rect x="135" y="20" width="12" height="12" fill="#4a4"/><text x="151" y="30" fill="#333">mixed-chunk (unblocked)</text>
+  </g>
+</svg>
+<figcaption><b>Figure 1. The decode tail collapses at &lambda;=3, losslessly.</b> p99 latency (log scale) for
+stock vs. unblocked mixed-chunk. The two decode-latency tails&mdash;inter-token latency (ITL) and time-per-output-token
+(TPOT)&mdash;fall by ~15&times; and ~21&times; (from ~4&nbsp;s to sub-300&nbsp;ms), and end-to-end p99 falls ~4.7&times;
+(355&nbsp;s&rarr;75&nbsp;s). Total output tokens are identical (900082), so the reduction is lossless. The
+prefill/TTFT tail (not shown) is the trade-off, discussed in &sect;7.</figcaption>
+</figure>
+
 <table>
 <tr><th>&lambda;=3</th><th>ITL p99</th><th>TPOT p99</th><th>E2E p99</th><th>TTFT p99</th><th>total out tok</th></tr>
 <tr><td>Stock (n=6, mean)</td><td>~4200 ms</td><td>~3750 ms</td><td>~355 s</td><td>6.8&ndash;14 s</td><td>900082</td></tr>

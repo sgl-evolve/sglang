@@ -221,7 +221,9 @@ page-aligned multiple (e.g. &le; 16 pages, &gt;20&times; the observed maximum, w
 as non-fatal. It gates only the assertion&mdash;lossless&mdash;and, unlike persistence, is robust to the idle case. We
 report the disproven persistence attempt in full because it sharpened the diagnosis; the <b>validated</b> unblock used
 for all measurements here is the stock warn-mode env var, and the bounded page-slack is the recommended production
-form (its end-to-end validation is left as immediate future work).</p>
+form (implemented as an idle-check tolerance gated by <code>SGLANG_HICACHE_IDLE_PAGE_SLACK_PAGES</code>, default 0 =
+stock; its end-to-end validation is left as immediate future work &mdash; deferred here only to avoid contending for a
+saturated shared cluster).</p>
 
 <h2>6 Result: the decode tail collapses, losslessly</h2>
 <p>All runs use the frozen evaluation (unchanged <code>eval.sh</code>: 1553 conversations &rarr; 7037 requests,

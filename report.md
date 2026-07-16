@@ -1150,3 +1150,18 @@ bottleneck for compute-bound long-context prefill; tiering's value is CAPACITY n
 the transfer-overlap machinery of HiCache/LMCache/AttentionStore/Strata for this regime" + unified lever map
 (caching[P1]/scheduling[P2]/movement[P3]). If DMA surprisingly large AND section C somehow misleading → build
 anticipatory prefetch + A/B. Tool: tools/movement_analyze.py (A/B/C/D reproducible).
+
+### Paper 3 (kv-tiering-movement) DRAFT status + RESUME (2026-07-16)
+DRAFT: submissions/kv-tiering-movement/paper.html (committed; NOT in INDEX yet). Sections A(enqueue+volume,
+Table1-2)/C(exposed TTFT flatness, Table4)/D(cost hierarchy ~40×) COMPLETE from existing artifacts. §5.5 has the
+airtight 2-part ceiling bound (worst-case full un-overlapped DMA from §5.2 + common-case ≤170ms exposed).
+PENDING: §5.2 actual-DMA numbers (REPLACE_P99/REPLACE_AVG/REPLACE_P50/REPLACE_MAX/REPLACE_N/REPLACE_RESTORE_TOKS
+in Table3 + abstract + §5.4 REPLACE_RATIO + §5.5 REPLACE_P99). 11 REPLACE_ tokens total.
+★RESUME: KL_DMA_TIMING run = job 20211 → runs/v12-dma-timing. Harvest [KLDMA] lines from server.log:
+  grep KLDMA runs/v12-dma-timing/server.log | tail -3   (cumulative; last line = final distribution)
+Fires once start_loading crosses 500 calls (merges ~40 restores/call → crosses during λ5; full sweep ~2h).
+Also: python3 tools/movement_analyze.py runs/v12-dma-timing/server.log  → fills B + D ratio.
+Then fill the 11 REPLACE_ tokens, recompute REPLACE_RATIO = restore_tok_per_s / ~14000 (per-stream prefill),
+re-validate HTML, register INDEX (append 1 line), update memory, push. If job 20211 died before λ5 (check sacct),
+resubmit: sbatch --exclusive --mem=0 --gres=gpu:8 -w <idle a3, NOT -2> --wrap "export KL_DMA_TIMING=1; bash <eval.sh> kleinrock v12-dma-timing".
+⚠️ --mem=0 is MANDATORY (plain --exclusive gives only 8944M → 122B OOM-kills scheduler; learned the hard way, job 20210).

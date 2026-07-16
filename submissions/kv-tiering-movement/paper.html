@@ -226,16 +226,22 @@ tiering is worth doing; but it also means the <i>transfer</i>, not being the exp
 bottleneck.</p>
 
 <h3>5.5 The non-lever result: a ceiling bound</h3>
-<p>Put the pieces together. An anticipatory-prefetch (or any transfer-overlap) mechanism can only remove the
-<i>exposed</i> restore time from a request's TTFT. That exposed time is &le;~0.17&nbsp;s (&sect;5.3), and for the
-requests that define the tail it is smaller still: the p99 victims are tiny &lt;1K-token requests (P2) whose
-restore, if any, is sub-millisecond. The goodput knee lives at <b>seconds</b> &mdash; SRPF's p99 is 6.4&nbsp;s at
-&lambda;=5 and 9.6&nbsp;s at &lambda;=7 (P2). Therefore:</p>
-<div class="key"><b>Maximum achievable goodput gain from transfer overlap &le; exposed restore (~0.17&nbsp;s)
-&Lt; the seconds-scale knee.</b> No prefetch/overlap mechanism can move goodput@SLO on this workload. The p99 tail
-contains <b>0%</b> movement: it is prefill compute of uncacheable mega-documents (P1) and head-of-line queueing
-behind them (P2). We therefore do not implement the prefetch &mdash; we bound its ceiling below threshold. (This is
-a stronger negative than A/B-testing one implementation: it rules out the whole mechanism class.)</div>
+<p>Put the pieces together. An anticipatory-prefetch (or any transfer-overlap) mechanism can only remove a
+request's restore latency from its TTFT; its maximum possible benefit is therefore the restore's cost, and we
+bound that cost two ways. <b>Worst case</b> (the case the prefetch is designed for): a request scheduled the
+instant a mega-document clears has essentially no compute of its own to hide its restore behind, so it would pay
+the <i>full, un-overlapped</i> restore DMA &mdash; measured at <b>REPLACE_P99&nbsp;ms (p99)</b> per operation
+(&sect;5.2). <b>Common case</b>: with the engine's existing within-batch overlap, the restore is already
+&le;~0.17&nbsp;s <i>exposed</i> even for a 100K-token cached context (&sect;5.3), and for the requests that actually
+define the tail it is smaller still &mdash; the p99 victims are tiny &lt;1K-token requests (P2) whose restore is
+sub-millisecond. The goodput knee lives at <b>seconds</b> &mdash; SRPF's p99 is 6.4&nbsp;s at &lambda;=5 and
+9.6&nbsp;s at &lambda;=7 (P2). Both bounds are far below it. Therefore:</p>
+<div class="key"><b>Maximum achievable goodput gain from transfer overlap &le; the full restore DMA
+(REPLACE_P99&nbsp;ms worst-case, &le;~0.17&nbsp;s as currently exposed) &Lt; the seconds-scale knee.</b> No
+prefetch/overlap mechanism can move goodput@SLO on this workload. The p99 tail contains <b>effectively no</b>
+movement: it is prefill compute of uncacheable mega-documents (P1) and head-of-line queueing behind them (P2). We
+therefore do not implement the prefetch &mdash; we bound its ceiling below threshold. (This is a stronger negative
+than A/B-testing one implementation: the bound rules out the entire mechanism class, not one design point.)</div>
 <p>This mirrors, on a third axis, the bounded negatives of the companion papers &mdash; but where those required
 building and measuring a mechanism (P2's reserved lane, chunk-interleaving), here the measurement itself forecloses
 the mechanism.</p>

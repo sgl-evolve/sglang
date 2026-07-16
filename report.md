@@ -1257,3 +1257,18 @@ phase-boundary + slow-tier criteria. (4) **prior-art discovery** — WebSearch o
 for hybrids, or unblocked web. Absent those, the frozen-eval design space is solved. **Supervisor decides
 redirect-vs-retire; I hold in disciplined watch-mode — re-probe each cycle, act on any genuinely-new +
 independence-clean direction, no gild/fabricate.**
+
+### 2026-07-16 (cont.): fresh hostile-PC review of the materially-changed flagship → hard ACCEPT (artifact-verified)
+P3 had changed materially since the last dedicated hostile-PC review (~7 cycles prior): write_back abstract
+sentence + residency/compute-row content, the head-of-line mechanism figure, the compute-ceiling correction, the
+chunk-scheduling scope corrections. Ran a FRESH adversarial (SOSP/OSDI) review of the CURRENT P3, instructed to
+verify every quantitative claim against raw artifacts. ★VERDICT: **ACCEPT** — zero claim mismatches. Verified:
+write_back +4.8..+6.6pp hit / +7.4% throughput (4.74→5.09) on a confirmed SAME-NODE pair (both node 1-1 per
+sacct, jobs 20232/20242), goodput unmoved (fails all rates); compute-ceiling row internally consistent
+(4.0<4.72<5.09); SRPF same-node 4/4 vs 0/4 p=0.014 + λ5 pooled 7/7 vs 0/8 p=0.0002 EXACT; HOL figure accurate;
+chunk-scope correctly scoped to reservation; supporting claims (9.6× queue, ~13× decode stall, phase-boundary
+step-function, ~5s arithmetic bound) all match. Biggest weakness (SRPF=textbook) EMPHATICALLY ADDRESSED (map/
+diagnosis paper; SRPF a confirmatory probe). 3 minor nits, all not-reject-level + already handled (paper states
+node 1-1; C_eff-circularity acknowledged + lever-selection non-circular; companions non-load-bearing). Reviewer:
+"exemplary systems work — counter-intuitive finding, airtight evidence, honest reporting, generalizable framework."
+⇒ the flagship is top-venue-ready after all recent changes; no edits warranted. Genuine rigor confirmation, not gilding.

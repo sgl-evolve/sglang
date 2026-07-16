@@ -938,3 +938,23 @@ runs/v0-stock metrics_r*.txt):
   reused-prefix load is on the request's pre-prefill critical path but each load is <30 ms so it doesn't matter.
 - Reuse-/prefix-aware ROUTING = out of scope (single-node TP=8 eval; routing is a multi-replica lever).
 This is the rigorous negative behind my "movement axis exhausted" claim, now backed by hard load-back data.
+
+### 2026-07-16: Direction 6 (chunk-level PREEMPTION) — completes P4's axis (complementary primitive)
+Per program ("always a next direction"), opened the untested complementary chunk-level primitive: PREEMPTION
+(pause a big cold doc's chunked prefill for a waiting short turn, resume later) vs the deployed NON-preemptive
+SRPF. Feasibility: TRACTABLE — sglang's stash_chunked_request → maybe_cache_unfinished_req(chunked=True) already
+caches partial-prefill KV, so pause/resume is lossless by re-matching the cached partial prefix.
+Fast-screen (free, hol_sim.py): preemptive SRPF tail 4031ms vs non-preemptive 6205ms @λ3 (−35%) — BUT both pass
+the 8s SLO, so NO goodput change sub-knee; sim λ3-only-reliable (can't assess λ7). Analysis: at the
+goodput-SETTING rate the p99 tail is the big cold docs' OWN prefill (compute-bound, P3), which preemption FURTHER
+delays — the IDENTICAL failure mode as RPB reservation (both disadvantage the tail-setting large doc; RPB
+GPU-confirmed to hurt λ5), plus preemption pays re-prefill/starvation costs reservation avoids.
+⇒ NEITHER chunk-level primitive (reservation, preemption) beats whole-request non-preemptive SRPF's goodput.
+Decision: did NOT build a full preemptible-prefill GPU test — it's textbook-SRPT-adjacent (disqualified even if
+positive, per P4 related-work) AND predicted-negative for the same reason as the GPU-confirmed RPB (building a
+2nd confirmation of one insight = incremental; program: "prize contribution over version count"). Instead
+COMPLETED P4's axis-closure analytically for BOTH primitives (commit e98fc99e1), honestly scoped (reservation
+GPU-confirmed; preemption argued via sim + shared failure mode + costs; direct GPU test = future work).
+★Two directions opened this session (D5 reuse-prefetch, D6 preemption) — both fast-screened NEGATIVE, each
+firming an existing paper's map (D5→P3 movement-family bound; D6→P4 both-primitives closure). Design space
+further bounded; no non-textbook lossless positive found (consistent with the bounded-impossibility thesis).

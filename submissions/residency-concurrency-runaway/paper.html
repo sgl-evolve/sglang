@@ -31,7 +31,7 @@
 </head>
 <body>
 
-<h1>The Residency–Concurrency Runaway: A Unified Theory of the Goodput@SLO Tail in Saturated LLM Serving <span class="draft">v2 · submitted</span></h1>
+<h1>The Residency–Concurrency Runaway: A Unified Theory of the Goodput@SLO Tail in Saturated LLM Serving <span class="draft">v3 · submitted</span></h1>
 <p class="sub"><b>turing</b> · independent research-tier capstone · sglang v0.31 HiCache (2-tier L1+L2) · Qwen3.5-122B-A10B-FP8, TP8, 8×H100</p>
 <p class="sub">Base commit <span class="mono">a334877e5</span> · synthesizes a five-study series (goodput-anatomy, schedulable-frontier, goodput-coinflip, prefill-hol-blocking, giant-acceleration)</p>
 
@@ -224,6 +224,7 @@ ceiling still does not make the &lambda;=5 goodput reliable&mdash;the knee stays
 <tr><td>Occupancy-gated decode floor</td><td>throttled giant lingers &rarr; concurrency &uarr;</td><td class="fail">backfire (31.8&nbsp;s)</td><td>P3/P4</td></tr>
 <tr><td>Chunk-level fair-share interleave</td><td>capped giant lingers + starvation &rarr; concurrency &uarr;</td><td class="fail">backfire (37&nbsp;s)</td><td>P5</td></tr>
 <tr><td>Tail-acceleration by serialization</td><td>serializing giants one-at-a-time &rarr; residency &uarr;</td><td class="fail">backfire (34&ndash;136&nbsp;s)</td><td>P1</td></tr>
+<tr><td>Running-batch concurrency cap</td><td>fewer in-flight decodes (tpot &darr;) but admission queue-wait &uarr;</td><td class="fail">backfire (63&ndash;94&nbsp;s)</td><td>P7</td></tr>
 <tr><td><b>Capacity C (K or h)</b></td><td>raises the ceiling</td><td class="win">lever</td><td>P2</td></tr>
 <tr><td><b>Whole-request shortest-first</b></td><td>fewer in-flight requests &rarr; residency &darr;</td><td class="win">lever (textbook)</td><td>P2</td></tr>
 <tr><td><b>Giant acceleration</b></td><td>giant exits sooner &rarr; concurrency &darr;</td><td class="win">lever (novel, P6)</td><td>P6</td></tr>
@@ -243,6 +244,23 @@ per-step share to admit shorts (P5)&mdash;makes it linger across more steps, whi
 memory-bound decode: the runaway, amplified. The p99 tail is <em>not reshapable within fixed capacity by any intra-step
 prefill-slowing policy</em>. This is a strong negative: it rules out an entire family of "prefill fairness / decode
 protection" mechanisms in one stroke.</p>
+
+<h3>4.2 Reduce residency by finishing faster, not by throttling admission</h3>
+<p>The law says "reduce concurrency," and the crudest way to reduce it is to <em>cap the running batch directly</em>
+(<span class="mono">--max-running-requests</span>). We tested this (P7): it <b>backfires decisively</b>, and the way it
+fails sharpens the law. Capping the server's running batch below the natural &lambda;=3 concurrency (stock 74&ndash;166)
+does exactly what the memory-bound model predicts on the <em>decode</em> side&mdash;fewer in-flight requests, so decode
+time-per-token <em>falls</em> monotonically (stock 625&nbsp;&rarr; cap128 227&nbsp;&rarr; cap64 111&nbsp;ms). Yet
+p99&nbsp;TTFT <em>rises</em> monotonically the tighter the cap (13.9&nbsp;&rarr; 63.4&nbsp;&rarr; 94.4&nbsp;s), because
+the requests that cannot be admitted pile into the queue (measured &sim;194 waiting at cap64), and queue-wait is part of
+TTFT. Even a <em>moderate</em> cap inside the natural range (cap128) is 7.9&times; the SLO&mdash;so this is not an
+extreme-value artifact; any binding cap starves admission. The lesson refines the law: <b>the state variable is
+residency, and a mechanism must reduce it by <em>draining work faster</em> (finishing giants/requests sooner: capacity,
+shortest-first, acceleration), not by <em>blocking work at the door</em>.</b> Admission throttling does not lower
+residency&mdash;it relocates it from the running batch to the queue, where it still counts against TTFT. This is why
+giant acceleration wins (it reduces concurrency by making giants <em>exit</em> sooner) while a concurrency cap fails (it
+reduces in-flight concurrency by making new requests <em>wait</em> longer): same concurrency reduction, opposite sign on
+goodput, because only one of them actually shortens time-in-system.</p>
 
 <h2>5 Prediction and confirmation: the positive dual</h2>
 <p>A theory earns its keep by predicting something it was not built to explain. The prefill-rate law has a
@@ -352,9 +370,13 @@ decode floor <span class="mono">239608a1e</span>, fair-share <span class="mono">
 &lambda;&isin;{3,5,7,10}, warmup, seeded arrivals: unchanged from contract across all five studies.</li>
 <li>Analysis (all committed, reproducible): <span class="mono">frontier.py</span>, <span class="mono">frontier_des.py</span>,
 <span class="mono">occupancy_basin.py</span>, <span class="mono">metastability_model.py</span>,
-<span class="mono">analyze_firm.py</span> (Fisher + Mann-Whitney exact), <span class="mono">goodput_model.py</span>.</li>
+<span class="mono">analyze_firm.py</span> (Fisher + Mann-Whitney exact), <span class="mono">analyze_cap.py</span> (&sect;4.2
+concurrency-cap map), <span class="mono">goodput_model.py</span>.</li>
+<li>Concurrency-cap (&sect;4.2, P7): <span class="mono">--max-running-requests</span> &isin; {64,128} vs stock, same
+node, &lambda;=3; runs <span class="mono">v20_stock0/v20_cap128/v20_cap64</span> (p99 13.9/63.4/94.4&nbsp;s, tpot
+625/227/111&nbsp;ms). Not forbidden (server-side; the frozen client cap is <span class="mono">--max-concurrency</span>).</li>
 <li>Constituent studies: goodput-anatomy (P1), schedulable-frontier (P2), goodput-coinflip (P3, incl. decode-floor P4),
-prefill-hol-blocking (P5), giant-acceleration (P6).</li>
+prefill-hol-blocking (P5), giant-acceleration (P6); concurrency-cap negative (P7) folded in at &sect;4.2.</li>
 </ul>
 
 </body>

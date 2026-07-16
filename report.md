@@ -1351,3 +1351,15 @@ allocated-but-not-yet-inserted, or in-flight) makes the idle-invariant transient
 leak checks warn-not-raise, --exclude bad node 1-0): if it COMPLETES the sweep → false-positive confirmed →
 pursue the fix (make the busy check tolerate transient state, or account for in-flight) + VERIFY losslessness
 (output-equivalence vs stock) → then mixed-chunk unblocked = decode-tail fix. If OOM/abnormal → real leak → P4 firmed.
+
+### Direction 6 refinement #2 (2026-07-16): the check is on_idle → drift manifests AT IDLE (counter bug)
+CORRECTION to refinement #1: the firing check is scheduler.py:3531 on_idle, which runs ONLY when is_fully_idle()
+(in-flight==0) → uncached=0 is CORRECT there. self_check_during_busy (256) properly accounts in-flight via
+uncached=Σ(allocated-cache_protected) (248). So the crash (uncached=0) is the IDLE check at a transient-idle
+moment mid-sweep, and the invariant failing by ~protected means the full_evictable_size_ COUNTER genuinely
+drifted even AT REST (not a transient-busy artifact). ⇒ a real counter-accounting drift triggered by mixed-chunk
+ops. KEY: is it (a) counter-only (physical allocator `available` is the true free count → pool fine → LOSSLESS,
+check is over-strict) or (b) the inflated evictable counter misleads eviction (real harm)? DECIDED BY diagnostic
+20257 (queued, cluster saturated 10 alloc/2 idle): completes losslessly → (a) counter bug, fix = correct the
+drift → unblocks decode-tail mitigation; OOM/abnormal → (b) real. Pinpoint-on-confirm: add a debug walk of the
+LRU list summing actual ref==0 tokens vs the counter to locate the drift site empirically.

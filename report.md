@@ -921,3 +921,20 @@ Fixed the real secondary-number issues it surfaced:
 - **P2:** softened "sharp, corpus-general" → "general in form" + noted only 2 of 4 real corpora carry reuse.
 ⇒ Both hostile reviews (P3 + companions) now fully addressed. Commit 1ca13dba6. ★All 4 papers artifact-backed
 reviewed, node-verified via sacct, secondary numbers corrected. Body of work integrity-audited end to end.
+
+### 2026-07-16: Direction 5 (reuse-aware prefetch / transfer-compute overlap) — FAST-SCREENED NEGATIVE
+Per program ("always a next direction; don't sit holding"), opened a program-listed ambitious target:
+reuse-aware PREFETCH / transfer-compute overlap to hide the L2→L1 load-back of reused conversation prefixes
+under load. Free fast-screen from the engine's own Prometheus load-back histogram (analysis/load_back_stats.py,
+runs/v0-stock metrics_r*.txt):
+- **L2→L1 load-back is NON-BINDING and SCALES:** mean 1.54/1.46/1.35/1.31 ms at λ=3/5/7/10; ≥99.4% <10 ms;
+  ALL <30 ms — even as load-back volume grows 3.7× (25K→92.6K load-backs, 0.37→1.36 B tokens). <0.2% of the
+  queueing-dominated TTFT (17–24 s); never on the critical path.
+- ⇒ **NEGATIVE**: reuse-aware prefetch/overlap has no goodput headroom (nothing to hide). By extension this
+  bounds the whole MOVEMENT-HIDING family the program lists — transfer/compute overlap, layout/paging (movement
+  cost), conversation co-residency (reload cost): movement is already cheap. Confirms P3's transfer-non-binding
+  row, now with cross-rate load-back metrics + the family-level bound. Firmed P3 §3 map row.
+- Engine-verified the path: init_load_back→load_back→ongoing_load_back, async via HiCacheController; the
+  reused-prefix load is on the request's pre-prefill critical path but each load is <30 ms so it doesn't matter.
+- Reuse-/prefix-aware ROUTING = out of scope (single-node TP=8 eval; routing is a multi-replica lever).
+This is the rigorous negative behind my "movement axis exhausted" claim, now backed by hard load-back data.

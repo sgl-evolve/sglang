@@ -49,7 +49,7 @@ floor backfires; chunk-level prefill fair-share backfires) and, decisively, it f
 then confirmed: if slowing a giant prefill hurts by making it linger, then <em>accelerating</em> it must help. Giant
 acceleration&mdash;granting the in-flight chunked giant a larger per-step token budget under memory pressure so it exits
 sooner&mdash;is the first novel, lossless, on-contract mechanism in the series to raise goodput@SLO: it reliably wins at
-&lambda;=3 (5/5 vs stock 1/5) and raises the effective capacity ceiling +36% (deterministic); the extension to a higher
+&lambda;=3 (7/7 vs stock 1/8, Fisher p=0.0012) and raises the effective capacity ceiling +36% (deterministic); the extension to a higher
 goodput frontier is coin-flip-limited (&lambda;=5 is 1/2), exactly as the margin law predicts at small margin. We also give the quantitative backbone
 (a capacity law <span class="mono">C=K/(1&minus;h)</span> with an intrinsic-feasibility floor showing every SLO
 violation is contention, not service time) and a methodological result (goodput@SLO on a <em>deterministic</em>
@@ -257,17 +257,19 @@ chunk roughly halves the giant's prefill-step count, which amortizes the ~19%-pe
 releases sglang's single-chunked-request admission block sooner, and interrupts the interleaved decode stream fewer
 times; the memory-bandwidth-bound decode then stalls less (tpot &minus;25% at equal concurrency and equal resident-KV),
 cutting residency.</p>
-<div class="keyfinding"><b>Confirmed, doubly.</b> Same-node A/B at &lambda;=3 (the coin-flip point): acceleration passes
-the 8&nbsp;s SLO in 4/4 runs (p99 7.0/4.6/5.5/4.8&nbsp;s) vs stock 1/5, with decode time-per-token and concurrency
-distributions near-perfectly separated. The coin-flip-sensitive SLO-pass is significant (one-sided Fisher
-p&nbsp;=&nbsp;0.040) and&mdash;more importantly&mdash;so are the coin-flip-<em>robust</em> deterministic metrics
-(one-sided Mann-Whitney U exact: tpot p&nbsp;=&nbsp;0.016, concurrency p&nbsp;=&nbsp;0.008).</div>
+<div class="keyfinding"><b>Confirmed, doubly.</b> A/B at &lambda;=3 (the coin-flip point), n=7 accel vs n=8 stock
+replicates spanning multiple nodes: acceleration passes the 8&nbsp;s SLO in <b>7/7 runs</b> (p99 median 4.7&nbsp;s) vs
+stock 1/8, with the decode time-per-token and concurrency distributions <em>completely non-overlapping</em>. The
+coin-flip-sensitive SLO-pass is significant (one-sided Fisher p&nbsp;=&nbsp;0.0012, tightening from 0.040 at n=4)
+and&mdash;more importantly&mdash;so are the coin-flip-<em>robust</em> deterministic metrics (one-sided Mann-Whitney U
+exact: tpot p&nbsp;=&nbsp;0.0003, concurrency p&nbsp;=&nbsp;0.0002). The boost is also robust to its trigger signal
+(occupancy, waiting-queue depth, or either&mdash;all pass, near-identical metrics).</div>
 <p>The full-sweep result is the theory's quantitative payoff. Acceleration raises the <em>capacity ceiling</em>
 deterministically:</p>
 <table>
 <thead><tr><th>offered &lambda;</th><th>accel p99 TTFT</th><th>accel throughput</th><th>SLO</th><th>stock (companion)</th></tr></thead>
 <tbody>
-<tr><td>3</td><td class="win">4.5&nbsp;s (5/5)</td><td>3.02</td><td class="win">PASS</td><td>coin-flip 6&ndash;14&nbsp;s</td></tr>
+<tr><td>3</td><td class="win">4.7&nbsp;s (7/7)</td><td>3.02</td><td class="win">PASS</td><td>coin-flip 6&ndash;29&nbsp;s</td></tr>
 <tr><td>5</td><td>3.4&nbsp;s / 17.9&nbsp;s</td><td>4.85</td><td>coin-flip (1/2)</td><td class="fail">17&ndash;25&nbsp;s (fail)</td></tr>
 <tr><td>7</td><td class="fail">29.8&nbsp;s</td><td>5.20 (3.99)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
 <tr><td>10</td><td class="fail">37.9&nbsp;s</td><td>5.65 (4.14)</td><td class="fail">fail</td><td class="fail">fail</td></tr>
@@ -283,7 +285,7 @@ shortest-first, via a distinct mechanism. Whether the raised capacity yields a h
 (&sect;6): raising C to 5.65 brings &lambda;=5 within capacity and accel <em>can</em> pass it (a good-basin draw hit
 3.4&nbsp;s where stock fails), but a replicate hit 17.9&nbsp;s&mdash;&lambda;=5 is 1/2. This is precisely the
 margin&ndash;reliability law: the accel margin at &lambda;=5 is only C&minus;&lambda;=0.65 (metastable), versus 2.65 at
-&lambda;=3 (reliable 5/5). So the firm goodput@SLO win is at &lambda;=3; &lambda;=5 is made feasible but not yet
+&lambda;=3 (reliable 7/7). So the firm goodput@SLO win is at &lambda;=3; &lambda;=5 is made feasible but not yet
 reliable&mdash;a single-run reading of "3&rarr;5" over-stated a coin-flip and replication corrected it.</p>
 
 <h2>6 Methodology: goodput@SLO is a coin-flip</h2>
@@ -301,9 +303,10 @@ coin-flip-sensitive SLO-pass reported alongside via Fisher's exact test.</p>
 <div class="keyfinding"><b>A residency lever is therefore also a reliability lever&mdash;confirmed.</b> The
 margin&ndash;reliability law makes a prediction: because giant acceleration raises capacity (C 4.14&rarr;5.65), it
 widens the &lambda;=3 margin (C&minus;&lambda; 1.14&rarr;2.65, +132%) and should <em>tighten</em> the p99 basin. It
-does: across same-node &lambda;=3 replicates, acceleration's p99 is 4.6&ndash;7.0&nbsp;s (&sigma;&nbsp;=&nbsp;0.94&nbsp;s,
-4/4 pass) versus stock's coin-flip 6.2&ndash;14.2&nbsp;s (&sigma;&nbsp;=&nbsp;2.79&nbsp;s, 1/5 pass)&mdash;a 3.0&times;
-variance reduction <em>and</em> a shift under the SLO. The law is confirmed at <em>both</em> ends of the margin: at
+does: across &lambda;=3 replicates (multiple nodes), acceleration's p99 stays in a tight 4.5&ndash;7.0&nbsp;s band
+(&sigma;&nbsp;&asymp;&nbsp;0.85&nbsp;s, 7/7 pass) versus stock's wild 6.2&ndash;28.9&nbsp;s scatter
+(&sigma;&nbsp;&asymp;&nbsp;7&nbsp;s, 1/8 pass)&mdash;roughly an 8&times; variance reduction <em>and</em> a shift under
+the SLO. The law is confirmed at <em>both</em> ends of the margin: at
 &lambda;=5, acceleration's margin is only C&minus;&lambda;=0.65 (small), and there its goodput@SLO is a coin-flip
 (1/2: a good-basin 3.4&nbsp;s vs a replicate's 17.9&nbsp;s)&mdash;a direct, if humbling, confirmation that <em>even a
 capacity-raising mechanism inherits the metastable coin-flip when its margin is thin</em>. Reducing residency thus buys

@@ -1,0 +1,7 @@
+# floyd: COMPLETE the LFU eviction sweep (earlier run only reached warmup+r3).
+# Tests generality of the recency>frequency insight: LFU evicts by (hit_count, last_access) so it
+# protects reused(hit>=2) over fresh turn-0(hit=1) docs -- structurally like SLRU but softer/graded.
+# If LFU also craters -> access-count eviction is GENERALLY harmful for multiturn (insight general).
+# If LFU~=LRU -> the crater is specific to SLRU's hard 2-segment split (offline prediction holds).
+# Either way completes the LRU/LFU/SLRU GPU eviction characterization for P2. Lossless, on-contract.
+v-evict-lfu:--radix-eviction-policy lfu

@@ -62,10 +62,10 @@ is re-used across turns and even across conversations, so a good cache should be
 We test that intuition exhaustively against a single fixed metric and find it wrong. On a 122B hybrid
 Mamba-attention model with a two-tier KV cache, <b>goodput@SLO is set by how the heterogeneous prefill work
 is scheduled and by a hard compute ceiling — not by any KV-cache data-movement or retention decision.</b>
-Three of the eight axes (caching-residency, admission, and chunk-level scheduling) are treated in depth in
-companion papers; this paper's own contributions are the <em>unifying framework</em> that places all eight axes
-on one metric (including three axes bounded here for the first time — transfer, the recurrent-state pool, and the
-prefill/decode split), the four-way head-of-line diagnosis that explains <em>why</em> scheduling is the lever
+Three of the nine axes (caching-residency, admission, and chunk-level scheduling) are treated in depth in
+companion papers; this paper's own contributions are the <em>unifying framework</em> that places all nine axes
+on one metric (including four axes bounded here for the first time — transfer, KV-memory management, the
+recurrent-state pool, and the prefill/decode split), the four-way head-of-line diagnosis that explains <em>why</em> scheduling is the lever
 (and why only at whole-request granularity — the chunk-level companion shows finer granularity backfires), and
 the parameter-free lever-selection procedure with its multi-corpus phase boundary. It is a
 map-and-mechanism-of-the-map paper, not a restatement of the axis studies. Our contributions:
@@ -73,9 +73,9 @@ map-and-mechanism-of-the-map paper, not a restatement of the axis studies. Our c
 <ul>
 <li><b>A complete design-space map (§3).</b> We characterize every KV-cache/serving axis against
 goodput@SLO and show each data-movement/retention axis is a bounded non-lever: residency/eviction,
-admission, transfer, the recurrent-state pool, and chunk-level scheduling (a reservation mechanism we built and
-GPU-tested — a bounded negative). Three of these are developed in depth in companion papers; here we place them
-in one framework with the newly-bounded axes.</li>
+admission, KV-memory management (retraction/reservation), transfer, the recurrent-state pool, and chunk-level
+scheduling (a reservation mechanism we built and GPU-tested — a bounded negative). Three of these are developed
+in depth in companion papers; here we place them in one framework with the newly-bounded axes.</li>
 <li><b>The head-of-line diagnosis (§4).</b> The λ=3 goodput coin-flip is not a per-request prefill floor or
 irreducible variance; it is head-of-line blocking behind a few large cold-document prefills — established
 four independent ways (arithmetic, direct trace, calibrated simulation, and a GPU A/B). This is the
@@ -130,6 +130,7 @@ an unconditional proof for every row.</caption>
 <tr><th>axis</th><th>verdict</th><th>why (evidence)</th></tr>
 <tr><td>residency / eviction</td><td class="b">non-lever (mirage)</td><td>single-pass LRU = LFU = Belady = 0 avoidable re-prefill at real capacity; live <code>--radix-eviction-policy</code> knob, LFU builds a deeper queue than LRU (§6, companion)</td></tr>
 <tr><td>admission control</td><td class="b">negative</td><td>deferring cold prefills multiplies the p99 (λ=3 → 56&nbsp;s); the deferred work <em>is</em> the tail (companion)</td></tr>
+<tr><td>KV-memory management (retraction / reservation)</td><td class="b">non-lever</td><td>the <em>opposite</em> of deferral — proactively freeing memory (decode retraction) or reserving pool headroom to admit a big cold prefill <em>faster</em> — has no headroom either: across both stock full sweeps there are <b>0 decode retractions</b> and <b>0 memory-blocked prefill admissions</b> (<code>#new-seq</code>≥1 at all 34k/36k prefill steps), even though the KV pool reaches near-full (usage p99 0.98–0.99). The pressure is absorbed <em>losslessly</em> by evicting clean cached prefixes (residency row: LRU=Belady=0 avoidable), never by retracting decode or stalling admission — so there is no memory-wait on the critical path to reclaim; the tail is compute + head-of-line (<code>analysis/mem_admission_stats.py</code>)</td></tr>
 <tr><td>host↔device transfer / movement</td><td class="b">non-binding</td><td>L2→L1 load-back is cheap and <em>scales</em>: mean 1.3–1.5&nbsp;ms, ≥99.4% &lt;10&nbsp;ms, all &lt;30&nbsp;ms at every rate — even as load-back volume grows 3.7× from λ=3 to λ=10 (0.37→1.36&nbsp;B tokens; eviction pressure rises with load, so more reloads happen, each still cheap). That is &lt;0.2% of the queueing-dominated TTFT, never on the critical path (<code>analysis/load_back_stats.py</code>). This bounds the whole <em>movement-hiding</em> family — transfer/compute overlap, layout/paging for movement cost, conversation co-residency for reload cost: movement is already cheap, so hiding it has no goodput headroom</td></tr>
 <tr><td>recurrent-state (Mamba) pool</td><td class="b">non-binding</td><td>Mamba-state usage never exceeds 0.77 while attention-KV saturates to 1.0 (<code>analysis/mamba_pressure.py</code>). This is <em>structural</em>, not incidental: the recurrent/GDN state is per-<em>sequence</em>-constant (O(#seq)) whereas attention-KV is per-<em>token</em> (O(#seq&times;context)), so for any long-context workload attention-KV fills first by roughly a factor of the context length. The recurrent pool could bind only in the opposite regime (many sequences, tiny contexts) — so for long-document serving the recurrent pool is a non-lever by construction, and hybrid-model recurrent-state management (which prior hybrid-KV work develops) cannot move goodput here</td></tr>
 <tr><td>chunk-level reservation (RPB)</td><td class="b">negative (GPU-confirmed)</td><td>reserving in-flight chunk budget for waiting turns (our mechanism) helps below the knee (λ=3 −10% p99) but is not a goodput lever at any implementation: <em>fixed</em> reservation <em>hurts</em> the goodput rate (λ=5 +41% p99, SLO fail — the reserve is wasted when waiting turns exceed it, ~54% unused → −13% prefill capacity), and the zero-waste <em>adaptive</em> variant is <em>neutral</em> (λ=5 p99 within run-noise) because the goodput-rate p99 is set by medium/large turns the reserve cannot serve. Same-node A/B; companion paper <em>rpb-chunking</em></td></tr>

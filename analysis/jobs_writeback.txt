@@ -1,0 +1,8 @@
+# floyd: does the multiturn-eager-retention principle (GPU-established via eviction SLRU/LFU) extend to
+# the BACKUP/offloading axis? --hicache-write-policy write_back uses write_through_threshold=2 (LAZY: back
+# up to L2 on 2nd eviction, not 1st) vs stock write_through (threshold=1, eager). Hypothesis: lazy backup
+# LOSES turn-0 docs evicted from L1 before their turn-1 reuse (not yet backed to L2) -> hit craters, SAME
+# mechanism as the SLRU eviction crater. Distinct mechanism FAMILY (backup, not eviction) -> cross-mechanism
+# generality test of the principle on the same v0.31 eval. Stock (base a334877e5), live path, lossless
+# (backup timing, not outputs), on-contract. Compare hit-vs-load curve to stock write_through.
+v-writeback:--hicache-write-policy write_back

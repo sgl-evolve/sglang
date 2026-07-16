@@ -984,3 +984,17 @@ accel median 9737 prefill steps vs stock 11177 (−12.9%, n=7 accel/6 stock); ag
 ~halves. Added as §2 direct-evidence keyfinding; §8 repro updated (+analyze_steps.py, stock count n=7→8). Commit 69756fcb5.
 This is the cleanest mechanistic confirmation in the flagship — the boost operates exactly as designed and the step-count
 reduction is measured in the raw log, not inferred. Portfolio remains complete+firmed+cross-consistent.
+
+## SESSION 2 cont. (07-16 ~02:55): P7 concurrency-cap = DECISIVE BOUNDED NEGATIVE (admission starvation)
+Tested the untested axis — server-side running-batch cap (--max-running-requests, ≠P1 L2-backup admission; on-contract,
+not forbidden; MAXC=256 is the CLIENT cap). Hypothesis: does capping concurrency below the runaway threshold stabilize
+goodput@SLO (basin-control) or starve admission (negative)? RESULT (v20_cap64, stock+cap 64, λ=3): p99 TTFT = **94.4s**
+(11.8× SLO), tpot=111 (vs stock ~499), conc=166, completed 7037. DECISIVE NEGATIVE + clean mechanism isolation:
+capping DOES speed decode (tpot 111 ≪ stock 499 — memory-bound decode faster with fewer running-reqs, confirms the
+memory-bound model) BUT catastrophically starves admission (server ran ≤64 while ~194 queued → ~94s queue-wait for
+first token). Net goodput@SLO=0 even at λ=3. ⇒ CONFIRMS the theory's core: you CANNOT help goodput@SLO by capping
+concurrency — capping trades decode-interference (fixed) for admission queue-wait (far worse), because the tail IS TTFT
+(=queue-wait+prefill). Sharp contrast with giant-acceleration: reduce concurrency by FINISHING FASTER (accel/SRPF/
+capacity) → wins; reduce it by THROTTLING ADMISSION (cap) → catastrophic. Mapping threshold now (chain_cap2.sh λ=3-only:
+stock0/cap128/cap96/cap192). Framing: fold into capstone design-space map as the decisive concurrency-cap row (not a
+standalone paper — config-knob negative, but a clean theory-confirming data point that completes the map).

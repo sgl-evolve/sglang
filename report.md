@@ -1269,3 +1269,11 @@ means a mega-doc's own ~31-chunk prefill isn't interrupted (its ~13s decode stal
 common 661-run of SEPARATE small prefills IS bounded to ≤K → should cut ITL p99 (the metric). HARVEST v16:
 decode_pareto.py (A=v0-stock B=v16) + batch_ratio.py (v16 log: run-length capped ~K? decode share up?) + verify
 completed=7037 (full trace = lossless-served). If cuts tail + no crash → same-node stock arm → P4 §5 upgrade.
+
+### decode-QoS leak fix VALIDATED (2026-07-16): v16 survived warmup past v1's crash point
+v16 (job 20239, K=4, leak-fixed 7091d4957) reached 11:34 elapsed in warmup with NO pool-leak — past the ~10:16
+point where v1 (20238) crashed. ⇒ the allocate-then-discard leak is fixed; decode-QoS runs cleanly. Sweep in
+progress (λ3 ~40min, full ~2h). HARVEST when done: decode_pareto.py A=v0-stock B=v16-decodeqos-k4 (ITL/TPOT/E2E
+p99 cut? goodput/TTFT cost?) + batch_ratio.py runs/v16-decodeqos-k4/server.log (run-length capped ~K=4? decode
+share up from 4.5%?) + completed=7037 (lossless-served). If tail cut + no crash → same-node stock arm on -0 →
+P4 §5 UPGRADE (critique → working decode-QoS solution + prefill-decode Pareto).

@@ -51,7 +51,7 @@ restore cost. <b>(3) Therefore transfer overlap is a non-lever</b>: the maximum 
 mechanism could yield is bounded above by that restore cost (&le;~0.17&nbsp;s), which is &lt;2% of the
 seconds-scale goodput knee (SRPF's p99 is 6.4&nbsp;s at &lambda;=5, 9.6&nbsp;s at &lambda;=7) &mdash; so we do not
 build it; we prove its ceiling. The p99 tail contains <b>effectively no</b> movement. We give the cost-hierarchy
-explanation (moving a KV token is <b>~40&times;</b> cheaper than recomputing it), position the result against the
+explanation (moving a KV token is <b>more than an order of magnitude</b> cheaper than recomputing it), position the result against the
 tiering literature (whose
 transfer-hiding machinery targets a cost that, in this compute-bound long-context regime, does not bind), and
 close with a unified <b>lever map</b> for goodput@SLO: caching cannot fix the tail (companion paper P1),
@@ -97,8 +97,8 @@ or transfer-overlap mechanism is bounded above by the exposed restore time, whic
 We therefore do not implement one; we prove it cannot help. This is a stronger statement than an A/B of one
 implementation.</li>
 <li><b>A cost-hierarchy explanation and a reframing of the tiering literature (&sect;5.4, &sect;6).</b> Moving a
-KV token is <b>~40&times;</b> cheaper than recomputing it (restoring a 100K-token prefix costs &le;~0.17&nbsp;s
-vs. ~7&nbsp;s to recompute it); on modern GPUs with a fast host tier, transfer latency for compute-bound
+KV token is <b>more than an order of magnitude</b> cheaper than recomputing it (restoring a 100K-token prefix
+costs &le;~0.17&nbsp;s measured, vs. several seconds to recompute it); on modern GPUs with a fast host tier, transfer latency for compute-bound
 long-context prefill is a non-problem. Tiering's value is capacity (avoiding recompute), not latency-hiding.</li>
 <li><b>A unified lever map for goodput@SLO (&sect;7).</b> Caching (P1), scheduling (P2), movement (this paper):
 exactly one axis &mdash; scheduling order &mdash; is the lever, and its optimum is classical.</li>
@@ -224,9 +224,11 @@ indistinguishable from zero. The within-batch cross-stream overlap plus the fast
 <h3>5.4 Cost hierarchy: moving KV vs. recomputing it</h3>
 <p>Why is a billion-token movement free? Because moving a KV token is far cheaper than producing one. We read the
 ratio straight off the exposed measurement (&sect;5.3): restoring a 100K-token cached prefix costs &le;~0.17&nbsp;s
-&mdash; an effective restore rate of &ge;~0.6&nbsp;M&nbsp;tok/s &mdash; whereas <i>recomputing</i> those same 100K
-tokens of prefill costs ~7&nbsp;s (a cold prefill runs at ~14K&nbsp;tok/s per stream: the largest document,
-192K&nbsp;tokens, takes ~13.6&nbsp;s). That is <b>~40&times;</b> cheaper to move than to recompute. The tier
+&mdash; an effective restore rate of &ge;~0.6&nbsp;M&nbsp;tok/s &mdash; whereas <i>recomputing</i> those 100K
+tokens of prefill costs on the order of <i>seconds</i> (per-stream prefill runs at roughly 10&ndash;20K&nbsp;tok/s
+and is <i>super</i>-linear in context length, since attention is O(n&sup2;); a full 192K-token first-turn document
+is several seconds of prefill). Moving KV is thus <b>more than an order of magnitude</b> cheaper than recomputing
+it. The tier
 boundary is cheap to cross precisely because the alternative it replaces &mdash; recompute &mdash; is expensive.
 This is the standard cache-hierarchy economics, and it is why tiering is worth doing; but it also means the
 <i>transfer</i>, not being the expensive part, cannot be the bottleneck. (Aggregate figures agree: the engine
@@ -312,7 +314,7 @@ this long-context multiturn workload:</p>
 <caption class="disc">Table 4. The lever map. Exactly one axis is the lever, and its optimum is classical.</caption>
 <tr><th>axis</th><th>verdict</th><th>why</th></tr>
 <tr><td>Caching / residency (P1)</td><td>non-lever for the tail</td><td>the p99 mega-documents are unique first-sight &mdash; uncacheable at any capacity</td></tr>
-<tr><td>Tier movement (this paper)</td><td>non-lever</td><td>restore is &le;~0.17&nbsp;s exposed, ~40&times; cheaper than recompute; effectively no p99-tail movement</td></tr>
+<tr><td>Tier movement (this paper)</td><td>non-lever</td><td>restore is &le;~0.17&nbsp;s exposed, &gt;10&times; cheaper than recompute; effectively no p99-tail movement</td></tr>
 <tr><td>Scheduling order (P2)</td><td><b>the lever</b></td><td>deferring the few heavy documents past the percentile clears the SLO (&le;&lambda;5); classical SRPF, not novel</td></tr>
 </table>
 <p>The engineering implication is pointed: on a compute-bound long-context serving workload, do not spend effort

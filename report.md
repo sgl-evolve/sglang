@@ -1175,3 +1175,10 @@ Lowered threshold 500→25 (commit 98b0c5712) → relaunched job 20221 → runs/
 Then fill 11 REPLACE_ tokens in submissions/kv-tiering-movement/paper.html (Table3 §5.2 + abstract + §5.4
 REPLACE_RATIO + §5.5 REPLACE_P99); RATIO = restore_tok_per_s / ~14000 (per-stream prefill); re-validate HTML;
 register INDEX (1 line); update memory; push. If 20221 died: check sacct; resubmit same cmd (--mem=0 MANDATORY).
+
+### §5.2 harvest — job/node UPDATE (2026-07-16): now job 20226, node -0 (v13-dma-timing)
+20221 on node 1-0 OOM'd during 122B load DESPITE --mem=0 (node 1-0 available RAM ~1310G = right at eval.sh's
+1300G gate edge; load peak exceeds it). Node -0 is PROVEN (ran 20211 to λ5 fine w/ --mem=0). Relaunched → job
+20226 on -0, v13-dma-timing, threshold=25. HARVEST unchanged: grep KLDMA runs/v13-dma-timing/server.log | tail -3
+then python3 tools/movement_analyze.py runs/v13-dma-timing/server.log; fill 11 REPLACE_ tokens; register INDEX.
+★OPS: node slurm2-a3nodeset1-0 OOM-kills the 122B load even with --mem=0 (RAM too tight); prefer node -0.

@@ -1475,3 +1475,28 @@ CONTRACT/losslessness note: STRICT_MEM_CHECK_DURING_IDLE is a STOCK sglang env v
 assertion — it NEVER touches scheduling or KV computation (lossless by construction, same class as decode-QoS default-0). A "flip
 --enable-mixed-chunk" alone would be a disqualified config-flip; the CONTRIBUTION here is the DIAGNOSIS (false-positive invariant
 blocks the known fix on the hybrid-Mamba+hicache path) + the measured verdict on whether the unblocked fix helps the tail.
+
+### ★★★ PIVOTAL (19:48) — mixed-chunk, once UNBLOCKED, CUTS THE DECODE TAIL ~15× (LOSSLESS). P4 §5 flips negative→positive.
+v17 completed λ3 FULL (7037/7037) and survived the end-of-λ3 FULL DRAIN (the exact protected=0 idle where v14 crashed) with only the
+warning — false-positive CONFIRMED at the decisive condition; tree fail/crash = 0 all run. Decode-tail comparison, all same eval
+(7037 completed, verified from bench_r3.json on disk):
+  STOCK (enable_mixed_chunk=False), λ3, n=6: ITL p99 = {5022,4404,4121,3915,3929,4295} ≈ ~4200ms; E2E p99 = {446,359,347,327,335,
+    322}s ≈ ~355s; TTFT p99 = 6.8-14s.
+  MIXED-CHUNK (enable_mixed_chunk=True), λ3, n=2: ITL p99 = {300 [v14, crashed@3836], 282 [v17, FULL 7037]}; E2E p99 = {84s, 75s};
+    TTFT p99 = {10.5s, 12.1s}.
+  ⇒ ITL p99 decode tail: ~4200 → 282 ms = **~15× reduction (93% cut)**. E2E p99: ~355 → 75 s = **~4.7× reduction (79% cut)**.
+  ⇒ REPLICATED across 2 independent mixed-chunk runs (282/300 ms); effect dwarfs both sides' variance ⇒ NOT a P1 coin-flip (ITL is
+    queue-independent, P4). TTFT p99 (12.1s) sits inside stock's own noisy 6.8-14s band (not a clean regression).
+This FLIPS P4 §5 from "the decode tail resists fixing (textbook fix crashes)" to "the decode tail IS fixable: mixed-chunk cuts it
+~15× losslessly; the crash was a FALSE-POSITIVE invariant (bounded 4-page hicache-write-through transient at idle, tree-consistent)."
+CONTRIBUTION FRAMING (honest): mixed-chunk is a STOCK flag, so "flip --enable-mixed-chunk" alone = disqualified config-flip AND it
+crashes naively (v14 died @3836). The real contribution is the DIAGNOSIS CHAIN: (P4) decode tail is the true E2E bottleneck →
+(here) the textbook fix is silently blocked by a false-positive safety invariant on the hybrid-Mamba+hicache path → root-caused to a
+bounded in-flight write-through transient (tree-consistent, hisparse-precedented) → unblocked losslessly → ~15× tail cut measured.
+NEXT (rigor before any headline claim): (1) harvest λ5 mixed-chunk vs stock (higher load); (2) LOSSLESSNESS — verify output-len
+distribution matches stock + code-level argument (mixed-chunk = stock correctness-preserving prefill-chunk batching, same attention
+math; refinement-#6 caveat: greedy@temp0 not batch-invariant, so argue at distribution+code level, not token-diff); (3) the PROPER
+FIX candidate = account for in-flight hicache write-through pages in the idle invariant (like the hisparse clamp) so it stops
+false-positiving WITHOUT globally disabling the check via STRICT env — that would be a genuine novel lossless code contribution that
+unblocks the win safely; (4) same-node replicate. Do NOT publish a headline until (1)-(2) done. This is the strongest lead of the
+campaign — pursue rigorously, frame honestly (diagnosis-driven, mechanism stock-but-blocked; or elevate to the invariant-fix).

@@ -880,3 +880,19 @@ P1 hol_sim (HOL diagnosis); P2 doc_reuse (single-pass LRU==LFU==Belady==0 avoida
 phase_boundary (generality); P3 mamba_pressure (attn-KV→1.0 while mamba max 0.77 = never binding) +
 bound (C_eff 15k→~4.2 derived, consistent w/ measured ~4.7 raw ceiling) + goodput_stats (Fisher);
 P4 rpb_waste (rpb25 chunk mean 5327 vs base 6111 → ~54% reserve wasted). Artifact is verified-runnable.
+
+### 2026-07-16: ★CORRECTION (fresh hostile-PC review caught a node-attribution error I introduced)
+Re-reviewed the flagship (materially changed since the last review: n=6, same-node firming, §7). The reviewer
+(general-purpose subagent, artifact-backed) reproduced all stats EXACTLY but flagged one real error:
+- **The strictly-same-node p=0.029 relied on v-srpf-full being on node 0-3 — but that was MTIME-INFERRED, not
+  logged.** I checked the slurm `sacct` NodeList (ground truth): **v-srpf-full (job 19901) ran on node 1-2, NOT
+  0-3.** My earlier mtime-correlation was wrong. ⇒ strictly same-node (0-3) is **SRPF 3/3 (r1/r2/r3) vs stock
+  0/3 → Fisher p=0.05** (marginal, at threshold), NOT 4/4 vs 0/3 p=0.029.
+- Silver lining: SRPF passes on **THREE** nodes (0-3 n=3, 1-2 n=1, 1-1 n=2), not two → cross-node robustness is
+  STRONGER. Reframed §5: decisive = pooled 6/6 vs 0/7 p=0.0006 (node-independent) + 3-node robustness; same-node
+  p=0.05 = confound-free corroboration, not sole anchor. All node data now from sacct (stated in-paper).
+- Reviewer also verified a TPOT overclaim: §8 "p99 TPOT within noise" was WRONG — SRPF TPOT is +25% (λ3 4.3s vs
+  stock 3.5s). Corrected to "trades small per-token slowdown for large E2E win (322 vs 438s)". Fixed.
+- Corrected everywhere (P3 §4/§5/caption/appendix/repro, P1 cross-ref, goodput_stats.py) + P2 caption. Commit af0f01a96.
+- ★OPS LESSON: node identity = `sacct -j <jobid> -o NodeList` (ground truth), NEVER mtime-correlation with
+  campaign logs (I got v-srpf-full wrong that way). Reviewer verdict was weak-accept; this was its #1 fix.

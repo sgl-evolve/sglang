@@ -253,7 +253,8 @@ stalls occur <i>during</i> a heavy document's chunked prefill, which the pool-le
 <b>crashes</b>; a safe decode-QoS scheduler is a genuine prefill&ndash;decode <b>Pareto</b> knob &mdash; it trades
 TTFT-goodput for decode latency &mdash; but there is <b>no operating point that cuts the worst-case decode tail
 while preserving goodput</b>: where goodput passes (&lambda;=3) the tail is untouched and goodput breaks; where the
-tail yields (&lambda;=5) goodput is already gone. goodput@SLO gives no incentive to attack any of it &mdash; a
+tail yields (&lambda;=5,7,10) goodput is already gone &mdash; in the metric's own terms, decode-QoS drops
+goodput@SLO to <b>0&nbsp;req/s</b> (from stock's variable 0&ndash;3). goodput@SLO gives no incentive to attack any of it &mdash; a
 server passing at 347&nbsp;s E2E already looks optimal on the scoreboard.</div>
 
 <p class="disc"><b>Scope.</b> decode-QoS is our own mechanism, reported as a <i>probe of fixability</i> (a bounded

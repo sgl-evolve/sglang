@@ -974,3 +974,13 @@ prefill side (capacity C=K/(1-h), whole-req SRPF, giant-acceleration). This RECO
 space is exhausted (now from both the code-level hook audit AND this throughput-saturation argument). NOT added to the
 capstone as a claim (untested prediction; the capstone's strength is its CONFIRMED predictions) — recorded here as a
 theory observation / future-work falsifiable prediction. Portfolio stands complete + firmed (6 papers).
+
+## SESSION 2 cont. (07-16 ~02:00): DIRECT step-count evidence for P6 mechanism (log-mined, no GPU)
+Charter says never hold → mined existing server.logs (analysis/analyze_steps.py) for per-step #new-token to turn P6's
+central claim ('bigger chunk → fewer prefill STEPS') from a tpot-inference into a DIRECT measurement:
+(i) BOOST FIRES as designed — 27.7% of accel prefill steps commit >6144 tokens, max EXACTLY 12288=2×6144 (f=2 cap);
+stock NEVER exceeds 6144 (0%, max exactly 6144 = frozen chunked_prefill_size). (ii) FEWER STEPS for identical work —
+accel median 9737 prefill steps vs stock 11177 (−12.9%, n=7 accel/6 stock); aggregate diluted by 1-step shorts, per-giant
+~halves. Added as §2 direct-evidence keyfinding; §8 repro updated (+analyze_steps.py, stock count n=7→8). Commit 69756fcb5.
+This is the cleanest mechanistic confirmation in the flagship — the boost operates exactly as designed and the step-count
+reduction is measured in the raw log, not inferred. Portfolio remains complete+firmed+cross-consistent.

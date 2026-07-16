@@ -1053,3 +1053,24 @@ p=0.28, small n) → I do NOT claim capacity-raising HURTS the knee; robust clai
 both unreliable at λ=5; knee metastability-dominated regardless of capacity in this range. Qualitative note: accel-alone
 bimodal vs co-design consistent-bad (suggestive only). Firmed flagship (abstract/§4/Fig1/keyfinding/Limitations) +
 capstone §6 to n=5 2/5. Node released (good-neighbor). Commit 488a071ac. This firming turned n=2 (1/2) into n=5 (2/5).
+
+## ★★★ CAPACITY HEADLINE CORRECTED (integrity): +36% → +22% (same-commit same-node paired) — 2026-07-16 21:15
+CAPFIRM chain (jid 20243, node slurm2-a3nodeset0-0) landed the GOLD-STANDARD comparison: stock and accel
+FULL sweeps on the SAME commit (76ea1d13f), SAME node, BACK-TO-BACK, same DRAM-reset protocol.
+- v23_stockcap1 λ=10 = **4.833** req/s (curve 3.02/4.23/4.58/4.83); output_thr 618 tok/s; out_tok 900082.
+- v23_accelcap1 λ=10 = **5.898** req/s (curve 3.02/4.89/5.62/5.90); output_thr 754 tok/s; out_tok 900082 (EXACT match → LOSSLESS reconfirmed).
+- **PAIRED RATIO = 5.898/4.833 = 1.220 → +22.0%** (req/s AND output-token throughput AND prefill input_thr 68.6K→83.7K all +22%).
+★ROOT CAUSE of the earlier +36% over-statement: it used v1_stock=4.14 (commit ce01c1c79) as the stock baseline — a
+SLOW OLD-COMMIT OUTLIER, anomalous even at λ=3 (achieved 2.83 < offered 3.0, i.e. throttled below offered load when
+far below capacity). The clean current-commit stock is 4.83 (λ=3=3.02, tracks offered). So +36% = accel(new) / stock(old-slow);
+the honest same-commit number is +22%.
+★ACCEL CAPACITY IS ROBUST (n=3): 5.65 (v13) / 5.79 (v16) / 5.90 (v23_accelcap1), mean 5.78, tight ±2%. Effect range:
+min 5.65/4.83 = +17%, paired 5.90/4.83 = +22%. Honest headline = **+22% (paired), +17–22% across the accel replicate range**.
+★CAPACITY HAS RUN-TO-RUN VARIANCE (stock 4.14 old / 4.83 new; the metastable saturated-concurrency of the runaway
+theory) — but the accel (5.65–5.90) and stock (4.14–4.83) bands are SEPARATED (4.83 < 5.65), so the effect is robust; only
+the magnitude depends on the draw. This STRENGTHENS the capstone's coin-flip-reliability thesis (even "capacity" isn't
+perfectly deterministic; it's just far more stable than binary SLO-pass).
+CO-DESIGN (+53% claim): 6.33 (v17_accel_wb) was on an EARLIER commit → vs current-commit stock 4.83 = +31%; vs
+accel-alone mean 5.78 = +9.5% additional (write_back h-lever on top of accel K-lever). Correct +53%→+31% and flag the
+co-design leg as earlier-commit; the STACKING (K-lever then h-lever) is qualitatively robust.
+v23_stockcap2 (stock n=2 same-commit) running (~00:25) to firm the 4.83 baseline; will fold in.

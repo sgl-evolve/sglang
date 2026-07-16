@@ -53,6 +53,54 @@ logger = logging.getLogger(__name__)
 device_module = get_device_module()
 
 
+# --- kleinrock: env-gated actual-DMA (H->D "load_back"/restore) timing. The Prometheus
+#     `load_back_duration_seconds` metric wraps only the ENQUEUE (cache_controller.load =
+#     alloc + append to load_queue); the real DMA runs later on load_stream. This measures the
+#     real per-op DMA duration via CUDA-event elapsed_time, drained lazily to avoid perturbation.
+#     Zero overhead when KL_DMA_TIMING != "1" (lossless; off in all contract evals). ---
+import os as _kl_os
+
+_KL_DMA_ON = _kl_os.environ.get("KL_DMA_TIMING", "0") == "1"
+_kl_pending = []  # (start_event, end_event, ntok) awaiting completion
+_kl_hist = []  # completed elapsed_ms samples
+_kl_tok = 0
+_kl_logged = 0
+
+
+def _kl_drain():
+    global _kl_pending, _kl_hist, _kl_tok, _kl_logged
+    if not _kl_pending:
+        return
+    still = []
+    for s, e, n in _kl_pending:
+        if e.query():
+            try:
+                _kl_hist.append(s.elapsed_time(e))
+                _kl_tok += n
+            except Exception:
+                pass
+        else:
+            still.append((s, e, n))
+    _kl_pending = still
+    if len(_kl_hist) >= _kl_logged + 500:
+        _kl_logged = len(_kl_hist)
+        h = sorted(_kl_hist)
+        q = lambda p: h[min(len(h) - 1, int(p * len(h)))]
+        tot = sum(h)
+        logger.warning(
+            "[KLDMA] load n=%d actual_ms sum=%.0f avg=%.3f p50=%.3f p90=%.3f p99=%.3f max=%.2f | tok=%d tok_per_s=%.0f",
+            len(h),
+            tot,
+            tot / len(h),
+            q(0.5),
+            q(0.9),
+            q(0.99),
+            h[-1],
+            _kl_tok,
+            _kl_tok / (tot / 1000.0) if tot > 0 else 0,
+        )
+
+
 class LayerLoadingEvent:
     def __init__(self, num_layers: int):
         self._num_layers = num_layers
@@ -756,6 +804,8 @@ class HiCacheController:
             raise ValueError(f"Unsupported io backend")
 
     def start_loading(self) -> int:
+        if _KL_DMA_ON:
+            _kl_drain()
         if len(self.load_queue) == 0:
             return -1
 
@@ -770,6 +820,10 @@ class HiCacheController:
 
         with device_module.stream(self.load_stream):
             producer_event.start_event.wait(self.load_stream)
+            if _KL_DMA_ON:
+                _kl_s = device_module.Event(enable_timing=True)
+                _kl_e = device_module.Event(enable_timing=True)
+                _kl_s.record()
             for i in range(self.layer_num):
                 self.mem_pool_host.load_to_device_per_layer(
                     self.mem_pool_device,
@@ -787,6 +841,9 @@ class HiCacheController:
                         self.io_backend,
                     )
                 producer_event.complete(i)
+            if _KL_DMA_ON:
+                _kl_e.record()
+                _kl_pending.append((_kl_s, _kl_e, len(host_indices)))
             # NOTE: We must save the host indices and device indices here,
             # this is because we need to guarantee that these tensors are
             # still alive when the load stream is executing.

@@ -1198,3 +1198,21 @@ during congestion isn't warranted. ★OPS: node -2 = dead CUDA fabric (avoid); n
 congestion (transient, needs MemAvail headroom); pick a certified/known-good free node, fail-fast on bad ones.
 **Net cycle deliverable = the compute-ceiling INTEGRITY correction (necessitated by write_back): the ~4.7 ceiling
 is a prefill-work ceiling, raisable losslessly, but goodput is tail-bound below it.** Body current + synced.
+
+### 2026-07-16 (cont.): ★INTEGRITY — scoped the chunk-scheduling negative to RESERVATION (self-audit)
+Self-audit of P4's scope: I GPU-tested chunk-level budget RESERVATION (fixed + adaptive RPB) and found it bounded,
+but several claims generalized beyond it — "this granularity does not yield a goodput lever" (§6), "close the axis"
+(§5), P3 intro "finer granularity backfires." That OVERCLAIMS: reservation is only ONE chunk-budget primitive. A
+distinct family — queue-pressure-adaptive chunk SIZING (shrink the in-flight big-doc chunk to interleave waiting
+turns WITHOUT holding budget in reserve, so no reserve-waste) — acts at the same granularity and I did NOT evaluate
+it; my reserve-waste argument does not apply to it. Fixed (integrity, my own recognition that reservation ≠ all
+chunk-scheduling): scoped P4 §5/§6 to the "reservation sub-axis"; added a P4 §7 paragraph explicitly stating the
+negative does NOT cover non-reservation chunk sizing (open question; any win must come from tail relief below the
+raw-throughput ceiling, since the knee is a compute-saturation wall); scoped P3 intro to "finer-granularity
+reservation backfires; chunk sizing left open." Commit 7bbaead6a.
+★DECISION not to pursue chunk-sizing myself: a sibling's queue-pressure-chunking result leaked into my recalled
+memory index, so building/testing that direction now would violate independence (chasing a known-successful
+sibling direction + risking duplication). The clean stance = honestly scope my negative to what I independently
+tested + leave chunk-sizing as future work. This makes P4's negative airtight-honest rather than overclaimed.
+**Net cycle: two integrity self-corrections (compute-ceiling from write_back; chunk-scheduling scope) — the body
+is materially more honest; both from probing my OWN claims. No new lossless lever pursued (independence-clean).**

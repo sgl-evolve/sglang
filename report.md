@@ -1430,3 +1430,16 @@ clean losslessness test (would false-positive as "lossy"). VALID losslessness pr
     (batch-invariant at concurrency 1), acknowledging it doesn't exercise the concurrent path the bug lives in.
 Recording now prevents a future integrity error (claiming lossless from a confounded concurrent diff) and readies the fix branch.
 NOT building the harness speculatively — outcome (A) needs none, and (A) is plausible; this is the proof PROTOCOL, ready to apply.
+
+### Direction 6 HARVEST (job 20258 RAN 2026-07-16, node slurm2-a3nodeset1-1) — pinpointed the crash condition; decisive test in progress
+20258 (mixed-chunk + STRICT_MEM_CHECK_DURING_IDLE=0) started ~18:56, Ready 18:59, warmup→λ3 clean (NO leak warn, NO assert,
+server healthy through start of λ3). Located the ORIGINAL crash for comparison: **v14-mixedchunk (STRICT default=ON) crashed at
+`>>> rate=5`, in `on_idle()` → `_report_leak("pool")` → raised.** Crash numbers: `[full] total=2347648, available=5312,
+evictable=2342592, protected=0, session_held=0, uncached=0` → sum(categories)=2347904 = total+256 ⇒ a **256-token (4-page)
+OVER-count at FULL idle (protected=0, nothing locked)**. So the mixed-chunk "leak" is NOT a large protected-slot loss (that was the
+SEPARATE pre-guard decode-qos-k4 crash: protected=577792); it is a small 4-page pool-aggregate over-count detected at the first
+full idle after λ3's heavy load. ⇒ v17's decisive point = the end-of-λ3 / λ3→λ5 idle (~19:25-30, within the -t window). Watching
+for: (1) does `pool memory leak detected` WARN appear there (leak reproduces, non-fatal under STRICT=0)? and CRUCIALLY (2) does the
+tree sanity_check (on_idle line 3547, runs right after the pool check) ALSO trip? pool-warns+tree-PASSES ⇒ benign pool-aggregate
+divergence, radix tree self-consistent, KV fine (false-positive-leaning / structural); tree-FAILS (`evictable size !=`) ⇒ real
+tree counter-drift. NO positive claim without the refinement-#6 losslessness proof. Invariant arithmetic double-checked: over by 256.

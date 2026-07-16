@@ -1015,3 +1015,21 @@ Same-node λ3 K5, fcfs vs srpf (deferral reference):
 - **fcfs λ3**: {9671,12265,22035,34132,35870}ms, median 22.0s, **σ/m 0.53**, 0/5 pass — textbook coin-flip (3.7× spread).
 - **srpf λ3**: {6177,6225,6665,6711,6755}ms, median 6.7s, **σ/m 0.04**, 5/5 pass — tight (1.09× spread), disjoint (srpf max 6755 < fcfs min 9671).
 ⇒ Deferral cuts p99 median −70% (Fisher p=0.0079) AND **collapses σ/m 13× (0.53→0.04)**. p50/hit/req flat (3.02, lossless, throughput-neutral). **ANSWER to the P1↔P2 bridge: deferral doesn't merely SHIFT the knee median under the SLO — it COLLAPSES the metastable run-to-run variance (P1's coin-flip) into a reliable pass.** The goodput@SLO knee coin-flip is a SCHEDULABILITY artifact: a well-ordered (deferred) queue is both faster and ~13× more predictable. Unifies P1 (coin-flip, variance-dominated for CACHING) + P2 (deferral clears the HOL tail): caching can't collapse the coin-flip, scheduling (deferral) can. SRPF = cited reference (not claimed). → integrate into Paper 2 as a new subsection (deferral & the knee variance).
+
+### ★ reserve-sweep RESULT (2026-07-16, job 20020, node 1-2, λ5) — CLEAN same-node monotone ablation
+reserve0 {24504,24638,29193} med 24.6s (σ/m 0.10, n=3) → 1024 {20773,30014,32566} med 30.0s (+22%, n=3) → 2048
+{41333,42276,42377} med 42.3s (+72%, σ/m 0.01, n=3) → 3072 rep1 63.1s then SERVER CRASH (KV-pool-leak invariant
+violation `_report_leak("pool")`, reps 2-3 dead) → 4096 THROUGHPUT COLLAPSE (7 s/it = ~1000× slower, full-KV-pool
+climbing, cancelled at 0%). ALL SAME NODE, single stock baseline → replaces P2's patched cross-baseline §4.2 table
+(had to normalize to own-run stock). Monotone-harmful, no crossover; destabilization onset R≥3072. ★1024 here
++22% (harmful) vs v6's neutral-1024 (different node) → 1024 = node-dependent neutral-to-harmful, NEVER beneficial
+(reported honestly). ★Good-neighbor: cancelled job 20020 once 4096 collapse confirmed (7s/it, won't complete in
+walltime) → freed node 1-2. Cross-node v4 (2048 +75%) independently agrees.
+
+### ★ BOTH INTEGRATED into Paper 2 (2026-07-16, commit 4691aad80, pushed) — significantly strengthened
+§4.2 rebuilt (clean same-node ablation + destabilization onset 3072); NEW §5.3 coin-flip-collapse bridge
+(defer-knee); abstract/§1-contributions(+coin-flip-collapse bullet)/§5.2(firm n=5 λ3 row)/§7/§8(v9,v10 runs)
+updated. HTML valid (5 tables, 1 svg, 9 §§). SRPF stays cited-reference-only (charter L23). INDEX updated. Paper 2
+is now: HOL diagnosis + fair-budget-sharing bounded-negative (clean monotone ablation, destabilization onset) +
+deferral-specificity + defer-don't-throttle principle + coin-flip-collapse bridge. A genuinely strong bounded-
+negative + diagnosis + unification paper.

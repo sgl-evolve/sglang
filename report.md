@@ -1006,3 +1006,25 @@ bounds to the compute wall / an already-mapped non-lever / out-of-scope-lossy. B
 chunk-scheduling closure (now covers reservation[GPU]+preemption[argued]+concurrent-split[argued], all bounded
 by the same tail-setting-big-doc-delay failure mode). Completes the chunk-scheduling axis over ALL budget
 policies. Commit follows. No new substantial direction; no GPU experiment adds non-redundant value.
+
+### 2026-07-16: ★FIRMED the flagship's same-node anchor to a BALANCED 4-vs-4 (p=0.05 → 0.014)
+The one residual weakness in P3's central claim was that the confound-free *strictly same-node* A/B (node 0-3,
+the one node holding both arms) was only **marginal**: SRPF 3/3 vs stock 0/3, Fisher p=0.05 — so the decisive
+significance leaned on the *cross-node-pooled* p=0.0006, in mild tension with my own same-node-A/B mandate. With
+GPU free (sibling released 0-3) I ran ONE paired SRPF + ONE paired stock full-contract sweep on node 0-3
+(jobs 20057/20130; node = `sacct -j <id> -o NodeList`, NOT mtime). Both plain-policy, all contract flags frozen
+(`schedule_policy` srpf vs fcfs, `enable_rpb_chunking=False`, mem-frac 0.85, page 64, tp 8, chunk 6144), 7037
+completions each → clean, lossless (scheduling reorder only).
+- **SRPF firming λ5 = 5.55 s PASS** (4th SRPF λ5 on 0-3); goodput=4.22, hit 0.69 (cache untouched).
+- **Stock firming λ5 = 23.25 s FAIL** (4th stock λ5 on 0-3).
+- ⇒ **strictly same-node, BALANCED 4-vs-4: SRPF 4/4 vs stock 0/4, Fisher one-tailed p=0.014** — the
+  confound-free anchor now *carries* the claim by itself (no cross-node pooling needed).
+- Strengthened (real, sacct-verified): λ5 pooled **7/7 vs 0/8, p=0.0002** (was 6/6 vs 0/7, p=0.0006);
+  both rates pooled **13/14 vs 4/17, p=0.0001**.
+- **HONEST λ3 update:** the SRPF firming's λ3 drew **9.14 s (a FAIL)** — a metastable coin-flip draw — so SRPF
+  λ3 is now **6/7** (was 6/6), p=0.12. This does NOT touch goodput (which is λ5-set) and *reinforces* the
+  paper's own framing: "λ3 is variance-dominated, not the decisive rate; report λ5."
+Integrated: `analysis/goodput_stats.py` (source of truth) + P3 (§5, table caption, limitations, repro) + P1 + P2;
+every stale 6/6·0/7·p=0.0006·3/3-vs-0/3 replaced. INDEX registry entry. Commit 90bbdd8f1, pushed. SRPF firming
+logged to W&B (v-srpf-samenode-1); stock replicate logs when job 20130's summary.json completes.
+**Rigor/completeness firming — NOT a new lossless direction (none remains; the design space stays airtight-bounded).**

@@ -207,7 +207,7 @@ direction — the "smarter," scan-resistant policy is strictly and severely wors
 rule: <b>for multiturn KV reuse, evict by recency, not by access frequency.</b> The result is not specific to
 SLRU's hard segmentation: a <em>completed</em> <b>LFU</b> sweep (soft, graded frequency — priority
 <code>(hit_count, last_access)</code>) degrades the cache the same way, if less severely — hit rate
-<b>−10&nbsp;pp at λ=3 deepening to −25&nbsp;pp at λ=10</b> (0.57→0.41; goodput 0; <code>runs/v-evict-lfu</code>),
+<b>−10.5&nbsp;pp at λ=3 deepening to −24.6&nbsp;pp at λ=10</b> (0.57→0.41; goodput 0; <code>runs/v-evict-lfu</code>),
 the deeper-load points far exceeding the ≈3&nbsp;pp cross-node hit variance. Both access-count policies thus
 degrade, with severity scaling by how hard they protect reused-once nodes: <b>SLRU (hard-segment) −19..−27&nbsp;pp
 &gt; LFU (graded) −10..−25&nbsp;pp &gt; LRU (0)</b> — access frequency is the wrong signal, monotonically. (This

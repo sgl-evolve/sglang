@@ -1165,3 +1165,13 @@ Then fill the 11 REPLACE_ tokens, recompute REPLACE_RATIO = restore_tok_per_s / 
 re-validate HTML, register INDEX (append 1 line), update memory, push. If job 20211 died before λ5 (check sacct),
 resubmit: sbatch --exclusive --mem=0 --gres=gpu:8 -w <idle a3, NOT -2> --wrap "export KL_DMA_TIMING=1; bash <eval.sh> kleinrock v12-dma-timing".
 ⚠️ --mem=0 is MANDATORY (plain --exclusive gives only 8944M → 122B OOM-kills scheduler; learned the hard way, job 20210).
+
+### Paper 3 §5.2 harvest — CORRECTED target (2026-07-16): job 20221, v13-dma-timing, node 1-0
+Killed 20211 (threshold 500 tripped too late — start_loading merges at batch level, ~350 calls/2-rates).
+Lowered threshold 500→25 (commit 98b0c5712) → relaunched job 20221 → runs/v13-dma-timing (KL_DMA_TIMING=1,
+--mem=0). KLDMA now fires early in λ3 (~25 start_loading calls). HARVEST:
+  grep KLDMA runs/v13-dma-timing/server.log | tail -3      (last = cumulative distribution)
+  python3 tools/movement_analyze.py runs/v13-dma-timing/server.log   (fills B + D ratio)
+Then fill 11 REPLACE_ tokens in submissions/kv-tiering-movement/paper.html (Table3 §5.2 + abstract + §5.4
+REPLACE_RATIO + §5.5 REPLACE_P99); RATIO = restore_tok_per_s / ~14000 (per-stream prefill); re-validate HTML;
+register INDEX (1 line); update memory; push. If 20221 died: check sacct; resubmit same cmd (--mem=0 MANDATORY).

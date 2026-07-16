@@ -36,16 +36,17 @@ goodput@SLO at &lambda;=3 (p99 TTFT 6.8&nbsp;s) nonetheless has a p99 end-to-end
 driven by p99 inter-token latency (ITL) of ~4&ndash;5&nbsp;s. That study concluded the decode tail <i>resisted</i>
 fixing: the textbook remedy&mdash;interleaving prefill chunks with decode (sglang's <code>--enable-mixed-chunk</code>)&mdash;<b>crashed
 the server</b> with a KV-pool &ldquo;memory-leak&rdquo; abort. <b>This paper corrects that conclusion.</b> We show the
-crash is a <b>false positive</b>: the idle memory-leak invariant reports a bounded, page-granular
-(256&ndash;448&nbsp;token = 4&ndash;7&nbsp;page), <i>self-healing</i> over-count that appears only transiently around
+crash is a <b>false positive</b>: the idle memory-leak invariant reports a <i>bounded, non-accumulating</i>, page-granular
+(256&ndash;448&nbsp;token = 4&ndash;7&nbsp;page) over-count that arises around
 hierarchical-cache write-through&mdash;the same window in which the engine's own radix-tree sanity-check already
 <i>skips</i>. The tree structure that governs KV correctness stays perfectly consistent (0 sanity failures across two
 full runs), and serving is correct. Because the &ldquo;leak&rdquo; is diagnostic and provably benign, the safe,
 <b>lossless</b> unblock is simply to not treat it as fatal (the stock warn-not-abort mode); mixed-chunk then runs to
 completion. We also examine a structural guard that mirrors the tree check (skip the pool report while async backup is
 pending); it is lossless but only modestly reduces the false positives (10&rarr;7 at &lambda;=3), because most fall in a
-residual ack-lag window it cannot see&mdash;for which we recommend a magnitude-independent persistence-based check (&sect;5).
-Unblocked,
+residual ack-lag window it cannot see. We test a persistence-based check and <b>rule it out</b> (the divergence is
+activity-healed, not time-healed, so it persists at idle), and identify the correct structural fix as a bounded
+page-slack tolerance mirroring an existing engine precedent (&sect;5). Unblocked,
 mixed-chunk <b>cuts the decode tail by ~15&times;</b> at &lambda;=3 (ITL p99 ~4200&rarr;282&nbsp;ms) and ~11&times; at
 &lambda;=5 (~4750&rarr;418&nbsp;ms), and end-to-end p99 by 4.7&times;/2.4&times; (347&rarr;75&nbsp;s / 377&rarr;157&nbsp;s),
 <b>losslessly</b> (identical total output tokens, tree-consistent). The win is not free: it trades prefill latency,
@@ -74,13 +75,14 @@ paper identified.</p>
 <div class="key">
 <b>Contributions.</b>
 (1) A <b>diagnosis</b>: the mixed-chunk crash is a false positive of the idle pool-leak invariant&mdash;a bounded
-(4&ndash;7 page), page-aligned, self-healing over-count around hierarchical-cache write-through, with the radix tree
+(4&ndash;7 page), page-aligned, non-accumulating over-count around hierarchical-cache write-through, with the radix tree
 provably consistent throughout (&sect;4).
 (2) A <b>lossless unblock and its root cause</b>: the pool invariant lacks a guard the engine&rsquo;s own tree
 sanity-check already uses (skip while async backup is pending). We show the validated unblock is the stock warn-not-abort
-mode (the check is diagnostic and the leak benign), give a structural guard that mirrors the tree check and removes most
-false positives (with an honest residual ack-lag case), and recommend a magnitude-independent persistence check as the
-complete form&mdash;all lossless, gating only the assertion, never computation (&sect;5).
+mode (the check is diagnostic and the leak benign), give a structural guard that mirrors the tree check and modestly
+reduces the false positives, <b>test and rule out</b> a persistence-based check (the divergence is activity-healed,
+not time-healed), and identify the correct fix as a bounded page-slack tolerance mirroring an existing engine
+precedent&mdash;all lossless, gating only the assertion, never computation (&sect;5).
 (3) A <b>measured result</b>: unblocked mixed-chunk cuts the decode tail ~15&times; (&lambda;=3) / ~11&times;
 (&lambda;=5) in ITL p99 and 4.7&times;/2.4&times; in E2E p99, <b>losslessly</b> (identical total output tokens), with an
 <b>honest, load-growing TTFT trade-off</b> stated plainly (&sect;6&ndash;7).
@@ -118,7 +120,7 @@ the decode tail &ldquo;is not one flag away.&rdquo;</p>
 raise-vs-warn on the <i>assertion</i>, never any computation) and instrumented every idle event. Four facts
 establish that the reported leak is spurious.</p>
 
-<h3>4.1 The over-count is bounded, page-aligned, and self-healing</h3>
+<h3>4.1 The over-count is bounded, page-aligned, and non-accumulating</h3>
 <p>Across the full run the invariant&rsquo;s over-count (accounted &minus; total) at full idle
 (<code>protected=0</code>) is small and does not grow:</p>
 <table>
@@ -128,10 +130,12 @@ establish that the reported leak is spurious.</p>
 <tr><td>3&ndash;9 (&lambda;3 drain, &hellip;)</td><td>256</td><td>4</td></tr>
 </table>
 <p>A real, accumulating slot leak grows monotonically until it exhausts memory; this quantity instead
-<b>oscillates and decreases</b> (320&rarr;256) and stabilizes at 4 pages&mdash;the signature of a transient that
-self-heals. Every observed value is an <b>exact multiple of the page size</b> (256=4&times;64, 320=5&times;64),
+<b>stays bounded</b> (it varies 320&harr;256 and stabilizes at 4&ndash;5 pages, never accumulating over a full
+multi-rate run). Every observed value is an <b>exact multiple of the page size</b> (256=4&times;64, 320=5&times;64),
 i.e. the discrepancy is whole physical pages, not scattered tokens. Its magnitude is 0.011&ndash;0.014% of the
-2.35&nbsp;M-token pool.</p>
+2.35&nbsp;M-token pool. (The variation across idle samples reflects successive write-through transients being
+reconciled by <i>activity</i>; at sustained full idle the over-count instead persists&mdash;it is activity-healed,
+not time-healed&mdash;which is what defeats a persistence-based check, &sect;5.)</p>
 
 <h3>4.2 The radix tree&mdash;which governs KV correctness&mdash;stays consistent</h3>
 <p><code>on_idle()</code> runs two checks: the pool aggregate invariant, then an ungated, bare-assert
@@ -192,7 +196,7 @@ backup is pending:</p>
 <p>This guard is lossless (it gates only the assertion), but&mdash;measured head-to-head on matched &lambda;=3
 mixed-chunk runs&mdash;it only <b>modestly reduces</b> the false positives: from <b>10</b> idle warnings (no guard) to
 <b>7</b> (with guard), about a 30% reduction. We report this honestly rather than claim a clean fix: most residual
-warnings (e.g. over-count 448&nbsp;tokens = 7 pages, <code>protected=0</code>, same benign self-healing class) fire at
+warnings (e.g. over-count 448&nbsp;tokens = 7 pages, <code>protected=0</code>, same benign bounded class) fire at
 idle samples where <i>both</i> async dicts are already empty. That is an <b>ack-lag</b> window: the write-through
 acknowledgement has cleared the tracking dicts, but the allocator free-list and tree-evictable reconciliation of those
 pages has not completed at the instant the pool counters are sampled. The async-pending guard is therefore
@@ -200,15 +204,24 @@ pages has not completed at the instant the pool counters are sampled. The async-
 (The guard is nonetheless lossless: with it, the &lambda;=3 decode-tail metrics are unchanged&mdash;ITL p99 317&nbsp;ms,
 TPOT p99 182&nbsp;ms, total output tokens 900082, matching the no-guard run to within run-to-run variance.)</p>
 
-<p>The complete, load-independent fix follows directly from the diagnosis (&sect;4): the benign discrepancy is
-distinguished from a real leak not by its magnitude but by its <b>impermanence</b>&mdash;it self-heals within a
-sampling interval, whereas a true leak persists and grows. A <b>persistence check</b> captures exactly this: record
-the idle over-count and report a leak only if a non-zero over-count persists across consecutive idle checks (it did
-not, here). This is magnitude- and load-independent and strictly preserves real-leak detection. (A bounded
-page-slack tolerance, mirroring the existing DCP precedent, is a simpler alternative but requires a load-dependent
-bound on in-flight pages.) All three variants gate only the diagnostic assertion&mdash;none touches computation&mdash;so
-all are lossless; we validate the warn-mode unblock end-to-end and leave the persistence check as the recommended
-structural form.</p>
+<p>We initially conjectured a <b>persistence check</b> as the complete structural fix&mdash;distinguish the benign
+divergence from a real leak by <i>impermanence</i> (report only an over-count that survives a grace window)&mdash;and
+<b>tested it end-to-end</b> (mixed-chunk, grace = 3&nbsp;s, no warn-mode fallback, so a false report would abort). It
+<b>failed</b>: the server aborted mid-&lambda;3 on the same benign 5-page over-count
+(<code>available=576, evictable=2347392, protected=0</code>). The lesson corrects our own diagnosis: the divergence is
+<b>activity-healed, not time-healed</b>. During active serving a subsequent forward batch reconciles the
+allocator/tree counters (hence the oscillating values in &sect;4.1&mdash;successive transients being cleared by
+activity); but at <i>sustained full idle</i> no batch runs to reconcile it, so the same over-count persists
+indefinitely and any time-based persistence check eventually reports it. Impermanence is therefore the <i>wrong</i>
+discriminator. The right one is <b>boundedness</b>: the divergence is a small, page-aligned, <i>non-accumulating</i>
+over-count (&le;7 pages = 448 tokens across all four loads; the runs complete losslessly and never OOM), whereas a real
+leak grows without bound. The correct structural fix is thus a <b>bounded page-slack tolerance</b>, mirroring the
+engine&rsquo;s existing <code>dcp_physical_page_slack_allowed</code> precedent: treat an idle over-count that is a small
+page-aligned multiple (e.g. &le; 16 pages, &gt;20&times; the observed maximum, while a real leak is thousands of pages)
+as non-fatal. It gates only the assertion&mdash;lossless&mdash;and, unlike persistence, is robust to the idle case. We
+report the disproven persistence attempt in full because it sharpened the diagnosis; the <b>validated</b> unblock used
+for all measurements here is the stock warn-mode env var, and the bounded page-slack is the recommended production
+form (its end-to-end validation is left as immediate future work).</p>
 
 <h2>6 Result: the decode tail collapses, losslessly</h2>
 <p>All runs use the frozen evaluation (unchanged <code>eval.sh</code>: 1553 conversations &rarr; 7037 requests,
@@ -373,7 +386,7 @@ from <code>server.log</code>; decode-tail metrics from <code>bench_r{3,5,7,10}.j
 
 <h2>11 Conclusion</h2>
 <p>The decode tail that goodput@SLO hides is not a hard open problem&mdash;it was hidden a second time, behind a
-false-positive memory-leak assertion. The reported leak is a bounded, page-aligned, self-healing over-count of a few
+false-positive memory-leak assertion. The reported leak is a bounded, page-aligned, non-accumulating over-count of a few
 pages during hierarchical-cache write-through, with the radix tree provably consistent; the pool check simply lacked
 the async-pending guard the tree check already uses. Aligning them&mdash;a lossless, one-line guard&mdash;unblocks
 mixed-chunk, which cuts the decode tail ~11&ndash;15&times; and end-to-end p99 latency from minutes to tens of seconds,

@@ -1597,3 +1597,27 @@ settles ~2.3-2.4×@λ5-10. TTFT tradeoff grows with load (neutral@λ3 → 1.4-2.
 (stock TTFT already >SLO). Table 1 in Paper 5 filled (all 4 loads) + "win holds across full sweep" conclusion + §9
 updated + validated clean. 20269 done → node 1-1 frees → 20308 (persistence validation) should schedule. Paper 5 data
 COMPLETE; only remaining = persistence-check validation (20308) → upgrade §5 to validated.
+
+### ★★ INTEGRITY — persistence check DISPROVEN by validation (job 20308, 23:08, grace=3 + NO STRICT env)
+20308 ran mixed-chunk + SGLANG_IDLE_LEAK_GRACE_S=3 + NO STRICT env (decisive). It CRASHED at 56% of λ3
+(23:08:56): `ValueError: pool memory leak detected! [full] total=2347648, available=576, evictable=2347392,
+protected=0` = **320-token (5-page) over-count that PERSISTED past the 3s grace at full idle** → persistence check
+reported it → raised (no STRICT) → scheduler died. ⇒ THE PERSISTENCE CHECK FAILS. ★ROOT-CAUSE CORRECTION to my own
+diagnosis: the benign over-count is **ACTIVITY-healed, not TIME-healed**. During active serving a subsequent forward
+batch reconciles the allocator/tree counters (so it "oscillated" 320→256 in v17/v18 = different transients being
+reconciled by activity), but at SUSTAINED FULL IDLE no batch runs to reconcile it, so the SAME over-count persists
+indefinitely — my "self-healing within a sampling interval" assumption was WRONG for the idle case. Persistence
+(time-based) therefore CANNOT distinguish this benign-but-persistent divergence from a real leak. ★CONSEQUENCE:
+neither structural guard I built is complete — async-guard (v18) reduces ~30% (catches only the in-flight window);
+persistence (v19) crashes (the divergence outlives any grace at idle). The benign nature is NOT in question (v17/v18
+completed LOSSLESSLY, out_tok 900082 exact, tree-consistent 0 failures, no OOM, bounded ≤7 pages across ALL loads,
+non-accumulating) — it is a BOUNDED, STABLE accounting divergence, not lost memory. ★THE VALIDATED ROBUST UNBLOCK =
+the STOCK env SGLANG_ENABLE_STRICT_MEM_CHECK_DURING_IDLE=0 (warn-not-raise) — the ONLY approach that reliably lets
+mixed-chunk complete (v17, v18). ★THE CORRECT STRUCTURAL FIX = bounded PAGE-SLACK tolerance (mirror the EXISTING DCP
+`dcp_physical_page_slack_allowed` precedent in _check_full_pool): tolerate an idle over-count that is a small,
+bounded, page-aligned multiple (observed ≤7 pages = 448 tok across λ3/5/7/10; a ≤16-page/1024-tok bound covers it
+with huge margin while still catching real thousands-of-pages leaks). Persistence was the wrong discriminator
+(impermanence); BOUNDEDNESS is the right one. ★MUST correct Paper 5 §5/abstract/§1: report persistence as a TRIED-AND-
+DISPROVEN attempt (validation caught it), warn-mode as the validated unblock, bounded-page-slack as the recommended
+structural fix. Integrity: validation caught my over-engineering — the intended purpose. Decode-tail WIN + lossless +
+benign-diagnosis all UNCHANGED. NEXT: correct paper; optionally implement+validate bounded-page-slack (3rd fix run).

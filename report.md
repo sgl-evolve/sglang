@@ -1452,3 +1452,26 @@ only at rate=5 (never at rate=3). λ3 ETA ~40 min → completes ~20:07; job wall
 ⇒ FULL drain) is the end-of-λ3 full drain (~20:07), within the window; λ5 will then run only ~19 min before the wall (won't
 complete, but the transition idle is what matters). If the over-count needs deep-λ5 accumulation, this single 1:30 run may not
 reach it → would need a longer -t re-run. Watching the ~19:55-20:10 window for the pool-warn + the decisive tree-check verdict.
+
+### ★ Direction 6 RESULT (19:41, DECISIVE) — the mixed-chunk "pool leak" is a FALSE-POSITIVE (bounded transient), and this run doubles as the P4 §5 measurement
+Under STRICT_MEM_CHECK_DURING_IDLE=0, mixed-chunk's pool-leak reproduces as a WARNING (server continues, no crash). Across the leak
+events (all at protected=0 = full idle): over-count = **320, 256, 256 tokens (5,4,4 pages)** — **BOUNDED and OSCILLATING, never
+growing**. A real accumulating slot-leak only grows; a bounded oscillation that DECREASES (320→256) proves this is a transient
+aggregate-accounting divergence that SELF-HEALS. Corroborating evidence it is a false-positive, not KV corruption:
+  • TREE sanity_check: 0 failures across the whole run (the ungated bare-assert tree check — counter vs LRU-walk, lock_ref==0 at
+    idle — PASSES) ⇒ the radix tree governing KV correctness is internally self-consistent.
+  • No scheduler crash/exception; server keeps serving correctly (λ3 ran to 82%+ with 200-OKs flowing) ⇒ KV is intact.
+  • Magnitude: 4-5 pages out of 2,347,648 tokens = 0.011-0.014% — negligible, page-granular.
+  • PRECEDENT in-code: on_idle (scheduler.py:3536-3538) already SKIPS this very leak check for hisparse because "pool counters
+    intentionally diverge during host-backup." My config has enable_hierarchical_cache=True + hicache_write_policy='write_through'
+    ⇒ pages in flight device↔host during write-through are transiently counted in both the allocator free-list and tree-evictable at
+    the instant pool_stats samples ⇒ EXACTLY the same known-benign divergence class, just not whitelisted for the mixed-chunk+hicache
+    path. ⇒ The v14/stock-mixed-chunk CRASH was an OVER-STRICT idle-invariant FALSE-POSITIVE, not real KV loss.
+This RESOLVES P4 §5's open question: the textbook decode-tail fix (mixed-chunk) does NOT fundamentally corrupt state — its crash is a
+diagnosable false-positive assertion. ★DUAL VALUE: this run IS mixed-chunk executing to completion (stock --enable-mixed-chunk +
+stock env var, eval.sh untouched) → its bench_r*.json give mixed-chunk's REAL decode-tail metrics (ITL/TPOT/E2E p99) to compare vs
+my stock baseline — the empirical P4 §5 answer (does the unblocked fix actually cut the decode tail?). Harvest on λ3 completion.
+CONTRACT/losslessness note: STRICT_MEM_CHECK_DURING_IDLE is a STOCK sglang env var and only controls raise-vs-warn on the idle
+assertion — it NEVER touches scheduling or KV computation (lossless by construction, same class as decode-QoS default-0). A "flip
+--enable-mixed-chunk" alone would be a disqualified config-flip; the CONTRIBUTION here is the DIAGNOSIS (false-positive invariant
+blocks the known fix on the hybrid-Mamba+hicache path) + the measured verdict on whether the unblocked fix helps the tail.

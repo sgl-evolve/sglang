@@ -2689,7 +2689,26 @@ class Scheduler(
             if self.running_batch.is_empty():
                 self.running_batch.batch_is_full = False
 
-        if self.dllm_config is not None:
+        # kleinrock decode-QoS: bound decode starvation. Stock is strictly prefill-first (build+run a prefill
+        # batch whenever any prefill is available), which starves in-flight decodes for long prefill bursts and
+        # creates the inter-token-latency tail. If decode_starvation_bound > 0, after that many consecutive
+        # prefill batches, SKIP building the next prefill batch and run a pure-decode batch instead. We decide
+        # BEFORE calling get_new_batch_prefill so we never allocate-then-discard a prefill batch (which leaks
+        # the reserved KV slots), and only when a decode batch is pending AND no chunked prefill is mid-flight
+        # (so we never strand a partially-filled mega-doc's protected KV). Lossless: only reorders forward passes.
+        decode_available = (
+            not self.running_batch.is_empty() and not self.running_batch.is_prefill_only
+        )
+        force_decode = (
+            self.decode_starvation_bound > 0
+            and self._consec_prefill_batches >= self.decode_starvation_bound
+            and decode_available
+            and self.chunked_req is None
+        )
+
+        if force_decode:
+            new_batch = None
+        elif self.dllm_config is not None:
             new_batch = self.get_new_batch_dllm()
         else:
             new_batch = self.get_new_batch_prefill()
@@ -2707,20 +2726,7 @@ class Scheduler(
             new_batch = self.dp_attn_adapter.maybe_prepare_mlp_sync_batch(new_batch)
             need_mlp_sync = new_batch is None
 
-        # kleinrock decode-QoS: bound decode starvation. Stock is strictly prefill-first (run prefill
-        # whenever any is available), which starves in-flight decodes for long prefill bursts and creates
-        # the inter-token-latency tail. If decode_starvation_bound > 0, after that many consecutive prefill
-        # batches force a pure-decode batch (when decode is pending), capping the starvation window without
-        # changing batch composition (unlike --enable-mixed-chunk). Lossless: only reorders forward passes.
-        decode_available = (
-            not self.running_batch.is_empty() and not self.running_batch.is_prefill_only
-        )
-        force_decode = (
-            self.decode_starvation_bound > 0
-            and self._consec_prefill_batches >= self.decode_starvation_bound
-            and decode_available
-        )
-        if new_batch is not None and not force_decode:
+        if new_batch is not None:
             # Run prefill first if possible
             ret = new_batch
             self._consec_prefill_batches += 1
@@ -2730,10 +2736,6 @@ class Scheduler(
                 self.running_batch = self.update_running_batch(self.running_batch)
                 ret = self.running_batch if not self.running_batch.is_empty() else None
                 self._consec_prefill_batches = 0
-            elif new_batch is not None:
-                # forced decode but nothing to decode -> fall back to prefill
-                ret = new_batch
-                self._consec_prefill_batches += 1
             else:
                 ret = None
 

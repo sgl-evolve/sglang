@@ -1242,3 +1242,18 @@ the standard mixed/stall-free-batching mitigation destabilizes the server here. 
 non-batch-changing decode-friendly knob (schedule-conservativeness / prefill-delayer) for a clean Pareto, else
 §5 = "obvious fix destabilizes; a proper decode-QoS fix needs scheduler redesign (future work)". P4 core
 (metric-blindness) stands regardless.
+
+---
+## DIRECTION 5 (2026-07-16): decode-QoS mechanism `--decode-starvation-bound` (P4 §5 future-work → built)
+Motivated by P4: decode tail = prefill-first starvation; the textbook fix (mixed-chunk) CRASHES (pool leak).
+BUILT a decode-QoS primitive (commit 3171982c2): force a pure-decode batch after K consecutive prefill batches
+when decode is pending → bounds decode starvation / ITL tail WITHOUT changing batch composition (no pool-leak).
+scheduler.py get_next_batch_to_run: force_decode gate + _consec_prefill_batches counter; server_args
+decode_starvation_bound (default 0 = byte-identical stock = lossless). LOSSLESS: only reorders forward passes.
+★EXPERIMENT: job 20238, v15-decodeqos-k4 (--decode-starvation-bound 4, full sweep, --mem=0 node -0). Compare to
+v0-stock: does it (a) NOT crash, (b) cut ITL/TPOT/E2E p99 (decode tail), (c) at what TTFT-goodput cost = the
+prefill-decode PARETO. RESUME: harvest runs/v15-decodeqos-k4 via decode_pareto.py (A=v0-stock B=v15-decodeqos-k4);
+if it cuts the tail cleanly → this is a WORKING decode-QoS fix → UPGRADE P4 §5 (critique→critique+solution+Pareto),
+optionally sweep K∈{2,8} + same-node stock arm for rigor. If neutral/crash → learn + keep P4 as-is. ⚠️ if
+decode-QoS is deemed "classical fair-scheduling" (charter L23), frame as the Pareto CHARACTERIZATION + the
+robust-simple-fix-that-avoids-mixed-chunk's-crash, not a novel-primitive claim. ⚠️--mem=0 mandatory; harvest at end.

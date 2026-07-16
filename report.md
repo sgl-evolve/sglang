@@ -1033,3 +1033,18 @@ updated. HTML valid (5 tables, 1 svg, 9 §§). SRPF stays cited-reference-only (
 is now: HOL diagnosis + fair-budget-sharing bounded-negative (clean monotone ablation, destabilization onset) +
 deferral-specificity + defer-don't-throttle principle + coin-flip-collapse bridge. A genuinely strong bounded-
 negative + diagnosis + unification paper.
+
+### ★ WORKLOAD EVIDENCE: p99 tail is UNCACHEABLE (2026-07-16, GPU-free, commit 92e1ab9f9) — closes last caching loophole
+tools/doc_reuse_analyze.py over mooncake_mix_v1.jsonl (1553 convs): 888 unique docs; 665 records (43%) share an
+EXACT doc with another conv (cross-conv reuse DOES exist) BUT overwhelmingly SHORT docs (18/30 reused <10K tok;
+only 4 reused >25K tok = ~0.26% avoidable prefills). ★The 3 p99-causing mega-docs (~109K/150K/190K tok, >=100K)
+each appear EXACTLY ONCE → unique first-sight → NO cache at any capacity (incl. content-addressed / cross-conv
+prefix dedup) can convert the p99-tail prefills to hits. ⇒ the p99 tail is NECESSARILY a scheduling problem, not
+a caching one — direct dataset proof unifying P1 (metric blind to caching) + P2 (movable by scheduling): both true
+because the tail docs are unique. Folded into Paper 2 §3 (diagnosis) + §1 + §8. This rules out the "maybe cross-
+conversation caching moves the tail" loophole a skeptical PC would raise. GPU-free, genuinely novel, evidence-backed.
+
+★ CYCLE STATUS: Paper 2 now HOL-diagnosis + uncacheable-tail-evidence + fair-budget-sharing bounded-negative
+(clean same-node ablation, destabilization onset) + deferral-specificity + defer-don't-throttle + coin-flip-
+collapse bridge. Comprehensive, rigorous, honest. Space mapped (caching provably out for the tail; scheduling =
+deferral, disqualified/sibling-owned so cited-only; my reserve/LOF negatives). Won't fabricate; stay ready for triggers.

@@ -1277,3 +1277,16 @@ progress (λ3 ~40min, full ~2h). HARVEST when done: decode_pareto.py A=v0-stock 
 p99 cut? goodput/TTFT cost?) + batch_ratio.py runs/v16-decodeqos-k4/server.log (run-length capped ~K=4? decode
 share up from 4.5%?) + completed=7037 (lossless-served). If tail cut + no crash → same-node stock arm on -0 →
 P4 §5 UPGRADE (critique → working decode-QoS solution + prefill-decode Pareto).
+
+### decode-QoS MECHANISTIC PREVIEW (2026-07-16, v16 partial log via batch_ratio.py)
+v16 (K=4, guard=chunked_req-None) vs stock: decode share 4.5%→11.8% (2.6×), prefill:decode 21:1→7.5:1,
+consecutive-prefill runs p50 5→3, p90 89→10 (COMMON runs capped ~K), BUT p99 229→214, max 661→388 (tail NOT
+capped). ★WHY: the chunked_req guard (don't force decode mid-chunked-prefill, added to avoid the leak) disables
+decode-QoS whenever a doc >6144 tok is chunk-prefilling — and most first-turn docs are chunked (p50 16.7K), so
+long chunked-prefill stretches still starve decode → runs escape to 388. ⇒ decode-QoS REDUCES starvation
+(decode share 2.6×, common runs bounded) but can't ELIMINATE it under the safe guard. HONEST §5: partial fix +
+the chunked-prefill limitation (removing the guard = cap ALL runs but risks the protected-KV pool-leak the guard
+prevents). Await v16 ITL/TPOT p99 (bench) for the actual tail-cut magnitude; decode share 2.6× suggests real
+but partial improvement. OPTION if v16 ITL-cut disappointing: v17 WITHOUT guard (allocate-then-discard leak is
+already fixed independently; interrupting chunked prefill MAY be safe since existing chunked_req stash/resume
+machinery handles it) — but test carefully (risk re-crash). Don't kill running v16.

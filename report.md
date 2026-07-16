@@ -1585,3 +1585,15 @@ right fix. ★λ3 WIN REPLICATED n=3 (all mixed-chunk, lossless): v14 itl 300 (p
 v18 itl 317/tpot 182/e2e 89142 — all ~15× below stock ~4200 ITL; total_output_tokens = 900082 EXACT in v17 AND v18
 (and stock) ⇒ ★GUARD CONFIRMED LOSSLESS (v18-with-guard perf ≈ v17-no-guard, out_tok identical). v18 now on λ5;
 λ7/λ10 ~23:00-23:30.
+
+### ★ FULL SWEEP COMPLETE (22:32, job 20269 done λ3/5/7/10) — decode-tail win holds at EVERY load, lossless
+MC (mixed-chunk) vs stock, p99, all lossless (out_tok=900082 every cell):
+  λ3: ITL 4200→282 (15×), TPOT 3750→174 (21×), E2E 355→75s (4.7×), TTFT 6.8-14→12.1s [MC n=2: v17 282, v18 317]
+  λ5: ITL 4750→426 (11×), TPOT 3250→241 (13×), E2E 377→157s (2.4×), TTFT ~20→56s (2.8× worse) [MC n=2: v17 419, v18 433]
+  λ7: ITL 4707→501 (9.4×), TPOT 3536→273 (13×), E2E 375→159s (2.4×), TTFT 34→56s (1.7× worse) [n=1]
+  λ10: ITL 4705→574 (8.2×), TPOT 3312→354 (9.4×), E2E 371→158s (2.3×), TTFT 41→56s (1.4× worse) [n=1]
+⇒ DECODE TAIL CUT 8-15× ITL / 9-21× TPOT / 2.3-4.7× E2E at ALL loads, LOSSLESS. E2E win biggest unsaturated (4.7×@λ3),
+settles ~2.3-2.4×@λ5-10. TTFT tradeoff grows with load (neutral@λ3 → 1.4-2.8× worse) but immaterial to goodput @λ≥5
+(stock TTFT already >SLO). Table 1 in Paper 5 filled (all 4 loads) + "win holds across full sweep" conclusion + §9
+updated + validated clean. 20269 done → node 1-1 frees → 20308 (persistence validation) should schedule. Paper 5 data
+COMPLETE; only remaining = persistence-check validation (20308) → upgrade §5 to validated.

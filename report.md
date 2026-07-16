@@ -960,3 +960,17 @@ P5's HOL signal, qthresh=2), either. All PASS λ=3, near-identical deterministic
 queue n=2 (3.6/4.1s, conc 21/23), either n=1 (3.4s, conc 18). ⇒ boost is ROBUST to trigger signal — under a
 monopolizing giant, "device-KV full" and "shorts waiting" are the SAME event. Ties P5 diagnosis → P6 cure. Code
 54aa8eb75 (SGLANG_TURING_ACCEL_SIGNAL/QTHRESH, default occ byte-identical). Flagship committed 5386e12e8.
+
+## SESSION 2 cont. (07-16 ~01:40): decode-side non-lever analysis (why the levers are all prefill-side)
+After firming P6, reasoned through the one remaining orthogonal idea — DECODE-side residency reduction (SRPT/LRPT
+preemption of the running batch to free slots faster). VERDICT (theory, not run): predicted NON-LEVER, and it explains
+WHY every exploitable lever is prefill-side. Argument: decode is memory-bandwidth-bound ⇒ per-step time ∝ batch size ⇒
+decode THROUGHPUT (tok/s, hence request-completion rate) is ~BATCH-INDEPENDENT. So voluntarily shrinking the decode
+batch via preemption does NOT raise the slot-freeing rate ⇒ admission queue-wait (and thus p99 TTFT) is unchanged, while
+KV-swap overhead makes it a net loss. Contrast: giant-ACCELERATION wins because it attacks the PREFILL side — the
+single-chunked-request admission bottleneck + prefill↔decode interference — which is NOT throughput-saturated. ⇒ Design-
+space corollary: the decode side is throughput-saturated (no lever); the exploitable residency levers all live on the
+prefill side (capacity C=K/(1-h), whole-req SRPF, giant-acceleration). This RECONFIRMS the accessible novel positive
+space is exhausted (now from both the code-level hook audit AND this throughput-saturation argument). NOT added to the
+capstone as a claim (untested prediction; the capstone's strength is its CONFIRMED predictions) — recorded here as a
+theory observation / future-work falsifiable prediction. Portfolio stands complete + firmed (6 papers).

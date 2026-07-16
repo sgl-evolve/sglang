@@ -86,17 +86,18 @@ machinery is solving a problem this regime does not have.</p>
 <code>sglang:load_back_duration_seconds</code> metric times only the <i>enqueue</i> (the real copy runs later on a
 separate stream), add an env-gated CUDA-event timer for the real H&rarr;D DMA, and report its distribution and
 bandwidth on the live serving path.</li>
-<li><b>The movement is high-volume but latency-free (&sect;5.1&ndash;5.3).</b> ~10&times; more KV is moved than
-recomputed (heavy L1&harr;L2 thrashing), yet the restore is sub-10&nbsp;ms per op and &mdash; end-to-end &mdash;
-adds &le;~0.17&nbsp;s to TTFT even for 100K-token cached contexts. The p99 tail contains <b>0%</b> movement.</li>
+<li><b>The movement is high-volume but latency-free (&sect;5.1&ndash;5.3).</b> ~10&times; more KV is restored than
+recomputed (heavy L1&harr;L2 thrashing), yet end-to-end the restore adds &le;~0.17&nbsp;s to TTFT even for
+100K-token cached contexts (measured on real per-request traces), and the p99 tail contains <b>effectively no</b>
+movement.</li>
 <li><b>A ceiling-bound non-lever result (&sect;5.5).</b> The maximum benefit of <i>any</i> anticipatory-prefetch
 or transfer-overlap mechanism is bounded above by the exposed restore time, which is &lt;2% of the goodput knee.
 We therefore do not implement one; we prove it cannot help. This is a stronger statement than an A/B of one
 implementation.</li>
 <li><b>A cost-hierarchy explanation and a reframing of the tiering literature (&sect;5.4, &sect;6).</b> Moving a
-KV token is &gt;60&times; cheaper than recomputing it; on modern GPUs with a fast host tier, transfer latency for
-compute-bound long-context prefill is a non-problem. Tiering's value is capacity (avoiding recompute), not
-latency-hiding.</li>
+KV token is <b>~40&times;</b> cheaper than recomputing it (restoring a 100K-token prefix costs &le;~0.17&nbsp;s
+vs. ~7&nbsp;s to recompute it); on modern GPUs with a fast host tier, transfer latency for compute-bound
+long-context prefill is a non-problem. Tiering's value is capacity (avoiding recompute), not latency-hiding.</li>
 <li><b>A unified lever map for goodput@SLO (&sect;7).</b> Caching (P1), scheduling (P2), movement (this paper):
 exactly one axis &mdash; scheduling order &mdash; is the lever, and its optimum is classical.</li>
 </ul>

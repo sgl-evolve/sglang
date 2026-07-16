@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>The KV Movement Tier Is Not a Goodput Lever — floyd</title>
+<style>
+body{max-width:52em;margin:2.2em auto;padding:0 1.2em;font:16px/1.55 Georgia,serif;color:#161616}
+h1{font-size:1.7em;line-height:1.25;margin:0 0 .1em}
+h2{font-size:1.22em;margin:1.7em 0 .4em;border-bottom:1px solid #ddd;padding-bottom:.15em}
+h3{font-size:1.05em;margin:1.15em 0 .3em}
+.sub{color:#555;font-style:italic;margin:.2em 0 1.2em}
+code{background:#f4f4f4;padding:.05em .35em;border-radius:3px;font:13.5px/1.4 Menlo,monospace}
+table{border-collapse:collapse;margin:1em 0;font-size:14px;width:100%}
+th,td{border:1px solid #ccc;padding:.32em .55em;text-align:left;vertical-align:top}
+th{background:#f0f0f0}
+td.b{background:#fff3f3}
+.fig{margin:1.2em 0;padding:.6em;background:#fafafa;border:1px solid #eee;border-radius:5px;text-align:center}
+figcaption{font-size:13px;color:#555;margin-top:.4em;text-align:left}
+.abs{background:#f7f7f7;border-left:3px solid #888;padding:.7em 1em;margin:1em 0}
+b{color:#000}em{color:#333}
+</style></head><body>
+
+<h1>The KV Movement Tier Is Not a Goodput Lever: L2&rarr;L1 load-back is non-binding under load in long-document LLM serving</h1>
+<div class="sub">floyd &middot; sglang v0.31 HiCache (Qwen3.5-122B-A10B-FP8, TP=8, 2-tier KV) &middot; v1 &middot; movement-axis characterization + bounded negative</div>
+
+<div class="abs">
+<b>Abstract.</b> HiCache-style serving tiers the KV cache across GPU HBM (L1) and host DRAM (L2), and the
+natural way to make tiering pay is to optimize the <em>movement</em> between tiers &mdash; prefetch reused KV,
+overlap host&harr;device transfer under compute, change the page layout to move less, or schedule conversations
+to stay co-resident. We show that for long-document multiturn serving on the fixed goodput@SLO protocol (max
+Poisson request rate with p99 TTFT &le; 8&nbsp;s), <b>the L2&rarr;L1 movement is a non-lever</b>. From the
+engine's own load-back histogram: the run performs a <em>large and growing</em> volume of load-backs &mdash;
+25,008 &rarr; 92,600 load operations moving 0.37&rarr;1.36&nbsp;billion tokens as the rate climbs from &lambda;=3
+to &lambda;=10 &mdash; yet <em>every</em> load-back completes in under 30&nbsp;ms (&ge;99.4% under 10&nbsp;ms;
+mean 1.3&ndash;1.5&nbsp;ms), and the mean even <em>drops</em> under load. Against the queueing-dominated TTFT
+p99 (17&ndash;24&nbsp;s at &lambda;&ge;5) a load-back is &lt;0.2% of the request's time and never the
+bottleneck. The reason is a bandwidth fact: HBM&harr;DRAM transfer with a paged, direct-IO layout runs at
+&asymp;10&nbsp;M&nbsp;tokens/s, so even a whole reused document's KV loads in a few milliseconds &mdash; while
+the binding cost is the <em>cold-document prefill compute</em>, which no movement mechanism touches. Because the
+movement is already cheap, the entire movement-optimization family (prefetch, transfer/compute overlap,
+layout/paging, conversation co-residency) has <em>no goodput headroom</em>. We give the boundary that makes this
+predictive: movement optimization matters <b>iff the hierarchy contains a tier slow enough that its transfer is
+a material fraction of TTFT</b>. A fast two-tier (HBM+DRAM) hierarchy is on the non-binding side; the movement
+lever lives <em>below</em> L2 (an L3/SSD/disk tier), not within L1&harr;L2. Practitioners optimizing L1&harr;L2
+movement for goodput on this workload class are, like those tuning cache retention (companion), optimizing the
+wrong axis. This is the movement-axis deep-dive of a companion design-space map that finds the sole goodput
+lever is prefill scheduling.
+</div>
+
+<h2>1 Introduction</h2>
+<p>
+Hierarchical KV caching &mdash; keeping hot key/value tensors in GPU HBM and spilling the rest to host DRAM (and,
+in some systems, to SSD) &mdash; is now standard in high-throughput LLM serving (HiCache, LMCache,
+AttentionStore). Its premise is that the working set exceeds HBM, so <em>where KV lives and how it moves</em>
+between tiers is a first-order serving concern. The natural engineering response is to optimize the
+<em>movement</em>: predict and <em>prefetch</em> KV that is about to be reused, <em>overlap</em> the
+host&rarr;device transfer under compute so its latency is hidden, change the <em>page layout</em> so less data
+moves or moves more cheaply, or <em>schedule</em> a conversation's turns to keep its KV co-resident and avoid
+reloading it. Each is a plausible mechanism; each is the kind of thing one builds first.
+</p>
+<p>
+We ask a prior question: for the goodput@SLO metric on a realistic long-document multiturn workload, <em>is the
+L1&harr;L2 movement even on the critical path?</em> Using the engine's own instrumentation we find it is not.
+The system moves an enormous and load-growing volume of KV between tiers &mdash; over a billion tokens' worth at
+the highest rate &mdash; but each individual load-back is a few milliseconds, negligible against a TTFT that is
+seconds long and set by queueing behind cold-document prefills. The movement tier is doing a lot of work
+cheaply; making it do that work <em>faster or sooner</em> cannot move a metric it does not bind.
+</p>
+<p><b>Contributions.</b></p>
+<ul>
+<li><b>A measured non-lever (&sect;2, &sect;4).</b> The L2&rarr;L1 load-back is non-binding and <em>scales</em>:
+across &lambda;&isin;{3,5,7,10} the load-back count and token volume grow 3.7&times; while per-operation latency
+stays &lt;30&nbsp;ms (mean 1.3&ndash;1.5&nbsp;ms) &mdash; &lt;0.2% of the queueing-dominated TTFT.</li>
+<li><b>The whole movement-optimization family is bounded (&sect;3).</b> Prefetch, transfer/compute overlap,
+layout/paging, and conversation co-residency all aim to reduce or hide a cost that is already negligible; none
+has goodput headroom on this workload/hierarchy. We verify the movement path is on the request's pre-prefill
+critical path (so this is not "it is already hidden") &mdash; it is simply cheap.</li>
+<li><b>A predictive boundary (&sect;5).</b> Movement optimization matters <em>iff</em> the tiering includes a
+tier whose transfer is a material fraction of TTFT. A fast HBM+DRAM two-tier hierarchy (&asymp;10&nbsp;M&nbsp;tok/s)
+is non-binding; a slow L3 (SSD/disk, orders of magnitude slower) is where the movement lever lives. This locates
+the movement lever <em>below</em> L2, not within L1&harr;L2.</li>
+<li><b>Placement in the design space.</b> This is the movement-axis companion to a design-space map whose
+verdict is that the goodput lever is prefill <em>scheduling</em>, not any KV data-movement/retention axis. It
+complements the caching-retention non-lever (the reuse "mirage") with the movement non-lever: not only is there
+little re-prefill to avoid, moving the cached KV is itself free.</li>
+</ul>
+
+<h2>2 Motivation: a large, load-growing movement volume &mdash; that is individually cheap</h2>
+<p>
+The fixed protocol serves 1553 multiturn conversations (7163 turns) from a Mooncake-style long-document mix at
+Poisson rates &lambda;&isin;{3,5,7,10}, on a 122B hybrid Mamba-attention model with a two-tier KV cache: L1 =
+GPU HBM, L2 = 768&nbsp;GB host DRAM (<code>--hicache-size 96</code>, <code>page_first_direct</code> layout,
+<code>direct</code> IO backend), <em>no</em> L3. Turn-0 of each conversation embeds a whole document (a large
+cold prefill); later turns reuse it. Under concurrency, HBM (L1) fills with running requests' KV, so a
+conversation's document KV is frequently resident only in L2 when its next turn arrives &mdash; and must be
+loaded back L2&rarr;L1 before that turn can prefill.
+</p>
+<p>
+This load-back happens constantly. The scheduler's <code>init_load_back</code> path moves the matched host-resident
+prefix to device (via the HiCache controller's load queue) and the request waits for the load to complete before
+its prefill runs &mdash; so the load-back is on the request's <em>pre-prefill critical path</em>. One would
+therefore expect movement to matter, especially at high load where the volume explodes:
+</p>
+<table>
+<caption>L2&rarr;L1 load-back from the engine's Prometheus histogram (stock full sweep,
+<code>runs/v0-stock/metrics_r&lt;&lambda;&gt;.txt</code>, one server, cumulative through each rate;
+<code>analysis/load_back_stats.py</code>). Volume grows 3.7&times; with load; per-operation latency stays flat and low.</caption>
+<tr><th>rate &lambda;</th><th>load-backs</th><th>tokens moved</th><th>mean latency</th><th>&lt;10&nbsp;ms</th><th>&lt;30&nbsp;ms</th><th>p99 TTFT (queueing-bound)</th></tr>
+<tr><td>3</td><td>25,008</td><td>0.37&nbsp;B</td><td>1.54&nbsp;ms</td><td>99.4%</td><td>100%</td><td>6&ndash;12&nbsp;s (coin-flip)</td></tr>
+<tr><td>5</td><td>47,944</td><td>0.70&nbsp;B</td><td>1.46&nbsp;ms</td><td>99.4%</td><td>100%</td><td>17&nbsp;s</td></tr>
+<tr><td>7</td><td>70,120</td><td>1.02&nbsp;B</td><td>1.35&nbsp;ms</td><td>99.5%</td><td>100%</td><td>34&nbsp;s</td></tr>
+<tr><td>10</td><td>92,600</td><td>1.36&nbsp;B</td><td>1.31&nbsp;ms</td><td>99.5%</td><td>100%</td><td>41&nbsp;s</td></tr>
+<tr><td colspan="7"><b>Individually cheap, and cheaper under load.</b> Every load-back is &lt;30&nbsp;ms; &ge;99.4%
+are &lt;10&nbsp;ms; the mean <em>falls</em> (1.54&rarr;1.31&nbsp;ms) as the volume triples &mdash; the movement
+subsystem is nowhere near saturation. Against a TTFT p99 of seconds, a &le;30&nbsp;ms load-back is &lt;0.2% of
+the request's time.</td></tr>
+</table>
+<p>
+The paradox resolves in one number: mean tokens/load-back = 6.95e8&nbsp;/&nbsp;47,944 &asymp;
+<b>14.5&nbsp;K tokens</b>, at mean 1.46&nbsp;ms &rArr; an effective <b>&asymp;10&nbsp;M&nbsp;tokens/s</b>
+host&rarr;device KV bandwidth (paged, direct IO). At that rate even a 190&nbsp;K-token maximum document's KV
+loads in &asymp;19&nbsp;ms. The movement is high-volume <em>and</em> cheap; there is simply no latency here worth
+hiding.
+</p>
+
+<h2>3 The movement-optimization family, and why each member is bounded</h2>
+<p>
+Every mechanism one would build to make the movement tier pay targets a cost that &sect;2 shows is already
+negligible. We take them in turn (all would be lossless; none moves goodput here):
+</p>
+<table>
+<tr><th>Mechanism</th><th>What it targets</th><th>Why it has no goodput headroom here</th></tr>
+<tr><td><b>Reuse-aware prefetch</b> (predict the next turn, pre-load its KV during think-time)</td>
+<td>The L2&rarr;L1 load latency on the reused turn's critical path</td>
+<td>That latency is &le;30&nbsp;ms (mean 1.46&nbsp;ms). Prefetching it away saves &lt;0.2% of TTFT. The tail is
+queueing behind cold prefills, which prefetch does not touch.</td></tr>
+<tr><td><b>Transfer/compute overlap</b> (async-load KV under other requests' compute)</td>
+<td>Hiding the load-back behind compute so it is off the critical path</td>
+<td>Same &le;30&nbsp;ms is being hidden; and the load subsystem is unsaturated even at &lambda;=10 (mean drops
+under load), so there is no queueing-for-transfer to overlap away either.</td></tr>
+<tr><td><b>Layout/paging for movement cost</b> (pack KV so less/cheaper data moves)</td>
+<td>The per-token movement cost</td>
+<td>Movement is already &asymp;10&nbsp;M&nbsp;tok/s with the stock <code>page_first_direct</code> layout. Halving
+the per-token cost halves a &le;30&nbsp;ms operation &mdash; still &lt;0.1% of TTFT.</td></tr>
+<tr><td><b>Conversation co-residency</b> (schedule/pin a conversation's KV to avoid reload)</td>
+<td>The reload (load-back) of an evicted conversation prefix</td>
+<td>Avoiding a &le;30&nbsp;ms reload saves &le;30&nbsp;ms. (And retention itself is a non-lever &mdash; single-pass
+LRU is Belady-optimal for this corpus; companion.)</td></tr>
+</table>
+<p>
+The common structure: all four reduce or hide the <em>movement</em> of reused KV, but the reused KV is cheap to
+move, and the goodput-binding cost is the <em>compute</em> to prefill the cold documents on their first sight
+(&asymp;75% of all prefill work is first-ever, cache-independent). Movement mechanisms cannot reduce compute.
+</p>
+
+<h2>4 Evaluation: the load-back is on the critical path, and still non-binding</h2>
+<p>
+We rule out the trivial explanation "movement is already hidden, so of course it does not appear." It is
+<em>not</em> hidden: <code>init_load_back</code> initiates the host&rarr;device load and the request is gated on
+its completion (<code>loading_check</code> resolves the acked load before the request is admitted to prefill),
+so the load latency is on the request's own pre-prefill timeline. It is non-binding because it is small, not
+because it is overlapped. The histogram (&sect;2) is the direct evidence: across every rate, the entire
+distribution sits under 30&nbsp;ms with a mean of 1.3&ndash;1.5&nbsp;ms, and it does not degrade as the offered
+volume triples &mdash; the opposite of what a binding resource does under load. The load-back's contribution to
+the p99 TTFT (17&ndash;24&nbsp;s at &lambda;&ge;5) is bounded above by its maximum (&lt;30&nbsp;ms), i.e.
+&lt;0.2%. No movement mechanism, however clever, can recover more than that 0.2% &mdash; and even that only if
+it eliminated load-back latency entirely and for free.
+</p>
+<p>
+This mirrors, on the movement axis, the companion caching result on the retention axis: there we showed there is
+almost no avoidable re-prefill to capture (the reuse "mirage"); here we show that even the KV that <em>is</em>
+reused costs essentially nothing to move. Retention and movement &mdash; the two things a KV tiering system
+does &mdash; are both non-levers for goodput on this workload; the lever is scheduling the cold prefills.
+</p>
+
+<h2>5 When movement <em>would</em> matter: a slow-tier boundary</h2>
+<p>
+The non-lever result is not universal; it is predictable. A load-back is on the critical path with cost
+<code>C_move &asymp; (reused-prefix tokens) / (tier bandwidth)</code>, and it matters for goodput iff
+<code>C_move</code> is a material fraction of TTFT. Three quantities decide it: the reused-prefix size, the tier
+bandwidth, and the ambient TTFT. For this workload/hierarchy:
+</p>
+<ul>
+<li><b>Tier bandwidth is high.</b> HBM&harr;DRAM with a paged direct-IO layout is &asymp;10&nbsp;M&nbsp;tok/s, so
+<code>C_move</code> is single-digit-to-tens of milliseconds even for the largest documents.</li>
+<li><b>Ambient TTFT is large.</b> Because the goodput bottleneck is cold-prefill compute, TTFT at the
+goodput-setting rate is seconds; a millisecond load-back is lost in it.</li>
+</ul>
+<p>
+The boundary flips when a tier is slow. Add an L3 (SSD/NVMe/disk) at, say, 10&ndash;100&nbsp;MB/s effective per
+rank instead of DRAM's GB/s, and <code>C_move</code> for a large document rises from tens of milliseconds to
+<em>seconds</em> &mdash; now a material fraction of TTFT, and now prefetch/overlap/layout genuinely pay (indeed,
+in disk-backed HiCache regimes, parallelizing and overlapping L3 IO is a known win). <b>The movement lever lives
+below L2.</b> Within the L1&harr;L2 (HBM+DRAM) hierarchy of this protocol &mdash; which deliberately has no L3
+&mdash; movement is on the non-binding side of the boundary, and the family of &sect;3 mechanisms has no goodput
+headroom. This is the movement-axis analogue of the companion caching phase boundary (caching helps iff reuse
+recurs beyond the cache horizon): a single, checkable criterion that tells a practitioner whether the axis is
+worth optimizing before they build anything.
+</p>
+
+<h2>6 Related work</h2>
+<p>
+<b>HiCache / LMCache / AttentionStore</b> build the KV tiering and its movement machinery; our result is that,
+for this workload in a fast two-tier hierarchy, the movement they optimize is not the goodput bottleneck (it is
+below-L2, disk-tier movement that pays &mdash; consistent with disk-backed HiCache results where parallel L3 IO
+is the win). <b>Marconi</b> manages hybrid SSM&ndash;attention prefix caching; consistent with our companion's
+finding that the recurrent-state pool never binds, the only residency pressure is attention-KV, and moving it is
+cheap. Prefetching and transfer/compute overlap are classic memory-hierarchy techniques; our contribution is not
+a new one but the measured, bounded statement that <em>on this axis, for this workload, there is nothing to
+hide</em>, plus the slow-tier boundary that says when there would be. This paper is the movement-axis companion
+to a design-space map (goodput@SLO is a prefill-scheduling problem) and to the caching-retention non-lever.
+</p>
+
+<h2>7 Limitations</h2>
+<ul>
+<li><b>Two-tier (no L3) by protocol.</b> The result is explicitly scoped to the fixed HBM+DRAM hierarchy. &sect;5
+predicts (and prior disk-backed results confirm) that an L3/disk tier moves movement to the binding side; we do
+not evaluate an L3 tier (it is off-protocol).</li>
+<li><b>One workload class</b> (122B hybrid, long-document multiturn). The boundary of &sect;5 is our generality
+argument: the non-lever holds wherever tier bandwidth is high and ambient TTFT is compute-dominated.</li>
+<li><b>Measurement, not ablation.</b> We do not build and A/B a prefetch/overlap mechanism &mdash; the histogram
+already bounds the achievable gain above by &lt;0.2% of TTFT, so an implementation could not beat that ceiling;
+building one to confirm a &lt;0.2% ceiling is not a good use of the budget. The load-back path is engine-verified
+to be on the critical path (so the &lt;0.2% is not an artifact of pre-existing overlap).</li>
+</ul>
+
+<h2>8 Reproducibility</h2>
+<p>
+Base <code>a334877e5</code> (stock v0.31), 2-tier config per the fixed protocol (<code>--hicache-size 96</code>,
+<code>page_first_direct</code>, <code>direct</code> IO, no storage backend). The load-back histogram is the
+engine's own Prometheus metric (<code>observe_load_back_duration</code> / <code>load_back_tokens_total</code> in
+<code>python/sglang/srt/mem_cache/unified_radix_cache.py</code>), captured per rate in
+<code>runs/v0-stock/metrics_r&lt;&lambda;&gt;.txt</code>; <code>analysis/load_back_stats.py</code> reduces it to
+the &sect;2 table. The load-back critical-path claim is from the engine code path
+<code>init_load_back &rarr; load_back &rarr; ongoing_load_back &rarr; loading_check</code> (same file). All
+numbers derive from the frozen evaluation protocol; no eval knobs were changed.
+</p>
+
+</body></html>

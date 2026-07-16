@@ -1382,3 +1382,14 @@ reduction order → token flips even when correct), so the practical lossless te
 normal, outputs coherent/non-garbage (detects real KV corruption), aggregate stats sane" — as used for decode-QoS
 in P4. Implement output-capture ONLY after diagnostic 20257 confirms the false-positive (don't pre-build; gated).
 ★STATUS: 20257 still queued (cluster saturated); Direction 6 fully scoped GPU-free; compute-bound. Harvest on schedule.
+
+### Direction 6 refinement #4 (2026-07-16, integrity — TEMPER the false-positive claim)
+Verified inc_lock_ref (mamba_radix_cache 886-889): guard `if full_lock_ref==0` is checked BEFORE increment (889)
+→ first lock correctly moves evictable→protected. dec_lock_ref symmetric (correct). ⇒ ALL primary counter-mutation
+sites are CORRECT (inc/dec_lock_ref, _split_node, len(key)==len(value)). ★HONEST TEMPERING: a SIMPLE counter bug is
+now LESS likely than refinements #1-3 suggested. The invariant-fail is therefore either (a) a non-obvious path
+(evict/cache_finished — unchecked) OR (b) a GENUINE over-commit under mixed-chunk (real, not a counter bug → would
+FIRM P4's 'resists fixing', not unlock a fix). So Direction 6 is NO LONGER "likely false-positive" — it's
+GENUINELY UNCERTAIN (false-positive vs real), and the diagnostic 20257 (tree-sanity assert: counter==LRU-walk?)
+is the ONLY reliable disambiguator. Do not overstate. If diagnostic stays GPU-blocked, Direction 6 remains an
+open, honestly-uncertain lead (not a claimed positive). Campaign core = the 4 verified papers.

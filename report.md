@@ -896,3 +896,13 @@ Re-reviewed the flagship (materially changed since the last review: n=6, same-no
 - Corrected everywhere (P3 §4/§5/caption/appendix/repro, P1 cross-ref, goodput_stats.py) + P2 caption. Commit af0f01a96.
 - ★OPS LESSON: node identity = `sacct -j <jobid> -o NodeList` (ground truth), NEVER mtime-correlation with
   campaign logs (I got v-srpf-full wrong that way). Reviewer verdict was weak-accept; this was its #1 fix.
+
+### 2026-07-16 (cont.): sacct-verified the COMPANIONS' same-node claims too (error class did NOT propagate)
+After the P3 v-srpf-full node error, checked whether the same mtime-inference bug affected P1/P4 same-node A/Bs:
+- **P4 (RPB) same-node A/B: ALL on node 1-1** (sacct) — baseline ctl4(19915)/ctl5(19949) + v-rpb25(19931)/
+  v-rpb10(19942,19971,19981)/v-rpbA25(19947)/v-rpb25-r2(19958)/v-rpbA25-r2(19962)/v-rpb50(19980,19998). CORRECT.
+- **P1 (CCA) comparison: ALL on ondem-3** (sacct) — v3-cca(19767), v4-cca-lb(19769/r2 19788/r3 19792),
+  v5-cca-lb-w90(19794/r2 19796), and the stock baseline (v0-stock family). CORRECT (same-node vs stock).
+⇒ The v-srpf-full error was ISOLATED to P3 (launched via eval-on-pool onto an unpredictable node; the
+companions' A/Bs used campaign.sh `-w` node-pinning → genuinely same-node). Node attribution now sound across
+ALL 4 papers, all verified against sacct ground truth. No companion corrections needed.

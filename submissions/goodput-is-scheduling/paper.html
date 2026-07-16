@@ -383,7 +383,9 @@ workload and hardware parameters alone, predicts goodput <em>and</em> names the 
 <code>C_batch</code>, the cache horizon <code>H</code>, and the SLO <code>T</code>:
 </p>
 <ul>
-<li><b>Compute ceiling</b> <code>g_ceil = C_eff / E[W]</code> — the work-conservation cap no policy beats.</li>
+<li><b>Compute ceiling</b> <code>g_ceil = C_eff / E[W]</code> — the work-conservation cap no <em>scheduling</em>
+policy beats (scheduling reorders work at fixed <code>E[W]</code>); reducing <code>E[W]</code> itself — e.g.
+<code>write_back</code>'s fewer misses — raises it ~7% (§3), yet goodput stays below even the raised cap.</li>
 <li><b>Per-request floor</b> <code>f = P99(W) / C_batch</code> — a request's own prefill; policy-invariant.</li>
 <li><b>Caching headroom</b> <code>h</code> = fraction of re-uses at stack-distance &gt; <code>H</code> (§6).</li>
 </ul>

@@ -1009,3 +1009,9 @@ firms whether srpf λ3 reliably PASSES (variance collapsed → reliable goodput,
 (coin-flip scheduling-robust, strengthens P1). RESUME: `python3 tools/ab_analyze.py runs/v9-defer-knee/srpf_ab.csv`;
 if job 20018 dead + csv incomplete, resubmit tools/defer_knee.sbatch on any idle a3 node (NOT slurm2-a3nodeset-2 =
 GPU-less). Either outcome integrates into P2 (§ deferral & the knee variance) with honest framing; commit+push.
+
+### ★ defer-knee RESULT (2026-07-16, job 20018, node 0-2, COMPLETE) — DEFERRAL COLLAPSES THE KNEE COIN-FLIP
+Same-node λ3 K5, fcfs vs srpf (deferral reference):
+- **fcfs λ3**: {9671,12265,22035,34132,35870}ms, median 22.0s, **σ/m 0.53**, 0/5 pass — textbook coin-flip (3.7× spread).
+- **srpf λ3**: {6177,6225,6665,6711,6755}ms, median 6.7s, **σ/m 0.04**, 5/5 pass — tight (1.09× spread), disjoint (srpf max 6755 < fcfs min 9671).
+⇒ Deferral cuts p99 median −70% (Fisher p=0.0079) AND **collapses σ/m 13× (0.53→0.04)**. p50/hit/req flat (3.02, lossless, throughput-neutral). **ANSWER to the P1↔P2 bridge: deferral doesn't merely SHIFT the knee median under the SLO — it COLLAPSES the metastable run-to-run variance (P1's coin-flip) into a reliable pass.** The goodput@SLO knee coin-flip is a SCHEDULABILITY artifact: a well-ordered (deferred) queue is both faster and ~13× more predictable. Unifies P1 (coin-flip, variance-dominated for CACHING) + P2 (deferral clears the HOL tail): caching can't collapse the coin-flip, scheduling (deferral) can. SRPF = cited reference (not claimed). → integrate into Paper 2 as a new subsection (deferral & the knee variance).

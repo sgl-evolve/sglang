@@ -1321,3 +1321,33 @@ goodput exactly where it's ACHIEVABLE (λ3 unsaturated, PASS→FAIL, tail untouc
 SATURATED regime (λ5/λ7) where goodput is ALREADY LOST. "Helps where it doesn't matter, hurts where it does."
 Reinforces "no operating point cuts the tail while preserving goodput." Await λ10 (~30min) → final 4-rate Table 3
 + refine §5 prose (the wrecks-TTFT is λ3-specific; saturated regime shows modest ttft+tail improvement but goodput moot).
+
+---
+## DIRECTION 6 LEAD (2026-07-16): the "pool leak" blocking decode-tail mitigation is likely a FALSE-POSITIVE check bug
+Explore verdict (my clone, stock sglang code): invariant_checker `available+evictable+protected+session_held+
+uncached==total` (line 76) FIRES under mixed-chunk/reserve/decode-QoS-no-guard with protected as the EXACT excess
+(available+evictable≈total already). evictable & protected are DISJOINT by design (mamba_radix_cache inc/dec_lock_ref
+886-919 move tokens between them). ⇒ full_evictable_size_ COUNTER has DRIFTED to over-count by ~protected → likely
+a FALSE-POSITIVE (counter bug, physical allocator fine — crash is an invariant ASSERT not a CUDA OOM). Candidate
+root cause: len(key) vs len(value) inconsistency (delete uses len(key) @1286/1303, lock uses len(value) @887/918)
+or _split_node (1147-1178, splits a locked node, no size update). ★IF false-positive → fixing it could UNBLOCK
+mixed-chunk/decode-QoS-no-guard → potential FIRST CLEAN decode-tail fix (charter TOP PRIZE, resolves P4 §5 open Q).
+★PLAN: (1) pinpoint the drift bug (fix it = SAFE path, correct accounting → guaranteed lossless) OR run with
+strict-check=warn (SGLANG_ENABLE_STRICT_MEM_CHECK_DURING_IDLE=0) to test if the run completes; (2) VERIFY
+LOSSLESSNESS rigorously (compare greedy outputs to stock — cardinal rule; a counter-drift is benign/lossless, a
+real corruption is not) before claiming ANY positive; (3) measure decode tail (mixed-chunk should cut it Sarathi-
+style). Contribution if it pans out = the BUG-FIX (engine correctness, not a config flip) that unlocks decode-tail
+mitigation. ⚠️HIGH-RISK (losslessness); do NOT claim positive without output-equivalence proof. Genuine lead, not fabrication.
+
+### Direction 6 analysis refinement (2026-07-16, GPU-free source trace)
+RULED OUT: _split_node (mamba_radix_cache 1147-1178) is CORRECT — splits conserve value + lock category (both
+halves inherit lock_ref), no size update needed. len(key)==len(value) (key/value sliced identically) → the
+delete-uses-len(key) @1286/1303 vs lock-uses-len(value) @887/918 inconsistency is HARMLESS. ★REFINED HYPOTHESIS:
+the leak check is an IDLE-invariant (available+evictable+protected+session_held+uncached==total) run DURING BUSY
+via self_check_during_busy (scheduler.py:1553, gated by SGLANG_ENABLE_STRICT_MEM_CHECK_DURING_BUSY; raises via the
+DURING_IDLE flag). Under mixed-chunk's higher concurrent prefill+decode, transient mid-operation state (tokens
+allocated-but-not-yet-inserted, or in-flight) makes the idle-invariant transiently false → false-positive abort.
+⇒ FALSE-POSITIVE (transient), not a real slot leak. ★DIAGNOSTIC job 20257 (v17-mixedchunk-nocheck, IDLE=0 →all
+leak checks warn-not-raise, --exclude bad node 1-0): if it COMPLETES the sweep → false-positive confirmed →
+pursue the fix (make the busy check tolerate transient state, or account for in-flight) + VERIFY losslessness
+(output-equivalence vs stock) → then mixed-chunk unblocked = decode-tail fix. If OOM/abnormal → real leak → P4 firmed.

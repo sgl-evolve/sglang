@@ -1272,3 +1272,16 @@ diagnosis paper; SRPF a confirmatory probe). 3 minor nits, all not-reject-level 
 node 1-1; C_eff-circularity acknowledged + lever-selection non-circular; companions non-load-bearing). Reviewer:
 "exemplary systems work — counter-intuitive finding, airtight evidence, honest reporting, generalizable framework."
 ⇒ the flagship is top-venue-ready after all recent changes; no edits warranted. Genuine rigor confirmation, not gilding.
+
+### 2026-07-16 (cont.): fresh hostile-PC review of P2 (most-changed companion) → hard ACCEPT (artifact-verified)
+Parallel to the P3 review: P2 had substantial un-fresh-reviewed new content (NEW §3.4 write_back, rewritten §3.3
+3-policy eviction sweep, §3.1 live-under-load fortification). Ran a fresh adversarial review verified against
+artifacts. ★VERDICT: **ACCEPT** — all claims match: SLRU −18.7..−26.8pp / LFU −10.5..−24.6pp (ranges "−19..−27"/
+"−10..−25" correctly rounded), write_back +4.8..+6.6pp / +7.4% (4.74→5.09) same-node, offline LRU=LFU=Belady=0
+avoidable (doc_reuse.py), 4-pass 55.1M/54.0M/23.1M, phase-boundary step-function on constructed + 4 real corpora.
+No contradictions (abstract "caching can't move goodput" ↔ §3.4 write_back raises hit not goodput ↔ §3.1
+eviction-optimal-hit, all consistent). write_back honestly framed as stock-config evidence. Biggest weakness
+(generalization on 2 non-trivial corpora) explicitly + honestly scoped (§3.5 + §7). Only <1pp rounding, within
+tolerance. Reviewer: "rigorous bounded negative, proven 3 ways, honest execution, no over-claiming." No edits warranted.
+⇒ Both materially-changed papers (P3 + P2) now fresh-adversarial-reviewed → BOTH ACCEPT, all claims artifact-verified.
+P1/P4/P5 changed less (verified via consistency audit + P3 cross-checks). Body confirmed top-venue-ready. Genuine rigor.

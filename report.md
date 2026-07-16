@@ -1257,3 +1257,15 @@ if it cuts the tail cleanly → this is a WORKING decode-QoS fix → UPGRADE P4 
 optionally sweep K∈{2,8} + same-node stock arm for rigor. If neutral/crash → learn + keep P4 as-is. ⚠️ if
 decode-QoS is deemed "classical fair-scheduling" (charter L23), frame as the Pareto CHARACTERIZATION + the
 robust-simple-fix-that-avoids-mixed-chunk's-crash, not a novel-primitive claim. ⚠️--mem=0 mandatory; harvest at end.
+
+### Direction 5 decode-QoS: v1 (K=4, job 20238) CRASHED (pool leak) → FIXED (7091d4957) → v16 (job 20239)
+v15/20238 crashed in WARMUP: pool memory leak [full] available=4736, protected=577792. ROOT CAUSE: my v1 built
+the prefill batch via get_new_batch_prefill() (which ALLOCATES KV) then DISCARDED it when forcing decode →
+leaked reserved slots (protected KV). FIX: decide force_decode BEFORE building the prefill batch (skip
+get_new_batch_prefill entirely when forcing → no allocate-then-discard) + guard `self.chunked_req is None`
+(never interrupt a mid-flight chunked mega-doc → don't strand its protected KV). Lossless at bound=0 (stock path
+untouched). Relaunched v16-decodeqos-k4 (job 20239, node -0, --mem=0). ★NOTE on coverage: the chunked_req guard
+means a mega-doc's own ~31-chunk prefill isn't interrupted (its ~13s decode stall stays, = p99.9), but the
+common 661-run of SEPARATE small prefills IS bounded to ≤K → should cut ITL p99 (the metric). HARVEST v16:
+decode_pareto.py (A=v0-stock B=v16) + batch_ratio.py (v16 log: run-length capped ~K? decode share up?) + verify
+completed=7037 (full trace = lossless-served). If cuts tail + no crash → same-node stock arm → P4 §5 upgrade.

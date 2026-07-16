@@ -103,13 +103,17 @@ metric; "goodput" = p99 TTFT &le; 8&nbsp;s. ITL/TPOT/E2E are the decode tail. Ev
 <div class="key"><b>goodput@SLO can report PASS at a p99 E2E of 347&nbsp;seconds.</b> The metric optimizes the first
 token and is blind to the other 99% of the request's latency.</div>
 
-<p>Two clarifications. First, part of the enormous E2E is <i>saturation</i> queueing: &lambda;=5 offers more load
-than the ceiling (~4.6&nbsp;req/s), so the open-loop queue grows and E2E inflates. But the decode-<i>stall</i>
-signal is not queueing: <b>ITL</b> is the gap <i>between consecutive tokens of a request already decoding</i>, and
-its p99 is ~4&ndash;5&nbsp;s even at &lambda;=3 (at/below the knee, where TTFT can pass). Individual inter-token
-gaps of 4&ndash;5&nbsp;s are genuine decode stalls, independent of overall saturation. Second, the median TPOT is
-healthy (~0.22&nbsp;s); the pathology is entirely in the tail &mdash; a small fraction of tokens stall for
-seconds.</p>
+<p><b>It is not saturation.</b> The obvious objection is that a 347&nbsp;s E2E is just open-loop queueing above
+capacity. It is not. At &lambda;=3 the server is <b>unsaturated</b> &mdash; achieved throughput is
+2.85&ndash;3.02&nbsp;req/s, i.e. it keeps up with the offered 3&nbsp;req/s (no unbounded queue) &mdash; and the
+<b>median</b> E2E is a healthy 3.8&ndash;7.0&nbsp;s. Yet the <b>p99</b> E2E is 347&ndash;446&nbsp;s: a ~90&times;
+median-to-p99 blow-up at a load the system comfortably sustains. This is a <i>tail</i> pathology, not a capacity
+one. Two corroborating facts: (i) <b>ITL</b> &mdash; the gap between consecutive tokens of a request
+<i>already decoding</i>, which contains no queue wait &mdash; has a p99 of ~4&ndash;5&nbsp;s even at &lambda;=3;
+individual 4&ndash;5&nbsp;s inter-token stalls are decode-scheduling artifacts, not queueing. (ii) the median TPOT
+is healthy (~0.22&nbsp;s) &mdash; the pathology is entirely in the tail: a minority of requests stall for
+seconds per token while most decode normally. (At &lambda;&ge;5 genuine saturation adds to E2E on top of this, so
+we anchor the claim on the unsaturated &lambda;=3 case and on ITL.)</p>
 
 <h2>3 The decode tail is invariant and orthogonal to the prefill lever</h2>
 <p><b>Invariant (not the TTFT coin-flip).</b> A companion result shows the TTFT knee is a run-to-run coin-flip

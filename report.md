@@ -1119,3 +1119,34 @@ cross-load consistency = firm enough for a bounded negative (report n honestly, 
 INTEGRATION: Paper 2 §4 gains interleave as the 4th failed point mapping the deferral design space — the sweet
 spot is UNIQUE (SRPF defer-at-admission-then-run): under-defer=FCFS, throttle=reserve, wrong-key=LOF,
 over-defer=interleave ALL fail. + methodology lesson (sim must measure the eval metric, not a tiny-req proxy).
+
+---
+## DIRECTION 3 (2026-07-16): L1↔L2 KV MOVEMENT — is transfer/overlap a goodput@SLO lever?
+Orthogonal to P1(caching)/P2(scheduling). Charter-hinted ("transfer/compute overlap that hides L1↔L2
+latency under load"). Hypothesis: under high-λ eviction pressure a waiting short's prefix is evicted to L2;
+when it's finally scheduled (after a mega-doc clears) it stalls on L2→L1 restore → an anticipatory
+prefetch-during-mega-doc-compute could hide it (novel overlap primitive) OR movement is a non-lever.
+
+CODE PATH (my clone): `cache_controller.load()` only ALLOCS+ENQUEUES to load_queue; real DMA runs later in
+`start_loading()` on `load_stream`, waited per-layer via cross-stream wait_event DURING batch N's forward
+(overlaps within-batch), but NOT pre-issued during the PRIOR (mega-doc) batch → overlap GAP exists (verdict B).
+`load_back_duration_seconds` (Prometheus) wraps ONLY the enqueue; NO actual-DMA timer existed.
+
+EVIDENCE (all from the eval's OWN artifacts, GPU-free unless noted):
+- (A) ENQUEUE: restore avg ~1.3ms p99≤8ms; evict avg ~0.9ms p99≤7ms — negligible. VOLUME huge: λ7 restores
+  1.04B tok / evicts 1.84B tok (vs only 109M NEW tokens recomputed) → ~10× more KV MOVED than PRODUCED
+  (heavy L1↔L2 thrashing) yet ~1ms enqueue.
+- (C) EXPOSED (client TTFT, real runs): non-queued cache-hit reqs @λ5, TTFT FLAT vs prompt_len:
+  <1K→585ms, 15-40K→506ms, 40-100K→673ms → a 100K cached-context restore adds ≤~100-170ms over the ~500ms
+  sched floor, DESPITE ~3 restores/req. Exposed restore ≤~170ms ≪ the seconds-scale p99 knee.
+- (D) COST HIERARCHY: recompute ~38-63K tok/s aggregate; restore tok/s pending (B, KL_DMA_TIMING run 20210).
+- (B) ACTUAL DMA: added env-gated CUDA-event timing (commit 3b2756b28, KL_DMA_TIMING, off=lossless);
+  instrumented sweep job 20210 on node 1-0 → runs/v12-dma-timing (read [KLDMA] from server.log).
+
+DECISION GATE: if actual DMA p99 small (expected) → movement is a NON-LEVER; the max benefit of any
+prefetch/overlap mechanism is bounded above by the exposed restore (≤~170ms) ≪ 8s SLO → no need to build it
+(ceiling-bound impossibility argument). → PAPER 3 (focused measurement study): "transfer latency is NOT the
+bottleneck for compute-bound long-context prefill; tiering's value is CAPACITY not latency-hiding; reframes
+the transfer-overlap machinery of HiCache/LMCache/AttentionStore/Strata for this regime" + unified lever map
+(caching[P1]/scheduling[P2]/movement[P3]). If DMA surprisingly large AND section C somehow misleading → build
+anticipatory prefetch + A/B. Tool: tools/movement_analyze.py (A/B/C/D reproducible).

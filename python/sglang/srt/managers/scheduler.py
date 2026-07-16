@@ -1007,6 +1007,7 @@ class Scheduler(
         elif self.chunked_prefill_size is not None and self.chunked_prefill_size <= 0:
             self.chunked_prefill_size = None
         self.chunked_req = None
+        self._interleave_yields = 0  # kleinrock: consecutive-yield counter for --prefill-interleave-defer
         self._pending_chunked_abort_req = None
         self.is_mixed_chunk = (
             self.chunked_prefill_size is not None
@@ -2735,6 +2736,18 @@ class Scheduler(
         res = min(res, self.req_to_token_pool.available_size())
         return res
 
+    def _interleave_should_yield(self) -> bool:
+        # kleinrock chunk-interleaved deferral. Return True to PARK the in-flight chunked mega-doc
+        # this iteration (letting waiting short requests prefill in its place). Off by default
+        # (byte-identical stock). Progress guarantee: never yield more than max_yield times in a row,
+        # so the mega-doc always advances at least one chunk per (max_yield+1) iters (no starvation).
+        # Only yield when there is actually a waiting request to prefill in its place.
+        if not self.server_args.prefill_interleave_defer:
+            return False
+        if self._interleave_yields >= self.server_args.prefill_interleave_max_yield:
+            return False
+        return len(self.waiting_queue) > 0
+
     def get_new_batch_prefill(self) -> Optional[ScheduleBatch]:
         prefill_delayer_single_pass = None
         if self.prefill_delayer:
@@ -2838,8 +2851,17 @@ class Scheduler(
         )
 
         if self.chunked_req is not None:
-            self.chunked_req.init_next_round_input()
-            self.chunked_req = adder.add_chunked_req(self.chunked_req)
+            if self._interleave_should_yield():
+                # kleinrock chunk-interleaved deferral: PARK the in-flight chunked mega-doc this
+                # iteration (do NOT extend it) so waiting short requests prefill in its place,
+                # bounding inter-prefill head-of-line blocking to ~one chunk. self.chunked_req stays
+                # set (its KV is already stashed/cached by the preamble); it resumes next iteration.
+                # The progress guarantee (_interleave_should_yield) force-continues it within N iters.
+                self._interleave_yields += 1
+            else:
+                self._interleave_yields = 0
+                self.chunked_req.init_next_round_input()
+                self.chunked_req = adder.add_chunked_req(self.chunked_req)
 
         if self.enable_lora:
             running_loras = {

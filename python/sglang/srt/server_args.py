@@ -722,6 +722,14 @@ class ServerArgs:
             ],
         ),
     ] = "fcfs"
+    prefill_interleave_defer: A[
+        bool,
+        "kleinrock: chunk-interleaved deferral. When a chunked mega-doc is in flight and short requests are waiting, PARK the mega-doc for an iteration so the short requests prefill in its place, bounding inter-prefill head-of-line blocking to ~one chunk. A progress guarantee (prefill_interleave_max_yield) resumes the mega-doc within N iters. Default False = byte-identical stock.",
+    ] = False
+    prefill_interleave_max_yield: A[
+        int,
+        "kleinrock: progress guarantee for --prefill-interleave-defer. Force-continue a parked chunked req after this many consecutive yields (bounds mega-doc slowdown / prevents starvation). Default 2.",
+    ] = 2
     enable_priority_scheduling: A[
         bool,
         "Enable priority scheduling. Requests with higher priority integer values will be scheduled first by default.",

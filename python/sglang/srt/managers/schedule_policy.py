@@ -1006,6 +1006,14 @@ class PrefillAdder:
                     req.retracted_stain,
                 )
             else:
+                # kleinrock chunk-interleaved deferral: while a chunked mega-doc is in flight/parked
+                # (has_chunked_req), do NOT start a SECOND chunked prefill — that would violate the
+                # one-chunked-request invariant (and overwrite the parked req). Skip this big request
+                # so only short (non-chunked) requests fill the yielded iteration; it stays queued.
+                # No-op for stock: when a chunked_req is running, add_chunked_req has already consumed
+                # the budget so this branch's trunc_len would be <=0 and return OTHER anyway.
+                if has_chunked_req:
+                    return AddReqResult.OTHER
                 # Make sure at least one page is available
                 trunc_len = self.rem_chunk_tokens // self.page_size * self.page_size
 

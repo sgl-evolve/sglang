@@ -3540,7 +3540,22 @@ class Scheduler(
                 self.pool_stats_observer.get_pool_stats(),
             )
             if has_leak:
-                self.invariant_checker._report_leak("pool", "\n".join(messages))
+                # Hierarchical-cache async ops (write-through / load-back) transiently make
+                # the pool counters diverge: a node whose backup has not yet ack'd has its
+                # pages counted in both the allocator free-list and the tree-evictable set
+                # (a bounded, page-granular, self-healing over-count). The tree sanity_check
+                # already skips in exactly this window (HiMambaRadixCache.sanity_check:
+                # "Skip if async operations are pending"); the idle pool-leak check lacked
+                # the same guard and so false-positived, crashing mixed-chunk on the
+                # hybrid-SSM + hierarchical-cache path. Suppress the report while async ops
+                # are in flight — a real (persistent) leak still trips on a later idle once
+                # write-through / load-back have drained.
+                tc = self.tree_cache
+                hicache_async_pending = bool(
+                    getattr(tc, "ongoing_write_through", None)
+                ) or bool(getattr(tc, "ongoing_load_back", None))
+                if not hicache_async_pending:
+                    self.invariant_checker._report_leak("pool", "\n".join(messages))
             self.invariant_checker._check_req_pool()
 
         # tree cache sanity check

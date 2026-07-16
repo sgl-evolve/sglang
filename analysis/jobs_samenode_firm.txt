@@ -1,0 +1,8 @@
+# floyd: firm the STRICTLY same-node SRPF-win anchor on node 0-3 from marginal (3/3 vs 0/3, p=0.05)
+# to clearly-significant + BALANCED (4/4 vs 0/3+1=0/4, Fisher p=0.014), resolving the internal tension
+# (my own same-node-A/B mandate vs the cross-node-pooled headline p=0.0006). Node 0-3 already holds
+# SRPF r1/r2/r3 (5850/6576/7457 ms PASS) + stock srpfctl/n03-1/n03-2 (22746/23540/23463 ms FAIL).
+# Add ONE SRPF + ONE stock, same node 0-3, full contract sweep (TIMEOUT=4:00:00 for summary.json after λ10).
+# Expected: SRPF λ5 passes (~6-8s), stock λ5 fails (~17-24s) as they do 6/6 and 7/7 elsewhere.
+v-srpf-samenode-1:--schedule-policy srpf
+v-stock-samenode-1:

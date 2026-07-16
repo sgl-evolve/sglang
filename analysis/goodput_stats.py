@@ -29,6 +29,11 @@ SRPF = [
     ("v-srpf-full", "1-2", 6502.65, 7822.67),
     ("v-srpf-ctl4", "1-1", 6972.59, 6579.98),
     ("v-srpf-ctl5", "1-1", 6393.30, 6411.34),
+    # Same-node firming (job 20057, sacct NodeList -> 0-3): 4th SRPF on 0-3 to lift the strictly
+    # same-node anchor from marginal (3/3 vs 0/3, p=0.05) to clearly-significant (4/4 vs 0/3, p=0.029).
+    # lambda5=5549 PASS (as SRPF does 6/6 elsewhere). lambda3=9145 FAIL -> a metastable draw; SRPF
+    # lambda3 is now 6/7, which is CORRECT and reinforces "lambda3 is variance-dominated, not decisive".
+    ("v-srpf-samenode-1", "0-3", 9144.54, 5548.85),
 ]
 STOCK = [
     ("v0-stock",        "ondem-3", 11786.81, 17372.40),
@@ -37,11 +42,16 @@ STOCK = [
     ("v0-stock-r4",     "ondem-3",  6391.93, 23771.54),
     ("v0-stock-r5",     "ondem-3",  7765.44, None),
     ("v-stock-srpfctl", "0-3",      7611.58, 22745.56),
-    # Same-node stock controls on node 0-3 (job 20005/20019, jobs_stock_n03.txt) to firm the
-    # STRICTLY same-node significance without cross-node pooling. Both fail λ5 as stock does 5/5.
-    # (n03-3 not run: p=0.029 at 0/3 already resolves the caveat; released the node.)
+    # Same-node stock controls on node 0-3 (jobs 20005/20019 + firming 20130) to firm the STRICTLY
+    # same-node significance without cross-node pooling. All fail λ5 as stock does 8/8 overall.
+    # With the paired firming (v-srpf-samenode-1 + v-stock-samenode-1) the same-node A/B is BALANCED
+    # 4/4 vs 0/4 -> p=0.014 (was marginal 3/3 vs 0/3 = 0.05).
     ("v-stock-n03-1",   "0-3",     31922.02, 23540.81),  # λ3 an extreme metastable draw (queue-95, 0 retracts)
     ("v-stock-n03-2",   "0-3",     23513.86, 23463.73),
+    # 4th same-node stock control (job 20130, sacct NodeList -> 0-3) paired with v-srpf-samenode-1 to
+    # BALANCE the strictly same-node A/B: 4/4 SRPF pass vs 0/4 stock fail -> Fisher p=0.014 (was 0.029
+    # at 4/4 vs 0/3). lambda5=23250 FAIL as stock does 7/7 elsewhere; lambda3=12347 a coin-flip fail.
+    ("v-stock-samenode-1", "0-3", 12347.14, 23249.80),
 ]
 
 
@@ -79,19 +89,20 @@ if __name__ == "__main__":
            "both rates pooled:")
 
     print("\n=== STRICTLY same-node (node 0-3 only): no cross-node pooling ===")
-    srpf_03 = passes([r[3] for r in SRPF if r[1] == "0-3"])          # 3 SRPF lambda5 on 0-3 (r1,r2,r3)
-    stock_03 = passes([r[3] for r in STOCK if r[1] == "0-3"])        # 3 stock lambda5 on 0-3 (srpfctl + n03-1,2)
+    srpf_03 = passes([r[3] for r in SRPF if r[1] == "0-3"])          # 4 SRPF lambda5 on 0-3 (r1,r2,r3,samenode-1)
+    stock_03 = passes([r[3] for r in STOCK if r[1] == "0-3"])        # 4 stock lambda5 on 0-3 (srpfctl + n03-1,2 + samenode-1)
     fisher(srpf_03[0], srpf_03[1] - srpf_03[0], stock_03[0], stock_03[1] - stock_03[0],
            "0-3 lambda5, STRICTLY same-node (no pooling):")
     print("    (nodes for SRPF lambda5: 0-3={}, 1-2={}, 1-1={} runs)".format(
         sum(1 for r in SRPF if r[1]=="0-3"), sum(1 for r in SRPF if r[1]=="1-2"), sum(1 for r in SRPF if r[1]=="1-1")))
 
     print("\nInterpretation:")
-    print("  * lambda5 is the decisive, significant separation: SRPF 6/6 pass (5.85-7.82s) vs stock 0/7")
-    print("    fail (17.4-23.8s) - NO distributional overlap; p=0.0006 (pooled). ROBUST ACROSS THREE NODES:")
-    print("    SRPF passes on 0-3 (n=3), 1-2 (n=1), 1-1 (n=2); stock fails on ondem-3 (n=4) and 0-3 (n=3).")
-    print("  * STRICTLY same-node (node 0-3, ZERO pooling): SRPF 3/3 vs stock 0/3 -> p=0.05 (marginal, at the")
-    print("    threshold). The confound-free anchor corroborates; the decisive significance is the pooled")
-    print("    p=0.0006 + the 3-node robustness (treatment gap 9.5s >> +-45% node variance).")
-    print("  * lambda3 is a coin-flip regime: stock passes ~4/8 overall, SRPF 6/6 - NOT count-separable; the")
-    print("    lambda3 SRPF effect is DISTRIBUTIONAL (tighter, lower tail) not a pass-rate win. Report lambda5.")
+    print("  * lambda5 is the decisive, significant separation: SRPF 7/7 pass (5.55-7.82s) vs stock 0/8")
+    print("    fail (17.4-23.8s) - NO distributional overlap; p=0.0002 (pooled). ROBUST ACROSS THREE NODES:")
+    print("    SRPF passes on 0-3 (n=4), 1-2 (n=1), 1-1 (n=2); stock fails on ondem-3 (n=4) and 0-3 (n=4).")
+    print("  * STRICTLY same-node (node 0-3, ZERO pooling), BALANCED 4-vs-4 A/B: SRPF 4/4 vs stock 0/4 ->")
+    print("    p=0.014 (clearly significant). The confound-free anchor now CARRIES the claim by itself (no")
+    print("    cross-node pooling needed); the pooled p=0.0001 + 3-node robustness (gap 9.5s) corroborate.")
+    print("  * lambda3 is a coin-flip regime: stock passes ~4/9 overall, SRPF 6/7 (one metastable draw at")
+    print("    9.1s) - NOT count-separable (p=0.12); the lambda3 SRPF effect is DISTRIBUTIONAL (tighter, lower")
+    print("    tail) not a pass-rate win. The DECISIVE, count-separable win is at lambda5. Report lambda5.")

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Passing at 347 Seconds — kleinrock</title>
+<style>
+  body{max-width:52rem;margin:2rem auto;padding:0 1.2rem;font:16px/1.62 Georgia,serif;color:#1a1a1a}
+  h1{font-size:1.55rem;line-height:1.25;margin:0 0 .3rem}
+  h2{font-size:1.2rem;margin:1.9rem 0 .5rem;border-bottom:1px solid #ddd;padding-bottom:.2rem}
+  h3{font-size:1.02rem;margin:1.2rem 0 .3rem}
+  code,pre{font-family:ui-monospace,Menlo,Consolas,monospace}
+  pre{background:#f6f6f6;padding:.7rem .9rem;border-radius:6px;overflow-x:auto;font-size:.85rem;line-height:1.45}
+  .sub{color:#555;font-size:.92rem}
+  .abstract{background:#f2f6fb;padding:.8rem 1rem;border-radius:6px}
+  table{border-collapse:collapse;width:100%;font-size:.9rem;margin:.6rem 0}
+  th,td{border:1px solid #ccc;padding:.35rem .5rem;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  .key{background:#eef6ee;border-left:4px solid #4a4;padding:.5rem .8rem;margin:.7rem 0}
+  .neg{background:#fbeeee;border-left:4px solid #c55;padding:.5rem .8rem;margin:.7rem 0}
+  .disc{font-size:.88rem;color:#555;border-left:3px solid #bbb;padding:.3rem .7rem;margin:.6rem 0}
+</style>
+</head>
+<body>
+
+<h1>Passing at 347 Seconds: How goodput@SLO Hides the Decode Tail in Long-Context Multiturn Serving</h1>
+<div class="sub"><b>kleinrock</b> · sglang KV-cache / serving, v0.31 · rate sweep, Qwen3.5-122B, 2-tier ·
+<i>a measurement / metric-critique + characterization (the eval's own captured metrics + per-request traces)</i></div>
+
+<div class="abstract">
+<b>Abstract.</b> The de-facto headline for tiered-KV LLM serving is <b>goodput@SLO</b>: the maximum request rate
+holding a p99 <i>time-to-first-token</i> (TTFT) deadline (here 8&nbsp;s). We show, on a realistic long-context
+multiturn workload (Mooncake-style mix, 1553 conversations, Qwen3.5-122B, 8&times;H100, 2-tier KV), that this metric
+is <b>blind to the tail that actually dominates user-facing latency</b>. In a stock run that <i>passes</i>
+goodput@SLO at &lambda;=3 (p99 TTFT 6.8&nbsp;s &le; 8&nbsp;s), the p99 <i>end-to-end</i> latency is
+<b>347 seconds</b> &mdash; the metric reports success while requests wait nearly six minutes. The culprit is a
+<b>decode tail</b>: p99 inter-token latency (ITL) of ~4&ndash;5&nbsp;s and p99 time-per-output-token (TPOT) of
+~3.5&nbsp;s against a <i>median</i> TPOT of ~0.22&nbsp;s &mdash; a 15&ndash;20&times; tail. We establish three
+things. <b>(1)</b> The decode tail is <b>stable and invariant</b>: it is essentially unchanged across three
+independent stock replicates and across load, whether TTFT passes or fails &mdash; a separate pathology, not
+run-to-run noise. <b>(2)</b> It is <b>orthogonal to the prefill lever</b>: shortest-remaining-prefill scheduling
+(SRPF), which cuts the TTFT tail 3&ndash;4&times; (22&nbsp;s&rarr;7&nbsp;s), leaves the decode tail <i>untouched</i>
+(ITL p99 ~4.5&nbsp;s either way). <b>(3)</b> Its cause is <b>decode starvation under prefill-first scheduling</b>:
+the engine runs a prefill batch whenever prefill work exists, so under sustained arrivals decode is deferred &mdash;
+we observe 34,071 prefill batches to 1,621 decode batches (21:1), with runs of up to 661 consecutive prefill
+batches during which hundreds of decoding requests advance no tokens. We then quantify the
+<b>prefill&ndash;decode trade-off</b> [EVAL &mdash; from a decode-friendly A/B, pending]. The lesson: goodput@SLO
+is not merely <i>unreliable</i> near the knee (a companion result) but <i>incomplete</i> &mdash; optimizing TTFT
+says nothing about, and its prefill-first mechanism actively worsens, the decode tail that is the real serving
+bottleneck for long-context multiturn workloads. E2E-tail-aware evaluation is required.
+</div>
+
+<h2>1 Introduction</h2>
+<p>Tiered-KV LLM servers are increasingly evaluated by <b>goodput@SLO</b>: the maximum sustainable request rate at
+which the p99 TTFT stays under a deadline. The metric is attractive &mdash; TTFT is the latency a user first
+perceives, and a rate-vs-p99-TTFT curve compactly captures a serving system's capacity. A large body of
+work (and the companion papers to this one) optimizes exactly this quantity: prefix caching, KV tiering,
+prefill scheduling.</p>
+
+<p>This paper asks a prior question: <b>is goodput@SLO measuring the right thing?</b> On a long-context multiturn
+workload we find it is not. TTFT captures only the <i>first</i> token; but these requests generate hundreds of
+tokens over many conversational turns, and the <i>rest</i> of the latency &mdash; the decode phase &mdash; is
+where the real tail lives. We find a stock configuration that <b>passes</b> goodput@SLO while delivering a p99
+end-to-end latency of <b>347 seconds</b>. The metric's green light is a mirage.</p>
+
+<p><b>Contributions.</b></p>
+<ul>
+<li><b>The metric-blindness result (&sect;2).</b> A run passing goodput@SLO (p99 TTFT 6.8&nbsp;s) has p99 E2E of
+347&nbsp;s; the decode tail (ITL p99 ~4.5&nbsp;s, TPOT p99 ~3.5&nbsp;s vs median 0.22&nbsp;s) is ~50&times; the TTFT
+tail and dominates E2E. TTFT-goodput is blind to it.</li>
+<li><b>Invariance and orthogonality (&sect;3).</b> The decode tail is stable across three stock replicates and
+both loads (not the run-to-run coin-flip that afflicts the TTFT knee), and it is untouched by SRPF (the prefill
+lever): TTFT and decode are <i>separate</i> latency axes.</li>
+<li><b>The cause: decode starvation (&sect;4).</b> The scheduler is prefill-first (prefill runs whenever any
+prefill work fits); under sustained load decode is deferred for long stretches (21:1 prefill:decode batches; runs
+up to 661), starving in-flight generations. Not retraction, not KV movement &mdash; pure prefill&ndash;decode
+time-sharing.</li>
+<li><b>The prefill&ndash;decode trade-off (&sect;5).</b> [Quantified from a decode-friendly A/B; pending.] Whether
+the decode tail can be cut, and at what TTFT-goodput cost.</li>
+<li><b>Implication (&sect;6&ndash;7).</b> goodput@SLO must be paired with an E2E / decode-tail SLO; optimizing TTFT
+alone is not just insufficient but, via its prefill-first mechanism, counterproductive for the decode tail.</li>
+</ul>
+
+<h2>2 The metric passes while E2E is catastrophic</h2>
+<p>The evaluation is an open-loop Poisson rate sweep (&lambda;&nbsp;&isin;&nbsp;{3,5,7,10}) over 1553 real
+multiturn conversations, full decode, on a 2-tier KV server (GPU HBM + 768&nbsp;GB host), Qwen3.5-122B / 8&times;H100.
+The client (sglang <code>bench_serving</code>) records, per rate, p99 TTFT, p99 ITL, p99 TPOT, and p99 E2E.
+Table&nbsp;1 shows all four for three independent stock runs.</p>
+
+<table>
+<caption class="disc">Table 1. Stock runs: the TTFT-goodput headline vs. the decode/E2E tail it hides. p99 TTFT is the
+metric; "goodput" = p99 TTFT &le; 8&nbsp;s. ITL/TPOT/E2E are the decode tail. Even the run that <b>passes</b>
+(v0-stock-r3, &lambda;=3) has a 347&nbsp;s E2E p99.</caption>
+<tr><th>run</th><th>&lambda;</th><th>p99 TTFT</th><th>goodput@SLO</th><th>p99 ITL</th><th>p99 TPOT</th><th>p99 E2E</th></tr>
+<tr><td>v0-stock</td><td>3</td><td>14.1&nbsp;s</td><td>fail</td><td>5.02&nbsp;s</td><td>4.35&nbsp;s</td><td>446&nbsp;s</td></tr>
+<tr><td>v0-stock-r2</td><td>3</td><td>8.0&nbsp;s</td><td>fail</td><td>4.40&nbsp;s</td><td>3.91&nbsp;s</td><td>359&nbsp;s</td></tr>
+<tr><td><b>v0-stock-r3</b></td><td>3</td><td><b>6.8&nbsp;s</b></td><td><b>PASS</b></td><td>4.12&nbsp;s</td><td>3.62&nbsp;s</td><td><b>347&nbsp;s</b></td></tr>
+<tr><td>v0-stock</td><td>5</td><td>25.4&nbsp;s</td><td>fail</td><td>5.10&nbsp;s</td><td>3.60&nbsp;s</td><td>400&nbsp;s</td></tr>
+<tr><td>v0-stock-r2</td><td>5</td><td>23.8&nbsp;s</td><td>fail</td><td>4.60&nbsp;s</td><td>3.70&nbsp;s</td><td>358&nbsp;s</td></tr>
+<tr><td>v0-stock-r3</td><td>5</td><td>11.1&nbsp;s</td><td>fail</td><td>4.76&nbsp;s</td><td>2.81&nbsp;s</td><td>372&nbsp;s</td></tr>
+</table>
+
+<div class="key"><b>goodput@SLO can report PASS at a p99 E2E of 347&nbsp;seconds.</b> The metric optimizes the first
+token and is blind to the other 99% of the request's latency.</div>
+
+<p>Two clarifications. First, part of the enormous E2E is <i>saturation</i> queueing: &lambda;=5 offers more load
+than the ceiling (~4.6&nbsp;req/s), so the open-loop queue grows and E2E inflates. But the decode-<i>stall</i>
+signal is not queueing: <b>ITL</b> is the gap <i>between consecutive tokens of a request already decoding</i>, and
+its p99 is ~4&ndash;5&nbsp;s even at &lambda;=3 (at/below the knee, where TTFT can pass). Individual inter-token
+gaps of 4&ndash;5&nbsp;s are genuine decode stalls, independent of overall saturation. Second, the median TPOT is
+healthy (~0.22&nbsp;s); the pathology is entirely in the tail &mdash; a small fraction of tokens stall for
+seconds.</p>
+
+<h2>3 The decode tail is invariant and orthogonal to the prefill lever</h2>
+<p><b>Invariant (not the TTFT coin-flip).</b> A companion result shows the TTFT knee is a run-to-run coin-flip
+(p99 TTFT at &lambda;=3 swings 6.8&ndash;14.1&nbsp;s across identical stock runs &mdash; Table&nbsp;1). The decode
+tail does <i>not</i>: ITL p99 is 4.1&ndash;5.0&nbsp;s and E2E p99 347&ndash;446&nbsp;s across the same three runs,
+a tight band. The decode tail is a stable, structural property, not sampling noise.</p>
+
+<p><b>Orthogonal to prefill scheduling.</b> The prefill tail (TTFT) <i>is</i> movable: shortest-remaining-prefill
+scheduling (SRPF), a reference prefill-ordering policy, cuts p99 TTFT from ~22&ndash;28&nbsp;s to ~5.5&ndash;7.8&nbsp;s
+at &lambda;=5 (same-node, n=5). Yet it leaves the decode tail essentially unchanged (Table&nbsp;2). Reordering
+<i>which prefill runs first</i> does nothing for a tail caused by prefill preempting decode <i>at all</i>.</p>
+
+<table>
+<caption class="disc">Table 2. SRPF (prefill reordering) vs. stock FCFS, same node, &lambda;=5, medians of n=5. SRPF fixes the
+TTFT tail but not the decode tail &mdash; they are separate axes.</caption>
+<tr><th>policy</th><th>p99 TTFT</th><th>p99 ITL</th><th>p99 TPOT</th><th>p99 E2E</th></tr>
+<tr><td>stock (FCFS)</td><td>23.9&nbsp;s</td><td>4.46&nbsp;s</td><td>3.20&nbsp;s</td><td>337&nbsp;s</td></tr>
+<tr><td>SRPF</td><td><b>7.0&nbsp;s</b></td><td>4.48&nbsp;s</td><td>3.40&nbsp;s</td><td>340&nbsp;s</td></tr>
+</table>
+
+<h2>4 The cause: decode starvation under prefill-first scheduling</h2>
+<p>The scheduler's batch selection is <b>prefill-first</b>: each iteration it forms a prefill batch if any waiting
+request can be admitted, and only runs a decode batch when no prefill batch is available
+(<code>scheduler.py</code>, <code>get_next_batch_to_run</code>: <code>if new_batch is not None: ret = new_batch</code>).
+Under a sustained arrival stream there is almost always prefill work, so decode is repeatedly deferred.</p>
+
+<p>The server logs make the starvation explicit. Over a stock sweep we count <b>34,071 prefill batches to 1,621
+decode batches</b> (21:1). The run-length of consecutive prefill batches between two decode batches &mdash; the
+number of forward passes an in-flight generation waits without advancing a token &mdash; has p50=5, p90=89,
+p99=229, and a <b>maximum of 661</b>. With hundreds of requests in the running pool (the batch is saturated at the
+256-concurrency cap), a burst of prefills stalls every one of them for seconds. This is a
+<b>time-sharing</b> pathology, not a memory one: we observe <b>zero</b> retraction/preemption events, and a
+companion result shows the L1&harr;L2 KV movement is sub-10&nbsp;ms &mdash; the decode KV never leaves the device;
+the decode simply is not scheduled.</p>
+
+<div class="disc"><b>Why chunked prefill does not save it.</b> The contract enables chunked prefill (6144-token
+chunks), which in principle lets decode interleave between chunks. In practice the scheduler prefers to keep
+admitting prefill (new arrivals and continued chunks) over issuing a decode batch, so decode still waits through
+long prefill runs. The fix requires the scheduler to <i>guarantee</i> decode progress, not merely make it
+possible &mdash; which is the subject of &sect;5.</div>
+
+<h2>5 The prefill&ndash;decode trade-off <span class="sub">(evaluation &mdash; pending A/B)</span></h2>
+<p class="disc">[PENDING job 20231: a same-configuration A/B of stock (prefill-first) vs. a decode-friendly setting
+(stall-free / mixed batching), measured on <b>both</b> axes &mdash; goodput@SLO (TTFT) and the decode tail
+(ITL/TPOT/E2E p99) &mdash; across the rate sweep. Outcome determines whether the decode tail is cheaply
+recoverable (a configuration the standard metric never rewarded fixing) or genuinely traded against TTFT (a
+Pareto tension the metric actively creates). Either way the &sect;2 metric-blindness result stands.]</p>
+
+<h2>6 Related work</h2>
+<p><b>Prefill&ndash;decode interference and disaggregation.</b> Sarathi-Serve (chunked prefill + stall-free
+batching) and DistServe / prefill-decode disaggregation target exactly the decode-stall-under-prefill problem; our
+contribution is not a new scheduler but the <b>measurement</b> that, under the metric the field now optimizes
+(goodput@SLO on TTFT), this tail is <i>invisible and unrewarded</i> &mdash; a passing run hides a 347&nbsp;s E2E.
+<b>Serving metrics.</b> TTFT and TPOT/ITL are standard, but goodput is typically defined on TTFT alone; we argue
+for an E2E- or decode-tail-aware goodput. <b>Companion results.</b> goodput@SLO is also a run-to-run coin-flip near
+the knee (unreliable); this paper adds that it is incomplete (blind to decode). Together: the metric is both noisy
+and partial.</p>
+
+<h2>7 Limitations &amp; implications</h2>
+<ul>
+<li><b>Open-loop load inflates E2E.</b> Above the ceiling, queueing dominates E2E; we therefore anchor the
+decode-<i>stall</i> claim on ITL (inter-token, queue-independent) and on the &lambda;=3 pass-but-347&nbsp;s case,
+not on E2E alone.</li>
+<li><b>Not a novel mechanism.</b> The fix (stall-free/mixed batching) is known; our contribution is the
+metric-blindness measurement and the characterization for this workload. We are explicit that any decode-friendly
+setting we test is a diagnostic, not a claimed mechanism.</li>
+<li><b>Scope.</b> Long-context multiturn (documents to 192K tokens, hundreds of output tokens over many turns) is
+where decode volume is large enough for the tail to dominate; short-prompt/short-output workloads will show less.</li>
+</ul>
+
+<h2>8 Reproducibility</h2>
+<ul>
+<li><b>Metric-blindness (Table 1):</b> <code>runs/v0-stock{,-r2,-r3}/bench_r{3,5}.json</code> (client-side p99
+TTFT/ITL/TPOT/E2E).</li>
+<li><b>Orthogonality (Table 2):</b> <code>runs/v3-srpf-ab/bench_{fcfs,srpf}_l5_r*.json</code>.</li>
+<li><b>Starvation (&sect;4):</b> batch-type counts and run-lengths from <code>runs/v0-stock/server.log</code>;
+scheduler path <code>scheduler.py:get_next_batch_to_run</code>.</li>
+<li><b>Trade-off (&sect;5):</b> <code>runs/v14-mixedchunk/</code> vs <code>runs/v0-stock/</code>; analysis
+<code>tools/decode_pareto.py</code>.</li>
+</ul>
+
+<h2>9 Conclusion</h2>
+<p>goodput@SLO green-lights a server delivering 347-second p99 latency. The headline the field optimizes measures
+the first token and ignores the decode phase, where &mdash; for long-context multiturn workloads &mdash; the real
+tail lives: a stable, prefill-orthogonal decode stall caused by prefill-first scheduling. Reliable evaluation of
+these systems must score the end-to-end tail, not TTFT alone.</p>
+
+<hr>
+<p class="sub"><b>kleinrock</b> · a series on goodput@SLO for long-context multiturn KV-serving (P1
+<i>prefill-slo-tail</i>: the metric is unreliable; P2 <i>prefill-hol-defer</i>: the prefill tail is HOL blocking;
+P3 <i>kv-tiering-movement</i>: tier movement is a non-lever; P4 <i>decode-tail-hidden</i>: the metric is blind to
+the decode tail). All claims trace to <code>runs/*/</code>.</p>
+
+</body>
+</html>

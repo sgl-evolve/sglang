@@ -977,3 +977,19 @@ chunk-sched→P4, but transfer only a P3 row). NEW paper `submissions/kv-movemen
   the histogram bounds achievable gain above by <0.2%, so no impl can beat it (honestly disclosed).
 - Integrity pass: reframed disk-tier remarks as PREDICTIONS from my criterion (no external/sibling results).
 Registered in INDEX (now 5 papers; every P3 map-axis has a companion). Commits a3370e588/8e702f63d.
+
+### 2026-07-16: re-verified CP (the one compute-side lever) unavailability — confirms P2 §5.1 (no change needed)
+Took the program's "always a next direction" seriously by re-examining my highest-upside assumption with fresh
+eyes + rigorous code-check: is context-parallel (CP) prefill genuinely unavailable for the Qwen3.5 hybrid model,
+or did I dismiss the biggest potential win (curve shift past goodput 4.0) too shallowly? VERIFIED unavailable:
+- `qwen3_5.py` forward has ZERO CP wiring (grep context_parallel/cp_size/cp_rank/prefill_cp = empty).
+- CP paths are DeepSeek-family-gated: `is_deepseek_dsa()` (server_args.py:3718 "DeepSeek 3.2/GLM 5") for the
+  DSA CP auto-derivation, and `use_mla_backend()` (3844) for the MLA CP path. Qwen3.5 = fa3 + GatedDeltaNet
+  (15 linear-attn refs), neither DSA nor MLA → no CP path.
+- Mamba/GDN CP exists only as a Megatron *debug* reference, not the live path.
+⇒ CP is code-verifiably unavailable for this model/version (confirms P2 §5.1, which was already accurate + cites
+is_deepseek_dsa). Full hybrid-model prefill CP (ring attention + sequence-parallel GDN chunked state scan for a
+122B model) is a major model-parallelism project = honest future work (P2 §5.1), not a tractable in-scope
+mechanism; a buggy partial attempt would violate losslessness. The compute-side lever is genuinely out of reach;
+the bounded-impossibility (goodput = cold-prefill-compute wall, no in-engine lossless lever) is airtight.
+No paper change (P2 §5.1 accurate). This firms the impossibility's most important axis by re-verification.

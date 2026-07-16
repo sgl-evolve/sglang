@@ -1216,3 +1216,9 @@ CHARACTERIZATION paper "The Hidden Decode Tail" (honest: mixed-chunk is a known 
 contribution is the hidden-tail MEASUREMENT + the prefill-decode Pareto + the metric-blind-spot thesis). If
 mixedchunk does NOT help (or the tail is saturation not starvation) → the decode tail is more fundamental →
 re-scope. ⚠️ --mem=0 MANDATORY; node 1-0 OOMs the 122B load; harvest at run END (don't babysit).
+
+### P4 starvation depth quantified (GPU-free, stock server.log)
+Consecutive-prefill-run length (# prefill batches decode waits through): p50=5, p90=89, p99=229, max=661
+(n=1289 runs). Prefill:decode batch ratio 21:1 (34071:1621). Clean decode-stall = client-side ITL p99 ~4.5s /
+TPOT p99 ~3.5s (bench); present at λ3 → STARVATION not saturation. CAVEAT: raw server-log inter-decode gaps
+(p99 41s) are idle/flush-contaminated — use ITL (client) + run-length (structural), not raw gaps, in the paper.

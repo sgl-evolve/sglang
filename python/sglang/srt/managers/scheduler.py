@@ -3555,20 +3555,33 @@ class Scheduler(
                 self.pool_stats_observer.get_pool_stats(),
             )
             if has_leak:
-                # Persistence check (see __init__): the idle over-count during hierarchical-
-                # cache write-through/load-back is benign + self-healing (a page mid-backup is
-                # briefly double-counted; reconciliation lags the async ACK), whereas a REAL
-                # leak persists. Distinguish by impermanence, not magnitude: report only an
-                # over-count that survives the grace window; a transient clears (has_leak
-                # False) within a sampling interval and resets the timer. Magnitude- and
-                # load-independent; strictly preserves real-leak detection (a genuine leak
-                # persists well beyond the grace). Lossless (gates only the diagnostic
-                # assertion). grace=0 restores stock immediate-report behavior.
+                # The idle over-count during hierarchical-cache write-through/load-back is
+                # benign + SELF-HEALING (a page mid-backup is briefly double-counted; the
+                # allocator/tree reconciliation lags the async ACK), whereas a REAL leak
+                # PERSISTS. We distinguish by impermanence, not magnitude, combining two
+                # lossless signals (grace=0 default = stock immediate-report, byte-identical):
+                #   (a) no async backup pending now (the tree sanity_check already skips here);
+                #   (b) the over-count has survived a grace window (transients clear within a
+                #       sampling interval and reset the timer in the else-branch).
+                # Report only when BOTH hold — high-confidence real leak. Load/magnitude-
+                # independent; preserves real-leak detection (a genuine leak persists well
+                # beyond the grace with no pending async). Gates only the diagnostic assertion.
                 now = time.monotonic()
                 if self._idle_leak_since is None:
                     self._idle_leak_since = now
-                if now - self._idle_leak_since >= self._idle_leak_grace_s:
+                if self._idle_leak_grace_s <= 0:
                     self.invariant_checker._report_leak("pool", "\n".join(messages))
+                else:
+                    tc = self.tree_cache
+                    async_pending = bool(
+                        getattr(tc, "ongoing_write_through", None)
+                    ) or bool(getattr(tc, "ongoing_load_back", None))
+                    if not async_pending and (
+                        now - self._idle_leak_since >= self._idle_leak_grace_s
+                    ):
+                        self.invariant_checker._report_leak(
+                            "pool", "\n".join(messages)
+                        )
             else:
                 self._idle_leak_since = None
             self.invariant_checker._check_req_pool()

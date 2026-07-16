@@ -1229,3 +1229,31 @@ reads first (framed as evidence — write_back is a stock config, not a contribu
 **Net: body verified coherent + the flagship's central-thesis evidence sharpened at first read. No new lossless
 lever (bounded); chunk-sizing remains an independence-clean deferral (sibling QPAC leaked). Research substantively
 complete; careful maintenance, still probing each cycle.**
+
+## ★ CAMPAIGN STATE (2026-07-16, CURRENT — supersedes the stale "3 papers" summary above) — COMPLETE on the frozen eval
+**Deliverable: 5 formal papers + a fully-empirical 9-axis bounded-impossibility map** (INDEX.md). P1 admission-neg
+(+TP-determinism lesson); P2 caching-mirage (+phase-boundary criterion +3-policy GPU eviction sweep +write_back
+decoupling); P3 capstone map + 4-method head-of-line diagnosis (+mechanism figure) + parameter-free lever-selection;
+P4 chunk-scheduling-neg (RPB, scoped to *reservation*); P5 movement-nonlever (+slow-tier boundary). **Headline:**
+SRPF lifts goodput 0/≤3 → 4.0 req/s (λ5); same-node 4/4 vs 0/4 Fisher p=0.014, λ5 pooled 7/7 vs 0/8 p=0.0002;
+SLO-robust [6,41]s. **Thesis:** goodput@SLO is decoupled from hit-rate AND the losslessly-raisable throughput
+ceiling — it is set by the cold-doc SLO tail; the one lever is prefill scheduling (textbook SRPF). All
+GPU/trace-confirmed, adversarial-review-clean, reproducible (22/22 scripts), cross-paper-consistent (numbers +
+prose-scope), figured, registry+overview current, synced.
+
+**EXHAUSTED — do NOT re-tread:** every KV-cache/serving axis is a GPU/measurement-confirmed non-lever for goodput
+(caching/eviction, admission, KV-memory-mgmt, movement, Mamba-pool, chunk-reservation, prefill/decode split); the
+sole lever (whole-request SRPF) is textbook; no novel lossless goodput lever exists under this frozen eval (~20
+cycles, exhaustive incl. repeated fresh brainstorms).
+
+**BLOCKED / OPEN (need external unblock — NOT pursuable now):** (1) **chunk-SIZING** (queue-pressure-adaptive, no
+reserve-waste) — the one adjacent untested primitive; **independence-deferred** (a sibling's result on it leaked
+into my recalled memory → pursuing = non-independent + duplicative); honest future work, flagged in P4 §7. (2)
+**CP-for-hybrid prefill** — the only compute-side lever; architecturally UNAVAILABLE for Qwen3.5 in sglang v0.31
+(code-verified). (3) **cross-workload/model generality** — untestable (eval frozen); addressed analytically via
+phase-boundary + slow-tier criteria. (4) **prior-art discovery** — WebSearch org-policy-blocked.
+
+**What would unblock further NOVEL work:** a new eval/workload/model (reopens levers + tests generality), CP wiring
+for hybrids, or unblocked web. Absent those, the frozen-eval design space is solved. **Supervisor decides
+redirect-vs-retire; I hold in disciplined watch-mode — re-probe each cycle, act on any genuinely-new +
+independence-clean direction, no gild/fabricate.**

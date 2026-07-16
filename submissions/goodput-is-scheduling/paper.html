@@ -153,6 +153,42 @@ Per-turn prefill work is extremely bimodal: 70% of turns are near-free prefix re
 top 5% of turns (large first-document prefills) carry 50% of all prefill work (p99 40.6k tokens, max 191k).
 The goodput coin-flip lives entirely in how these collide.
 </p>
+<div class="fig">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 300" font-family="Georgia,serif" font-size="13">
+<rect x="0" y="0" width="680" height="300" fill="white"/>
+<text x="340" y="22" text-anchor="middle" fill="#333" font-size="14">Prefill timeline: one big cold document + three small turns, all queued at t≈0</text>
+<line x1="120" y1="42" x2="120" y2="248" stroke="#c00" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="120" y="266" text-anchor="middle" fill="#c00" font-size="11">t≈0 (all four requests waiting)</text>
+<text x="656" y="266" text-anchor="end" fill="#555" font-size="11">prefill time →</text>
+<text x="8" y="79" fill="#333" font-weight="bold">FCFS</text>
+<text x="8" y="94" fill="#777" font-size="10.5">(stock)</text>
+<rect x="120" y="61" width="360" height="30" fill="#bbb" stroke="#777"/>
+<text x="300" y="80" text-anchor="middle" fill="#222" font-size="11.5">big cold document — 31 back-to-back 6144-tok chunks (≈5 s)</text>
+<rect x="480" y="61" width="26" height="30" fill="#1a7f37"/><text x="493" y="80" text-anchor="middle" fill="#fff" font-size="10">s1</text>
+<rect x="506" y="61" width="26" height="30" fill="#1a7f37"/><text x="519" y="80" text-anchor="middle" fill="#fff" font-size="10">s2</text>
+<rect x="532" y="61" width="26" height="30" fill="#1a7f37"/><text x="545" y="80" text-anchor="middle" fill="#fff" font-size="10">s3</text>
+<line x1="120" y1="104" x2="506" y2="104" stroke="#c00" stroke-width="1.5"/>
+<line x1="120" y1="100" x2="120" y2="108" stroke="#c00" stroke-width="1.5"/><line x1="506" y1="100" x2="506" y2="108" stroke="#c00" stroke-width="1.5"/>
+<text x="313" y="120" text-anchor="middle" fill="#c00" font-size="11">small-turn TTFT = wait behind the big doc → fails 8 s SLO</text>
+<text x="8" y="184" fill="#333" font-weight="bold">SRPF</text>
+<text x="8" y="199" fill="#777" font-size="10.5">(reorder)</text>
+<rect x="120" y="166" width="26" height="30" fill="#1a7f37"/><text x="133" y="185" text-anchor="middle" fill="#fff" font-size="10">s1</text>
+<rect x="146" y="166" width="26" height="30" fill="#1a7f37"/><text x="159" y="185" text-anchor="middle" fill="#fff" font-size="10">s2</text>
+<rect x="172" y="166" width="26" height="30" fill="#1a7f37"/><text x="185" y="185" text-anchor="middle" fill="#fff" font-size="10">s3</text>
+<rect x="198" y="166" width="360" height="30" fill="#bbb" stroke="#777"/>
+<text x="378" y="185" text-anchor="middle" fill="#222" font-size="11.5">big cold document (same work, served last)</text>
+<line x1="120" y1="209" x2="146" y2="209" stroke="#1a7f37" stroke-width="1.5"/>
+<line x1="120" y1="205" x2="120" y2="213" stroke="#1a7f37" stroke-width="1.5"/><line x1="146" y1="205" x2="146" y2="213" stroke="#1a7f37" stroke-width="1.5"/>
+<text x="182" y="225" text-anchor="start" fill="#1a7f37" font-size="11">small-turn TTFT = own prefill only → passes SLO</text>
+</svg>
+<figcaption><b>Head-of-line blocking and the SRPF fix.</b> The p99 TTFT is set by small conversational turns
+(s1–s3) that arrive while a large first-document prefill is in flight. Under FCFS the big document's
+back-to-back chunks monopolize the prefill budget, so the small turns wait behind all of it (≈5&nbsp;s) and miss
+the 8&nbsp;s SLO; the big document's own prefill time is unchanged either way. Serving shortest-uncached-prefill
+first (SRPF) runs the small turns immediately — their TTFT collapses to their own tiny prefill — while the big
+document, served last, is no worse. Total prefill work is identical (lossless); only the order changes. This is
+the lever the four-method diagnosis (below) identifies and §5 measures.</figcaption>
+</div>
 <ul>
 <li><b>Arithmetic.</b> At the batched ~39k&nbsp;tok/s, the largest document is ~5&nbsp;s and
 <b>fewer than 0.1% of turns prefill ≥6&nbsp;s</b>; yet the measured λ=3 p99 is 6–11&nbsp;s. The tail

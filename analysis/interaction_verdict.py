@@ -71,8 +71,16 @@ def main():
 
     srpf = results.get("SRPF-alone")
     test = results.get("SRPF+write_back")
+    EXPECTED_RATES = 4  # frozen sweep lambda in {3,5,7,10}
     if not test:
-        print("VERDICT: v-srpfwb-1 not landed yet — re-run when curve.csv exists.")
+        print("VERDICT: v-srpfwb-1 not landed yet — curve.csv has no data rows (sweep in progress).")
+        print("  (curve.csv is created at launch with only a header; rows append as each rate completes.)")
+        return
+    n_rows = len(test[2])
+    if n_rows < EXPECTED_RATES:
+        print(f"VERDICT: v-srpfwb-1 INCOMPLETE — {n_rows}/{EXPECTED_RATES} rate rows so far (sweep still running).")
+        print("  Do NOT adjudicate on a partial curve (goodput needs the full sweep incl. the failing rate).")
+        print("  Re-run this tool when curve.csv has all 4 rows or summary.json exists.")
         return
     g_srpf = srpf[0] if srpf else float("nan")
     g_test = test[0]

@@ -386,7 +386,30 @@ residency&mdash;valid not because prefill is cheap (our profile shows it is comp
 whole requests; acceleration does not reorder&mdash;it speeds the giant already running. To our knowledge, an
 occupancy-adaptive giant-acceleration policy for goodput@SLO is new.</p>
 
-<h2>8 Reproducibility</h2>
+<h2>8 Limitations &amp; when it fails</h2>
+<ul>
+<li><b>The reliable win is &lambda;=3; higher rates are capacity-not-goodput.</b> At &lambda;=5 the goodput is a
+coin-flip (1/2, margin C&minus;&lambda;=0.65), and at &lambda;=7/10 accel raises throughput (5.20/5.65 vs stock
+3.99/4.14) but still fails the SLO (p99 29.8/37.9&nbsp;s). Acceleration is a deterministic <em>capacity</em> lever
+(+36%) but a <em>reliable goodput</em> lever only where the margin is large. Because C is near its achievable ceiling
+(accel+write-back 6.33), &lambda;=5-reliable is not attainable with this mechanism alone.</li>
+<li><b>It requires a monopolizing-giant tail.</b> Acceleration helps precisely because the tail is turn-0 giant
+prefills that block admission and interrupt decode. On a workload without heavy-tailed prefills (no giants to
+accelerate), the trigger rarely fires and the mechanism is inert&mdash;it is a targeted tail lever, not a general
+throughput knob.</li>
+<li><b>Hit rate falls ~2.5&nbsp;pp.</b> Boosting the per-step commit changes KV eviction timing, so cache reuse drops
+slightly. The mechanism is output-lossless (misses recompute identically; all 7&nbsp;037 requests complete every run)
+but not hit-invariant; the win occurs <em>despite</em> lower reuse, which is consistent with the gain being
+residency/decode-driven rather than caching-driven.</li>
+<li><b>f=2 and &theta;=0.85 are empirically tuned to this system.</b> The factor has a sharp optimum (f=3 over-accelerates
+into a tail failure, &sect;5); the best factor and occupancy threshold are calibrated for this model/hardware and would
+need re-tuning elsewhere. The mechanism is a tuned control law, not a monotone "bigger is better" knob.</li>
+<li><b>Single system point + coin-flip metric.</b> Results are on one model (122B hybrid MoE), one node (8&times;H100,
+TP8), one workload; and goodput@SLO is a metastable coin-flip, so we report same-node n&ge;7 replicates + coin-flip-robust
+per-step metrics (tpot/concurrency) rather than any single goodput number.</li>
+</ul>
+
+<h2>9 Reproducibility</h2>
 <ul>
 <li>Mechanism commit <span class="mono">8bf42d159</span> on <span class="mono">evolve/turing</span>; base
 <span class="mono">a334877e5</span>. Hook in <span class="mono">scheduler.get_new_batch_prefill</span> before

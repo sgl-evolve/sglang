@@ -193,7 +193,23 @@ without reordering which whole request is next. Fair queueing / processor sharin
 chunk-level fair sharing to LLM prefill batch composition, motivated by measured giant-prefill HOL blocking, is to our
 knowledge new.</p>
 
-<h2>7 Reproducibility</h2>
+<h2>7 Limitations &amp; when it fails</h2>
+<ul>
+<li><b>Scope of the negative.</b> We establish that chunk-level fair-share interleaving backfires <em>at the
+concurrency cap under a heavy-tailed-prefill workload</em>. Below saturation, or on a workload without monopolizing
+giants, HOL blocking is not the binding constraint and the mechanism would be neutral rather than harmful; the negative
+is a saturated-regime result, not a universal claim about fair-share.</li>
+<li><b>Bounded by the single-chunked-request invariant.</b> Part of the backfire (big waiting requests cannot
+interleave and starve) is specific to sglang's one-chunked-request-in-flight design; an engine that admitted multiple
+partial prefills concurrently might reshape the tradeoff&mdash;though the primary failure (capped giants linger &rarr;
+concurrency &uarr; &rarr; the runaway) is engine-independent and is the same effect the companion decode-floor study
+found from the opposite design intent.</li>
+<li><b>Single system point + coin-flip metric.</b> One model (122B hybrid MoE), one node (8&times;H100, TP8), one
+workload; goodput@SLO is a metastable coin-flip, so the headline is the same-node A/B (fair 37&nbsp;s / 40% starved vs
+stock 14.2&nbsp;s / 7&nbsp;037-complete) plus the deterministic per-step HOL diagnosis, not a single goodput number.</li>
+</ul>
+
+<h2>8 Reproducibility</h2>
 <ul>
 <li>Diagnosis: parse <span class="mono">Prefill batch</span> lines from a stock run's <span class="mono">server.log</span>,
 isolate the &lambda;=3 window via the eval's rate markers; script in <span class="mono">analysis/</span>.</li>

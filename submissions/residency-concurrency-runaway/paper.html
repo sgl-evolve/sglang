@@ -350,7 +350,31 @@ reordering across requests. Classic queueing predicts metastability from heavy t
 the specific memory-bound decode feedback that produces a &sim;19&times; super-M/G/1 amplification in a modern serving
 engine, and to show it is the same state variable that governs every mechanism's sign.</p>
 
-<h2>8 Conclusion</h2>
+<h2>8 Limitations &amp; when it fails</h2>
+<ul>
+<li><b>Single system point.</b> The theory is validated on one model (Qwen3.5-122B hybrid attention-MoE), one hardware
+configuration (8&times;H100, TP8), and one workload (Mooncake-style multiturn mix). The <em>structure</em>&mdash;a
+memory-bound decode feedback with residency as the state variable&mdash;should transfer to any serving regime where
+decode is memory-bandwidth-bound and the tail is uncacheable prefill, but the specific constants (the slope
+<span class="mono">b&asymp;1.2&nbsp;ms/req</span>, the capacity values, the &sim;19&times; amplification, the knee
+location) are system-specific and untested elsewhere.</li>
+<li><b>The reliable win is bounded to &lambda;=3.</b> The one novel positive lever (giant acceleration) reliably wins
+goodput@SLO only at &lambda;=3; at &lambda;=5 it is a margin-governed coin-flip, and because the effective capacity
+<span class="mono">C</span> is near its achievable ceiling (accel+write-back reaches 6.33, short of the &sim;7 that a
+margin of 2 would require), &lambda;=5-reliable is <em>not attainable with the levers found here</em>. The theory
+explains why (the margin&ndash;reliability law) but offers no lever to cross the knee within this budget.</li>
+<li><b>The metric is intrinsically noisy.</b> goodput@SLO is a metastable coin-flip; we mitigate with same-node
+median-of-k and coin-flip-robust per-step metrics, but any single goodput number is a draw, and near-knee claims
+require replication. Studies that report single-run goodput on this workload are unreliable by construction (&sect;6).</li>
+<li><b>Levers are prefill-side only.</b> Decode is throughput-saturated in this regime (P7 + the memory-bound model):
+the theory offers no decode-side lever, and a decode-bound workload (not the case here) would need separate analysis.</li>
+<li><b>On-contract scope.</b> All results hold within the frozen evaluation (fixed model, budget, rate sweep). Levers
+that would require engine/kernel changes&mdash;e.g. reducing the 19% per-step tensor-parallel AllReduce tax, or lossless
+KV compression to lower the memory-bound decode slope&mdash;were out of scope; the accessible on-contract positive
+space (prefill-side residency reduction) is what we claim to have mapped, not the full systems design space.</li>
+</ul>
+
+<h2>9 Conclusion</h2>
 <p>The goodput@SLO tail of saturated conversational LLM serving is not a grab-bag of independent effects. It is one
 dynamical instability&mdash;a memory-bound concurrency&harr;decode runaway&mdash;with one state variable, residency.
 That single fact organizes the design space into a clean partition (every effective lever reduces residency; every
@@ -361,7 +385,7 @@ test&mdash;predicted a novel positive mechanism (giant acceleration) that raises
 coin-flip-limited exactly as the margin law says. The practical takeaway for serving-system designers is compact:
 <b>stop optimizing hit rate and prefill fairness for the tail; measure and minimize residency.</b></p>
 
-<h2>9 Reproducibility</h2>
+<h2>10 Reproducibility</h2>
 <ul>
 <li>Base commit <span class="mono">a334877e5</span>, branch <span class="mono">evolve/turing</span>. Mechanisms:
 decode floor <span class="mono">239608a1e</span>, fair-share <span class="mono">48ad6612b</span>, giant acceleration

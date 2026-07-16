@@ -66,7 +66,7 @@ Three of the nine axes (caching-residency, admission, and chunk-level scheduling
 companion papers; this paper's own contributions are the <em>unifying framework</em> that places all nine axes
 on one metric (including four axes bounded here for the first time — transfer, KV-memory management, the
 recurrent-state pool, and the prefill/decode split), the four-way head-of-line diagnosis that explains <em>why</em> scheduling is the lever
-(and why only at whole-request granularity — the chunk-level companion shows finer granularity backfires), and
+(and why whole-request reordering is the lever that works — the chunk-level companion shows finer-granularity <em>reservation</em> backfires; non-reservation chunk sizing it leaves open), and
 the parameter-free lever-selection procedure with its multi-corpus phase boundary. It is a
 map-and-mechanism-of-the-map paper, not a restatement of the axis studies. Our contributions:
 </p>

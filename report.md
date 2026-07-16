@@ -1028,3 +1028,29 @@ Integrated: `analysis/goodput_stats.py` (source of truth) + P3 (§5, table capti
 every stale 6/6·0/7·p=0.0006·3/3-vs-0/3 replaced. INDEX registry entry. Commit 90bbdd8f1, pushed. SRPF firming
 logged to W&B (v-srpf-samenode-1); stock replicate logs when job 20130's summary.json completes.
 **Rigor/completeness firming — NOT a new lossless direction (none remains; the design space stays airtight-bounded).**
+
+### 2026-07-16: fresh codebase inventory (Explore) + NEW trace-negative → P3 9th axis (KV-memory management)
+Charter demands I keep hunting for a new direction, not guard a finished body. Ran a fresh, thorough Explore
+inventory of ALL stock sglang KV/scheduler primitives and cross-referenced each against my 5-paper bound:
+- **Most confirm the bound:** routing-key / in-batch-prefix-dedup / session-radix-cache = prefix-sharing
+  primitives, all inert on my 97%-singleton corpus (P2); dynamic-chunking = PP>1-only (I run PP=1), inert;
+  async transfer-overlap = the movement-hiding P5 already bounds; cost-aware/gdsf/2q eviction = P2 (LRU=Belady).
+- **★INTEGRITY CATCH:** the inventory flagged "WSAC/PGAC" admission gates as stock — but the code comment
+  (`scheduler.py:975`) reveals they are a **sibling's** (`base_free`) additions to the shared `extern/sglang`
+  fork, NOT stock. Testing them would violate my independence mandate → **DROPPED**. Verified my own clone
+  (what my eval runs via PYTHONPATH) is CLEAN of WSAC/PGAC, and that **SRPF is my own** implementation
+  (commit 307ddc764 on evolve/floyd, textbook algo on the pluggable interface, cited as textbook — not stock,
+  not sibling). Provenance of the flagship is solid.
+- **★GENUINE NEW FINDING (free, no GPU):** the inventory raised a question I had NOT tested — could *proactive*
+  KV-memory management (decode **retraction** / pool-headroom **reservation**) admit big cold prefills faster
+  and cut the p99 tail? This is the OPPOSITE of P1's admission-*deferral* negative. Answered from the stock
+  trace (`analysis/mem_admission_stats.py`, n=2 over v0-stock + v-stock-samenode-1, different nodes/days):
+  **0 decode retractions and 0 memory-blocked prefill admissions** (#new-seq≥1 at all 34k/36k prefill steps),
+  while the KV pool reaches near-full (usage p99 0.98–0.99). Pressure is absorbed **losslessly** by evicting
+  clean cached prefixes (LRU=Belady=0 avoidable), never by retracting decode or stalling admission → **no
+  memory-wait on the critical path to reclaim; the tail is compute + head-of-line.** ⇒ the proactive-KV-memory-
+  management sub-axis is a trace-backed **non-lever**. Added as P3's **9th map axis** (bounded here for the
+  first time), intro axis count eight→nine, contributions bullet updated. Commit 1462a6cbc, pushed.
+**Net:** the fresh inventory + trace diagnosis independently RE-CONFIRM the design-space bound (every stock/own
+primitive maps onto an existing non-lever) and add one genuinely-new trace-negative axis. No un-mapped novel
+lossless positive lever exists on this frozen eval. Continuing to hunt (prior-art scan next).

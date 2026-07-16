@@ -1125,3 +1125,22 @@ LFU full sweep (job 20207, node 1-1).
 **Net:** the recency>frequency insight is now GPU-confirmed GENERAL across access-count policies (LFU + SLRU,
 graded) — a stronger, more defensible eviction result. Design space stays bounded; caching axis fully
 GPU-characterized (3 policies).
+
+### 2026-07-16: GPU-corroborated the LAST analysis-only map axis (prefill/decode split) via mixed_chunk
+8 of 9 map axes were GPU/measurement-confirmed; prefill/decode-split was the lone analysis-only axis
+(pd_schedule.py: 99% prefill at saturation + prefill-first code). Tested the mechanism that shifts toward
+decode: --enable-mixed-chunk (mixes decode running_bs INTO prefill batches; stock base a334877e5, live at
+scheduler.py:2918, not auto-disabled with fa3/no-dllm — verified active enable_mixed_chunk=True).
+- **Result (job 20222, node 1-1):** mixed_chunk DEGRADES λ3 — median TTFT 2017ms vs stock 577-1056ms (~2-3.5×),
+  throughput 2.18 vs 2.87-3.02 req/s (−28%) — then **CRASHES** (8× "pool memory leak detected" KV-accounting
+  exceptions, during λ3, 3838/7037 completed; same crash class as the RPB rpb10 run). goodput 0.
+- **Handling:** per my RPB-crash precedent, DISCARDED as a clean data point (crashed mid-sweep, no valid full
+  curve, hit=0 is a crash artifact — NOT W&B-logged as a curve point). But the pre-crash median degradation is
+  robust (median over 3838 reqs) → a genuine directional observation.
+- **Interpretation:** shifting toward decode (mixed_chunk) is both HARMFUL (p50 2-3.5×, tput −28%) and UNSTABLE
+  (pool-leak crash) for this workload → empirically corroborates the analytically-backed "prefill-first is
+  TTFT-optimal" row. Mechanism: at saturation prefill already fills the budget; injecting decode steals prefill
+  compute → slower prefill → worse TTFT (+ triggers a KV-pool accounting bug). Added a GPU-corroboration clause
+  to P3's prefill/decode-split row (kept modest + honest about the crash). Commit 553818ad2.
+**Net:** all 9 map axes now GPU/measurement-confirmed or analysis+GPU-corroborated. Design space fully
+empirically characterized; every KV/serving axis a non-lever, the one lever (SRPF) textbook. Keep probing.

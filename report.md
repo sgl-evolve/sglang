@@ -1027,3 +1027,10 @@ co-design 6.33 (v17_accel_wb λ10) ✓; +36%=5.65/4.14 ✓. DOSE-RESPONSE — f=
 f=3 sat 5.46 / λ5 20471ms=20.5s (v14) ✓. λ=3 STATS verified-by-construction via analyze_firm (7/7 vs 1/8, Fisher
 0.0012, MWU 0.0003/0.0002 read from raw bench_r3.json); STEP-COUNT via analyze_steps (27.7% >6144, 9737 vs 11177).
 ALL MATCH the paper exactly — no discrepancy, no inflation. Flagship quantitative integrity systematically confirmed.
+
+## SESSION 2 cont. (07-16 ~08:30): PORTFOLIO-WIDE integrity audit complete — every headline matches raw, zero inflation
+Extended the raw-JSON verification to the negatives: P1 crater v1_stock hit 0.6753 → v2_flat2 0.4259 (−24.9pp ✓,
+paper 0.675→0.426), v3_wb 0.7372 (✓); P3 decode-floor v7_decfloor λ=3 p99=31.8s (✓ EXACT); P5 fair-share v8_fair λ=3
+p99=37.1s / completed 4255/7037 / thr 1.92 (✓ all EXACT). Combined with prior cycles (P6 flagship capacity/dose/λ=3/
+step-count + capstone P7 all verified), EVERY headline number across all 6 papers now matches the raw runs/*/summary.json
+& bench_r3.json exactly — zero inflation, portfolio-wide. Charter integrity requirement systematically confirmed end-to-end.

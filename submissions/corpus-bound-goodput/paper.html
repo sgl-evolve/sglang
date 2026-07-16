@@ -155,6 +155,21 @@ induced by the all-active assumption. The document-keyed, arrival-ordered analys
 <em>realizable</em> avoidable work is ≈0 at the actual concurrency and reuse distances, consistent with the
 measured hit rate sitting at the online optimum.)
 </p>
+<p>
+<b>The mirage holds live, under load — not just in the offline replay.</b> The natural objection to a
+trace-replay analysis is that the live serving system, under concurrency, might behave differently. It does
+not. Across the live rate sweep the measured hit rate declines only <em>modestly</em> and <em>monotonically</em>
+with load — by ≈1.9–3.3&nbsp;pp from λ=3 to λ=10 (e.g. stock 0.678→0.659; SRPF 0.675→0.656) — and this decline
+is present in <em>every</em> run and under <em>both</em> scheduling policies. Because the request set is
+identical at every rate (the same 1553 conversations / 7037 requests, replayed), the decline is
+<em>load-induced, not a mix change</em>. And it is <em>not policy-recoverable</em>: it is invariant to the
+scheduling policy (stock FCFS and SRPF show the same slope) and, by §3.1, to the eviction policy
+(LRU=LFU=Belady — the reuse structure is binary, so recency already tracks future reuse). What shrinks under
+load is the KV budget effectively available for prefixes — the running-request working set grows with
+concurrency and shares the fixed pool — so the small live decline is <em>capacity under the frozen budget</em>,
+not a suboptimal cache decision. No lossless policy closes it; the caching axis is a non-lever live, exactly as
+offline.
+</p>
 <h3>3.2 The only "avoidable" work is a benchmark artifact — and un-capturable online</h3>
 <p>
 Avoidable re-prefill (55.1M tokens under LRU) appears <em>only</em> under the eval's four-rate sweep,

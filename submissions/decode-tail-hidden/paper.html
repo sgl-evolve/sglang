@@ -234,16 +234,17 @@ rates it trims the tail but goodput is already lost. It helps only where goodput
 <tr><td>&lambda;=3 <i>(unsaturated)</i></td><td>+333% (6.8&rarr;29&nbsp;s)</td><td>&minus;4% (flat)</td><td>&minus;54%</td><td>&minus;32%</td><td><b>PASS&rarr;FAIL</b></td></tr>
 <tr><td>&lambda;=5</td><td>&minus;9%</td><td>&minus;14%</td><td>&minus;28%</td><td>&minus;15%</td><td>fail&rarr;fail</td></tr>
 <tr><td>&lambda;=7</td><td>&minus;29%</td><td>&minus;9%</td><td>&minus;22%</td><td>&minus;14%</td><td>fail&rarr;fail</td></tr>
+<tr><td>&lambda;=10</td><td>+1%</td><td>&minus;12%</td><td>&minus;14%</td><td>&minus;13%</td><td>fail&rarr;fail</td></tr>
 </table>
 
 <p>The effect is <b>load-dependent, and never a clean win</b>. At <b>&lambda;=3</b> (unsaturated &mdash; the exact
 run that passes goodput@SLO at 347&nbsp;s E2E) decode-QoS <b>breaks goodput</b> (p99 TTFT 6.8&rarr;29&nbsp;s,
 PASS&rarr;FAIL, far outside the stock coin-flip band of 6.8&ndash;14&nbsp;s so real despite the cross-node
-comparison) while barely touching the decode tail (p99 ITL &minus;4%). At the <b>saturated</b> rates
-(&lambda;=5,7) it modestly trims the tail (p99 ITL &minus;14%/&minus;9%, p99 E2E &minus;15%/&minus;14%) &mdash; but
-goodput is already lost (both fail), so the mechanism helps only where goodput is unachievable and hurts where it
-is not. At every load it lowers the <i>typical</i> decode latency (median TPOT &minus;22 to &minus;54%). The p99
-tail is stubborn
+comparison) while barely touching the decode tail (p99 ITL &minus;4%). At the three <b>saturated</b> rates
+(&lambda;=5,7,10) it modestly trims the tail (p99 ITL &minus;9 to &minus;14%, p99 E2E &minus;13 to &minus;15%)
+&mdash; but goodput is already lost (all fail), so the mechanism helps only where goodput is unachievable and hurts
+where it is not. At every load it lowers the <i>typical</i> decode latency (median TPOT &minus;14 to &minus;54%).
+The p99 tail is stubborn
 for a structural reason visible in the batch trace: decode-QoS raises the decode-batch share from 4.5% to 11.8% and
 caps the <i>common</i> prefill runs at ~<i>K</i>, but the <i>tail</i> runs still escape (to 388) &mdash; the worst
 stalls occur <i>during</i> a heavy document's chunked prefill, which the pool-leak guard must not interrupt.</p>

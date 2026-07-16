@@ -252,7 +252,7 @@ fails sharpens the law. Capping the server's running batch below the natural &la
 does exactly what the memory-bound model predicts on the <em>decode</em> side&mdash;fewer in-flight requests, so decode
 time-per-token <em>falls</em> monotonically (stock 625&nbsp;&rarr; cap128 227&nbsp;&rarr; cap64 111&nbsp;ms). Yet
 p99&nbsp;TTFT <em>rises</em> monotonically the tighter the cap (13.9&nbsp;&rarr; 63.4&nbsp;&rarr; 94.4&nbsp;s), because
-the requests that cannot be admitted pile into the queue (measured &sim;194 waiting at cap64), and queue-wait is part of
+the requests that cannot be admitted pile into the queue (measured peak &sim;198 waiting at cap64), and queue-wait is part of
 TTFT. Even a <em>moderate</em> cap inside the natural range (cap128) is 7.9&times; the SLO&mdash;so this is not an
 extreme-value artifact; any binding cap starves admission. The lesson refines the law: <b>the state variable is
 residency, and a mechanism must reduce it by <em>draining work faster</em> (finishing giants/requests sooner: capacity,

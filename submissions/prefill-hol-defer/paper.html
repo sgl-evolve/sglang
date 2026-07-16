@@ -81,8 +81,13 @@ lossless alternative to deferral (a reserved short-prefill lane that keeps the h
 sharing budget with short requests) and show it <b>fails at every reserve size</b> with no crossover, and
 destabilizes the server (throughput collapse + OOM) when pushed. Fair budget-sharing is not merely suboptimal;
 it is counter-productive, and we explain why.</li>
-<li><b>Specificity (&sect;4.3).</b> The lever is deferral <i>by remaining prefill</i> specifically: a genuine
-reordering by a different key (longest-output-first) does not help &mdash; ruling out "any reordering works."</li>
+<li><b>Specificity &mdash; a narrow sweet spot (&sect;4.3&ndash;4.4).</b> The lever is deferral <i>by remaining
+prefill, at admission, run to completion</i>. We map its neighbours with our own built-and-measured mechanisms and
+all fail: reorder by the wrong key (longest-output-first) does not help, and <i>over</i>-deferral
+(chunk-interleaving &mdash; yield the mega-doc between every chunk) is <b>catastrophic</b> (~90&nbsp;s aggregate
+p99 at both &lambda;=5 and &lambda;=7, destroying the goodput SRPF achieves). Together with FCFS (under-defer) and
+the reserved lane (throttle), four distinct alternatives fail &mdash; the deferral design space is a narrow
+ridge.</li>
 <li><b>A design principle (&sect;4.4) &mdash; <em class="k">defer, don't throttle</em></b> &mdash; its load
 bound (&sect;5.2, clears the SLO only at &lambda;&le;5), and a <b>first-principles model (&sect;5.4)</b> showing the
 HOL tail and its deferral cure are generic to heavy-tailed prefill served one-request-at-a-time, not sglang-specific.</li>
@@ -1152,12 +1157,41 @@ defer the heavy documents. On a fully same-node triple (&lambda;=5, n=3 each, di
 <p>LOF fails exactly like FCFS (indeed slightly worse); only deferral-by-prefill-size passes. Reordering in
 general is not the lever; deferring the heavy prefills specifically is.</p>
 
-<h3>4.4 The principle: defer, don't throttle</h3>
-<div class="key">Combining &sect;4.1&ndash;4.3: the goodput tail of a heavy-tailed prefill workload is fixed by
+<h3>4.4 Over-deferral also fails: the sweet spot is narrow (chunk-interleaving)</h3>
+<p>SRPF defers a heavy document <i>at admission</i> and then, once it starts, runs it to completion. A tempting
+refinement is to defer it <i>continuously</i>: keep the mega-document progressing but, between each of its
+6144-token chunks, yield the pipeline to any waiting short requests (bounding their HOL to ~one chunk), with a
+progress guarantee that forces a mega-document chunk at least every N iterations (no starvation, no throttling
+&mdash; each iteration is full-budget). We built this as an opt-in engine mechanism
+(<code>--prefill-interleave-defer</code>, branch <code>evolve/kleinrock-interleave</code>) and A/B'd it same-node
+against FCFS and the deferral reference:</p>
+<table>
+<tr><th>policy (same node)</th><th>&lambda;=5 p99</th><th>&lambda;=7 p99</th></tr>
+<tr><td>FCFS</td><td>24.0&nbsp;s (0/3)</td><td>34.0&nbsp;s (0/3)</td></tr>
+<tr><td>deferral (SRPF ref.)</td><td><b>6.4&nbsp;s (3/3 pass)</b></td><td>9.6&nbsp;s (0/3)</td></tr>
+<tr><td>chunk-interleave (ours)</td><td><b>92.8&nbsp;s</b> (n=1)</td><td><b>90.1&nbsp;s</b> (n=1)</td></tr>
+</table>
+<div class="neg">Chunk-interleaving is <b>catastrophically worse at both loads</b> (~90&nbsp;s aggregate p99)
+&mdash; at &lambda;=5 it <i>destroys</i> the goodput SRPF cleanly achieves (6.4&nbsp;s pass &rarr; 92.8&nbsp;s
+fail). The mechanism does keep short requests fast, but goodput@SLO is an <i>aggregate</i> p99, and that tail is
+now the <b>over-deferred mega-documents</b>: yielding between every chunk keeps each mega-document in the pipeline
+for far more wall-clock than SRPF's run-to-completion, so its own TTFT explodes under the &lambda;&ge;5 backlog.
+(The mechanism ran correctly &mdash; no crash; this is a genuine scheduling property, not a bug. n=1 per load, but
+the ~10&ndash;15&times; gap is confirmed on two independent loads/nodes.) No setting of N escapes it: large
+N&rarr;FCFS-like, small N&rarr;over-defer.</div>
+<p>So the deferral design space is a <b>narrow ridge</b>: the tail is fixed only by SRPF's specific policy &mdash;
+<i>defer the heavy document at admission, then run it to completion</i>. Four distinct neighbours all fail:
+<b>under-defer</b> (FCFS, &sect;4.1), <b>throttle</b> (the reserved lane, &sect;4.2), <b>reorder by the wrong
+key</b> (LOF, &sect;4.3), and <b>over-defer</b> (chunk-interleaving, here). Three of the four are our own
+built-and-measured mechanisms; SRPF itself remains a cited reference, not our contribution.</p>
+
+<h3>4.5 The principle: defer, don't throttle (and don't over-defer)</h3>
+<div class="key">Combining &sect;4.1&ndash;4.4: the goodput tail of a heavy-tailed prefill workload is fixed by
 <b>deferring</b> the few heavy documents past the percentile (an E2E-neutral reordering), and by nothing else we
 could construct. Keeping them progressing while sharing budget &mdash; the "fair" alternative &mdash; forfeits
 the benefit at every size and, pushed harder, destabilizes the server; reordering by a non-prefill key does not
-help. <b>Defer, don't throttle.</b></div>
+help; and deferring <i>continuously</i> (chunk-interleaving) over-defers the heavy documents and blows up the
+aggregate tail. The sweet spot is narrow and singular: <b>defer at admission, run to completion.</b></div>
 
 <h2>5 Evaluation details</h2>
 <h3>5.1 Losslessness and honest controls</h3>
@@ -1298,9 +1332,12 @@ coin-flip-collapse A/B is <code>runs/v9-defer-knee</code> (&lambda;3 K=5 fcfs vs
 <code>tools/defer_knee.sbatch</code>); earlier corroborating runs: reserved-lane <code>runs/v4-shortlane-ab</code>
 (&lambda;5) / <code>v5-shortlane-l3</code> (&lambda;3) / cross-node ablation <code>v6-shortlane-abl</code>;
 reference deferral <code>runs/v3-srpf-ab</code> (&lambda;5), across-&lambda; <code>v8-srpf-l7</code> (&lambda;7);
-deferral-specificity triple <code>v7-policy-defer</code>. Every number in this paper is taken directly from those
-runs' CSVs (<code>{srpf,shortlane}_ab.csv</code>). The evaluation protocol (rate sweep, dataset, model, SLO) is the
-frozen contract and is unchanged.</p>
+deferral-specificity triple <code>v7-policy-defer</code>; the &sect;4.4 chunk-interleave A/B is
+<code>runs/v11-interleave-{l7,l5}</code> (fcfs/srpf/interleave, one node each, engine on branch
+<code>evolve/kleinrock-interleave</code> = the opt-in <code>--prefill-interleave-defer</code> park-gate +
+progress guarantee, harness <code>tools/interleave_ab_eval.sh</code>). Every number in this paper is taken
+directly from those runs' CSVs (<code>{srpf,shortlane}_ab.csv</code>). The evaluation protocol (rate sweep,
+dataset, model, SLO) is the frozen contract and is unchanged.</p>
 
 <h2>9 Conclusion</h2>
 <p>The goodput@SLO tail of a heavy-tailed LLM prefill workload is not the cold prefill of the large documents

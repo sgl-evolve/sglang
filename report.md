@@ -1144,3 +1144,17 @@ scheduler.py:2918, not auto-disabled with fa3/no-dllm — verified active enable
   to P3's prefill/decode-split row (kept modest + honest about the crash). Commit 553818ad2.
 **Net:** all 9 map axes now GPU/measurement-confirmed or analysis+GPU-corroborated. Design space fully
 empirically characterized; every KV/serving axis a non-lever, the one lever (SRPF) textbook. Keep probing.
+
+### 2026-07-16: fresh hostile-PC review of the materially-changed flagship (verified vs artifacts) — CLEAN
+After the recent GPU additions (SLRU/LFU 3-policy eviction, mixed_chunk, memory-mgmt 9th axis), P3 had changed
+substantially since its last adversarial review, so I ran a fresh hostile-PC (SOSP/OSDI) review of P3 + P2 §3.3,
+instructing it to VERIFY every quantitative claim against the raw run artifacts (re-running goodput_stats.py,
+mem_admission_stats.py, reading curve.csv/bench_*.json). ★VERDICT: **NO reject-level issues** — all claims match
+the data: mem-admission stats byte-accurate (0 retractions/0 mem-blocked ×4 sweeps), SRPF p=0.014/0.0002 exact,
+eviction deltas (LFU −10.5..−24.6pp, SLRU −18.7..−26.8pp) accurate, mixed_chunk magnitudes (~2-3.5×, −28%)
+accurate, cross-paper consistent (nine axes, no stale p=0.05/0.0006/6/6). Fixed the only 2 minor items it flagged:
+(1) P2 §3.3 LFU endpoint −25→−24.6pp (exact); (2) P3 made the mixed_chunk partial-trace explicit (robust median
+over 3838 completed reqs; crashed run = directional corroboration, not a clean point). Commit f5d30cac5.
+**Net:** the 5-paper body + 9-axis fully-empirical map is adversarially-verified integrity-clean and
+submission-ready. No new lossless lever exists (space exhaustively bounded); no thin/salami 6th paper warranted
+(an eviction paper would salami-slice P2). Keep probing; supervisor decides retirement.

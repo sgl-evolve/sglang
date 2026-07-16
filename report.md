@@ -1062,3 +1062,19 @@ BACKLOG-bound (deferred heavy docs + saturation), NOT slow short reqs → CORREC
 "backlog keeps even the reordered short requests above SLO" (I have no per-req srpf-λ7 dump; sim disputed it) to
 the honest backlog-bound framing. §5.4 added, §1/§8 updated. Paper 2 now has generality (a PC strength both my
 papers lacked). HTML valid (6 tables, 10 §§). This cycle = genuine value from GPU-free modeling, not fabrication.
+
+### ★★ NEW LEAD (2026-07-16): guaranteed-progress CHUNK-INTERLEAVING (candidate novel mechanism) — sim-motivated
+tools/interleave_sim.py (GPU-free chunk-level sim): a mega-doc yields to waiting SHORT reqs BETWEEN its 6144-tok
+chunks (bounds short-req HOL to ~1 chunk) with a progress guarantee (mega-doc chunk every N iters → bounded defer,
+no starvation of the SCHEDULER; full-budget iters → no throttle). NOT SJF/SRPF (disqualified), NOT my reserve
+(throttle, failed), NOT LOF. ★SIM (P=14K): short-req(tiny) p99 — fcfs {12.7,36.8,341} / srpf {4.6,5.6,2.3} /
+interleave {1.1,1.9,1.7}s @λ3/5/7. Interleave STRICTLY BEATS srpf on short-req tail (srpf lets an in-flight
+mega-doc block once started — one-chunked-req invariant; interleave yields every chunk). Robust across N (λ7 tiny
+p99 2.0/1.7/1.2/0.8 for N=1/2/4/8). Mega-doc p99 = srpf (both defer heavy docs; ~1253s @λ7). ⇒ since goodput@SLO
+p99 is over 7037 reqs of which 99% are short, keeping shorts fast may PASS λ7 where srpf FAILS (measured 9.6s) →
+EXTEND the goodput ceiling past SRPF's λ5 = candidate TOP-PRIZE novel mechanism. ★INTEGRITY: the λ7 "win" would
+come from starving the 1% mega-docs (beyond p99) → legit by the metric's p99 def BUT must be disclosed = also a
+metric-gaming caution connecting to P1. Also: sim assumes cached follow-ups (real λ7 tail may include evicted
+mega-doc follow-ups = heavier) → ONLY a GPU A/B resolves it. PLAN: build chunk-interleave engine mechanism (new
+branch evolve/kleinrock-interleave) → same-node A/B fcfs vs srpf vs interleave @λ5(margin)+λ7(the win) WITH
+per-req dump (measure BOTH short-req p99 AND mega-doc starvation, honestly). If it passes λ7 losslessly → P3.

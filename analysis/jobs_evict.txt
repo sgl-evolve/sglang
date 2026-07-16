@@ -1,4 +1,12 @@
-# Paper-2 empirical eviction A/B (--radix-eviction-policy is LIVE on UnifiedRadixCache). Screen lambda3,5.
-# Tests whether any eviction policy beats stock LRU. Expect: LRU>=LFU (LRU~=Belady; LFU may crater per prior art).
-v-evict-lfu:--radix-eviction-policy lfu
-v0-stock-evictctl:
+# floyd: GPU-confirm P2's caching mirage LIVE under a SCAN-RESISTANT eviction policy.
+# Hypothesis (this cycle): the workload is 97% singletons = a massive scan; LRU is scan-
+# susceptible, so under LOAD-SHRUNK effective capacity it may evict about-to-be-reused KV that a
+# scan-resistant policy protects -> recovering the measured -1.9..-3.3pp load hit-decline -> less
+# re-prefill -> better goodput. P2's OFFLINE proof predicts NO (within-pass LRU=Belady; cross-pass
+# reuse-distance >> cache), but that has NEVER been GPU-confirmed live under an alternative policy.
+# SLRU (stock, base a334877e5): hit_count>=2 protected, singletons(hit=1) evicted first = scan-resistant.
+# Lossless (eviction changes only WHICH prefixes are cached, never outputs). On-contract knob.
+# Clean same-node A/B: SLRU vs an explicit-LRU control (= stock default), full contract sweep.
+# Decisive test = SLRU hit-vs-load curve vs LRU's (hit-rate is low-variance; the coin-flip is in the tail).
+v-evict-slru:--radix-eviction-policy slru
+v-evict-lru-ctl:--radix-eviction-policy lru

@@ -1010,3 +1010,12 @@ reduction. Capstone→v3 (design-space row P7 + §4.2 + §9 repro + analyze_cap.
 cap192 non-binding sanity as redundant). OPS: DRAM-race gate≥1600+settle INSUFFICIENT for full-KV-pool back-to-back
 (768GB pool allocated regardless of --max-running-requests; kernel reports avail before reclaim complete) → launch each
 from CLEAN ~1816 DRAM (stock0/cap128 crashed on back-to-back, succeeded from clean). Commit e310bead3.
+
+## SESSION 2 cont. (07-16 ~07:30): spec-compliance polish — Limitations sections added to all papers
+Spec requires "Limitations & when it fails"; capstone (0 mentions), flagship giant-acceleration, and P5 lacked a
+dedicated one (P1/P2/P3 had them). Added honest consolidated Limitations to all three → now all 6 papers spec-compliant.
+Capstone §8 Limitations (single system-point; λ=3-only reliable win / C near ceiling → λ=5 coin-flip unattainable with
+these levers; coin-flip metric; prefill-side-only levers; on-contract scope). Flagship §8 (λ=3-only reliable / capacity-
+not-goodput at high λ; needs monopolizing-giant tail; hit −2.5pp; f=2/θ tuned; single system+coin-flip). P5 §7 (saturated-
+regime scope; single-chunked-req-invariant-bound; single system). No compute; renumbered Conclusion/Repro. Commit c582016c1.
+Portfolio: 6 papers, all firmed + cross-consistent + spec-compliant (Limitations everywhere) + submission-ready.

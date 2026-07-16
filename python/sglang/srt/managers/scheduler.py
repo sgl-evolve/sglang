@@ -1044,6 +1044,21 @@ class Scheduler(
             self.server_args, "decode_starvation_bound", 0
         )
         self._consec_prefill_batches: int = 0
+        # kleinrock (idle-leak persistence check): the idle pool-invariant transiently
+        # over-counts a bounded, page-granular set of pages during hierarchical-cache
+        # write-through/load-back (a page mid-backup is briefly counted in both the
+        # allocator free-list and the tree-evictable set; reconciliation lags the async
+        # ACK). That divergence is benign and SELF-HEALING; a real leak PERSISTS. We
+        # distinguish them by impermanence, not magnitude: only report an over-count that
+        # survives a grace window (>> write-through drain latency). Lossless: gates only
+        # the diagnostic assertion, never scheduling or KV computation.
+        self._idle_leak_since: Optional[float] = None
+        # grace=0 (default) = stock immediate-report (byte-identical to upstream); set
+        # SGLANG_IDLE_LEAK_GRACE_S>0 to enable the persistence check (report only a leak
+        # that survives that many seconds — filters the benign write-through transient).
+        self._idle_leak_grace_s: float = float(
+            os.environ.get("SGLANG_IDLE_LEAK_GRACE_S", "0")
+        )
         if self.server_args.enable_prefill_delayer:
             if self.server_args.disaggregation_mode == "decode":
                 logger.info(
@@ -3540,22 +3555,22 @@ class Scheduler(
                 self.pool_stats_observer.get_pool_stats(),
             )
             if has_leak:
-                # Hierarchical-cache async ops (write-through / load-back) transiently make
-                # the pool counters diverge: a node whose backup has not yet ack'd has its
-                # pages counted in both the allocator free-list and the tree-evictable set
-                # (a bounded, page-granular, self-healing over-count). The tree sanity_check
-                # already skips in exactly this window (HiMambaRadixCache.sanity_check:
-                # "Skip if async operations are pending"); the idle pool-leak check lacked
-                # the same guard and so false-positived, crashing mixed-chunk on the
-                # hybrid-SSM + hierarchical-cache path. Suppress the report while async ops
-                # are in flight — a real (persistent) leak still trips on a later idle once
-                # write-through / load-back have drained.
-                tc = self.tree_cache
-                hicache_async_pending = bool(
-                    getattr(tc, "ongoing_write_through", None)
-                ) or bool(getattr(tc, "ongoing_load_back", None))
-                if not hicache_async_pending:
+                # Persistence check (see __init__): the idle over-count during hierarchical-
+                # cache write-through/load-back is benign + self-healing (a page mid-backup is
+                # briefly double-counted; reconciliation lags the async ACK), whereas a REAL
+                # leak persists. Distinguish by impermanence, not magnitude: report only an
+                # over-count that survives the grace window; a transient clears (has_leak
+                # False) within a sampling interval and resets the timer. Magnitude- and
+                # load-independent; strictly preserves real-leak detection (a genuine leak
+                # persists well beyond the grace). Lossless (gates only the diagnostic
+                # assertion). grace=0 restores stock immediate-report behavior.
+                now = time.monotonic()
+                if self._idle_leak_since is None:
+                    self._idle_leak_since = now
+                if now - self._idle_leak_since >= self._idle_leak_grace_s:
                     self.invariant_checker._report_leak("pool", "\n".join(messages))
+            else:
+                self._idle_leak_since = None
             self.invariant_checker._check_req_pool()
 
         # tree cache sanity check

@@ -1,0 +1,7 @@
+# floyd: does combining the scheduling lever (SRPF, mine, textbook) with the throughput-ceiling lever
+# (write_back, stock config) push goodput past the lambda5 boundary? SRPF alone: lambda5 pass ~7.8s,
+# lambda7 FAIL 10.3s. write_back: +7% throughput + higher hit -> faster queue drain. Decisive Q: does
+# SRPF+write_back lambda7 p99 drop below 8s (goodput 4.0->~4.5, boundary throughput-relievable) or stay
+# failing (goodput tail-bound, cold-doc-prefill irreducible)? Neither is a novel contribution (textbook+
+# stock config) but the result refines the lambda7-boundary nature. On-contract, lossless.
+v-srpf-wb:--schedule-policy srpf --hicache-write-policy write_back

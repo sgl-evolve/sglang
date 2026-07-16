@@ -873,3 +873,10 @@ p=0.029 already resolves the caveat; released the node rather than hold it ~2.5h
 - Integrated across P3/P1/P2 + goodput_stats.py (reproducible source of truth). Commit 764008f36, pushed.
 - OPS lesson: `pkill/pgrep -f <pattern>` where the pattern appears in the current command line SELF-MATCHES
   and kills the running shell (exit 144). Use a regex bracket trick (`campaign[.]sh`) or kill by explicit PID.
+
+### 2026-07-16: reproducibility audit COMPLETE across all 4 papers' core proofs
+Verified (rc=0, each reproduces its paper claim) the load-bearing analysis script of every paper:
+P1 hol_sim (HOL diagnosis); P2 doc_reuse (single-pass LRU==LFU==Belady==0 avoidable = the mirage) +
+phase_boundary (generality); P3 mamba_pressure (attn-KV→1.0 while mamba max 0.77 = never binding) +
+bound (C_eff 15k→~4.2 derived, consistent w/ measured ~4.7 raw ceiling) + goodput_stats (Fisher);
+P4 rpb_waste (rpb25 chunk mean 5327 vs base 6111 → ~54% reserve wasted). Artifact is verified-runnable.

@@ -83,9 +83,9 @@ destabilizes the server (throughput collapse + OOM) when pushed. Fair budget-sha
 it is counter-productive, and we explain why.</li>
 <li><b>Specificity (&sect;4.3).</b> The lever is deferral <i>by remaining prefill</i> specifically: a genuine
 reordering by a different key (longest-output-first) does not help &mdash; ruling out "any reordering works."</li>
-<li><b>A design principle (&sect;4.4) &mdash; <em class="k">defer, don't throttle</em></b> &mdash; and its load
-bound (&sect;5.2): deferral reduces the tail ~70% at every load but clears the SLO only below severe saturation
-(&lambda;&le;5).</li>
+<li><b>A design principle (&sect;4.4) &mdash; <em class="k">defer, don't throttle</em></b> &mdash; its load
+bound (&sect;5.2, clears the SLO only at &lambda;&le;5), and a <b>first-principles model (&sect;5.4)</b> showing the
+HOL tail and its deferral cure are generic to heavy-tailed prefill served one-request-at-a-time, not sglang-specific.</li>
 <li><b>A coin-flip-collapse bridge (&sect;5.3).</b> A companion paper shows goodput@SLO is a cold-start
 <i>coin-flip</i> at the knee for caching. We show deferral does not merely shift the knee median &mdash; it
 <b>collapses that run-to-run variance ~13&times;</b> (&sigma;/m 0.53&rarr;0.04, 0/5&rarr;5/5), so the metric's
@@ -1177,10 +1177,14 @@ goodput pass only below severe saturation:</p>
 <tr><td>7 (severe saturation)</td><td>33.3&nbsp;s</td><td>9.6&nbsp;s</td><td>&minus;71%</td><td>fail</td></tr>
 </table>
 <p>At &lambda;=7 the offered load (7 req/s) far exceeds the ~4.6 req/s compute ceiling, so the queue grows
-unboundedly; deferral still cuts p99 71% (33.3&rarr;9.6&nbsp;s) but the backlog keeps even the reordered short
-requests above the 8&nbsp;s SLO. So the goodput@SLO ceiling of the scheduling lever is &asymp;&lambda;=5: the tail
-is reduced everywhere but the SLO is cleared only below severe saturation. Fixing &lambda;=7 needs provisioning
-or admission control, not reordering &mdash; a boundary on the whole scheduling axis, not just on our negative.</p>
+unboundedly; deferral still cuts the aggregate p99 71% (33.3&rarr;9.6&nbsp;s) but cannot clear the 8&nbsp;s SLO.
+The reason is subtly different from the &lambda;&le;5 case: deferral keeps the <i>short</i> requests fast even
+here (our first-principles model of &sect;5.4 predicts their p99 stays ~2&ndash;5&nbsp;s at every load), so the
+residual &lambda;=7 tail is the <i>saturated backlog itself</i> &mdash; the deferred heavy documents and the
+ever-growing queue &mdash; not short-request HOL. So the goodput@SLO ceiling of the scheduling lever is
+&asymp;&lambda;=5: HOL (the &lambda;&le;5 tail) is deferral-addressable, but the &lambda;=7 tail is a throughput
+deficit that scheduling cannot manufacture capacity for. Fixing &lambda;=7 needs provisioning or admission
+control, not reordering &mdash; a boundary on the whole scheduling axis, not just on our negative.</p>
 
 <h3>5.3 Deferral collapses the knee coin-flip, not just the median</h3>
 <p>Our companion paper (<code>prefill-slo-tail</code>) establishes that at the queueing knee (&lambda;=3)
@@ -1209,6 +1213,31 @@ but it is <i>caused</i> by the head-of-line queue's sensitivity to arrival order
 removes. The metric is movable <i>and stabilizable</i> by scheduling yet invariant to caching &mdash; precisely
 why caching must be evaluated on stable metrics, not goodput@SLO. At the knee, deferral converts an unreliable
 pass/fail into a reliable pass. (SRPF remains a cited reference here, not a contribution.)</p>
+
+<h3>5.4 Generality: the HOL tail and its deferral cure from first principles</h3>
+<p>Is the FCFS head-of-line tail &mdash; and its removal by deferral &mdash; an sglang artifact, or a generic
+consequence of a heavy-tailed prefill-size distribution served one-chunked-request-at-a-time? We test this with a
+minimal discrete-event model (<code>tools/hol_sim.py</code>) of exactly that queue (one server, 6144-token chunk
+budget, at most one chunked request in flight, non-preemptive at the request level), driven <i>only</i> by the
+measured document-length distribution (&sect;2.1) and Poisson arrivals &mdash; no engine, no caching, no sglang.
+One prefill rate <i>P</i> is calibrated so FCFS matches the measured &lambda;=5 tail; the deferral curve is then a
+<i>prediction</i> at the same <i>P</i>:</p>
+<table>
+<tr><th>&lambda; (model, tiny-req p99)</th><th>FCFS</th><th>deferral</th><th>&Delta;</th><th>measured (aggregate)</th></tr>
+<tr><td>3</td><td>12.7&nbsp;s (fail)</td><td>4.6&nbsp;s (pass)</td><td>&minus;64%</td><td>fail &rarr; pass</td></tr>
+<tr><td>5</td><td>36.8&nbsp;s (fail)</td><td>5.6&nbsp;s (pass)</td><td>&minus;85%</td><td>&minus;70%, fail &rarr; pass</td></tr>
+<tr><td>7</td><td>341&nbsp;s (explodes)</td><td>2.3&nbsp;s</td><td>&mdash;</td><td>&minus;71%, still fail (backlog)</td></tr>
+</table>
+<div class="key">From the measured document distribution alone, the model reproduces the paper's structure: the FCFS
+short-request tail <b>grows and then explodes</b> with load (HOL amplifying as the server saturates), while
+deferral keeps it <b>flat and low</b> (short requests jump the queue, so their wait is bounded by the in-service
+residual, not the backlog). The fail&rarr;pass transition at &lambda;&le;5 matches the measurements, and the model
+predicts the &sect;5.2 &lambda;=7 behavior (short requests stay fast; the saturated backlog dominates the aggregate
+tail). Absolute magnitudes are model-dependent &mdash; the single-server idealization omits decode interference and
+the 256-way concurrency, so we claim <i>structural</i> generality, not point prediction (as the companion paper's
+minimal Monte-Carlo does for the coin-flip). The takeaway: <b>defer-don't-throttle is a property of heavy-tailed
+prefill under FCFS-vs-shortest-first serving, not of sglang</b> &mdash; any server that prefills a heavy-tailed mix
+one request at a time will show the same HOL tail and the same deferral cure.</div>
 
 <h2>6 Related work</h2>
 <p><b>Request reordering for LLM goodput.</b> Shortest-remaining / shortest-job-first scheduling is classical
@@ -1260,7 +1289,9 @@ Same-node A/B harnesses <code>tools/shortlane_ab_eval.sh</code> (reserve sweep) 
 per-request HOL attribution via env-gated <code>KLEINROCK_PERREQ_DUMP</code>, analyzed by
 <code>tools/perreq_hol_analyze.py</code>, Figure&nbsp;1 by <code>tools/make_hol_scatter.py</code>; the
 p99-mega-doc-uniqueness / cross-conversation-reuse analysis (&sect;3) by <code>tools/doc_reuse_analyze.py</code>
-(deterministic, GPU-free, over the frozen <code>mooncake_mix_v1.jsonl</code>). Runs:
+(deterministic, GPU-free, over the frozen <code>mooncake_mix_v1.jsonl</code>); the first-principles HOL/deferral
+queueing model (&sect;5.4) by <code>tools/hol_sim.py</code> (deterministic discrete-event sim, GPU-free, driven by
+the measured doc distribution). Runs:
 the clean same-node reserve ablation of &sect;4.2 is <code>runs/v10-reserve-sweep</code> (&lambda;5,
 <i>R</i>&isin;{0,1024,2048,3072,4096}, one node, <code>tools/reserve_sweep.sbatch</code>); the &sect;5.3
 coin-flip-collapse A/B is <code>runs/v9-defer-knee</code> (&lambda;3 K=5 fcfs vs srpf, one node,

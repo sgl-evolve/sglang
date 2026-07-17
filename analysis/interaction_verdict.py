@@ -15,9 +15,10 @@ SLO_MS = float(sys.argv[1]) if len(sys.argv) > 1 else 8000.0
 
 # (label, dir, description)
 CANON = [
-    ("SRPF-alone",       "v-srpf-full", "--schedule-policy srpf"),
-    ("FCFS+write_back",  "v-writeback", "--hicache-write-policy write_back"),
-    ("SRPF+write_back",  "v-srpfwb-1",  "--schedule-policy srpf --hicache-write-policy write_back"),
+    ("SRPF-alone",        "v-srpf-full",   "--schedule-policy srpf (node 1-2, cross-node ref)"),
+    ("FCFS+write_back",   "v-writeback",   "--hicache-write-policy write_back"),
+    ("SRPF+write_back",   "v-srpfwb-1",    "--schedule-policy srpf --hicache-write-policy write_back (ondem-2)"),
+    ("SRPF-alone@ondem2", "v-srpf-ondem2", "--schedule-policy srpf (ondem-2 SAME-NODE control for 20306)"),
 ]
 
 
@@ -82,11 +83,23 @@ def main():
         print("  Do NOT adjudicate on a partial curve (goodput needs the full sweep incl. the failing rate).")
         print("  Re-run this tool when curve.csv has all 4 rows or summary.json exists.")
         return
-    g_srpf = srpf[0] if srpf else float("nan")
+    # Prefer the SAME-NODE control (confound-free) when it has completed the full sweep.
+    samenode = results.get("SRPF-alone@ondem2")
+    if samenode and len(samenode[2]) >= EXPECTED_RATES:
+        baseline_label, baseline = "SRPF-alone@ondem2 (SAME-NODE, confound-free)", samenode
+        confound = "SAME-NODE"
+    else:
+        baseline_label, baseline = "SRPF-alone (v-srpf-full, CROSS-NODE — within +/-14% node noise)", srpf
+        confound = "CROSS-NODE"
+        if samenode:
+            print(f"  [same-node control v-srpf-ondem2 present but incomplete "
+                  f"({len(samenode[2])}/{EXPECTED_RATES} rates) — using cross-node ref for now]\n")
+    g_srpf = baseline[0] if baseline else float("nan")
     g_test = test[0]
     print("=== PRE-REGISTERED ADJUDICATION ===")
+    print(f"  baseline: {baseline_label}")
     print(f"  SRPF-alone goodput   = {g_srpf:.2f}")
-    print(f"  SRPF+wb   goodput    = {g_test:.2f}")
+    print(f"  SRPF+wb   goodput    = {g_test:.2f}   ({confound} comparison)")
     delta = g_test - g_srpf
     if abs(delta) < 0.24:  # < half a rate-grid step (grid ~3,5,7,10) -> same goodput bucket
         print("  OUTCOME = PRIMARY (no compound): goodput ~ SRPF-alone.")

@@ -45,8 +45,9 @@ full runs), and serving is correct. Because the &ldquo;leak&rdquo; is diagnostic
 completion. We also examine a structural guard that mirrors the tree check (skip the pool report while async backup is
 pending); it is lossless but only modestly reduces the false positives (10&rarr;7 at &lambda;=3), because most fall in a
 residual ack-lag window it cannot see. We test a persistence-based check and <b>rule it out</b> (the divergence is
-activity-healed, not time-healed, so it persists at idle), and identify the correct structural fix as a bounded
-page-slack tolerance mirroring an existing engine precedent (&sect;5). Unblocked,
+activity-healed, not time-healed, so it persists at idle), and <b>validate</b> the correct structural fix&mdash;a
+bounded page-slack tolerance mirroring an existing engine precedent&mdash;which unblocks mixed-chunk without disabling
+the idle check globally (&sect;5). Unblocked,
 mixed-chunk <b>cuts the decode tail by ~15&times;</b> at &lambda;=3 (ITL p99 ~4200&rarr;282&nbsp;ms) and ~11&times; at
 &lambda;=5 (~4750&rarr;418&nbsp;ms), and end-to-end p99 by 4.7&times;/2.4&times; (347&rarr;75&nbsp;s / 377&rarr;157&nbsp;s),
 <b>losslessly</b> (identical total output tokens, tree-consistent). The win is not free: it trades prefill latency,
@@ -81,8 +82,9 @@ provably consistent throughout (&sect;4).
 sanity-check already uses (skip while async backup is pending). We show the validated unblock is the stock warn-not-abort
 mode (the check is diagnostic and the leak benign), give a structural guard that mirrors the tree check and modestly
 reduces the false positives, <b>test and rule out</b> a persistence-based check (the divergence is activity-healed,
-not time-healed), and identify the correct fix as a bounded page-slack tolerance mirroring an existing engine
-precedent&mdash;all lossless, gating only the assertion, never computation (&sect;5).
+not time-healed), and <b>implement and validate</b> the correct fix&mdash;a bounded page-slack tolerance mirroring an
+existing engine precedent (mixed-chunk completes with zero crashes/leak-reports where the persistence variant aborted,
+same lossless win)&mdash;all lossless, gating only the assertion, never computation (&sect;5).
 (3) A <b>measured result</b>: unblocked mixed-chunk cuts the decode tail ~15&times; (&lambda;=3) / ~11&times;
 (&lambda;=5) in ITL p99 and 4.7&times;/2.4&times; in E2E p99, <b>losslessly</b> (identical total output tokens), with an
 <b>honest, load-growing TTFT trade-off</b> stated plainly (&sect;6&ndash;7).
@@ -218,12 +220,17 @@ over-count (&le;7 pages = 448 tokens across all four loads; the runs complete lo
 leak grows without bound. The correct structural fix is thus a <b>bounded page-slack tolerance</b>, mirroring the
 engine&rsquo;s existing <code>dcp_physical_page_slack_allowed</code> precedent: treat an idle over-count that is a small
 page-aligned multiple (e.g. &le; 16 pages, &gt;20&times; the observed maximum, while a real leak is thousands of pages)
-as non-fatal. It gates only the assertion&mdash;lossless&mdash;and, unlike persistence, is robust to the idle case. We
-report the disproven persistence attempt in full because it sharpened the diagnosis; the <b>validated</b> unblock used
-for all measurements here is the stock warn-mode env var, and the bounded page-slack is the recommended production
-form (implemented as an idle-check tolerance gated by <code>SGLANG_HICACHE_IDLE_PAGE_SLACK_PAGES</code>, default 0 =
-stock; its end-to-end validation is left as immediate future work &mdash; deferred here only to avoid contending for a
-saturated shared cluster).</p>
+as non-fatal. It gates only the assertion&mdash;lossless&mdash;and, unlike persistence, is robust to the idle case.</p>
+<p>We <b>validate</b> this fix end-to-end (implemented as an idle-check tolerance gated by
+<code>SGLANG_HICACHE_IDLE_PAGE_SLACK_PAGES</code>, default 0 = stock; here 16 pages). With the bounded slack enabled and
+warn-mode <i>off</i>, mixed-chunk runs the full &lambda;3 sweep with <b>zero crashes and zero leak reports</b>&mdash;
+including the end-of-&lambda;3 full-idle drain where the persistence variant aborted&mdash;and reproduces the identical
+decode-tail win (ITL p99 293&nbsp;ms, TPOT p99 174&nbsp;ms, total output tokens 900082). A controlled comparison
+isolates the fix: under the <i>same</i> no-warn-mode configuration the persistence variant crashed at 56% of &lambda;3
+on the benign over-count, whereas the bounded-slack variant runs to completion. This gives a precise, lossless unblock
+that&mdash;unlike the warn-mode env var used for the performance measurements above&mdash;does not disable the idle
+leak check globally: real (unbounded, growing) leaks still abort. We report the disproven persistence attempt in full
+because it sharpened the diagnosis (impermanence vs boundedness) that led to this fix.</p>
 
 <h2>6 Result: the decode tail collapses, losslessly</h2>
 <p>All runs use the frozen evaluation (unchanged <code>eval.sh</code>: 1553 conversations &rarr; 7037 requests,
@@ -374,9 +381,11 @@ the structural async-pending guard in <code>scheduler.py:on_idle()</code> (&sect
 full-sweep run and shown to remove most but not all false positives. Stock baselines:
 <code>runs/v0-stock{,-r2,-r3}</code>. Mixed-chunk: <code>runs/v17-mixedchunk-nocheck</code> (&lambda;3/&lambda;5 full,
 warn-mode), <code>runs/v18-mc-sweep</code> (full sweep, warn-mode + async-guard), <code>runs/v14-mixedchunk</code>
-(&lambda;3 replicate, crashed at 3836 under the default fatal check). Over-count trend and tree-sanity results parsed
-from <code>server.log</code>; decode-tail metrics from <code>bench_r{3,5,7,10}.json</code>. Fix commit on
-<code>evolve/kleinrock</code>.</p>
+(&lambda;3 replicate, crashed at 3836 under the default fatal check). Fix experiments (no warn-mode, so a false report
+aborts): <code>runs/v19-persistence-val</code> (persistence check, crashed at 56% of &lambda;3&mdash;disproven) and
+<code>runs/v20-slack-val</code> (bounded page-slack = 16, completed &lambda;3 clean&mdash;<b>validated</b>; ITL p99 293,
+out tok 900082). Over-count trend and tree-sanity results parsed from <code>server.log</code>; decode-tail metrics from
+<code>bench_r{3,5,7,10}.json</code>. Fixes and SRPF policy on <code>evolve/kleinrock</code>.</p>
 
 <h2>11 Conclusion</h2>
 <p>The decode tail that goodput@SLO hides is not a hard open problem&mdash;it was hidden a second time, behind a

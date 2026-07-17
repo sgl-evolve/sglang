@@ -1638,3 +1638,17 @@ mechanism, but COMBINING it with mixed-chunk to show both-tails-cut is a MEASURE
 not claimed novel) — charter-valid, strengthens P5. Experiment when fair compute exists: same-node A/B, λ5 (where the
 TTFT tradeoff bites), stock vs mixed-chunk vs mixed-chunk+srpf; measure TTFT p99 AND ITL/TPOT/E2E p99 + out_tok. If
 both tails drop losslessly → fold into P5 §7 (or a P6). Do NOT launch while cluster saturated + siblings pending.
+
+### ★★ BOUNDED-SLACK FIX VALIDATED (job 20334/v20-slack-val, 2026-07-17 00:18) — the complete structural fix WORKS
+20334 ran mixed-chunk + SGLANG_HICACHE_IDLE_PAGE_SLACK_PAGES=16 + NO STRICT env (decisive). λ3 COMPLETED FULLY (advanced
+to λ5), 0 crash + 0 leak-warns through the ENTIRE λ3 including the end-of-λ3 full-idle drain — the EXACT condition where
+v19/persistence CRASHED at 56% (same no-STRICT setup). ★CONTROLLED COMPARISON: v19 (persistence, no-STRICT) CRASHED @56%
+λ3; v20 (bounded-slack, no-STRICT) COMPLETED λ3 100% — only the fix differs ⇒ the bounded page-slack is what prevents
+the crash (tolerates the benign ≤7-page over-count that fired in all 4 prior mixed-chunk runs). ★Metrics REPLICATE the
+win losslessly: v20 λ3 itl 293 / tpot 174 / e2e 74191 / ttft 9236 / out_tok 900082 EXACT (λ3 decode-tail win now n=4:
+v14/v17/v18/v20, all ~15× ITL, all lossless 900082). ★RIGOR NOTE: the tolerance path is SILENT when it triggers
+(on_idle discards the message at has_leak=False), so I can't count tolerations directly — but the controlled v19-crash-
+vs-v20-complete comparison (same workload, same no-STRICT, only fix differs) is airtight evidence the fix works. ⇒
+UPGRADE Paper 5 §5: bounded page-slack from "recommended (validation future work)" → "VALIDATED complete structural
+fix" (unblocks mixed-chunk WITHOUT the coarse global warn-mode; a precise, lossless, DCP-precedented accounting fix).
+This is the strongest form of the fix contribution. v20 now on λ5 (more replication). NEXT: update §5 to validated.

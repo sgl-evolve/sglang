@@ -1345,3 +1345,24 @@ will HONESTLY revise the flagship (the ceiling CAN convert to goodput once sched
 stronger result) and run a same-node paired replicate before claiming it.
 **Third outcome:** goodput < 4.0 (write_back backup dynamics interfere with SRPF's tail) → bounded negative.
 Decision rule: compare v-srpfwb-1 curve.csv p99 at each λ vs v-srpf-full; goodput = max λ with p99 ≤ 8000ms.
+
+---
+## INTERIM (07-16, job 20306 3/4 rates) — SRPF × write_back shows a CROSS-NODE compound signal; primary prediction falsified pending same-node
+The pre-registered interaction ran (20306, ondem-2, verified srpf+write_back active, correct frozen params).
+Curve so far (SRPF+wb) vs SRPF-alone (v-srpf-full, node 1-2):
+| λ | SRPF-alone thpt/p99 | SRPF+wb thpt/p99 |
+|---|---|---|
+| 3 | 3.02 / 6503ms ✓ | 3.02 / 5507ms ✓ |
+| 5 | 4.00 / 7823ms ✓ | **4.48 / 6203ms ✓** |
+| 7 | 4.48 / 10318ms ✗ | 5.07 / 8735ms ✗ |
+
+**goodput@SLO = 4.48 (SRPF+wb) vs 4.00 (SRPF-alone) = +12%.** This FALSIFIES my *primary* pre-registered
+prediction ("no compound, goodput stays 4.0"). Mechanism: write_back raises hit +6.4pp (0.729 vs 0.665,
+node-invariant) → lowers total prefill work E[W] → at the SLO-feasible load (λ5) the system sustains 4.48
+req/s (vs 4.00) at −20% p99. So the hit↔goodput decoupling I documented holds under FCFS (write_back alone
+→ goodput 0, p99 12–42s) but **breaks once scheduling is active** — SRPF and write_back are complementary.
+**NOT yet claimed** (integrity): the +12% is CROSS-NODE (20306 ondem-2 vs v-srpf-full node 1-2) and within
+the ±14% node-throughput noise I've documented. Per pre-registration, launched same-node control (job 20359,
+SRPF-alone, −w ondem-2, queued behind 20306) → confound-free A/B. λ10 of 20306 finishing; will adjudicate
+the same-node delta via interaction_verdict.py when both complete (~5h). If confirmed, honestly revise the
+flagship (P3) and P2: the ceiling/hit is a goodput lever *in combination with* scheduling, not in isolation.
